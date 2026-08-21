@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>eOrth 계정 및 데이터 삭제 안내</title>
+<meta name="description" content="eOrth 계정 삭제 방법 — 앱 내 삭제 경로, 30일 유예 기간, 삭제되는 데이터 범위, 앱을 지운 뒤 이메일로 삭제를 요청하는 방법." />
+<style>
+  :root {
+    --bg: #0A0A0F;
+    --card: #2E2E3B;
+    --neon: #BF85FC;
+    --dim: #A1A1B0;
+    --line: #1A1A26;
+    --text: #ECECF1;
+    --red: #FF3B30;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+      "Noto Sans KR", "Malgun Gothic", Roboto, sans-serif;
+    line-height: 1.7;
+    font-size: 16px;
+    word-break: keep-all;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 20px 80px; }
+  header { padding: 24px 0 8px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.5px; }
+  h1 .brand { color: var(--neon); }
+  .meta { color: var(--dim); font-size: 14px; margin: 0; }
+  h2 {
+    font-size: 19px; margin: 40px 0 12px; padding-top: 8px;
+    color: #fff; letter-spacing: -0.3px;
+  }
+  h2 .num { color: var(--neon); margin-right: 8px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--neon); }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { color: #fff; }
+  a { color: var(--neon); }
+  .note {
+    background: rgba(191,133,252,0.08);
+    border: 1px solid rgba(191,133,252,0.25);
+    border-radius: 12px; padding: 14px 16px; margin: 18px 0;
+    color: var(--dim); font-size: 14px;
+  }
+  .note strong { color: var(--text); }
+  table {
+    width: 100%; border-collapse: collapse; margin: 16px 0;
+    font-size: 14px; display: block; overflow-x: auto;
+  }
+  th, td {
+    border: 1px solid var(--line); padding: 10px 12px; text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--card); color: #fff; font-weight: 600; white-space: nowrap; }
+  td { color: var(--text); }
+  hr { border: none; border-top: 1px solid var(--line); margin: 36px 0; }
+  .contact { background: var(--card); border-radius: 14px; padding: 18px 20px; margin: 16px 0; }
+  .contact li { color: var(--text); }
+  .contact .mail { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .steps { counter-reset: step; list-style: none; padding-left: 0; }
+  .steps > li {
+    position: relative; padding-left: 38px; margin: 14px 0;
+  }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 2px;
+    width: 26px; height: 26px; border-radius: 999px;
+    background: rgba(191,133,252,0.12); border: 1px solid rgba(191,133,252,0.35);
+    color: var(--neon); font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .path { color: #fff; font-weight: 600; }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0; }
+  .links a {
+    display: inline-block; padding: 10px 16px; border-radius: 999px;
+    border: 1px solid rgba(191,133,252,0.35); background: rgba(191,133,252,0.08);
+    text-decoration: none; font-size: 14px;
+  }
+  .en { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 8px; }
+  .en h2, .en h3 { word-break: normal; }
+  .en p, .en li { word-break: normal; }
+  footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--dim); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="brand">eOrth</span> 계정 및 데이터 삭제 안내</h1>
+    <p class="meta">최종 업데이트: 2026년 8월 21일</p>
+  </header>
+
+  <p>eOrth는 이용자가 <strong>언제든지 스스로 계정과 데이터를 삭제</strong>할 수 있도록 앱 안에 삭제 기능을 제공합니다. 앱을 이미 삭제했거나 로그인할 수 없는 경우에는 아래 이메일로 삭제를 요청하실 수 있습니다.</p>
+
+  <div class="note">
+    <strong>한눈에 보기</strong><br />
+    · 앱 내 경로: <span class="path">설정 &gt; 계정 설정 &gt; 계정 삭제</span><br />
+    · 신청 후 <strong>30일의 유예 기간</strong>이 있으며, 그 안에 다시 로그인하면 계정과 기록이 그대로 복구됩니다.<br />
+    · 유예 기간이 지나면 계정과 사진·기록·메시지가 <strong>영구 삭제</strong>되며 복구할 수 없습니다.<br />
+    · 앱을 쓸 수 없다면 <a href="mailto:eorth26@gmail.com">eorth26@gmail.com</a>으로 요청해 주세요.
+  </div>
+
+  <hr />
+
+  <h2><span class="num">1.</span>앱에서 직접 삭제하기</h2>
+  <p>eOrth 앱에 로그인한 상태에서 아래 순서로 진행합니다.</p>
+  <ol class="steps">
+    <li>앱 하단의 <span class="path">Profile</span>(프로필) 탭에서 <span class="path">설정</span>으로 들어갑니다.</li>
+    <li><span class="path">계정</span> 그룹의 <span class="path">계정 설정</span>을 선택합니다.</li>
+    <li>화면 맨 아래 <span class="path">위험 구역</span>에 있는 <span class="path">계정 삭제</span>를 누릅니다.</li>
+    <li><strong>1단계 — 안내 확인.</strong> 삭제되는 정보(지구본 설정과 핀 기록, 모든 스토리·다이어리·피드 기록, 메이트·팔로워·프로필 정보, 방문 국가 기록과 배지 통계)를 확인하고 <span class="path">유의사항을 확인했으며, 계정 삭제에 동의합니다.</span> 체크박스를 선택합니다.</li>
+    <li><strong>2단계 — 탈퇴 사유 선택.</strong> 서비스 개선을 위한 항목으로, 보기 중 하나를 고르거나 직접 입력합니다.</li>
+    <li><strong>3단계 — 본인 확인.</strong> 이메일로 가입하셨다면 <strong>현재 비밀번호</strong>를 입력하고, Google·Apple 계정으로 가입하셨다면 확인 문구 <strong>탈퇴하기</strong>(영어 설정에서는 <strong>DELETE</strong>)를 그대로 입력합니다.</li>
+    <li><span class="path">영구 탈퇴</span> 버튼을 누르면 탈퇴가 신청되고 자동으로 로그아웃됩니다.</li>
+  </ol>
+
+  <div class="note">
+    앱에서 <strong>계정 삭제</strong> 화면이 보이지 않는다면 앱이 최신 버전인지 확인해 주세요. 그래도 보이지 않으면 아래 5장의 이메일 요청 방법을 이용하시면 됩니다.
+  </div>
+
+  <hr />
+
+  <h2><span class="num">2.</span>30일 유예 기간과 복구</h2>
+  <p>탈퇴를 신청해도 데이터가 그 즉시 지워지지는 않습니다. <strong>신청 시점부터 30일 동안</strong>은 실수로 삭제한 경우를 대비한 유예 기간입니다.</p>
+  <ul>
+    <li><strong>유예 기간 중 다시 로그인하면</strong> 계정 복구 여부를 묻는 안내가 뜹니다. <span class="path">복구하기</span>를 선택하면 여행 기록과 설정이 그대로 유지된 채 서비스를 계속 이용할 수 있습니다.</li>
+    <li>같은 안내에서 <span class="path">새로 시작</span>을 선택하면 기다리지 않고 <strong>기록·사진·메시지 등 콘텐츠를 즉시 파기</strong>하고 빈 프로필로 처음부터 시작합니다. 이 경우 로그인 수단(계정 자체)은 유지됩니다.</li>
+    <li>유예 기간을 다시 신청하더라도 기한이 연장되지는 않습니다. 최초 신청 시각을 기준으로 30일을 셉니다.</li>
+    <li><strong>30일이 지나면</strong> 계정과 모든 데이터가 영구 삭제됩니다. 이후에는 같은 계정으로 로그인할 수 없으며, 이용을 원하시면 새로 가입하셔야 합니다.</li>
+  </ul>
+  <p>유예 기간이 지난 계정은 <strong>매일 자동으로 실행되는 파기 작업</strong>(한국 시간 새벽 3시)으로 처리되며, 그전에 이용자가 앱을 실행하거나 로그인을 시도하면 그 시점에 즉시 파기됩니다.</p>
+
+  <hr />
+
+  <h2><span class="num">3.</span>삭제되는 데이터</h2>
+  <p>유예 기간이 끝나면(또는 <span class="path">새로 시작</span>을 선택하면) 아래 데이터가 서버와 파일 저장소에서 삭제됩니다.</p>
+  <table>
+    <thead><tr><th>구분</th><th>삭제되는 항목</th></tr></thead>
+    <tbody>
+      <tr><td>계정·프로필</td><td>로그인 계정(이메일 또는 연결된 Google·Apple 계정 식별정보), 아이디(핸들), 프로필 사진, 자기소개, 거주 국가</td></tr>
+      <tr><td>여행 기록</td><td>스토리·다이어리·피드 게시물 본문, 방문 국가/도시, 여행 날짜, 동행자, 날씨, 평점, 예산, 키워드</td></tr>
+      <tr><td>사진·영상</td><td>업로드한 모든 사진·영상 원본 파일(파일 저장소의 내 폴더 전체)</td></tr>
+      <tr><td>소셜 활동</td><td>댓글, 좋아요, 메이트(서로 친구) 관계, 차단 목록, 알림 내역</td></tr>
+      <tr><td>메시지</td><td>다이렉트 메시지(DM) 대화방과 메시지 내용</td></tr>
+      <tr><td>설정·통계</td><td>지구본 스킨·색상 등 화면 설정, 알림 설정, 배지·방문 국가 통계, 여행 카드 구성, 여행 DNA 설문 결과, 메이트 추천 캐시</td></tr>
+      <tr><td>기기 연결</td><td>푸시 알림 토큰</td></tr>
+    </tbody>
+  </table>
+  <p>전자적 파일은 복구·재생이 불가능한 방법으로 삭제하며, 삭제 이후에는 eOrth도 해당 데이터를 되살릴 수 없습니다.</p>
+
+  <hr />
+
+  <h2><span class="num">4.</span>함께 삭제되지 않는 것</h2>
+  <ul>
+    <li><strong>서비스 개선 의견(피드백)</strong> — 앱에서 보내주신 의견은 <strong>작성자와의 연결을 끊은 익명 상태로만</strong> 남습니다. 누가 보냈는지 식별할 수 없습니다.</li>
+    <li><strong>다른 이용자가 보관 중인 대화</strong> — 상대방 기기에 이미 저장·표시된 내용까지 소급해 지울 수는 없습니다.</li>
+    <li><strong>앱 밖에서 따로 제출하신 정보</strong> — 예를 들어 오프라인 행사 참가 신청서나 이메일 문의 내역은 계정과 연결되어 있지 않아 계정 삭제로 함께 지워지지 않습니다. 삭제를 원하시면 아래 이메일로 알려주시면 지체 없이 파기합니다.</li>
+    <li><strong>법령상 보존 의무가 있는 정보</strong> — 관계 법령에 따라 보존해야 하는 정보가 있는 경우, 해당 기간 동안 다른 정보와 분리하여 보관한 뒤 파기합니다.</li>
+  </ul>
+  <p>자세한 처리 기준은 <a href="./privacy-policy.html">개인정보처리방침</a> 제3장(보유 및 이용 기간)과 제8장(개인정보의 파기)에 따릅니다.</p>
+
+  <hr />
+
+  <h2><span class="num">5.</span>앱을 이미 삭제했거나 로그인할 수 없는 경우</h2>
+  <p>앱을 지우는 것만으로는 계정이 삭제되지 않습니다. 앱을 다시 설치해 위 1장의 절차를 진행하시거나, 아래 이메일로 삭제를 요청해 주세요.</p>
+  <div class="contact">
+    <p class="mail"><a href="mailto:eorth26@gmail.com?subject=%5BeOrth%5D%20%EA%B3%84%EC%A0%95%20%EC%82%AD%EC%A0%9C%20%EC%9A%94%EC%B2%AD">eorth26@gmail.com</a></p>
+    <p style="margin:6px 0 0;color:var(--dim);font-size:14px;">제목: <strong>[eOrth] 계정 삭제 요청</strong></p>
+  </div>
+  <p>본인 확인을 위해 아래 정보를 함께 적어주세요.</p>
+  <ul>
+    <li>가입에 사용한 <strong>이메일 주소</strong> (Google·Apple 로그인 이용자는 해당 계정의 이메일)</li>
+    <li>eOrth <strong>아이디(핸들)</strong> — 아는 경우</li>
+  </ul>
+  <ul>
+    <li>회신은 보통 <strong>영업일 기준 며칠 이내</strong>에 드립니다.</li>
+    <li>본인 확인이 끝나면 앱에서 직접 신청한 것과 동일하게 처리되며, <strong>30일 유예</strong> 후 영구 삭제됩니다. 유예 없이 즉시 삭제를 원하시면 요청 메일에 그 뜻을 함께 적어주세요.</li>
+    <li>본인 확인이 되지 않는 요청은 다른 사람의 계정이 삭제되는 것을 막기 위해 처리해 드릴 수 없습니다.</li>
+  </ul>
+
+  <hr />
+
+  <h2><span class="num">6.</span>문의처</h2>
+  <div class="contact">
+    <ul>
+      <li>상호: eOrth</li>
+      <li>개인정보 보호책임자: 윤준상 (대표자)</li>
+      <li>사업자등록번호: 171-06-03581</li>
+      <li>이메일: <a href="mailto:eorth26@gmail.com">eorth26@gmail.com</a></li>
+    </ul>
+  </div>
+
+  <div class="links">
+    <a href="./privacy-policy.html">개인정보처리방침</a>
+    <a href="./terms.html">이용약관</a>
+  </div>
+
+  <!-- 영어 요약 — Play/App Store 심사와 해외 이용자를 위한 것으로, 한국어 본문이 정본이다.
+       (privacy-policy처럼 -en 파일을 따로 두지 않는 이유: 이 문서는 스토어 양식에 URL을
+        하나만 넣으므로, 두 벌로 갈라 두면 한쪽만 고쳐져 어긋난다.) -->
+  <div class="en">
+    <h2>Account &amp; Data Deletion (English summary)</h2>
+    <p>This is a summary of the Korean text above, which is the authoritative version.</p>
+
+    <h3>Delete your account in the app</h3>
+    <p>Open <strong>Settings &rarr; Account settings &rarr; Delete account</strong> and complete the three steps: confirm what will be deleted, tell us why you are leaving, and verify it is you. Email sign-ups enter their <strong>current password</strong>; Google and Apple sign-ups type the confirmation phrase <strong>DELETE</strong>. Then tap <strong>Delete permanently</strong>.</p>
+
+    <h3>30-day grace period</h3>
+    <p>Your data is not erased immediately. For <strong>30 days</strong> you can sign back in and choose <strong>Recover</strong> to keep everything, or <strong>Start fresh</strong> to erase your content right away while keeping the login itself. After 30 days the account and all of its data are <strong>permanently deleted</strong> and cannot be recovered.</p>
+
+    <h3>What gets deleted</h3>
+    <p>Your account and login identifiers, handle, profile photo and bio, all travel records and posts, every uploaded photo and video file, comments, likes, mate (mutual friend) connections, blocks, notifications, direct message threads and their contents, app settings, badges and country statistics, travel DNA survey results, and push notification tokens.</p>
+
+    <h3>What is kept</h3>
+    <p>Product feedback you sent is retained only in <strong>anonymised</strong> form with the link to you removed. Information you submitted outside the app (for example an offline event entry form or an email enquiry) is not tied to your account and is not removed automatically &mdash; ask us and we will delete it. Where the law requires records to be retained, they are stored separately for the required period and then destroyed.</p>
+
+    <h3>If you already uninstalled the app</h3>
+    <p>Uninstalling does not delete your account. Reinstall and follow the steps above, or email <a href="mailto:eorth26@gmail.com">eorth26@gmail.com</a> with the subject <strong>[eOrth] Account deletion request</strong>, including the email address you signed up with and your eOrth handle if you know it. We usually reply within a few business days. Requests we cannot verify are declined, so that nobody can delete someone else's account.</p>
+  </div>
+
+  <footer>
+    <p>eOrth · <a href="mailto:eorth26@gmail.com">eorth26@gmail.com</a></p>
+  </footer>
+</div>
+</body>
+</html>
