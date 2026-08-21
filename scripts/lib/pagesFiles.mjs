@@ -10,6 +10,7 @@ export const PUBLISHED_FILES = [
   'privacy-policy.html',
   'privacy-policy-en.html',  // 영문 스토어 로케일용 번역(한국어 원문이 정본)
   'support-en.html',         // App Store 영문 지원 URL
+  'account-deletion.html',   // 스토어 데이터 안전 양식의 '계정 삭제 요청 URL'(Play 필수 입력란)
   'notices.json',
   'event-dna.js',            // 행사 이벤트 페이지가 쓰는 생성물 (scripts/build-event-dna.mjs)
   'event.html',              // 오프라인 행사 설문 페이지
