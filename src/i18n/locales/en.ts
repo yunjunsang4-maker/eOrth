@@ -413,7 +413,7 @@ const en = {
     confirmPasswordPlaceholder: 'Re-enter the new password',
     passwordMismatchHint: 'Passwords do not match.',
     deleteModalTitle: 'Delete account',
-    deleteStep1Desc: 'When you delete your account, the following will be destroyed immediately and cannot be recovered.',
+    deleteStep1Desc: 'When you request account deletion, the following will be scheduled for deletion. After the {{days}}-day grace period they are permanently deleted and cannot be recovered.',
     deleteWarning1: '• All of your globe settings and pin records',
     deleteWarning2: '• All stories, diary entries, and feed records',
     deleteWarning3: '• Mates, followers, and your profile info',

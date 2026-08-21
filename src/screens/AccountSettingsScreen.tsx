@@ -635,7 +635,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* Step 1: 안내 및 동의 */}
             {deleteStep === 1 && (
               <View>
-                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep1Desc')}</Text>
+                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep1Desc', { days: DELETION_GRACE_DAYS })}</Text>
                 <View style={styles.warningBox}>
                   <Text style={styles.warningText}>{t('accountSettings.deleteWarning1')}</Text>
                   <Text style={styles.warningText}>{t('accountSettings.deleteWarning2')}</Text>

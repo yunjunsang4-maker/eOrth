@@ -421,7 +421,7 @@ const ko = {
     confirmPasswordPlaceholder: '새 비밀번호를 다시 입력하세요',
     passwordMismatchHint: '비밀번호가 일치하지 않습니다.',
     deleteModalTitle: '계정 삭제',
-    deleteStep1Desc: '계정 삭제 시 다음의 정보가 즉시 파기되며 복구되지 않습니다.',
+    deleteStep1Desc: '계정 삭제를 신청하면 다음 정보가 삭제 대상이 됩니다. {{days}}일의 유예 기간이 지나면 영구 삭제되어 복구할 수 없습니다.',
     deleteWarning1: '• 나만의 지구본 설정 및 핀(Pin) 기록 전체',
     deleteWarning2: '• 모든 스토리, 다이어리 글, 피드 기록',
     deleteWarning3: '• 메이트, 팔로워 및 내 프로필 정보',
