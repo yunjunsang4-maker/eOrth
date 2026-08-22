@@ -133,6 +133,9 @@ function getGlobeHTML(): string {
   .ad-pin .ad-minicard .mc-price { font-size: 9.5px; font-weight: 800; color: #FFC45A; margin-top: 1px; }
   @keyframes adpulse { 0%,100% { transform: translate(-50%,-50%) scale(0.9); opacity: 0.85; } 50% { transform: translate(-50%,-50%) scale(1.2); opacity: 1; } }
   /* 딥줌 지역명 라벨(나라·도시) 캔버스 — 광고핀(z5) 아래, 지구본(z2) 위 */
+  /* transform: translateZ(0)(합성 레이어 승격)은 의도적으로 넣지 않는다. 전체화면 캔버스라
+     이미 승격돼 no-op일 가능성과, 겹치는 #ad-layer(z5)까지 새로 승격시켜 S21+ 합성 부담을
+     늘릴 가능성이 둘 다 있다. 라벨 잔상은 아래 updateLabels의 하드 리셋으로 잡는다. */
   #label-layer { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2268,8 +2271,20 @@ function updateLabels() {
   if (!labelCtx) return;
   var zf = zoomFactor();
   if (zf < 1.25 || !countryLabels.length) {
-    // 라벨 없음 구간 — 이미 비어 있으면 clearRect 반복도 생략
-    if (!_lblEmpty) { labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight); _lblEmpty = true; _lblLast.zf = NaN; }
+    // 라벨 없음 구간 — 이미 비어 있으면 리셋 반복도 생략
+    // clearRect가 아니라 sizeLabelCanvas()로 통째 리셋한다. 실기기(iPhone 다수)에서 라벨이
+    // 보일 만큼 확대했다 축소하면 지운 글자가 트레일로 남는 제보가 있었다 — clearRect는
+    // 소프트웨어적으로 지웠는데 iOS WebKit 합성기가 타일 텍스처를 갱신하지 않아(stale tile)
+    // 화면에만 남는 것(잔상 경계가 래스터 타일 경계인 화면 중앙 세로선과 일치하는 게 근거).
+    // sizeLabelCanvas()는 canvas.width 대입을 하므로 백킹 스토어(=합성기 텍스처)가 통째로
+    // 폐기돼 확실히 무효화되고, 이어서 dpr 변환까지 다시 걸어 준다.
+    // dpr 식을 여기 복제하지 않는 이유: 파일 안에 같은 식이 여러 벌 있어, 나중에
+    // sizeLabelCanvas의 상한만 고치면 줌아웃 1회 뒤 리셋이 옛 배율로 되돌려 라벨이 조용히
+    // 어긋난다. 배율의 단일 출처를 sizeLabelCanvas로 둔다.
+    if (!_lblEmpty) {
+      sizeLabelCanvas();
+      _lblEmpty = true; _lblLast.zf = NaN;
+    }
     return;
   }
   // 라벨이 보이는 동안은 매 프레임 갱신한다. 예전의 격프레임(30fps) 스킵은 자동회전 발열
@@ -2286,7 +2301,14 @@ function updateLabels() {
   if (Math.abs(_lblLast.rx - rotX) < rotEps && Math.abs(_lblLast.ry - rotY) < rotEps
       && Math.abs(_lblLast.zf - zf) < 1e-3 && _lblLast.lite === lite) return;
   _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf; _lblLast.lite = lite;
-  labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  // 매 프레임 클리어는 변환을 무시하고 백킹 스토어 전체를 지운다.
+  // CSS 픽셀 기준(innerWidth×innerHeight)으로 지우면 dpr 곱 반올림 때문에 가장자리에
+  // 안 지워지는 헤어라인이 남을 수 있고, 그 잔여 픽셀이 stale tile 잔상 제보를 키운다.
+  // save/restore로 감싸 변환 상태 오염도 막는다.
+  labelCtx.save();
+  labelCtx.setTransform(1, 0, 0, 1, 0, 0);
+  labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+  labelCtx.restore();
   _lblEmpty = false;
   var grid = {}; var CELL = 76;
   function occupy(x, y) {
@@ -2763,6 +2785,8 @@ function getNeonGlobeHTML(): string {
   <div id="shooting"></div>
 </div>
 <div id="canvas-container"></div>
+<!-- translateZ(0)(합성 레이어 승격)은 의도적으로 넣지 않는다 — classic과 동일 이유:
+     전체화면 캔버스라 no-op일 가능성과 겹치는 #ad-layer(z5)까지 승격시킬 가능성이 둘 다 있다 -->
 <canvas id="label-layer" style="position:fixed;inset:0;pointer-events:none;z-index:4;"></canvas>
 <div id="ad-layer"></div>
 
@@ -3856,7 +3880,14 @@ function updateLabels(){
   if(!labelCtx) return;
   var zf=currentZoom;
   if(zf<1.25 || !countryLabels.length){
-    if(!_lblEmpty){ labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight); _lblEmpty=true; _lblLast.zf=NaN; }
+    // 라벨 없음 구간 진입 — clearRect가 아니라 sizeLabelCanvas()로 통째 리셋(classic과 동일 이유).
+    // 실기기 잔상은 iOS WebKit 합성기의 stale tile이라 픽셀만 지우면 화면에 옛 글자가 남는다.
+    // sizeLabelCanvas()의 canvas.width 대입이 백킹 스토어(=합성기 텍스처)를 통째로 버리고
+    // dpr 변환까지 재적용한다. dpr 식을 여기 복제하면 상한이 갈려 라벨이 조용히 어긋난다.
+    if(!_lblEmpty){
+      sizeLabelCanvas();
+      _lblEmpty=true; _lblLast.zf=NaN;
+    }
     return;
   }
   // 라벨이 보이는 동안은 매 프레임 갱신(classic과 동일 이유 — 격프레임 스킵은 항상 도는
@@ -3864,7 +3895,11 @@ function updateLabels(){
   var rotEps=1e-4/Math.max(1, zf*0.5);
   if(Math.abs(_lblLast.rx-rotX)<rotEps && Math.abs(_lblLast.ry-rotY)<rotEps && Math.abs(_lblLast.zf-zf)<1e-3) return;
   _lblLast.rx=rotX; _lblLast.ry=rotY; _lblLast.zf=zf;
-  labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight);
+  // 변환 무시 + 백킹 스토어 전체 클리어(classic과 동일 이유 — dpr 반올림 헤어라인·변환 오염 방지)
+  labelCtx.save();
+  labelCtx.setTransform(1,0,0,1,0,0);
+  labelCtx.clearRect(0,0,labelCanvas.width,labelCanvas.height);
+  labelCtx.restore();
   _lblEmpty=false;
   var grid={}; var CELL=76;
   function occupy(x,y){
