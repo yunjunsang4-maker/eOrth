@@ -1276,13 +1276,34 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
+  // 여행 정보 패널 열기 — 툴바 ✈️ 진입점과 동일하게 인라인 바 4개(사진/폰트/문단/더보기)를 먼저 닫는다.
+  // 넷 다 Modal이 아닌 인라인 View라 겹치지는 않지만, 닫지 않으면 패널을 닫았을 때
+  // 아까 열어둔 바가 그대로 남아 있어 진입 경로마다 상태가 달라진다.
+  const openTravelInfo = () => {
+    setPhotoMenuVisible(false);
+    setFontBarVisible(false);
+    setHeadingBarVisible(false);
+    setMoreMenuVisible(false);
+    setTravelInfoVisible(true);
+  };
+
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert(t('blog.countrySelectTitle'), t('blog.selectCountryMsg')); return; }
     const bodyText = blocksToPlainText(blocks);
     const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) { Alert.alert(t('blog.contentTitle'), t('blog.contentMsg')); return; }
-    if (companions.length === 0) { Alert.alert(t('blog.companionTitle'), t('blog.companionMsg')); return; }
-    if (rating <= 0) { Alert.alert(t('blog.ratingTitle'), t('blog.ratingMsg')); return; }
+    // 동행자·별점은 하단 ✈️ 여행 정보 패널 안에 있어 유저가 존재 자체를 모른다.
+    // 안내만 하면 "어디서 입력하냐"로 끝나므로 패널을 바로 열어주는 버튼을 함께 준다.
+    // 둘을 한 Alert으로 합친 이유: 여기까지 왔다면 이미 내용은 쓴 상태(위 내용 체크 통과)라
+    // 동행자 → 별점으로 Alert이 두 번 연달아 뜨면 "고쳐도 또 막힌다"로 읽힌다.
+    // 어차피 같은 패널에서 같이 입력하므로 "여행 정보가 빈다" 한 번으로 안내한다.
+    if (companions.length === 0 || rating <= 0) {
+      Alert.alert(t('blog.travelInfoNeededTitle'), t('blog.travelInfoNeededMsg'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('blog.travelInfoOpen'), onPress: openTravelInfo },
+      ]);
+      return;
+    }
 
     // AI 목차 분석: 제안이 2개 이상이면 미리보기 모달, 아니면 그대로 발행
     const suggestions = analyzeForToc(blocks);
@@ -1407,7 +1428,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
+          {/* 요건 미충족이어도 탭은 받는다 — 예전엔 disabled라 눌러도 무반응이었고
+              handleSave 안의 항목별 Alert이 전부 죽은 코드였다(유저는 "저장이 고장났다"고 인식).
+              흐린 스타일은 그대로 둬서 "아직 뭔가 남았다"는 신호만 유지하고,
+              disabled는 발행 중일 때만 — onPress도 publishing이면 막아 이중 발행/Alert 재진입을 차단한다. */}
+          <TouchableOpacity onPress={publishing ? undefined : handleSave} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={publishing}>
             <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
           </TouchableOpacity>
         </View>

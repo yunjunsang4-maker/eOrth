@@ -1024,6 +1024,12 @@ const ko = {
     companionMsg: '동행자를 선택해주세요.',
     ratingTitle: '별점 입력',
     ratingMsg: '별점을 입력해주세요.',
+    // 동행자·별점 미입력 통합 Alert — 둘은 같은 여행 정보 패널에서 입력하므로 안내를 하나로 합쳤다
+    // (companionTitle/Msg·ratingTitle/Msg는 현재 미사용이지만 값은 보존)
+    travelInfoNeededTitle: '여행 정보가 필요해요',
+    travelInfoNeededMsg: '저장하려면 동행자·별점 같은 여행 정보를 입력해주세요.',
+    // 위 Alert에서 여행 정보 패널을 바로 열어주는 버튼 라벨
+    travelInfoOpen: '여행 정보 입력',
     editExitTitle: '수정 중인 내용이 있어요',
     editExitMsg: '수정을 취소하고 나갈까요?',
     exit: '나가기',

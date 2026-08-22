@@ -1014,6 +1014,12 @@ const en = {
     companionMsg: 'Please select companions.',
     ratingTitle: 'Enter rating',
     ratingMsg: 'Please enter a rating.',
+    // 동행자·별점 미입력 통합 Alert — 둘은 같은 여행 정보 패널에서 입력하므로 안내를 하나로 합쳤다
+    // (companionTitle/Msg·ratingTitle/Msg는 현재 미사용이지만 값은 보존)
+    travelInfoNeededTitle: 'Travel info needed',
+    travelInfoNeededMsg: 'Please enter travel info such as companions and rating to save.',
+    // 위 Alert에서 여행 정보 패널을 바로 열어주는 버튼 라벨
+    travelInfoOpen: 'Enter travel info',
     editExitTitle: 'You have unsaved edits',
     editExitMsg: 'Discard your edits and leave?',
     exit: 'Leave',
