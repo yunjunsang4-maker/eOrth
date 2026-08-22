@@ -195,7 +195,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     }
   };
 
-  const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
+  const { records, resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
@@ -251,6 +251,40 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     });
   }, [stayCountrySearch, homeCountryName]);
 
+  // 빠른 선택 — 내 기록에서 최근 남긴 국가 최대 5개(중복 제거·거주국 제외·최신순).
+  // 체류 국가는 대개 이미 기록을 남긴 나라라, 200여 개 목록을 훑기 전에 먼저 보여준다.
+  // COUNTRIES에 없는 이름은 flag를 못 얻고 startStay의 국가 메타 매칭도 실패하므로 제외한다.
+  const stayRecentCountries = useMemo(() => {
+    // 예약 글은 timestamp가 '발행 예정 시각'이라(recordStore addRecord: timestamp: data.scheduledAt || Date.now())
+    // 아직 가보지도 않은 나라가 최신순 첫 칸을 차지한다. recordStore의 resyncUnpublished가 쓰는
+    // 배제 조건(!r.isDraft && !(r.scheduledAt && r.scheduledAt > now))을 그대로 따른다.
+    // 같은 필터의 !r.remoteId는 '백엔드 미발행' 판정이라 여기와 무관하므로 가져오지 않는다.
+    const now = Date.now();
+    // isMyPost !== false: undefined는 내 기록(레거시 포함) — StatsScreen 등과 같은 판정
+    const mine = records
+      .filter(
+        (r) =>
+          !r.isExample &&
+          r.isMyPost !== false &&
+          !!r.countryName &&
+          !r.isDraft &&
+          !(r.scheduledAt && r.scheduledAt > now),
+      )
+      .sort((a, b) => b.timestamp - a.timestamp); // filter가 새 배열을 주므로 스토어 배열을 건드리지 않는다
+    const seen = new Set<string>();
+    const out: { name: string; flag: string }[] = [];
+    for (const r of mine) {
+      if (out.length >= 5) break;
+      const name = r.countryName;
+      if (seen.has(name) || name === homeCountryName) continue;
+      const meta = COUNTRIES.find((c) => c.name === name);
+      if (!meta) continue;
+      seen.add(name);
+      out.push({ name: meta.name, flag: meta.flag });
+    }
+    return out;
+  }, [records, homeCountryName]);
+
   const STAY_TYPES: { type: StayType; labelKey: string }[] = [
     { type: 'exchange',        labelKey: 'stay.typeExchange' },
     { type: 'language',        labelKey: 'stay.typeLanguage' },
@@ -269,6 +303,21 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const handleStayCountrySelect = (country: { name: string; flag: string }) => {
     setStaySelectedCountry(country);
     setStayModalStep('type');
+  };
+
+  // 유형 단계 → 국가 선택으로 되돌리기. 검색어도 함께 비운다 — 국가를 바꾸러 돌아온
+  // 시점에 '이전 국가를 찾던 검색어'는 더 이상 유효하지 않고, 남아 있으면 빠른 선택
+  // 섹션이 숨어(검색 중엔 헤더 비표시) 정작 가장 쓸모 있는 경로에서 사라진다.
+  const stayBackToCountry = () => {
+    setStayCountrySearch('');
+    setStayModalStep('country');
+  };
+
+  // 배경 탭·안드로이드 뒤로가기가 공유하는 되돌리기 — 유형 단계면 국가로,
+  // 국가 단계에서는 그대로 닫기(기존 동선 유지).
+  const stayModalBack = () => {
+    if (stayModalStep === 'type') stayBackToCountry();
+    else closeStayModal();
   };
 
   const handleStayTypeSelect = (type: StayType) => {
@@ -642,78 +691,103 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         </Pressable>
       </Modal>
 
-      {/* 장기체류 수동 시작 모달 — 국가 선택 단계 */}
+      {/* 장기체류 수동 시작 모달 — 국가 선택 → 유형 선택을 '한 Modal 안에서' 단계 전환한다.
+          이전엔 단계마다 Modal을 갈아끼웠는데, 이 저장소는 "Modal이 닫힌 직후 다른 Modal/
+          네이티브 시트를 present하면 씹힌다"는 iOS 함정 이력이 있어(로딩 오버레이·구글 로그인)
+          교체 구조 자체를 없앴다. 덤으로 단계 전환 시 페이드 깜빡임도 사라진다. */}
       <Modal
-        visible={stayModalStep === 'country'}
+        visible={stayModalStep !== null}
         transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
-        onRequestClose={closeStayModal}
+        onRequestClose={stayModalBack}
       >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피.
+            유형 단계엔 입력이 없어 KAV는 no-op이므로 모달 전체에 걸어도 무해하다. */}
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={stayModalBack}>
           <Pressable style={st.modalCard} onPress={() => {}}>
-            <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
-            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-              style={[st.modalInput, { marginBottom: 8 }]}
-              value={stayCountrySearch}
-              onChangeText={setStayCountrySearch}
-              placeholder={t('basicInfo.residenceSearchPlaceholder')}
-              placeholderTextColor={COLORS.textMuted}
-              autoCorrect={false}
-            />
-            <FlatList
-              data={stayFilteredCountries}
-              keyExtractor={(item) => item.name}
-              style={st.fontList}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
+            {stayModalStep === 'type' ? (
+              <>
+                <Text style={st.modalTitle}>{t('stay.typeTitle')}</Text>
+                {/* 선택한 국가는 '읽기 전용 안내'가 아니라 탭하면 국가 선택으로 돌아가는 행이다.
+                    배경 탭·뒤로가기도 되돌아가지만 화면에 아무 안내가 없어 발견되지 않았다. */}
                 <TouchableOpacity
-                  style={st.fontRow}
+                  style={[st.fontRow, st.stayPickedRow]}
                   activeOpacity={0.7}
-                  onPress={() => handleStayCountrySelect(item)}
+                  accessibilityRole="button"
+                  onPress={stayBackToCountry}
                 >
-                  <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{item.flag} {item.name}</Text>
+                  {/* flex:1 — 국가명이 길어도 우측 '변경' 라벨을 밀어내지 않게 한다 */}
+                  <Text style={[st.fontRowPreview, { fontSize: 14, flex: 1 }]} numberOfLines={1}>
+                    {staySelectedCountry ? `${staySelectedCountry.flag} ${staySelectedCountry.name}` : ''}
+                  </Text>
+                  <Text style={st.stayPickedChange}>{t('stay.changeCountry')}</Text>
                 </TouchableOpacity>
-              )}
-            />
+                {STAY_TYPES.map((item) => (
+                  <TouchableOpacity
+                    key={item.type}
+                    style={[st.fontRow, { marginBottom: 8 }]}
+                    activeOpacity={0.7}
+                    onPress={() => handleStayTypeSelect(item.type)}
+                  >
+                    <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{t(item.labelKey)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </>
+            ) : (
+              <>
+                <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+                  style={[st.modalInput, { marginBottom: 8 }]}
+                  value={stayCountrySearch}
+                  onChangeText={setStayCountrySearch}
+                  placeholder={t('basicInfo.residenceSearchPlaceholder')}
+                  placeholderTextColor={COLORS.textMuted}
+                  autoCorrect={false}
+                />
+                <FlatList
+                  data={stayFilteredCountries}
+                  keyExtractor={(item) => item.name}
+                  style={st.fontList}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  // 빠른 선택 섹션은 검색 중엔 숨긴다 — 검색 결과 위에 무관한 나라가 뜨면 방해다
+                  ListHeaderComponent={
+                    stayCountrySearch.trim() === '' && stayRecentCountries.length > 0 ? (
+                      <View>
+                        <Text style={st.stayQuickTitle}>{t('stay.recentCountries')}</Text>
+                        {stayRecentCountries.map((c) => (
+                          <TouchableOpacity
+                            key={`recent-${c.name}`}
+                            style={[st.fontRow, st.stayQuickRow]}
+                            activeOpacity={0.7}
+                            onPress={() => handleStayCountrySelect(c)}
+                          >
+                            <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{c.flag} {c.name}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        <Text style={st.stayQuickTitle}>{t('stay.allCountries')}</Text>
+                      </View>
+                    ) : null
+                  }
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={st.fontRow}
+                      activeOpacity={0.7}
+                      onPress={() => handleStayCountrySelect(item)}
+                    >
+                      <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{item.flag} {item.name}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </>
+            )}
             <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
               <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </Pressable>
         </Pressable>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}
-      <Modal
-        visible={stayModalStep === 'type'}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setStayModalStep('country')}
-      >
-        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setStayModalStep('country')}>
-          <Pressable style={st.modalCard} onPress={() => {}}>
-            <Text style={st.modalTitle}>{t('stay.typeTitle')}</Text>
-            <Text style={st.modalDesc}>
-              {staySelectedCountry ? `${staySelectedCountry.flag} ${staySelectedCountry.name}` : ''}
-            </Text>
-            {STAY_TYPES.map((item) => (
-              <TouchableOpacity
-                key={item.type}
-                style={[st.fontRow, { marginBottom: 8 }]}
-                activeOpacity={0.7}
-                onPress={() => handleStayTypeSelect(item.type)}
-              >
-                <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{t(item.labelKey)}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
-              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
       </Modal>
 
       {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
@@ -982,6 +1056,13 @@ const st = StyleSheet.create({
   fontRowPreview: { fontSize: 18, color: COLORS.white },
   fontRowCheck: { fontSize: 16, color: COLORS.purpleNeon, marginLeft: 10 },
   fontModalClose: { marginTop: 8 },
+
+  // 장기체류 시작 모달 — 유형 단계의 '선택한 국가(탭하면 다시 고르기)' 행
+  stayPickedRow: { borderColor: COLORS.purpleBorder, backgroundColor: COLORS.purpleBg, marginBottom: 14 },
+  stayPickedChange: { fontSize: 12, color: COLORS.purpleNeon, marginLeft: 10 },
+  // 국가 단계 — 빠른 선택 섹션 헤더/행
+  stayQuickTitle: { fontSize: 11, color: COLORS.textDim, marginTop: 4, marginBottom: 6 },
+  stayQuickRow: { borderColor: COLORS.purpleBorder, backgroundColor: COLORS.purpleBg },
 
   // 지구본 스킨 선택 모달
   skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },

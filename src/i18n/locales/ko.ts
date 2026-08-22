@@ -1971,6 +1971,9 @@ const ko = {
     settingsStart: '장기체류',
     settingsStarted: '{{country}} 체류를 시작했어요',
     countryTitle: '어느 나라에 체류하나요?',
+    recentCountries: '최근 기록한 나라',
+    allCountries: '모든 나라',
+    changeCountry: '변경',
   },
   moments: {
     captureTitle: '지금 이 순간',

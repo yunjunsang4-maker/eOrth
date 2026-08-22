@@ -1959,6 +1959,9 @@ const en = {
     settingsStart: 'Long stay',
     settingsStarted: 'Started your stay in {{country}}',
     countryTitle: 'Which country are you staying in?',
+    recentCountries: 'Recently recorded',
+    allCountries: 'All countries',
+    changeCountry: 'Change',
   },
   moments: {
     captureTitle: 'This moment',
