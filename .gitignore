@@ -88,6 +88,10 @@ scripts/orb-export.png
 # 테스트 Supabase용 스키마 치환 생성물 (make-test-schema.mjs 산출물, 비추적)
 supabase/test-schema.local.sql
 
+# 하네스(release-gate·platform-parity 등) 중간 산출물 — 디스크에는 남기고 커밋만 제외.
+# 미추적으로 두면 EAS 빌드가 멈춘다(위 scripts/ 항목과 같은 이유).
+_workspace/
+
 # 행사 매칭 리포트 — 참가자 인스타 아이디가 들어 있는 로컬 산출물(커밋 금지)
 # 타임별 리포트(event-report-slot1.local.html 등)까지 덮도록 와일드카드로 둔다 —
 # 파일명 하나만 적어 두면 새 산출물이 조용히 추적 대상이 된다.
