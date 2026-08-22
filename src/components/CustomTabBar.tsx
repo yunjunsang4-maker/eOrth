@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   PanResponder,
   Platform,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useStageWidth } from '../utils/stage';
@@ -70,6 +71,29 @@ const ICON_BOX = 22;       // 아이콘 박스 폭
 const LABEL_LEFT = ICON_LEFT + ICON_BOX + 6; // 아이콘 + 8px 간격 후 라벨
 
 const ANIM = { duration: 260, easing: Easing.out(Easing.cubic) };
+
+// 드래그 추종에 쓰는 임계값 (기존 스와이프 판정과 동일한 값 — UX 퇴행 방지)
+const SWIPE_DX = 36;   // 이만큼 끌면 확실한 이동 의사
+const SWIPE_VX = 0.3;  // 짧아도 이만큼 빠르면 플릭
+
+// 손가락 x(tabRow 로컬 좌표) → 연속 탭 인덱스(float).
+// 탭 간격이 균일하지 않다(space-between + 좌18/우28 비대칭 패딩 + 탭마다 폭이 다름).
+// 그래서 "폭 ÷ 개수" 로는 못 구하고 실측 중심들 사이를 구간별로 역보간해야 한다.
+const xToFloatIndex = (x: number, centers: number[]): number => {
+  const n = centers.length;
+  if (n < 2) return 0;
+  if (x <= centers[0]) return 0;
+  if (x >= centers[n - 1]) return n - 1;
+  for (let i = 0; i < n - 1; i++) {
+    const a = centers[i];
+    const b = centers[i + 1];
+    if (x >= a && x <= b) {
+      const span = b - a;
+      return span <= 0 ? i : i + (x - a) / span;
+    }
+  }
+  return n - 1;
+};
 
 interface TabBarProps {
   state: any;
@@ -163,7 +187,10 @@ const TabItem: React.FC<{
   isFocused: boolean;
   onPress: () => void;
   pillColor: string; // 활성 알약 채움색 (스킨 강조색)
-}> = ({ progress, isGlobe, uid, label, IconComponent, isFocused, onPress, pillColor }) => {
+  // 드래그 추종(iOS)용 탭 중심 실측. 부모(tabRow) 기준 로컬 좌표가 그대로 필요해서
+  // measure 가 아니라 onLayout 을 쓴다. 안드로이드에서는 undefined 로 넘어와 무동작.
+  onLayoutTab?: (e: LayoutChangeEvent) => void;
+}> = ({ progress, isGlobe, uid, label, IconComponent, isFocused, onPress, pillColor, onLayoutTab }) => {
   const H = isGlobe ? G_PILL_H : PILL_H; // 알약 높이
   const R = H / 2;                       // 알약 모서리 반경
 
@@ -203,6 +230,7 @@ const TabItem: React.FC<{
     <TouchableOpacity
       style={styles.tab}
       onPress={onPress}
+      onLayout={onLayoutTab}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
@@ -348,25 +376,170 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const navRef = useRef({ index: state.index, routes: state.routes, navigation });
   navRef.current = { index: state.index, routes: state.routes, navigation };
 
-  const goAdjacentTab = (dir: 1 | -1) => {
+  // 탭으로 이동하고 "실제로 이동한 인덱스"를 돌려준다.
+  // 범위 밖이거나 tabPress 가 preventDefault 되면 현재 인덱스 그대로 — 이걸 알아야
+  // 드래그 종료 애니메이션이 엉뚱한 탭으로 안착하지 않는다.
+  const goToTab = (target: number): number => {
     const { index, routes, navigation: nav } = navRef.current;
-    const target = index + dir;
-    if (target < 0 || target >= routes.length) return;
+    if (target < 0 || target >= routes.length || target === index) return index;
     const route = routes[target];
     const event = nav.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-    if (!event.defaultPrevented) nav.navigate(route.name);
+    if (event.defaultPrevented) return index;
+    nav.navigate(route.name);
+    return target;
+  };
+
+  const goAdjacentTab = (dir: 1 | -1) => {
+    goToTab(navRef.current.index + dir);
+  };
+
+  // ─── 드래그 추종 (iOS 전용) ───
+  // 별도 인디케이터 뷰를 만들지 않고, 손가락 위치로 구한 연속 인덱스(float)를 각 탭의
+  // progress 에 직접 꽂는다: p_i = max(0, 1 - |float - i|).
+  // 손가락이 두 탭 사이면 한쪽 알약이 줄고 옆 알약이 자라는 교차 모핑이 되어,
+  // 보라 알약이 손가락을 따라 흐르는 것처럼 보인다. 기존 알약 모핑 자산을 그대로 쓰므로
+  // Globe(세로형 46) ↔ 가로형(36) 사이 핸드오프도 각자 자기 형태로 자라며 자동 처리된다.
+  //
+  // ⚠️ 부호 규약 — iOS 는 '직접 조작', 안드로이드는 '캐러셀'이라 방향이 서로 반대다.
+  //   iOS   : 왼쪽으로 끌면 알약도 왼쪽으로 간다 → 이전 탭(index - 1). 알약을 직접 끄는 모델이라
+  //           추종 연출과 착지가 일치해야만 의미가 있다. iOS 경로의 모든 분기(추종 반올림 /
+  //           플릭 폴백 / 실측 실패 폴백)가 예외 없이 이 방향이다.
+  //   안드로이드: 왼쪽으로 밀면 다음 탭(index + 1). 콘텐츠를 미는 캐러셀 규약이고 이미 출시된
+  //           동작이라 건드리지 않는다. 방향이 갈리는 것은 인지하고 수용한 결정이다
+  //           (이번 기능 자체가 iOS 전용 지시였고, 추종 연출이 직접 조작 방향을 내포한다).
+  //   👉 나중에 안드로이드에도 추종을 이식한다면, 그때 안드로이드 부호를 iOS 쪽(직접 조작)으로
+  //      맞춰 통일할 것. 규약 두 벌을 그대로 둔 채 이식하면 지금 iOS 에서 고친 결함이 그대로
+  //      재발한다(끄는 방향과 착지 탭이 반대).
+
+  // 각 탭 중심 x (tabRow 로컬 좌표). onLayout 실측 — 계산으로는 못 구한다(위 xToFloatIndex 주석).
+  const tabCentersRef = useRef<number[]>([]);
+  const handleTabLayout = (index: number) => (e: LayoutChangeEvent) => {
+    const { x, width } = e.nativeEvent.layout;
+    tabCentersRef.current[index] = x + width / 2;
+  };
+
+  // 드래그 1회 동안 고정되는 상태
+  const dragRef = useRef({ active: false, centers: [] as number[], anchorX: 0, dx0: 0 });
+
+  // 손가락 추종은 즉시값 — withTiming 을 태우면 손가락보다 260ms 늦게 따라온다.
+  const applyFloatIndex = (f: number) => {
+    progresses.forEach((sv, i) => {
+      sv.value = Math.max(0, 1 - Math.abs(f - i));
+    });
+  };
+  // 드래그 종료 후 최종 안착. state.index 가 바뀌면 위 useEffect 가 같은 목적지로 한 번 더
+  // withTiming 을 걸지만 값이 같아 눈에 띄는 겹침은 없다. 반대로 인덱스가 안 바뀌는 경우
+  // (같은 탭·preventDefault·terminate)엔 useEffect 가 아예 안 돌아서 이게 유일한 복원 경로다.
+  const settleTo = (index: number) => {
+    progresses.forEach((sv, i) => {
+      sv.value = withTiming(i === index ? 1 : 0, ANIM);
+    });
+  };
+
+  // PanResponder 는 첫 렌더 클로저가 박제된다 → 최신 클로저를 ref 로 갈아끼워 경유한다.
+  const dragCbRef = useRef({
+    onGrant: (_dx: number) => {},
+    onMove: (_dx: number) => {},
+    onRelease: (_dx: number, _vx: number) => {},
+    onTerminate: () => {},
+  });
+  dragCbRef.current = {
+    onGrant: (dx: number) => {
+      const n = navRef.current.routes.length;
+      // ⚠️ slice + every 로 검사하면 안 된다. onLayout 은 인덱스에 직접 대입하므로 일부만
+      // 먼저 도착하면 [<3 empty>, 296] 같은 '성긴 배열'이 되는데, slice 는 hole 을 보존하고
+      // every 는 hole 을 건너뛰어 그대로 통과시킨다 → anchorX 가 undefined → x 가 NaN →
+      // xToFloatIndex 의 비교가 전부 false 라 n-1 로 떨어져 알약이 마지막 탭으로 순간이동한다.
+      // 인덱스를 명시한 루프로 hole 까지 전수 확인한다.
+      const centers: number[] = [];
+      let ok = n >= 2;
+      for (let i = 0; i < n; i++) {
+        const c = tabCentersRef.current[i];
+        if (!Number.isFinite(c) || c <= 0) { ok = false; break; }
+        centers.push(c);
+      }
+      dragRef.current = {
+        active: ok,
+        // ⚠️ 중심 좌표는 드래그 내내 '스냅샷'을 쓴다. 알약이 자라면 space-between 이 폭을
+        // 재분배해 탭 중심이 실시간으로 밀리는데, 그 값을 되먹이면 진동한다
+        // (알약 성장 → 중심 이동 → float 변화 → 더 성장).
+        centers: ok ? centers : [],
+        // 시작점은 '현재 활성 탭의 중심'. 여기서 gestureState.dx 를 더해 나간다.
+        // anchorX 가 centers[cur] 과 같은 값이라 dx=0 일 때 float 이 정확히 cur 이 된다
+        // → 실측이 한 프레임 낡아도 드래그 시작 순간 알약이 튀지 않는다(간격만 미세하게 달라짐).
+        anchorX: ok ? centers[Math.min(navRef.current.index, centers.length - 1)] : 0,
+        // responder 를 뺏은 시점의 dx 를 기준점으로 빼둔다.
+        // 현 RN 구현에서는 PanResponder 가 onPanResponderGrant 를 부르기 직전에
+        // gestureState.dx 를 0 으로 리셋하므로(Libraries/Interaction/PanResponder.js) dx0 은
+        // 항상 0 이고 (dx - dx0) 은 항등식이다. 즉 "알약이 임계 14px 만큼 튀지 않는" 이유는
+        // 이 보정이 아니라 RN 의 리셋이다. 그럼에도 남겨 두는 것은 그 리셋이 RN 내부
+        // 구현 세부라, 바뀌더라도 출발점이 anchorX 로 유지되게 하는 방어다.
+        dx0: dx,
+      };
+    },
+    onMove: (dx: number) => {
+      const d = dragRef.current;
+      if (!d.active) return;
+      applyFloatIndex(xToFloatIndex(d.anchorX + (dx - d.dx0), d.centers));
+    },
+    onRelease: (dx: number, vx: number) => {
+      const d = dragRef.current;
+      const cur = navRef.current.index;
+      d.active = false;
+      if (!d.centers.length) {
+        // 실측 실패 폴백. ⚠️ 여기도 '직접 조작' 방향이어야 한다(위 '부호 규약' 주석 참고).
+        // 안드로이드와 같은 판정으로 두면 같은 iOS 빌드 안에서 실측 성공/실패에 따라
+        // 스와이프 방향이 반대로 갈려 "가끔 반대로 간다"가 된다.
+        if (dx <= -SWIPE_DX || vx <= -SWIPE_VX) settleTo(goToTab(cur - 1));      // 왼쪽 → 이전 탭
+        else if (dx >= SWIPE_DX || vx >= SWIPE_VX) settleTo(goToTab(cur + 1));  // 오른쪽 → 다음 탭
+        else settleTo(cur);
+        return;
+      }
+      const f = xToFloatIndex(d.anchorX + (dx - d.dx0), d.centers);
+      let target = Math.round(f);
+      // 짧고 빠른 플릭: 반올림으로는 제자리인데 손가락은 확실히 튕긴 경우 옆 탭으로.
+      // (이 경로를 없애면 "톡 튕기면 넘어가던" 조작감이 퇴행한다)
+      // ⚠️ 부호는 추종 방향과 반드시 같아야 한다. 왼쪽으로 튕기면 알약도 왼쪽으로 자라던
+      // 중이므로 왼쪽 탭(cur - 1)이다. 처음엔 안드로이드 규약(왼쪽 → 다음 탭)을 그대로
+      // 복사해서, 드래그 중엔 왼쪽으로 자라다가 릴리스 순간 오른쪽 탭으로 두 칸 점프하는
+      // 결함이 있었다(Social에서 왼쪽 20px 플릭 → Profile 착지).
+      if (target === cur && Math.abs(dx) < SWIPE_DX) {
+        if (vx <= -SWIPE_VX) target = cur - 1;
+        else if (vx >= SWIPE_VX) target = cur + 1;
+      }
+      settleTo(goToTab(target));
+    },
+    // 다른 responder 에 뺏기면 반드시 되돌린다 — 빠뜨리면 알약이 두 탭 사이에 낀 채 방치된다.
+    onTerminate: () => {
+      dragRef.current.active = false;
+      settleTo(navRef.current.index);
+    },
   };
 
   const swipeResponder = useRef(
-    PanResponder.create({
-      // 가로 이동이 충분히 클 때만 가로채 탭 터치(onPress)와 충돌 방지
-      onMoveShouldSetPanResponder: (_, g) =>
-        Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderRelease: (_, g) => {
-        if (g.dx <= -36 || g.vx <= -0.3) goAdjacentTab(1);       // 왼쪽으로 슬라이드 → 다음 탭
-        else if (g.dx >= 36 || g.vx >= 0.3) goAdjacentTab(-1);   // 오른쪽으로 슬라이드 → 이전 탭
-      },
-    })
+    Platform.OS === 'ios'
+      ? PanResponder.create({
+          // 가로 이동이 충분히 클 때만 가로채 탭 터치(onPress)와 충돌 방지 — 기존과 동일한 임계
+          onMoveShouldSetPanResponder: (_, g) =>
+            Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+          onPanResponderGrant: (_, g) => dragCbRef.current.onGrant(g.dx),
+          onPanResponderMove: (_, g) => dragCbRef.current.onMove(g.dx),
+          onPanResponderRelease: (_, g) => dragCbRef.current.onRelease(g.dx, g.vx),
+          onPanResponderTerminate: () => dragCbRef.current.onTerminate(),
+        })
+      : // ⚠️ 안드로이드는 기존 동작 그대로(문자 그대로 무변경 — 상수화만). 이 파일 곳곳의
+        // 주석대로 안드로이드에서는 reanimated 폭 애니메이션/animatedProps 가 제대로 반영되지
+        // 않아, 알약을 실시간으로 모핑시키면 추종이 아니라 깨진 그림이 된다. 릴리스 시 인접 탭
+        // 이동만 유지한다. 아래 부호(왼쪽 → 다음 탭)는 iOS 와 반대인데, 이는 출시된 캐러셀
+        // 규약을 지키려는 의도된 선택이다 — 위 '부호 규약' 주석 참고.
+        PanResponder.create({
+          onMoveShouldSetPanResponder: (_, g) =>
+            Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+          onPanResponderRelease: (_, g) => {
+            if (g.dx <= -SWIPE_DX || g.vx <= -SWIPE_VX) goAdjacentTab(1);     // 왼쪽 → 다음 탭
+            else if (g.dx >= SWIPE_DX || g.vx >= SWIPE_VX) goAdjacentTab(-1); // 오른쪽 → 이전 탭
+          },
+        })
   ).current;
 
   const tabs = state.routes.map((route: any, index: number) => {
@@ -392,6 +565,8 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         isFocused={isFocused}
         onPress={onPress}
         pillColor={skinAccent.pill}
+        // 안드로이드는 드래그 추종을 안 하므로 실측도 붙이지 않는다(기존 동작 그대로)
+        onLayoutTab={Platform.OS === 'ios' ? handleTabLayout(index) : undefined}
       />
     );
   });
@@ -425,7 +600,9 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         edgeHighlight={Platform.OS === 'ios'}
       />
 
-      {/* 탭 콘텐츠 — 유리 위에 형제로 올림. 가로 슬라이드로 옆 탭 이동 */}
+      {/* 탭 콘텐츠 — 유리 위에 형제로 올림.
+          iOS: 가로 드래그하면 활성 알약이 손가락을 따라 흐르고 놓은 자리 탭으로 확정.
+          Android: 릴리스 임계 판정으로 옆 탭 이동(기존 동작). */}
       <View style={styles.tabRow} {...swipeResponder.panHandlers}>
         {tabs}
       </View>
