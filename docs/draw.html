@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>eOrth 부스 뽑기</title>
+<style>
+  :root{
+    --bg:#0A0A0F;
+    --ink:#F5F3FA;
+    --dim:#A1A1B0;
+    --line:#1A1A26;
+    --card:#2E2E3B;
+    --neon:#BF85FC;
+    --deep:#6B21A8;
+    --ticket:#17141F;
+    --ticket-2:#100E18;
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;
+  }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(120% 80% at 50% -10%, #191129 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .page{max-width:1080px;margin:0 auto;padding:48px 20px 96px;display:flex;flex-direction:column;gap:64px}
+
+  h2{font-size:20px;margin:0;letter-spacing:-.01em}
+  .sec{display:flex;flex-direction:column;gap:20px}
+
+  /* ── 데모 무대 ── */
+  .stage{
+    position:relative;background:linear-gradient(180deg,#100C1A,#0A0A0F);
+    border:1px solid var(--line);border-radius:20px;
+    min-height:520px;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  .stars{position:absolute;inset:0;pointer-events:none;opacity:.5}
+  /* ── 발권기 ── */
+  .kiosk{position:relative;width:min(100%,420px);display:flex;flex-direction:column}
+
+  .face{
+    position:relative;z-index:3;
+    background:linear-gradient(180deg,#221E30 0%,#15121D 62%,#0F0D16 100%);
+    border:1px solid #26222F;border-radius:16px 16px 7px 7px;
+    padding:14px 16px 0;display:flex;flex-direction:column;gap:12px;
+    box-shadow:0 20px 44px -26px #000, inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  /* 급지 중 기계 진동. 부드럽게 흔들면 살아 있는 것처럼 보이므로 steps로 딱딱 끊는다 */
+  .face.busy{animation:hum .085s steps(4,end) infinite}
+  @keyframes hum{
+    0%{transform:translate(0,0)}
+    25%{transform:translate(.4px,-.3px)}
+    50%{transform:translate(-.35px,.3px)}
+    75%{transform:translate(.25px,.25px)}
+    100%{transform:translate(0,0)}
+  }
+
+  .face-top{display:flex;align-items:center;gap:9px}
+  .led{
+    width:7px;height:7px;border-radius:50%;background:#3A3644;flex:none;
+    transition:background .25s,box-shadow .25s
+  }
+  .face.busy .led{background:#FFB25C;box-shadow:0 0 9px #FFB25C;animation:blink .42s steps(1,end) infinite}
+  .face.done .led{background:var(--neon);box-shadow:0 0 9px var(--neon)}
+  @keyframes blink{0%,58%{opacity:1}59%,100%{opacity:.22}}
+  .face-label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;
+    cursor:default;user-select:none;-webkit-user-select:none
+  }
+
+  .start{
+    background:var(--neon);color:#0A0A0F;border:0;border-radius:11px;
+    padding:14px;font-size:16px;font-weight:800;font-family:var(--sans);cursor:pointer;
+    transition:transform .1s ease, box-shadow .2s ease, opacity .2s;
+  }
+  .start:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px -14px rgba(191,133,252,.9)}
+  .start:active:not(:disabled){transform:translateY(1px)}
+  .start:disabled{opacity:.45;cursor:default}
+  .start:focus-visible{outline:3px solid #fff;outline-offset:3px}
+
+  /* 슬롯은 기계의 아래 모서리 그 자체다. 안쪽에 여백을 두고 놓으면
+     용지가 슬롯이 아니라 기계 밑동에서 삐져나오는 것으로 보인다. */
+  .slot{
+    position:relative;height:13px;margin:0 -16px;border-radius:0 0 6px 6px;
+    background:linear-gradient(180deg,#000 0%,#07060C 100%);
+    box-shadow:inset 0 3px 8px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.06)
+  }
+  .slot-glow{
+    position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+    background:var(--neon);opacity:0;filter:blur(1.5px);transition:opacity .25s
+  }
+  .face.busy .slot-glow{opacity:.95}
+
+  /* 배출구 — 좌우·아래 여백은 그림자가 잘리지 않도록 두고, 위쪽만 슬롯에 물려 잘린다 */
+  .exit{
+    position:relative;overflow:hidden;
+    padding:0 26px 44px;margin:-4px -26px -44px
+  }
+  .exit::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:30px;z-index:2;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,.36) 55%,transparent 100%)
+  }
+  /* 감열 프린터는 롤러가 한 칸씩 돈다 — steps로 끊어야 종이가 밀려 나오는 것으로 읽힌다 */
+  .feed{transform:translateY(-103%)}
+  .feed.out{animation:feed 1s steps(20,end) forwards}
+  @keyframes feed{from{transform:translateY(-103%)}to{transform:translateY(0)}}
+
+  /* ── 보딩패스 ── */
+  .pass{
+    --stripe:var(--dim);
+    position:relative;background:linear-gradient(155deg,var(--ticket) 0%,var(--ticket-2) 100%);
+    border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    display:grid;grid-template-columns:1fr 104px;
+    box-shadow:0 24px 60px -30px rgba(0,0,0,.9);
+  }
+  .pass::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--stripe);
+  }
+  .pass.gold::before{
+    background:linear-gradient(180deg,#BF85FC 0%,#FFD9A0 45%,#7EE7E0 100%);
+  }
+  .pass.gold{border-color:rgba(255,217,160,.28)}
+  .pass.void{filter:saturate(.25);opacity:.86}
+
+  .main{padding:20px 20px 16px 22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+
+  .brand{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .wordmark{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:15px}
+  .orb{width:16px;height:16px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 32% 30%, #E6CBFF, var(--neon) 42%, var(--deep) 100%);
+    box-shadow:0 0 10px rgba(191,133,252,.6)}
+  .class{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--stripe);border:1px solid currentColor;border-radius:999px;padding:3px 9px;white-space:nowrap;
+  }
+  .pass.gold .class{color:#FFD9A0;border-color:rgba(255,217,160,.55)}
+
+  .route{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px}
+  .iata{font-family:var(--mono);font-size:36px;font-weight:700;letter-spacing:.02em;line-height:1}
+  .city{font-size:11.5px;color:var(--dim);margin-top:5px;letter-spacing:.02em}
+  .to{text-align:right}
+  .arc{position:relative;height:22px;color:var(--dim);opacity:.75}
+  .arc svg{width:100%;height:100%;display:block}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 10px;margin:0}
+  .f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .f dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .f dd{margin:0;font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .prize{
+    border-top:1px dashed rgba(161,161,176,.25);padding-top:13px;
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px
+  }
+  .prize .label{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .prize .val{font-size:15px;font-weight:700;text-align:right}
+  .pass.gold .prize .val{color:#FFD9A0}
+  .pass.void .prize .val{color:var(--dim);font-weight:600}
+
+  /* 스텁 */
+  .stub{
+    position:relative;border-left:2px dashed rgba(161,161,176,.28);
+    padding:20px 12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:14px;
+    background:rgba(0,0,0,.22)
+  }
+  .stub::before,.stub::after{
+    content:"";position:absolute;left:-9px;width:16px;height:16px;border-radius:50%;background:var(--bg)
+  }
+  .stub::before{top:-9px}
+  .stub::after{bottom:-9px}
+  .rank{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;color:var(--stripe)}
+  .pass.gold .rank{color:#FFD9A0}
+  .rank small{font-size:13px;font-weight:600;margin-left:1px}
+  .cap{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--dim);text-align:center}
+  .barcode{width:100%;height:44px;
+    background:repeating-linear-gradient(90deg,
+      var(--ink) 0 1px, transparent 1px 3px,
+      var(--ink) 3px 5px, transparent 5px 6px,
+      var(--ink) 6px 7px, transparent 7px 10px);
+    opacity:.72}
+
+  .seal{
+    position:absolute;right:118px;bottom:16px;transform:rotate(-11deg);
+    font-family:var(--mono);font-size:10px;letter-spacing:.2em;
+    border:1.5px solid currentColor;border-radius:4px;padding:4px 8px;pointer-events:none;display:none
+  }
+  .pass.gold .seal.real{display:block;color:#FFD9A0;opacity:.9}
+  .pass.void .seal.void{display:block;color:var(--dim);opacity:.75}
+
+  .hidden{display:none}
+
+  /* ── 날짜 선택 / 발권기 래퍼 ── */
+  .setup{align-items:center;text-align:center;padding-top:48px}
+  .setup h2{font-size:22px}
+  .setup-note{color:var(--dim);font-size:14px;max-width:36ch;margin:0}
+  .day-picks{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(100%,420px);margin-top:8px}
+  .day{
+    display:flex;flex-direction:column;gap:6px;padding:22px 14px;cursor:pointer;
+    background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;
+    font-family:var(--sans);transition:border-color .15s,transform .1s
+  }
+  .day:hover{border-color:var(--neon)}
+  .day:active{transform:translateY(1px)}
+  .day:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
+  .day-name{font-size:18px;font-weight:800}
+  .day-sub{font-size:12px;color:var(--dim);font-family:var(--mono);letter-spacing:.03em}
+  .kiosk-wrap{align-items:center}
+  .done-note{color:var(--dim);font-size:14px;text-align:center;margin:0}
+
+  @media (max-width:520px){
+    .iata{font-size:30px}
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .seal{right:112px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- 날짜 선택 — 저장된 상태가 없을 때만 뜬다 -->
+  <section class="sec setup" id="setup">
+    <h2>오늘은 며칠째인가요?</h2>
+    <p class="setup-note">한 번 고르면 이 기기의 재고가 그날 것으로 정해집니다.
+      바꾸려면 관리 패널에서 초기화해야 합니다.</p>
+    <div class="day-picks">
+      <button class="day" data-day="D1">
+        <span class="day-name">첫날</span>
+        <span class="day-sub">항공권 없음 · 501개</span>
+      </button>
+      <button class="day" data-day="D2">
+        <span class="day-name">둘째날</span>
+        <span class="day-sub">항공권 포함 · 502개</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- 발권기 -->
+  <section class="sec kiosk-wrap hidden" id="kioskWrap">
+    <div class="stage" id="stage">
+      <canvas class="stars" id="stars"></canvas>
+      <div class="kiosk">
+        <div class="face" id="face">
+          <div class="face-top">
+            <span class="led"></span>
+            <span class="face-label" id="faceLabel">eOrth Boarding Pass</span>
+          </div>
+          <button class="start" id="start">시작하기</button>
+          <div class="slot"><i class="slot-glow"></i></div>
+        </div>
+        <div class="exit">
+          <div class="feed" id="feed"><div id="passSlot"></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="done-note hidden" id="doneNote">오늘 발권이 모두 끝났습니다.</p>
+  </section>
+
+</div>
+
+<template id="passTpl">
+  <article class="pass">
+    <div class="main">
+      <div class="brand">
+        <span class="wordmark"><i class="orb"></i>eOrth</span>
+        <span class="class" data-f="cls"></span>
+      </div>
+
+      <div class="route">
+        <div>
+          <div class="iata">EOR</div>
+          <div class="city">이어스</div>
+        </div>
+        <div class="arc">
+          <svg viewBox="0 0 120 22" fill="none" aria-hidden="true">
+            <path d="M2 18 C 30 2, 90 2, 118 18" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 5"/>
+          </svg>
+        </div>
+        <div class="to">
+          <div class="iata">DKU</div>
+          <div class="city">단국대</div>
+        </div>
+      </div>
+
+      <dl class="grid">
+        <div class="f"><dt>Passenger</dt><dd>부스 방문객</dd></div>
+        <div class="f"><dt>Flight</dt><dd data-f="flight"></dd></div>
+        <div class="f"><dt>Date</dt><dd data-f="date"></dd></div>
+        <div class="f"><dt>Gate</dt><dd>B04</dd></div>
+        <div class="f"><dt>Seat</dt><dd data-f="seat"></dd></div>
+        <div class="f"><dt>Boarding</dt><dd data-f="boarding"></dd></div>
+      </dl>
+
+      <div class="prize">
+        <span class="label">Baggage</span>
+        <span class="val" data-f="prize"></span>
+      </div>
+    </div>
+
+    <aside class="stub">
+      <div class="rank"><span data-f="rankNum"></span><small data-f="rankUnit"></small></div>
+      <div class="barcode"></div>
+      <div class="cap" data-f="cap"></div>
+    </aside>
+
+    <span class="seal real">REAL TICKET</span>
+    <span class="seal void">STANDBY</span>
+  </article>
+</template>
+
+<script type="module">
+  import {
+    GRADES, EVENT_DAYS, makePool, drawOne, restore, isExhausted,
+  } from './draw-core.js';
+
+  const KEY = 'eorth_draw_v1';
+
+  const setup     = document.getElementById('setup');
+  const kioskWrap = document.getElementById('kioskWrap');
+  const stage     = document.getElementById('stage');
+  const stars     = document.getElementById('stars');
+  const face      = document.getElementById('face');
+  const feed      = document.getElementById('feed');
+  const start     = document.getElementById('start');
+  const passSlot  = document.getElementById('passSlot');
+  const doneNote  = document.getElementById('doneNote');
+  const tpl       = document.getElementById('passTpl');
+
+  let state = restore(localStorage.getItem(KEY));
+
+  function save(){
+    localStorage.setItem(KEY, JSON.stringify(state));
+  }
+
+  // ── 별 배경 ───────────────────────────────────────────────
+  // 시안에서는 페이지 로드 즉시 그렸지만, 이 화면은 날짜 선택 전엔 발권기가
+  // 숨어 있어 캔버스 크기가 0이다 — 즉시 실행하면 아무것도 안 그려진다.
+  // 그래서 enterKiosk()가 화면을 보여준 뒤에 호출한다.
+  function paintStars(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    stars.width = w * dpr; stars.height = h * dpr;
+    stars.style.width = w + 'px'; stars.style.height = h + 'px';
+    const ctx = stars.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    // 시드 고정 난수 — 리사이즈해도 별자리가 갈리지 않는다
+    let s = 20260909;
+    const rnd = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let i = 0; i < 90; i++){
+      const x = rnd() * w, y = rnd() * h, r = rnd() * 1.3 + .3;
+      ctx.globalAlpha = rnd() * .55 + .15;
+      ctx.fillStyle = rnd() > .82 ? '#BF85FC' : '#FFFFFF';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  window.addEventListener('resize', paintStars);
+
+  /** 템플릿을 복제해 등급 하나를 그린다. innerHTML은 저장소 훅이 막으므로 textContent만 쓴다. */
+  function renderPass(gradeKey){
+    const g = GRADES[gradeKey];
+    const day = EVENT_DAYS[state.day];
+    const node = tpl.content.firstElementChild.cloneNode(true);
+
+    node.style.setProperty('--stripe', g.stripe);
+    if (g.gold) node.classList.add('gold');
+    if (g.isVoid) node.classList.add('void');
+
+    const set = (name, text) => { node.querySelector('[data-f="' + name + '"]').textContent = text; };
+    set('cls', g.cls);
+    set('seat', g.seat);
+    set('boarding', g.isVoid ? 'WAIT' : 'NOW');
+    set('prize', g.prize);
+    set('date', day.date);
+    set('flight', day.flight);
+    set('rankNum', g.isVoid ? '꽝' : g.rank.replace('등', ''));
+    set('rankUnit', g.isVoid ? '' : '등');
+    set('cap', day.flight.replace(' ', '') + ' · ' + g.seat);
+
+    passSlot.replaceChildren(node);
+  }
+
+  /** 재고가 바닥나면 버튼을 잠근다 — 조용히 꽝을 주지 않는다 */
+  function refreshKiosk(){
+    const dry = isExhausted(state);
+    start.disabled = dry;
+    doneNote.classList.toggle('hidden', !dry);
+    if (dry) start.textContent = '발권 종료';
+  }
+
+  function run(){
+    if (isExhausted(state)) return;
+    start.disabled = true;
+
+    const result = drawOne(state);
+    state = result.state;
+    save();                                  // 애니메이션 전에 저장한다 — 도중에 앱이 꺼져도 재고가 맞는다
+    renderPass(result.grade);
+
+    face.classList.remove('done');
+    feed.classList.remove('out');
+    void feed.offsetWidth;                   // 리플로우 — 두 번째부터도 애니메이션이 다시 걸리게
+    face.classList.add('busy');
+    feed.classList.add('out');
+  }
+
+  feed.addEventListener('animationend', function(){
+    face.classList.remove('busy');
+    face.classList.add('done');
+    start.textContent = '다시 뽑기';
+    start.disabled = false;
+    refreshKiosk();
+  });
+
+  start.addEventListener('click', run);
+
+  // ── 날짜 선택 ──
+  for (const btn of document.querySelectorAll('.day')){
+    btn.addEventListener('click', function(){
+      state = makePool(btn.dataset.day);
+      save();
+      enterKiosk();
+    });
+  }
+
+  function enterKiosk(){
+    setup.classList.add('hidden');
+    kioskWrap.classList.remove('hidden');
+    paintStars();
+    refreshKiosk();
+    keepAwake();
+  }
+
+  // ── 화면 꺼짐 방지 ──
+  // 부스에서 화면이 꺼지면 스태프가 매번 깨워야 한다. 미지원 브라우저에서는 조용히 넘어간다.
+  let wakeLock = null;
+  async function keepAwake(){
+    try {
+      if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    } catch { /* 배터리 절약 모드 등에서 거부될 수 있다 — 기능이 아니라 편의다 */ }
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible') keepAwake();
+  });
+
+  if (state) enterKiosk();
+</script>
+
+</body>
+</html>
