@@ -339,22 +339,33 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
             </View>
           </View>
 
+          {/* 라벨 행과 값 행을 분리 — 국가명이 두 줄이어도 ① 두 라벨이 같은 줄,
+              ② 화살표가 날짜(값 첫 줄)와 같은 줄을 유지한다(사용자 확정 정렬).
+              예전 단일 행 + flex-end 정렬은 두 줄이 되면 왼쪽 라벨만 위로 밀렸다. */}
           <View style={st.subRow}>
             <View style={st.subCol}>
               <Text style={st.statLabel} {...andFitText}>{t('profileTicket.recentCountry')}</Text>
-              <Text style={st.subValue} numberOfLines={1}>{recentCountry}</Text>
+            </View>
+            <View style={[st.subCol, st.subColRight]}>
+              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.joinedAt')}</Text>
+            </View>
+          </View>
+          <View style={st.subValueRow}>
+            <View style={st.subCol}>
+              {/* 긴 국가명(United Arab Emirates 등)은 두 줄까지 허용 — 값 행이 위쪽 정렬이라
+                  둘째 줄은 아래로만 자라고 화살표·날짜는 첫 줄에 붙어 있는다 */}
+              <Text style={st.subValue} numberOfLines={2}>{recentCountry}</Text>
             </View>
 
-            {/* 마주 보는 화살표 — 값 텍스트에서 빼내 가운데 배치.
-                양옆 열이 같은 flex라 카드 중앙을 기준으로 정확히 대칭이 되고,
-                국가명·가입일 글자 길이가 달라져도 위치가 흔들리지 않는다 */}
+            {/* 마주 보는 화살표 — 양옆 열이 같은 flex라 카드 중앙 대칭은 그대로.
+                marginTop은 값 텍스트 첫 줄(lineHeight 24)의 세로 중앙에 화살표(높이 16.27)를
+                맞추는 보정: (24 - 16.27) / 2 ≈ 4 */}
             <View style={st.chevPair}>
               <Chevrons color="#0A0A0F" />
               <Chevrons color="#0A0A0F" flip />
             </View>
 
             <View style={[st.subCol, st.subColRight]}>
-              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.joinedAt')}</Text>
               <Text style={st.subValue} numberOfLines={1}>{joinedLabel}</Text>
             </View>
           </View>
@@ -473,10 +484,16 @@ const st = StyleSheet.create({
   subRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 24 },
   subCol: { flex: 1 }, // 좌우 같은 폭이어야 가운데 화살표가 카드 중앙에 온다
   subColRight: { alignItems: 'flex-end' },
-  subValue: { color: '#0A0A0F', fontSize: 20, fontWeight: '900', marginTop: 6 },
+  // 값 행 — 위쪽 정렬이라 국가명 둘째 줄은 아래로만 자란다(화살표·날짜는 첫 줄 고정).
+  // marginTop 6은 예전 subValue의 라벨-값 간격을 행으로 올린 것.
+  subValueRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 6 },
+  // lineHeight 24 = fontSize 20 × 1.2 — 안드로이드 타이트 행간 글리프 잘림 방지 배율(위 주석 참고)이자
+  // 화살표 세로 정렬(chevPair marginTop)의 계산 기준. 명시하지 않으면 플랫폼별 기본값이 달라 어긋난다.
+  subValue: { color: '#0A0A0F', fontSize: 20, fontWeight: '900', lineHeight: 24 },
   // 두 셰브런 세트의 안쪽 간격 — 시안 실측은 52였으나 중앙에서 조금 더 벌림.
   // gap만 키우면 양쪽이 중앙에서 같은 거리씩 멀어져 대칭은 그대로 유지된다.
-  chevPair: { flexDirection: 'row', gap: 64, alignItems: 'center', paddingBottom: 4 },
+  // marginTop 4 ≈ (값 lineHeight 24 − 화살표 높이 16.27) / 2 — 값 첫 줄 세로 중앙 정렬.
+  chevPair: { flexDirection: 'row', gap: 64, alignItems: 'center', marginTop: 4 },
   // ── 절취선 ──
   perforationWrap: { height: 28, justifyContent: 'center', marginHorizontal: -28 },
   dashRow: { flexDirection: 'row', overflow: 'hidden', marginHorizontal: 28 },
