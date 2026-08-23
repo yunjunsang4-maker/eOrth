@@ -54,7 +54,13 @@ const SKIP_SIZE = 400000;
 
 // <script> / </script>(또는 이스케이프된 <\/script>) 가 그 줄에 단독으로 오는 "진짜" 블록만
 // 뽑는다. 인라인 문자열 리터럴(예: '<script>' + x + '</script>')은 줄 단독이 아니므로 제외된다.
-const BLOCK_RE = /^[ \t]*<script>[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*<\\?\/script>[ \t]*$/gm;
+//
+// 속성 허용(`<script type="module">`): docs/draw.html의 인라인 모듈이 여는 태그에 속성을 달고
+// 있어 예전 정규식으로는 "블록 없음"으로 빠져나갔다 — 250줄짜리 스크립트가 문법 게이트를
+// 통째로 못 받고 있었다. 속성 부분을 `[^<>]*`로만 열어 두는 이유는, `.*`로 열면 한 줄에
+// '<script>'와 '</script>'가 같이 있는 문자열 리터럴을 다시 삼킬 수 있기 때문이다.
+// "줄 단독" 조건(태그 앞은 공백만, 여는 태그 뒤는 곧바로 줄바꿈)은 그대로 유지한다.
+const BLOCK_RE = /^[ \t]*<script(?:[ \t][^<>]*)?>[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*<\\?\/script>[ \t]*$/gm;
 
 const dir = mkdtempSync(join(tmpdir(), 'wvsyntax-'));
 let failed = 0;
@@ -79,7 +85,14 @@ try {
       // ${...} 보간은 파서가 못 읽으므로 자리표시자로 치환한다(문법 구조는 보존된다).
       // \\ → \ 치환은 바깥 템플릿 리터럴 평가를 흉내내 실제 런타임 코드와 맞춘다(위 설명 참고).
       const code = body.replace(/\$\{[^}]*\}/g, '0').replace(/\\\\/g, '\\');
-      const tmp = join(dir, `block-${i}.js`);
+      // 확장자를 내용에 맞춰 고른다. import/export가 든 블록(docs/draw.html의 인라인 모듈)을
+      // .js로 떨구면 node --check가 "CJS로 파싱 → 모듈 문법 감지 → ESM 재파싱" 경로로 새는데,
+      // 이 경로는 문법 오류가 있어도 조용히 exit 0을 낸다(Node 24.14 실측: 일부러 넣은
+      // `function save({` 를 통과시켰다). .mjs로 떨구면 처음부터 ESM 파서가 잡는다.
+      // 모듈 문법이 없는 기존 WebView 블록은 그대로 .js로 둔다 — .mjs는 strict 모드라
+      // 판정 기준이 달라지므로 기존 검사 결과를 건드리지 않기 위해서다.
+      const esm = /^\s*(?:import|export)\b/m.test(code);
+      const tmp = join(dir, `block-${i}.${esm ? 'mjs' : 'js'}`);
       writeFileSync(tmp, code);
       parsed++;
       try {
