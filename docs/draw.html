@@ -13,6 +13,7 @@
     --card:#2E2E3B;
     --neon:#BF85FC;
     --deep:#6B21A8;
+    --red:#FF3B30;
     --ticket:#17141F;
     --ticket-2:#100E18;
     --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
@@ -224,6 +225,37 @@
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
   }
+
+  /* ── 관리 패널 ── */
+  .admin{
+    width:min(100%,420px);background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px
+  }
+  .admin-head{display:flex;align-items:center;justify-content:space-between}
+  .admin-head h3{margin:0;font-size:16px}
+  .x{background:none;border:0;color:var(--dim);font-size:16px;cursor:pointer;padding:4px 8px}
+  .x:hover{color:var(--ink)}
+  .admin-table{width:100%;border-collapse:collapse;font-size:14px}
+  .admin-table th{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--dim);text-align:left;font-weight:500;padding-bottom:6px
+  }
+  .admin-table td{padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+  .admin-table td:nth-child(2),.admin-table td:nth-child(3){width:76px}
+  .admin-table input{
+    width:64px;background:var(--bg);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:14px
+  }
+  .admin-table input:focus-visible{outline:2px solid var(--neon);outline-offset:1px}
+  .admin-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .ghost{
+    background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:11px;font-size:13px;font-family:var(--sans);cursor:pointer
+  }
+  .ghost:hover{border-color:var(--neon);color:var(--neon)}
+  .ghost:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
+  .ghost.danger:hover{border-color:var(--red);color:var(--red)}
+  .admin-msg{margin:0;font-size:13px;color:var(--neon);min-height:18px}
 </style>
 </head>
 <body>
@@ -266,6 +298,27 @@
       </div>
     </div>
     <p class="done-note hidden" id="doneNote">오늘 발권이 모두 끝났습니다.</p>
+
+    <div class="admin hidden" id="admin">
+      <div class="admin-head">
+        <h3>관리</h3>
+        <button class="x" id="adminClose" aria-label="닫기">✕</button>
+      </div>
+
+      <table class="admin-table">
+        <thead><tr><th>등급</th><th>남음</th><th>발권</th></tr></thead>
+        <tbody id="adminRows"></tbody>
+      </table>
+
+      <div class="admin-acts">
+        <button class="ghost" id="undo">마지막 1건 되돌리기</button>
+        <button class="ghost" id="copyState">상태 복사</button>
+        <button class="ghost" id="pasteState">상태 붙여넣기</button>
+        <button class="ghost danger" id="resetDay">날짜 다시 고르기</button>
+      </div>
+
+      <p class="admin-msg" id="adminMsg"></p>
+    </div>
   </section>
 
 </div>
@@ -322,7 +375,8 @@
 
 <script type="module">
   import {
-    GRADES, EVENT_DAYS, makePool, drawOne, restore, isExhausted,
+    GRADES, GRADE_KEYS, EVENT_DAYS, makePool, drawOne, undoLast, setRemaining,
+    remaining, tally, restore, isExhausted,
   } from './draw-core.js';
 
   const KEY = 'eorth_draw_v1';
@@ -454,6 +508,119 @@
   }
   document.addEventListener('visibilitychange', function(){
     if (document.visibilityState === 'visible') keepAwake();
+  });
+
+  // ── 관리 패널 ──
+  // 라벨을 3초 길게 눌러 연다. 참가자가 실수로 열 수 없어야 하고,
+  // 스태프는 안내 없이도 찾을 수 있어야 해서 "누르고 있으면 열리는" 방식을 골랐다.
+  const admin     = document.getElementById('admin');
+  const adminRows = document.getElementById('adminRows');
+  const adminMsg  = document.getElementById('adminMsg');
+  const faceLabel = document.getElementById('faceLabel');
+
+  let holdTimer = 0;
+  const startHold = () => {
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(openAdmin, 3000);
+  };
+  const cancelHold = () => clearTimeout(holdTimer);
+
+  faceLabel.addEventListener('pointerdown', startHold);
+  faceLabel.addEventListener('pointerup', cancelHold);
+  faceLabel.addEventListener('pointercancel', cancelHold);
+  faceLabel.addEventListener('pointerleave', cancelHold);
+
+  function say(msg){
+    adminMsg.textContent = msg;
+    setTimeout(function(){ if (adminMsg.textContent === msg) adminMsg.textContent = ''; }, 3000);
+  }
+
+  function openAdmin(){
+    renderAdmin();
+    admin.classList.remove('hidden');
+  }
+
+  function renderAdmin(){
+    const left = remaining(state);
+    const done = tally(state);
+    adminRows.replaceChildren();
+
+    for (const k of GRADE_KEYS){
+      const tr = document.createElement('tr');
+
+      const name = document.createElement('td');
+      name.textContent = GRADES[k].rank + ' · ' + GRADES[k].prize;
+
+      const leftCell = document.createElement('td');
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.value = String(left[k] || 0);
+      input.addEventListener('change', function(){
+        const n = Number(input.value);
+        try {
+          state = setRemaining(state, k, n);
+          save();
+          refreshKiosk();
+          say(GRADES[k].rank + ' 재고를 ' + n + '개로 맞췄습니다');
+        } catch (e) {
+          input.value = String(remaining(state)[k] || 0);
+          say('0 이상의 정수만 넣을 수 있습니다');
+        }
+      });
+      leftCell.appendChild(input);
+
+      const doneCell = document.createElement('td');
+      doneCell.textContent = String(done[k] || 0);
+
+      tr.append(name, leftCell, doneCell);
+      adminRows.appendChild(tr);
+    }
+  }
+
+  document.getElementById('adminClose').addEventListener('click', function(){
+    admin.classList.add('hidden');
+  });
+
+  document.getElementById('undo').addEventListener('click', function(){
+    if (!state.history.length){ say('되돌릴 발권이 없습니다'); return; }
+    const last = state.history[state.history.length - 1];
+    state = undoLast(state);
+    save();
+    renderAdmin();
+    refreshKiosk();
+    say(GRADES[last.grade].rank + ' 1건을 되돌렸습니다');
+  });
+
+  // 클립보드는 권한·보안 컨텍스트에 따라 막힌다. 실패하면 텍스트를 화면에 띄워
+  // 스태프가 직접 복사할 수 있게 한다 — "복사됐겠거니" 하고 넘어가면 백업이 없다.
+  document.getElementById('copyState').addEventListener('click', async function(){
+    const text = JSON.stringify(state);
+    try {
+      await navigator.clipboard.writeText(text);
+      say('상태를 복사했습니다');
+    } catch {
+      window.prompt('아래 내용을 직접 복사해 두세요', text);
+    }
+  });
+
+  document.getElementById('pasteState').addEventListener('click', function(){
+    const raw = window.prompt('복사해 둔 상태를 붙여넣으세요');
+    if (raw === null) return;
+    const next = restore(raw.trim());
+    if (!next){ say('형식이 맞지 않아 반영하지 않았습니다'); return; }
+    state = next;
+    save();
+    renderAdmin();
+    refreshKiosk();
+    say('상태를 복원했습니다');
+  });
+
+  document.getElementById('resetDay').addEventListener('click', function(){
+    const n = state.history.length;
+    if (!window.confirm('발권 ' + n + '건 기록이 지워지고 재고가 초기화됩니다. 계속할까요?')) return;
+    localStorage.removeItem(KEY);
+    location.reload();
   });
 
   if (state) enterKiosk();
