@@ -599,6 +599,11 @@ const en = {
     selectCountry: 'Select a country',
     selectCountrySub: 'Countries you can record by region',
     countrySearchPh: 'Search country',
+    // Favorite (star) countries that fill the region-mode country grid — full country sheet
+    favoriteHint: 'Starred countries appear first in the country grid',
+    favoriteGridLimit: 'Only the first 7 you starred fit in the country grid',
+    favoriteAddA11y: 'Add {{country}} to favorites',
+    favoriteRemoveA11y: 'Remove {{country}} from favorites',
     viewVisitedCountries: 'View visited countries',
     visitedCountries: 'Visited countries',
     countriesCount: '{{count}} countries',

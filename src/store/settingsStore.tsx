@@ -10,6 +10,11 @@ import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
 import { normalizeRegionGlobalMode, type RegionGlobalMode } from '../utils/regionModeMigration';
+import { REGION_COUNTRIES } from '../constants/regionCountries';
+
+// 대륙 모드 즐겨찾기의 유효 코드 집합 — 여기 없는 ISO3는 그리드가 국가를 못 찾아
+// 즐겨찾기 칸이 조용히 사라진 것처럼 보인다. 그래서 입력·복원 양쪽에서 걸러낸다.
+const REGION_COUNTRY_CODES = new Set(REGION_COUNTRIES.map((c) => c.code));
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -131,6 +136,12 @@ interface SettingsContextType {
   // '방문 지역 추가' 안내 칩을 닫은 국가(ISO3) 목록 — 닫으면 그 국가는 다시 안 띄움
   dismissedRegionTagChips: string[];
   setDismissedRegionTagChips: React.Dispatch<React.SetStateAction<string[]>>;
+  // 대륙 모드 국가 선택 그리드(7칸)를 채울 즐겨찾기 국가(ISO3).
+  // 배열 순서 = 사용자가 별을 켠 순서 = 그리드 표시 순서다(정렬하지 말 것).
+  // 7개 미만이면 REGION_COUNTRIES 기본 순서로 보충하고, 8개 이상이면 앞 7개만 그리드에 나온다.
+  // 거주국(KOR) 특별 취급 없음 — 완전 자유(2026-08-23 사용자 확정).
+  regionFavoriteCodes: string[];
+  toggleRegionFavorite: (code: string) => void;
   // 스킨별 색 저장소 — 스킨 전환 시 이전 스킨의 색(기본·국가·지역)을 보관하고 대상 스킨의 색을 복원
   skinColorStore: Record<string, SkinColorSet>;
   setSkinColorStore: React.Dispatch<React.SetStateAction<Record<string, SkinColorSet>>>;
@@ -232,6 +243,7 @@ interface SettingsPersistPayload {
   // 영속되지만 '이번 방문' 동안만 유효하다 — MainScreen이 그 나라 대륙 화면에 다시
   // 들어올 때 해당 항목을 지운다(닫아도 재진입하면 다시 안내). 영구 숨김이 아니다.
   dismissedRegionTagChips?: string[];
+  regionFavoriteCodes?: string[]; // 대륙 그리드 즐겨찾기 국가 (과거 저장본엔 없음). 순서가 의미를 가진다
   skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
   // 지역 저장 키 스키마 (GADM 표기 → NE 코드). 없거나 낮으면 hydrate에서 1회 변환한다.
   regionKeySchema?: number;
@@ -299,6 +311,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionPhotos, setRegionPhotos] = useState<Record<string, string>>({});
   const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
   const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
+  const [regionFavoriteCodes, setRegionFavoriteCodes] = useState<string[]>([]);
+  // 즐겨찾기 별 토글 — 켜져 있으면 빼고, 없으면 '맨 뒤에' 붙인다.
+  // 뒤에 붙이는 게 핵심이다: 배열 순서가 곧 그리드 순서라 앞에 넣으면 이미 고른 나라들이 밀린다.
+  const toggleRegionFavorite = useCallback((code: string) => {
+    if (!REGION_COUNTRY_CODES.has(code)) return; // 대륙 모드가 지원하지 않는 국가는 무시
+    setRegionFavoriteCodes((prev) => (
+      prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]
+    ));
+  }, []);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
   const [regionKeySchema, setRegionKeySchema] = useState(0);
   const [regionKeyBackupV0, setRegionKeyBackupV0] = useState<unknown>(null);
@@ -461,6 +482,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTaggedRegions(rTagged);
       setSkinColorStore(rSkins);
       setDismissedRegionTagChips(p.dismissedRegionTagChips ?? []);
+      // 즐겨찾기는 순서가 의미라 정렬하지 않고, 목록에서 빠진 국가만 걸러낸다.
+      // Set은 삽입 순서를 보존하므로 '첫 등장만 유지'하는 중복 제거가 된다 — 손상된 저장본에
+      // 같은 코드가 두 번 들어 있으면 그리드에 같은 나라가 두 칸 뜨고 key가 중복된다(QA F-2).
+      setRegionFavoriteCodes(
+        Array.from(new Set((p.regionFavoriteCodes ?? []).filter((c) => REGION_COUNTRY_CODES.has(c)))),
+      );
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
@@ -520,6 +547,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
+      regionFavoriteCodes,
       skinColorStore,
       regionKeySchema,
       regionKeyBackupV0,
@@ -572,6 +600,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
+      regionFavoriteCodes,
       skinColorStore,
       regionKeySchema,
       regionKeyBackupV0,
@@ -649,6 +678,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionPhotos({});
     setTaggedRegions({});
     setDismissedRegionTagChips([]);
+    setRegionFavoriteCodes([]); // 비면 그리드는 REGION_COUNTRIES 앞 7개(도입 전과 동일)로 돌아간다
     setSkinColorStore({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
@@ -684,7 +714,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
-    taggedRegions, dismissedRegionTagChips,
+    taggedRegions, dismissedRegionTagChips, regionFavoriteCodes,
     // 지역 키가 GADM 표기인지 NE 코드인지 구버전 클라이언트도 판별할 수 있게 스키마를 함께 싣는다.
     // (구버전 빌드는 코드 키를 고아로 보고 지운 뒤 되돌려 push한다 — 방어 로직은 후속 작업)
     regionKeySchema,
@@ -712,6 +742,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(migrateRegionKeyMap(v.regionColors as Record<string, string>));
     if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(migrateTaggedRegions(v.taggedRegions as Record<string, TaggedRegion[]>));
     if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
+    // 즐겨찾기 순서가 곧 그리드 순서다 — 순서를 보존한 채 유효 코드만 남긴다.
+    // (다른 기기가 최신 REGION_COUNTRIES로 저장했다면 구버전 앱에서 모르는 코드가 섞여 온다)
+    if (Array.isArray(v.regionFavoriteCodes)) {
+      // hydrate와 같은 이유로 중복 제거(첫 등장만 유지) — Set이 삽입 순서를 보존한다
+      setRegionFavoriteCodes(
+        Array.from(new Set(
+          (v.regionFavoriteCodes as unknown[]).filter(
+            (c): c is string => typeof c === 'string' && REGION_COUNTRY_CODES.has(c),
+          ),
+        )),
+      );
+    }
     if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(migrateSkinColorStore(v.skinColorStore as Record<string, SkinColorSet>));
     // 백업에 실린 지역 키 스키마. 위 네 필드는 스키마와 무관하게 전부 migrate*를 거치므로
     // 적용 후 로컬 상태는 항상 현재 버전이다. 미래 버전 백업(구버전 앱에서 복원)만 경고로 남긴다.
@@ -814,6 +856,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setTaggedRegions,
         dismissedRegionTagChips,
         setDismissedRegionTagChips,
+        regionFavoriteCodes,
+        toggleRegionFavorite,
         skinColorStore,
         setSkinColorStore,
         representativeBadgeIds,

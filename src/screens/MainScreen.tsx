@@ -132,6 +132,25 @@ const PuzzlePieceIcon = ({ size = 24, color = '#A1A1B0' }: { size?: number; colo
   </Svg>
 );
 
+// ─── 즐겨찾기 별 아이콘 — 전체 국가 시트에서 그리드 7칸에 올릴 나라를 켜고 끈다 ───
+// 채움 = 즐겨찾기 ON, 외곽선만 = OFF. 이모지 ★/☆는 기기·OS마다 색과 굵기가 제각각이라
+// PuzzlePieceIcon과 같은 이유로 제작 SVG로 통일한다.
+// Svg에 pointerEvents를 주지 않는다(안드로이드 새 아키텍처가 리플렉션 실패로 조용히 무시).
+// 래퍼 View도 두지 않는다 — 이 별은 '오버레이'가 아니라 자기 TouchableOpacity 안의 장식이고,
+// 아래에 가려지는 다른 터치 대상이 없다(같은 파일 SearchLineIcon·GlobeDisplayIcon과 동일 형태).
+const FavStarIcon = ({ filled, color }: { filled: boolean; color: string }) => (
+  <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+    <SvgPath
+      d="M12 3.5 14.6 8.77 20.42 9.62 16.21 13.72 17.2 19.51 12 16.78 6.8 19.51 7.79 13.72 3.58 9.62 9.4 8.77 Z"
+      fill={filled ? color : 'none'}
+      stroke={color}
+      strokeOpacity={filled ? 1 : 0.75}
+      strokeWidth={1.6}
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
 const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) => (
   <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
     <SvgDefs>
@@ -685,6 +704,7 @@ export default function MainScreen({ navigation, route }: Props) {
     regionPhotos, setRegionPhotos,
     taggedRegions, setTaggedRegions,
     dismissedRegionTagChips, setDismissedRegionTagChips,
+    regionFavoriteCodes, toggleRegionFavorite,
     skinColorStore, setSkinColorStore,
     tutorialsSeen, markTutorialSeen,
     handle,
@@ -890,6 +910,21 @@ export default function MainScreen({ navigation, route }: Props) {
   const skinAccent = getSkinAccent(globeSkin);
   // 대륙 칩(국가표시·인기명소) 내부 배경 — 스킨 강조색을 어둡게 깐 불투명색(기존 #2A0F3E 대체)
   const skinChipBg = `rgb(${Math.round(skinAccent.rgb[0] * 0.22)},${Math.round(skinAccent.rgb[1] * 0.22)},${Math.round(skinAccent.rgb[2] * 0.22)})`;
+  // ── 국가 선택 그리드 7칸 (2026-08-23 즐겨찾기 도입) ──
+  // 즐겨찾기(사용자가 별을 켠 '순서')가 앞을 채우고, 모자란 만큼 REGION_COUNTRIES 기본
+  // 순서로 보충한다(이미 즐겨찾기에 든 나라는 중복 제외). 즐겨찾기가 하나도 없으면 결과가
+  // 도입 전 `REGION_COUNTRIES.slice(0, 7)`과 정확히 같다 — 기본 동작을 바꾸지 않기 위한 설계다.
+  // 8개 이상 켜는 것 자체는 막지 않고(사용자 확정), 앞 7개만 여기 나온 뒤 시트가 그 사실을 알린다.
+  // 거주국(KOR) 특별 취급 없음.
+  const gridCountries = useMemo(() => {
+    const byCode = new Map(REGION_COUNTRIES.map((c) => [c.code, c]));
+    // 저장본에 낯선 코드가 섞여 있어도(구·신 버전 백업 교차) 조용히 건너뛴다
+    const favs = regionFavoriteCodes
+      .map((code) => byCode.get(code))
+      .filter((c): c is (typeof REGION_COUNTRIES)[number] => c != null);
+    const picked = new Set(favs.map((c) => c.code));
+    return [...favs, ...REGION_COUNTRIES.filter((c) => !picked.has(c.code))].slice(0, 7);
+  }, [regionFavoriteCodes]);
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
     () => visitedCountries.map(c => {
@@ -1979,8 +2014,9 @@ export default function MainScreen({ navigation, route }: Props) {
             <Text style={styles.countryGridTitle}>{t('main.selectCountry')}</Text>
             <Text style={styles.countryGridSub}>{t('main.selectCountrySub')}</Text>
             <View style={styles.countryGridList}>
-              {/* 7개 국가 + 8번째 칸은 돋보기(전체 목록 시트) — 사용자 확정 디자인 */}
-              {REGION_COUNTRIES.slice(0, 7).map(c => (
+              {/* 7개 국가 + 8번째 칸은 돋보기(전체 목록 시트) — 사용자 확정 디자인.
+                  7개의 정체는 gridCountries(즐겨찾기 우선 + 기본 순서 보충) 참고 */}
+              {gridCountries.map(c => (
                 <TouchableOpacity
                   key={c.code}
                   style={styles.countryGridItem}
@@ -2017,6 +2053,12 @@ export default function MainScreen({ navigation, route }: Props) {
             <View style={styles.countryPickerSheet}>
               <View style={styles.countryPickerHandle} />
               <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
+              {/* 별 사용법 안내. 7개를 넘기면 같은 자리에서 "앞 7개만 나온다"로 바뀐다 —
+                  토스트를 띄우지 않는 이유: 시트가 떠 있는 동안 계속 보여야 이해가 되고,
+                  MainScreen에는 토스트 채널이 없어 그것부터 들여야 한다(과한 도입) */}
+              <Text style={styles.countryPickerHint}>
+                {regionFavoriteCodes.length > 7 ? t('main.favoriteGridLimit') : t('main.favoriteHint')}
+              </Text>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.countryPickerInput}
                 placeholder={t('main.countrySearchPh')}
@@ -2027,20 +2069,38 @@ export default function MainScreen({ navigation, route }: Props) {
               <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
                 {REGION_COUNTRIES
                   .filter(c => { const q = countryPickerSearch.trim(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q.toLowerCase()); })
-                  .map(c => (
-                    <TouchableOpacity
-                      key={c.code}
-                      style={styles.countryPickerRow}
-                      activeOpacity={0.7}
-                      onPress={() => {
-                        setCountryPickerVisible(false);
-                        setRegionCountry(c.code); setRegionSearch('');
-                      }}
-                    >
-                      <Text style={styles.countryPickerFlag}>{c.flag}</Text>
-                      <Text style={styles.countryPickerName}>{countryEn(c.name)}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  .map(c => {
+                    const fav = regionFavoriteCodes.includes(c.code);
+                    return (
+                      // 행 = 형제 터치 영역 둘. 별을 행 Touchable '안'에 중첩하면 안드로이드에서
+                      // 어느 쪽이 먹는지가 히트테스트 순서에 좌우돼 지도 진입과 뒤섞인다.
+                      <View key={c.code} style={styles.countryPickerRow}>
+                        <TouchableOpacity
+                          style={styles.countryPickerRowMain}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setCountryPickerVisible(false);
+                            setRegionCountry(c.code); setRegionSearch('');
+                          }}
+                        >
+                          <Text style={styles.countryPickerFlag}>{c.flag}</Text>
+                          <Text style={styles.countryPickerName}>{countryEn(c.name)}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.countryPickerStarBtn}
+                          activeOpacity={0.7}
+                          // hitSlop 없음 — 44x54 실제 레이아웃으로 충족한다. 왼쪽으로 넓히면
+                          // 행 탭(지도 진입)을 잠식하고, 오른쪽은 부모 밖이라 안드로이드에서 무효다
+                          onPress={() => toggleRegionFavorite(c.code)}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: fav }}
+                          accessibilityLabel={t(fav ? 'main.favoriteRemoveA11y' : 'main.favoriteAddA11y', { country: countryEn(c.name) })}
+                        >
+                          <FavStarIcon filled={fav} color={fav ? skinAccent.accent : 'rgba(255,255,255,0.45)'} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
               </ScrollView>
               <View style={{ height: insets.bottom + 16 }} />
             </View>
@@ -3372,10 +3432,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#211b2e', borderWidth: 1, borderColor: '#2E2E3B', borderRadius: 12,
     color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 8,
   },
+  countryPickerHint: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', marginTop: -4, marginBottom: 10 },
+  // 래퍼는 테두리만 그리고 터치는 받지 않는다. 세로 패딩·gap을 여기 두면 안 된다 —
+  // 그 자리는 어느 Touchable에도 속하지 않는 죽은 공간이 되고, alignItems:'center'는
+  // flex:1 자식을 교차축(세로)으로 늘리지 않아 행 위아래 12px 띠가 통째로 먹통이 된다.
+  // (2026-08-23 QA F-1: 54px 전체 탭 → 가운데 30px만. 'stretch' + 자식이 패딩을 갖는 형태로 복원)
   countryPickerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1A1A26',
+    flexDirection: 'row', alignItems: 'stretch',
+    borderBottomWidth: 1, borderBottomColor: '#1A1A26',
   },
+  // 행 좌측(국기+이름) — 지도 진입 터치. 세로 패딩을 '터치를 받는 쪽'인 여기가 들고 있어야
+  // 예전(TouchableOpacity가 countryPickerRow를 직접 달던 시절)과 같은 54px가 전부 탭된다
+  countryPickerRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  // 즐겨찾기 별 — 행 탭과 맞붙는 우측 전용 터치 영역. gap 없이 붙여 사각지대를 없앤다.
+  // 실폭 44dp를 '레이아웃'으로 확보한다 — hitSlop은 부모 경계를 넘는 쪽이 안드로이드에서
+  // 무효라 믿을 수 없고, 안쪽으로 늘리면 행 탭 영역을 도로 잠식한다(QA F-4).
+  // 세로는 stretch로 행 높이(54px) 전체를 받는다.
+  countryPickerStarBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   countryPickerFlag: { fontSize: 24 },
   countryPickerName: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 

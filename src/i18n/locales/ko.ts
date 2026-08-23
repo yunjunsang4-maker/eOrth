@@ -607,6 +607,11 @@ const ko = {
     selectCountry: '국가를 선택하세요',
     selectCountrySub: '지역별로 기록할 수 있는 국가입니다',
     countrySearchPh: '국가 검색',
+    // 대륙 모드 국가 선택 그리드 즐겨찾기(별) — 전체 국가 시트
+    favoriteHint: '★ 을 켠 나라가 국가 선택 칸에 먼저 나와요',
+    favoriteGridLimit: '국가 선택 칸에는 먼저 고른 7개만 표시돼요',
+    favoriteAddA11y: '{{country}} 즐겨찾기에 추가',
+    favoriteRemoveA11y: '{{country}} 즐겨찾기에서 빼기',
     viewVisitedCountries: '방문한 나라 보기',
     visitedCountries: '방문한 나라',
     countriesCount: '{{count}}개국',
