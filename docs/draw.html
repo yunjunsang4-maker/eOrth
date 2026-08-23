@@ -256,11 +256,22 @@
   .ghost:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
   .ghost.danger:hover{border-color:var(--red);color:var(--red)}
   .admin-msg{margin:0;font-size:13px;color:var(--neon);min-height:18px}
+
+  /* ── 스태프 경고 ──
+     발권 실패·다른 탭 충돌·저장소 오류처럼 "재고가 틀어질 수 있는" 사건만 여기에 띄운다.
+     관리 패널 토스트(3초)와 달리 저절로 사라지지 않는다 — 부스 소음 속에서 3초는 없는 것과 같다. */
+  .alert{
+    margin:0;background:var(--card);border:1px solid var(--neon);border-left:4px solid var(--neon);
+    border-radius:12px;padding:14px 16px;font-size:15px;line-height:1.5;cursor:pointer
+  }
 </style>
 </head>
 <body>
 
 <div class="page">
+
+  <!-- 스태프 경고 — 눌러야 닫힌다. 날짜 선택 화면에서도 보여야 해서 page 맨 위에 둔다 -->
+  <p class="alert hidden" id="alert" role="alert"></p>
 
   <!-- 날짜 선택 — 저장된 상태가 없을 때만 뜬다 -->
   <section class="sec setup" id="setup">
@@ -391,8 +402,24 @@
   const passSlot  = document.getElementById('passSlot');
   const doneNote  = document.getElementById('doneNote');
   const tpl       = document.getElementById('passTpl');
+  const alertBox  = document.getElementById('alert');
 
-  let state = restore(localStorage.getItem(KEY));
+  /** 스태프에게 남기는 경고. 저절로 사라지지 않고, 눌러야 닫힌다. */
+  function warn(msg){
+    alertBox.textContent = msg;
+    alertBox.classList.remove('hidden');
+  }
+  alertBox.addEventListener('click', function(){ alertBox.classList.add('hidden'); });
+
+  // localStorage는 iOS 사파리 프라이빗 탭 등에서 '읽는 것 자체'가 예외를 던진다.
+  // 막지 않으면 이 모듈이 통째로 실행되지 않아 아무 설명 없는 흰 화면이 된다.
+  let state = null;
+  try {
+    state = restore(localStorage.getItem(KEY));
+  } catch (e) {
+    warn('이 브라우저에서 저장소를 쓸 수 없습니다(프라이빗 모드일 수 있습니다). ' +
+         '발권은 되지만 새로고침하면 재고가 사라집니다 — 일반 탭에서 다시 열어 주세요.');
+  }
 
   function save(){
     localStorage.setItem(KEY, JSON.stringify(state));
@@ -452,17 +479,38 @@
     const dry = isExhausted(state);
     start.disabled = dry;
     doneNote.classList.toggle('hidden', !dry);
-    if (dry) start.textContent = '발권 종료';
+    // 라벨도 매번 현재 상태에서 다시 정한다. 한 번 '발권 종료'로 바꾸고 되돌리지 않으면,
+    // 관리 패널로 재고를 채우거나 되돌리기를 해도 버튼에 '발권 종료'가 남아 스태프가 안 누른다.
+    start.textContent = dry ? '발권 종료' : (state.history.length ? '다시 뽑기' : '시작하기');
   }
 
   function run(){
     if (isExhausted(state)) return;
     start.disabled = true;
 
-    const result = drawOne(state);
-    state = result.state;
-    save();                                  // 애니메이션 전에 저장한다 — 도중에 앱이 꺼져도 재고가 맞는다
-    renderPass(result.grade);
+    // 실패하면 되돌릴 직전 상태. save()는 정족량 초과·프라이빗 모드에서 던질 수 있고,
+    // renderPass도 표가 어긋나면 던진다.
+    const prev = state;
+    let result;
+    try {
+      result = drawOne(state);
+      state = result.state;
+      save();                                // 애니메이션 전에 저장한다 — 도중에 앱이 꺼져도 재고가 맞는다
+      renderPass(result.grade);
+      syncAdminNumbers();                    // 패널을 열어둔 채 발권해도 숫자가 박제되지 않게
+    } catch (e) {
+      // 여기까지 왔다는 건 참가자가 탑승권을 못 봤다는 뜻이다 — 상품이 안 나갔으므로 차감을
+      // 되돌린다. 안 되돌리면 실패할 때마다 재고가 한 개씩 조용히 증발한다(스태프는 알 방법이 없다).
+      state = prev;
+      try { save(); } catch (e2) { /* 저장 자체가 막힌 상황 — 메모리 재고라도 맞춰 둔다 */ }
+      passSlot.replaceChildren();
+      face.classList.remove('busy');
+      refreshKiosk();                        // 버튼을 되살린다 — 안 그러면 새로고침 말고는 복구가 없다
+      syncAdminNumbers();
+      warn('발권에 실패해 이 1건을 되돌렸습니다(재고는 그대로입니다). 다시 눌러 주세요. — ' +
+           (e && e.message ? e.message : String(e)));
+      return;
+    }
 
     face.classList.remove('done');
     feed.classList.remove('out');
@@ -474,9 +522,7 @@
   feed.addEventListener('animationend', function(){
     face.classList.remove('busy');
     face.classList.add('done');
-    start.textContent = '다시 뽑기';
-    start.disabled = false;
-    refreshKiosk();
+    refreshKiosk();   // 버튼 활성화와 라벨('다시 뽑기'/'발권 종료')을 여기서 한 곳으로 모은다
   });
 
   start.addEventListener('click', run);
@@ -485,7 +531,13 @@
   for (const btn of document.querySelectorAll('.day')){
     btn.addEventListener('click', function(){
       state = makePool(btn.dataset.day);
-      save();
+      // 저장이 막혀도 화면은 연다 — 메모리 재고로라도 부스를 돌릴 수 있어야 한다
+      try {
+        save();
+      } catch (e) {
+        warn('재고를 저장하지 못했습니다(프라이빗 모드일 수 있습니다). ' +
+             '이대로도 발권은 되지만 새로고침하면 오늘 기록이 사라집니다.');
+      }
       enterKiosk();
     });
   }
@@ -557,6 +609,13 @@
       input.min = '0';
       input.value = String(left[k] || 0);
       input.addEventListener('change', function(){
+        // 빈 칸은 0이 아니다. Number('')이 0이고 Number.isInteger(0)이 참이라 setRemaining이
+        // 통과해 버리므로, "고치려고 지웠다가 다른 데를 눌렀다"만으로 그 등급이 영구 소진된다.
+        // change는 블러 때 발화하므로 이 경로가 실제로 매우 쉽게 밟힌다.
+        if (input.value.trim() === ''){
+          input.value = String(remaining(state)[k] || 0);
+          return;
+        }
         const n = Number(input.value);
         try {
           state = setRemaining(state, k, n);
@@ -576,6 +635,28 @@
       tr.append(name, leftCell, doneCell);
       adminRows.appendChild(tr);
     }
+  }
+
+  /**
+   * 패널이 열려 있으면 숫자만 제자리에서 갱신한다.
+   * 패널은 발권기 바로 아래 같은 화면에 있고 자동으로 닫히지도 않아, 스태프가 열어둔 채
+   * 계속 발권하는 것이 자연스러운 동선이다 — 갱신하지 않으면 정산을 옛 숫자 위에서 하게 된다.
+   *
+   * renderAdmin()을 다시 부르지 않는 이유: 그러면 행을 새로 만들어서 스태프가 입력 중이던
+   * 값이 날아간다. 지금 포커스가 있는 칸은 아예 건드리지 않는다.
+   */
+  function syncAdminNumbers(){
+    if (admin.classList.contains('hidden')) return;
+    const left = remaining(state);
+    const done = tally(state);
+    const rows = adminRows.children;
+    if (rows.length !== GRADE_KEYS.length) return;   // 아직 그려지기 전이면 아무것도 하지 않는다
+    GRADE_KEYS.forEach(function(k, i){
+      const row = rows[i];
+      const input = row.querySelector('input');
+      if (input && input !== document.activeElement) input.value = String(left[k] || 0);
+      row.lastElementChild.textContent = String(done[k] || 0);
+    });
   }
 
   document.getElementById('adminClose').addEventListener('click', function(){
@@ -621,6 +702,32 @@
     if (!window.confirm('발권 ' + n + '건 기록이 지워지고 재고가 초기화됩니다. 계속할까요?')) return;
     localStorage.removeItem(KEY);
     location.reload();
+  });
+
+  // ── 다른 탭 감지 ──
+  // 재고는 localStorage에 있지만 state는 탭마다 따로 메모리에 있고 save()는 무조건 덮어쓴다.
+  // 탭 A가 300→299를 쓴 뒤 탭 B(메모리엔 아직 300)가 발권하면 다시 299를 쓴다 —
+  // 상품은 2개 나가고 차감은 1개다. 화면에도 이력에도 아무 신호가 없다.
+  // storage 이벤트는 '다른 탭'의 변경만 오므로 이걸로 잡는다. 조용히 맞추기만 하면 스태프가
+  // 두 탭을 계속 쓰게 되므로 반드시 눈에 띄게 알린다.
+  window.addEventListener('storage', function(e){
+    if (e.key !== KEY) return;
+    const next = restore(e.newValue);
+    if (!next){
+      // 덮어쓰지 않는다 — 이 탭이 들고 있는 재고가 그나마 성한 쪽일 수 있다
+      warn('다른 탭이 재고를 지웠거나 알아볼 수 없는 값으로 바꿨습니다. ' +
+           '이 탭의 재고는 그대로 두었습니다 — 탭을 하나만 열어 두세요.');
+      return;
+    }
+    const wasSetup = !state;
+    state = next;
+    // 날짜 선택 화면이었다면 그 화면을 닫는다. 남겨두면 스태프가 날짜를 눌러 다른 탭의
+    // 재고까지 초기화해 버린다.
+    if (wasSetup) enterKiosk(); else refreshKiosk();
+    syncAdminNumbers();
+    warn(wasSetup
+      ? '다른 탭에서 이미 오늘 재고를 열어 두었습니다. 이 탭을 같은 재고로 맞췄습니다 — 탭을 하나만 열어 두세요.'
+      : '다른 탭에서 발권이 있었습니다. 이 탭의 재고를 방금 맞췄습니다 — 탭을 하나만 열어 두세요.');
   });
 
   if (state) enterKiosk();
