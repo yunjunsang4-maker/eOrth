@@ -121,9 +121,10 @@ console.log('뽑기 재고');
 
 // ── 관리자 보정 ──
 {
-  const st = setRemaining(makePool('D2'), 'g3', 7);
+  const orig = makePool('D2');
+  const st = setRemaining(orig, 'g3', 7);
   eq(remaining(st).g3, 7, '남은 수량을 직접 지정할 수 있다');
-  eq(remaining(makePool('D2')).g3, 50, '보정이 원본을 건드리지 않는다');
+  eq(remaining(orig).g3, 50, '보정이 원본을 건드리지 않는다');
   throws(() => setRemaining(makePool('D2'), 'g3', -1), '음수 재고는 거부한다');
   throws(() => setRemaining(makePool('D2'), 'g9', 1), '없는 등급은 거부한다');
 }
