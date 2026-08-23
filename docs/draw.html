@@ -749,5 +749,26 @@
   if (state) enterKiosk();
 </script>
 
+<!-- 오프라인 대비 서비스 워커 등록.
+     발권 모듈과 일부러 분리된 블록이다 — 등록이 어떻게 실패하든 위 모듈은 이미 실행을
+     끝냈고, 여기서 던진 예외가 발권 동작에 닿지 않는다.
+     서비스 워커는 보안 컨텍스트(HTTPS·localhost)에서만 동작한다. 공개본은 gh-pages라
+     HTTPS지만, file://이나 평문 http로 열면 등록이 실패한다 — 그때도 페이지는 예전과
+     똑같이 돌아야 하므로 기능 감지 + try/catch + .catch()로 세 겹 감싼다. -->
+<script>
+  if ('serviceWorker' in navigator) {
+    // load 이후에 등록한다. 발권 화면이 먼저 뜨고 나서 캐시를 채우게 해 첫 진입을 막지 않는다.
+    window.addEventListener('load', function(){
+      try {
+        // 절대경로(/draw-sw.js)를 쓰면 저장소 이름이 붙는 경로에서 404가 난다. 반드시 상대경로.
+        navigator.serviceWorker.register('./draw-sw.js').catch(function(){
+          // 등록 실패는 조용히 넘긴다. 캐시가 없을 뿐 발권은 그대로 되고,
+          // 여기서 스태프에게 경고를 띄우면 부스에서 아무 조치도 못 할 문구만 남는다.
+        });
+      } catch (e) { /* 보안 컨텍스트가 아닌 경우 등 — 동기 예외까지 막는다 */ }
+    });
+  }
+</script>
+
 </body>
 </html>

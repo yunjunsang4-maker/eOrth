@@ -16,6 +16,7 @@ export const PUBLISHED_FILES = [
   'event.html',              // 오프라인 행사 설문 페이지
   'draw-core.js',            // 부스 뽑기 재고 로직 (docs/draw.html이 import)
   'draw.html',               // 부스 뽑기 발권 화면
+  'draw-sw.js',              // 부스 뽑기 오프라인 캐시 서비스 워커 (재게시 시 캐시 버전 올릴 것)
 ];
 
 /**
