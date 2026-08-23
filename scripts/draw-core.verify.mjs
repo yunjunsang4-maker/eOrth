@@ -1,7 +1,7 @@
 // 뽑기 재고 검증. 여기서 틀리면 3등이 배정 수량보다 많이 나가거나,
 // 첫날에 있지도 않은 항공권이 당첨된다.
 import {
-  GRADE_KEYS, DAY_POOLS, makePool, drawOne, undoLast, setRemaining,
+  GRADE_KEYS, GRADES, DAY_POOLS, EVENT_DAYS, makePool, drawOne, undoLast, setRemaining,
   remaining, totalRemaining, isExhausted, tally, restore,
 } from '../docs/draw-core.js';
 
@@ -76,7 +76,14 @@ console.log('뽑기 재고');
   let st = makePool('D2');
   st = setRemaining(st, 'g3', 1);
   const first = drawOne(st, () => 0.999, 0);   // 마지막 등급(miss)이 0이면 g5가 잡힌다
-  ok_(first.grade !== undefined, '가중 추출이 항상 등급을 반환한다');
+  // null과 비교해야 한다 — drawOne은 grade를 null로 시작해 키를 넣거나 null을 유지하므로
+  // undefined를 돌려주는 경로가 없다. undefined와 비교하면 클램프가 깨져도 항상 통과한다.
+  ok_(first.grade !== null, '가중 추출이 항상 등급을 반환한다');
+
+  // 지키려는 대상은 drawOne의 클램프다. rand가 0.999면 클램프를 지워도 값이 같아 아무것도
+  // 못 잡으므로, 1을 돌려주는 구현을 직접 넣어 클램프가 있어야만 통과하게 만든다.
+  const edge = drawOne(makePool('D2'), () => 1, 0);
+  ok_(edge.grade !== null, 'rand가 1을 돌려줘도 마지막 표로 고정돼 등급이 나온다');
 
   let cur = setRemaining(makePool('D2'), 'g5', 0);
   cur = setRemaining(cur, 'g4', 0);
@@ -148,6 +155,19 @@ console.log('뽑기 재고');
   eq(restore('{"version":1,"day":"D1","history":[]}'), null, '재고가 없으면 null');
   eq(restore('{"version":1,"day":"D1","remaining":{"g3":"많음"},"history":[]}'), null,
      '재고 값이 숫자가 아니면 null');
+  // 잘린 JSON을 붙여넣는 사고를 막는다 — 아래 두 부류가 통과하면 부스에서 재고가 조용히 틀어진다
+  eq(restore('{"version":1,"day":"D2","remaining":{"g5":2},"history":[]}'), null, '등급 키가 빠지면 null');
+  eq(restore('{"version":1,"day":"D1","remaining":' + JSON.stringify(DAY_POOLS.D1) + ',"history":[1,2]}'), null, 'history 항목이 객체가 아니면 null');
+  eq(restore('{"version":1,"day":"D1","remaining":' + JSON.stringify(DAY_POOLS.D1) + ',"history":[{"at":0,"grade":"g9"}]}'), null, 'history의 등급이 알 수 없는 값이면 null');
+  eq(restore('{"version":1,"day":"D1","remaining":' + JSON.stringify(DAY_POOLS.D1) + ',"history":[{"grade":"g5"}]}'), null, 'history에 시각이 없으면 null');
+}
+
+// ── 표 사이 대응 ──
+// renderPass가 GRADES[k].stripe와 EVENT_DAYS[day].date를 무방호로 읽는다.
+// 여기서 안 잡으면 등급 키 오타나 날짜 추가가 npm test를 전부 통과한 채 부스에서 터진다.
+{
+  ok_(GRADE_KEYS.every((k) => GRADES[k]), 'GRADE_KEYS가 전부 GRADES에 정의돼 있다');
+  ok_(Object.keys(DAY_POOLS).every((d) => EVENT_DAYS[d]), 'DAY_POOLS의 모든 날짜가 EVENT_DAYS에 있다');
 }
 
 // ── 알 수 없는 날짜 ──

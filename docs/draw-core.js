@@ -143,5 +143,15 @@ export function restore(raw) {
     if (!GRADE_KEYS.includes(k)) return null;
     if (!Number.isInteger(o.remaining[k]) || o.remaining[k] < 0) return null;
   }
+  // 등급 키가 하나라도 빠지면 거부한다 — 빠진 등급은 0으로 취급돼 재고 수백 개가 조용히 증발한다.
+  // 잘린 JSON을 붙여넣는 것이 관리 패널 '상태 붙여넣기'의 가장 흔한 오사용이다.
+  if (!GRADE_KEYS.every((k) => k in o.remaining)) return null;
+  // 이력 항목의 형태까지 본다. 항목이 깨져 있으면 undoLast가 remaining에 'undefined' 키를 만들고,
+  // 그 오염된 상태가 저장된 뒤 다음 새로고침에서 통째로 버려진다(그날 재고와 이력이 전부 사라진다).
+  for (const h of o.history) {
+    if (!h || typeof h !== 'object') return null;
+    if (typeof h.at !== 'number') return null;
+    if (!GRADE_KEYS.includes(h.grade)) return null;
+  }
   return o;
 }
