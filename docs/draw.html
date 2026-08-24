@@ -410,6 +410,10 @@
   function warn(msg){
     alertBox.textContent = msg;
     alertBox.classList.remove('hidden');
+    // 배너는 페이지 맨 위인데 관리 패널은 발권기 아래에 있다. 스태프가 패널을 보는 중에
+    // 뜬 경고는 스크롤 위쪽이라 그냥 안 보인다 — 놓치면 안 되는 것들이므로 시야로 끌어온다.
+    // warn()은 실패 경로에서 불리므로 여기서 절대 던지면 안 된다(구형 브라우저 옵션 미지원 등).
+    try { alertBox.scrollIntoView({ block: 'nearest' }); } catch { /* 지원 안 하면 그냥 넘어간다 */ }
   }
   alertBox.addEventListener('click', function(){ alertBox.classList.add('hidden'); });
 
@@ -481,41 +485,56 @@
     passSlot.replaceChildren(node);
   }
 
+  // 급지(용지 배출 애니메이션)가 도는 동안 참이다.
+  // refreshKiosk()는 run() 말고도 여러 곳에서 불린다 — 특히 다른 탭의 storage 이벤트는
+  // 급지 도중에도 도착한다. 이 플래그가 없으면 그 순간 버튼이 되살아나 연타가 뚫리고
+  // 라벨도 '다시 뽑기'로 미리 바뀐다(설계 문서의 "급지 중 disabled"가 거짓이 된다).
+  let feeding = false;
+
   /** 재고가 바닥나면 버튼을 잠근다 — 조용히 꽝을 주지 않는다 */
   function refreshKiosk(){
     const dry = isExhausted(state);
-    start.disabled = dry;
+    start.disabled = dry || feeding;         // 급지 중에는 누가 불러도 버튼을 되살리지 않는다
     doneNote.classList.toggle('hidden', !dry);
     // 라벨도 매번 현재 상태에서 다시 정한다. 한 번 '발권 종료'로 바꾸고 되돌리지 않으면,
     // 관리 패널로 재고를 채우거나 되돌리기를 해도 버튼에 '발권 종료'가 남아 스태프가 안 누른다.
+    // 급지 중에는 건드리지 않는다 — 아직 나오지도 않은 탑승권이 이미 나온 것처럼 읽힌다.
+    // 애니메이션이 끝나면 animationend가 부르는 이 함수가 곧바로 제대로 정한다.
+    if (feeding) return;
     start.textContent = dry ? '발권 종료' : (state.history.length ? '다시 뽑기' : '시작하기');
   }
 
   function run(){
     if (isExhausted(state)) return;
     start.disabled = true;
+    feeding = true;                          // 급지 시작 — 실패 경로에서도 반드시 내려야 한다
 
-    // 실패하면 되돌릴 직전 상태. save()는 정족량 초과·프라이빗 모드에서 던질 수 있고,
-    // renderPass도 표가 어긋나면 던진다.
+    // 실패하면 되돌릴 직전 상태. renderPass는 표가 어긋나면 던진다.
     const prev = state;
     let result;
+    let saveFailed = false;
     try {
       result = drawOne(state);
       state = result.state;
-      save();                                // 애니메이션 전에 저장한다 — 도중에 앱이 꺼져도 재고가 맞는다
+      // 저장은 애니메이션 전에 한다 — 도중에 앱이 꺼져도 재고가 맞는다.
+      // 다만 저장 실패로 발권을 롤백하지는 않는다. iOS 사파리 프라이빗 탭처럼 쓰기가
+      // 매번 던지는 환경에서 롤백하면 탑승권이 한 장도 안 나온다 —
+      // 화면 안내가 약속한 "이대로도 발권은 됩니다"를 지키려면 메모리 재고로 계속 가야 한다.
+      try { save(); } catch (eSave) { saveFailed = true; }
       renderPass(result.grade);
-      syncAdminNumbers();                    // 패널을 열어둔 채 발권해도 숫자가 박제되지 않게
     } catch (e) {
       // 여기까지 왔다는 건 참가자가 탑승권을 못 봤다는 뜻이다 — 상품이 안 나갔으므로 차감을
       // 되돌린다. 안 되돌리면 실패할 때마다 재고가 한 개씩 조용히 증발한다(스태프는 알 방법이 없다).
+      feeding = false;                       // 빠뜨리면 버튼이 영구히 잠긴다
+      // 경고를 가장 먼저 띄운다 — 아래 정리 중 무엇이 또 던져도 스태프에게 메시지는 남는다.
+      warn('발권에 실패해 이 1건을 되돌렸습니다(재고는 그대로입니다). 다시 눌러 주세요. — ' +
+           (e && e.message ? e.message : String(e)));
       state = prev;
       try { save(); } catch (e2) { /* 저장 자체가 막힌 상황 — 메모리 재고라도 맞춰 둔다 */ }
       passSlot.replaceChildren();
       face.classList.remove('busy');
       refreshKiosk();                        // 버튼을 되살린다 — 안 그러면 새로고침 말고는 복구가 없다
       syncAdminNumbers();
-      warn('발권에 실패해 이 1건을 되돌렸습니다(재고는 그대로입니다). 다시 눌러 주세요. — ' +
-           (e && e.message ? e.message : String(e)));
       return;
     }
 
@@ -524,9 +543,20 @@
     void feed.offsetWidth;                   // 리플로우 — 두 번째부터도 애니메이션이 다시 걸리게
     face.classList.add('busy');
     feed.classList.add('out');
+
+    // 발권은 이미 성공했다. 아래 둘은 부수 작업이라 롤백 try 바깥에 둔다 —
+    // 안에 두면 여기서 던졌을 때 정상 발권이 취소되고 화면의 탑승권이 지워진다.
+    if (saveFailed){
+      warn('재고가 저장되지 않았습니다(프라이빗 모드일 수 있습니다). 발권은 정상 처리했지만, ' +
+           '새로고침하면 오늘 기록이 사라집니다 — 일반 탭에서 다시 열어 주세요.');
+    }
+    // 패널을 열어둔 채 발권해도 숫자가 박제되지 않게. 실패해도 발권에는 영향이 없다.
+    try { syncAdminNumbers(); }
+    catch (e3) { warn('관리 패널의 숫자를 갱신하지 못했습니다. 패널을 닫았다 다시 열어 주세요.'); }
   }
 
   feed.addEventListener('animationend', function(){
+    feeding = false;  // 급지 끝 — 이제 버튼이 다시 눌려야 한다
     face.classList.remove('busy');
     face.classList.add('done');
     refreshKiosk();   // 버튼 활성화와 라벨('다시 뽑기'/'발권 종료')을 여기서 한 곳으로 모은다

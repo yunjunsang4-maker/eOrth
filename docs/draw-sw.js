@@ -25,7 +25,15 @@ const CACHE = 'eorth-draw-v1';
 const ASSETS = ['./draw.html', './draw-core.js'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
+  // cache: 'reload'로 받아야 한다. 그냥 addAll(ASSETS)를 하면 HTTP 캐시를 경유하므로,
+  // gh-pages의 max-age 창(약 10분) 안에 캐시 버전을 올려 재방문하면 새 이름의 캐시에
+  // 옛 파일이 그대로 담긴다. 그러면 버전을 올린 의미가 사라지는데, 증상은
+  // "버전을 올렸는데도 옛 값이 나온다"라 원인을 찾기가 매우 어렵다.
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(ASSETS.map((url) => new Request(url, { cache: 'reload' })))),
+  );
   // 부스 기기는 탭이 하나뿐이라 '다음에 닫았다 열면 적용'을 기다릴 이유가 없다
   self.skipWaiting();
 });
@@ -57,7 +65,12 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // 캐시 우선 → 없으면 네트워크. 부스에서는 최신성보다 "열린다"가 우선이다.
-  // ignoreSearch: 링크에 ?v=1 같은 꼬리가 붙어도 같은 파일로 본다.
+  // ignoreSearch: 링크에 ?v=1 같은 꼬리가 붙어도 같은 파일로 본다. 부스에서 카톡·북마크로
+  // 연 링크에 꼬리가 붙어도 오프라인에서 열리게 하려는 의도된 선택이다.
+  //
+  // ⚠️ 그 대가: "import·링크에 ?v=를 붙여 캐시를 우회한다"는 흔한 응급 수단이 여기서는
+  //    통하지 않는다. 꼬리가 뭐든 같은 캐시 항목으로 매칭되기 때문이다.
+  //    옛 파일에서 빠져나오는 길은 위 CACHE 버전을 올려 재게시하는 것 하나뿐이다.
   event.respondWith(
     caches.match(req, { ignoreSearch: true }).then((hit) => {
       if (hit) return hit;
