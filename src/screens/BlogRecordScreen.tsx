@@ -15,6 +15,7 @@ import {
   PanResponder,
   Linking,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { WebView } from 'react-native-webview';
@@ -1284,7 +1285,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setFontBarVisible(false);
     setHeadingBarVisible(false);
     setMoreMenuVisible(false);
-    setTravelInfoVisible(true);
+    // 이 함수는 네이티브 Alert 버튼(handleSave 의 "여행 정보 열기")에서도 불린다.
+    // 안드로이드에서 네이티브 대화상자가 닫히는 프레임에 RN Modal 을 올리면 모달이
+    // 안 뜨거나 터치가 씹힌 사고가 이 저장소에 두 번 있었다(로딩 오버레이 Modal /
+    // Modal 직후 네이티브 시트). 상호작용이 끝난 다음으로 한 박자 미뤄 그 겹침을 없앤다.
+    InteractionManager.runAfterInteractions(() => setTravelInfoVisible(true));
   };
 
   const handleSave = () => {
