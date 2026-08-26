@@ -6,6 +6,18 @@
 - 프로젝트 ref: `blweolnunmsxgztmvzfd`
 - 적용 경로: Supabase 대시보드 > SQL Editor (SQL) / `supabase functions deploy <name>` (Edge Function)
 
+> ⏳ **2026-08-26 미반영 1건 — 부스 뽑기 서버 재고.**
+> `schema.sql` 끝의 "부스 뽑기 서버 재고" 절(표 4개 `draw_stock`·`draw_lease_hold`·`draw_log`·
+> `draw_config`, RPC 12개)은 **아직 실행하지 않았다.** 실행 절차와 주의사항은
+> `docs/superpowers/specs/2026-08-24-event-draw-boarding-pass-design.md`의 "서버 준비 절차"에 있다.
+>
+> **실행 전에 반드시 `draw_config`의 `CHANGE-ME-KIOSK`·`CHANGE-ME-ADMIN`을 실제 토큰으로 바꿀 것.**
+> 안 바꾸면 `_draw_auth`가 모든 호출을 거부한다(placeholder 그대로 게시되는 사고를 막는 안전장치).
+> 이미 실행한 뒤 토큰을 바꾸려면 `insert`가 아니라 `update`여야 한다 — `on conflict do nothing`이라
+> 다시 넣어도 값이 안 바뀐다.
+>
+> 행사 종료 후 `event_participants`와 함께 파기한다(일회성 표).
+>
 > **2026-08-02 기준 서버 반영은 모두 끝났다.** 아래는 그 근거와, 앞으로 무엇을 건드리면 안 되는지의 기록이다.
 >
 > - **Edge Function 배포 = 실측.** `supabase functions list` 로 서버에서 직접 받은 값. 4개 전량 최신.

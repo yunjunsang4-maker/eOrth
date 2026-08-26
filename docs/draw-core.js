@@ -101,6 +101,37 @@ export function drawOne(state, rand = Math.random, now = Date.now()) {
   };
 }
 
+/**
+ * 예약(오프라인 대비)으로 기기가 들고 갈 수 있는 등급.
+ *
+ * ⚠️ 1등·2등이 여기 들어가면 안 된다. 예약분은 와이파이가 끊긴 동안 기기가 **혼자** 뽑으므로,
+ *    쪼갤 수 없는 상품(1등 이틀 1명, 2등 하루 1대)이 섞이면 두 아이패드가 각각 뽑아
+ *    서버가 막아주던 중복 당첨이 그대로 되살아난다.
+ *    서버(schema.sql draw_lease)도 같은 제외를 하지만, 여기서 한 번 더 막는 것은 의도다 —
+ *    서버가 실수로 g1을 담아 보내도 기기가 그걸 뽑는 일은 없어야 한다.
+ */
+export const LEASE_KEYS = ['g3', 'g4', 'g5', 'miss'];
+
+/** 기기가 목표로 삼는 예약 보유량. 아래로 떨어지면 온라인일 때 다시 채운다. */
+export const LEASE_TARGET = 20;
+export const LEASE_REFILL_AT = 8;
+
+/**
+ * 서버가 내려준 예약 보유량(hold)을 drawOne이 쓸 수 있는 상태로 만든다.
+ *
+ * LEASE_KEYS 밖의 등급은 무조건 0으로 깔린다 — 위 주석의 두 번째 방어선이 바로 이 줄이다.
+ */
+export function leaseState(day, hold) {
+  if (!DAY_POOLS[day]) throw new Error(`정의되지 않은 날짜: ${day}`);
+  const src = hold || {};
+  const remaining = {};
+  for (const k of GRADE_KEYS) {
+    const n = LEASE_KEYS.includes(k) ? src[k] : 0;
+    remaining[k] = Number.isInteger(n) && n > 0 ? n : 0;
+  }
+  return { version: STATE_VERSION, day, remaining, history: [] };
+}
+
 /** 마지막 1건 되돌리기. 부스에서 오조작은 반드시 생긴다. */
 export function undoLast(state) {
   if (!state.history.length) return state;

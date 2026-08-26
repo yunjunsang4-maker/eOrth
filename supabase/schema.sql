@@ -2831,3 +2831,557 @@ create policy event_participants_insert on public.event_participants
     and instagram ~ '^[a-z0-9._]{1,30}$'
     and array_length(wish_countries, 1) between 1 and 3
   );
+
+-- ============================================================
+-- 부스 뽑기 서버 재고 (2026-08-26)
+-- 설계: docs/superpowers/specs/2026-08-24-event-draw-boarding-pass-design.md
+--
+-- 아이패드 2대(발권 전용, docs/draw.html)와 노트북 1대(관리, docs/draw-admin.html)가
+-- 같은 재고를 본다. 재고를 기기마다 두면 1등 항공권(이틀 1명)·2등 필름카메라(하루 1대)가
+-- 양쪽에서 각각 나올 수 있고 화면에도 이력에도 신호가 없다 — 그래서 추출을 서버에서 한다.
+--
+-- 보안 모델: anon 키는 정적 페이지에 박혀 누구나 꺼내볼 수 있다. 그래서 **테이블 권한은
+-- 아무에게도 주지 않고**, security definer 함수만 anon에게 열어 그 안에서 토큰을 검사한다.
+-- 토큰은 게시물에 넣지 않는다 — 스태프가 기기에서 한 번 입력하고 localStorage에 남긴다.
+--
+-- 앱과 무관한 일회성 테이블이다. event_participants와 함께 파기한다.
+-- ============================================================
+
+create table if not exists public.draw_stock (
+  day        text primary key,                    -- 'D1' | 'D2'
+  remaining  jsonb not null,                      -- 즉시 발권 가능한 수량 {g1..g5,miss}
+  updated_at timestamptz not null default now()
+);
+
+-- 기기가 오프라인 대비로 예약해 간 수량. draw_stock.remaining에서 이미 빠져 있다.
+-- 기기별로 "지금 이 기기가 정확히 이만큼 들고 있다"를 통째로 기록해, 응답이 유실돼
+-- 같은 호출이 두 번 도착해도 결과가 같아진다(반납·정산이 멱등해진다).
+create table if not exists public.draw_lease_hold (
+  day        text not null,
+  device     text not null,
+  hold       jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (day, device)
+);
+
+create table if not exists public.draw_log (
+  id        bigserial primary key,
+  day       text not null,
+  grade     text not null,
+  device    text not null,
+  client_id text not null,                        -- 멱등키 — 기기가 발권마다 새로 만든다
+  source    text not null default 'server',       -- 'server'(온라인) | 'lease'(오프라인 예약분)
+  at        timestamptz not null default now(),
+  undone    boolean not null default false
+);
+
+-- ⚠️ 이 인덱스가 멱등성의 전부다. 없으면 네트워크가 느려 스태프가 한 번 더 누를 때
+--    재고가 두 번 빠지고, 참가자는 한 장만 받는다.
+create unique index if not exists draw_log_client_uniq on public.draw_log (client_id);
+create index if not exists draw_log_day_idx on public.draw_log (day, id desc);
+
+create table if not exists public.draw_config (
+  key   text primary key,
+  value text not null
+);
+
+-- ⚠️ 아래 두 토큰을 **반드시 바꾼 뒤** 실행할 것. 바꾸지 않으면 아래 _draw_auth가
+--    모든 호출을 거부한다(placeholder 그대로 게시해 링크를 아는 누구나 재고를 뽑아가는
+--    사고를 막는다 — 그렇게 새면 화면에 아무 신호가 없다).
+--    16자 이상 무작위 문자열을 권한다. 두 값은 서로 달라야 한다.
+insert into public.draw_config (key, value) values
+  ('kiosk_token', 'CHANGE-ME-KIOSK'),
+  ('admin_token', 'CHANGE-ME-ADMIN'),
+  ('active_day',  '')
+on conflict (key) do nothing;
+
+alter table public.draw_stock      enable row level security;
+alter table public.draw_lease_hold enable row level security;
+alter table public.draw_log        enable row level security;
+alter table public.draw_config     enable row level security;
+
+-- 테이블 직접 접근은 아무에게도 주지 않는다. 정책도 만들지 않는다(RLS 켜짐 + 정책 없음 = 전부 거부).
+-- anon이 할 수 있는 일은 아래 security definer 함수 실행뿐이고, 그 안에서 토큰을 본다.
+-- draw_config에 토큰이 평문으로 있으므로 SELECT가 한 줄이라도 열리면 잠금이 통째로 무너진다.
+revoke all on public.draw_stock      from anon, authenticated;
+revoke all on public.draw_lease_hold from anon, authenticated;
+revoke all on public.draw_log        from anon, authenticated;
+revoke all on public.draw_config     from anon, authenticated;
+
+-- ── 토큰 검사 ───────────────────────────────────────────────
+-- p_need='admin'이면 관리 토큰만, 'kiosk'면 둘 다 통과한다(노트북에서 시험 발권을 할 수 있게).
+create or replace function public._draw_auth(p_token text, p_need text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare v_kiosk text; v_admin text;
+begin
+  select value into v_kiosk from public.draw_config where key = 'kiosk_token';
+  select value into v_admin from public.draw_config where key = 'admin_token';
+  if v_kiosk is null or v_admin is null then return false; end if;
+  -- placeholder를 안 바꾼 채 게시한 상태 — 전부 거부한다(위 insert의 경고 참고)
+  if v_kiosk like 'CHANGE-ME%' or v_admin like 'CHANGE-ME%' then return false; end if;
+  if v_kiosk = v_admin then return false; end if;   -- 두 토큰이 같으면 아이패드가 곧 관리자다
+  if p_token is null or length(p_token) < 8 then return false; end if;
+  if p_need = 'admin' then return p_token = v_admin; end if;
+  return p_token = v_kiosk or p_token = v_admin;
+end $$;
+
+-- ── 가중 추출 ───────────────────────────────────────────────
+-- ⚠️ docs/draw-core.js 의 drawOne()과 **같은 알고리즘이어야 한다.**
+--    키 순서(GRADE_KEYS)와 ticket 계산식 min(floor(rand*total), total-1)까지 같다.
+--    둘이 어긋나면 온라인 발권과 오프라인 예약분 발권의 확률이 달라지는데,
+--    증상이 "어쩐지 3등이 많이 나온다" 정도라 부스에서는 절대 못 잡는다.
+--    scripts/draw-schema.verify.mjs 가 키 순서를 대조한다.
+create or replace function public._draw_pick(p_remaining jsonb)
+returns text
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  k text; n int; total int := 0; ticket int;
+  keys text[] := array['g1','g2','g3','g4','g5','miss'];
+begin
+  foreach k in array keys loop
+    total := total + greatest(coalesce((p_remaining->>k)::int, 0), 0);
+  end loop;
+  if total <= 0 then return null; end if;
+  ticket := least(floor(random() * total)::int, total - 1);
+  foreach k in array keys loop
+    n := greatest(coalesce((p_remaining->>k)::int, 0), 0);
+    if ticket < n then return k; end if;
+    ticket := ticket - n;
+  end loop;
+  return null;
+end $$;
+
+-- ── 온라인 발권 ─────────────────────────────────────────────
+create or replace function public.draw_pull(p_token text, p_device text, p_client_id text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare v_day text; v_rem jsonb; v_grade text; v_prev text;
+begin
+  if not public._draw_auth(p_token, 'kiosk') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  if p_device is null or p_device !~ '^[A-Za-z0-9_-]{1,16}$' then
+    return jsonb_build_object('ok', false, 'error', 'device');
+  end if;
+  if p_client_id is null or length(p_client_id) not between 8 and 64 then
+    return jsonb_build_object('ok', false, 'error', 'client_id');
+  end if;
+
+  -- 멱등 재생. 응답을 못 받고 다시 누른 경우 같은 등급을 그대로 돌려준다.
+  -- 이게 없으면 그 1회가 재고에서 두 번 빠지고 참가자는 한 장만 받는다.
+  select grade into v_prev from public.draw_log where client_id = p_client_id;
+  if v_prev is not null then
+    select value into v_day from public.draw_config where key = 'active_day';
+    select remaining into v_rem from public.draw_stock where day = v_day;
+    return jsonb_build_object('ok', true, 'grade', v_prev, 'replay', true,
+                              'day', v_day, 'remaining', v_rem);
+  end if;
+
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  -- 행 잠금 — 두 아이패드가 같은 순간에 눌러도 한 줄씩 통과한다.
+  -- 이 for update가 1등 중복을 막는 지점이다.
+  select remaining into v_rem from public.draw_stock where day = v_day for update;
+  if v_rem is null then
+    return jsonb_build_object('ok', false, 'error', 'noday');
+  end if;
+
+  v_grade := public._draw_pick(v_rem);
+  if v_grade is null then
+    return jsonb_build_object('ok', false, 'error', 'empty', 'day', v_day, 'remaining', v_rem);
+  end if;
+
+  v_rem := jsonb_set(v_rem, array[v_grade], to_jsonb(((v_rem->>v_grade)::int - 1)));
+  update public.draw_stock set remaining = v_rem, updated_at = now() where day = v_day;
+  insert into public.draw_log (day, grade, device, client_id, source)
+    values (v_day, v_grade, p_device, p_client_id, 'server');
+
+  return jsonb_build_object('ok', true, 'grade', v_grade, 'day', v_day, 'remaining', v_rem);
+end $$;
+
+-- ── 예약 재고 (오프라인 대비) ───────────────────────────────
+-- 부스 와이파이가 끊겨도 발권이 멈추지 않게, 기기가 미리 몇 장을 받아 들고 있는다.
+-- 예약분은 remaining에서 즉시 빠지고 draw_lease_hold에 기록된다.
+--
+-- ⚠️ 1등·2등은 절대 예약하지 않는다. 예약분은 오프라인에서 기기가 혼자 뽑으므로,
+--    쪼갤 수 없는 상품이 섞이면 서버가 막아주던 중복 당첨이 그대로 되살아난다.
+--    아래 (v_rem - 'g1') - 'g2' 가 그 지점이다. scripts/draw-schema.verify.mjs 가 지킨다.
+create or replace function public.draw_lease(p_token text, p_device text, p_want int)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_day text; v_rem jsonb; v_hold jsonb; v_pool jsonb;
+  v_have int := 0; v_g text; v_k text; i int;
+begin
+  if not public._draw_auth(p_token, 'kiosk') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  if p_device is null or p_device !~ '^[A-Za-z0-9_-]{1,16}$' then
+    return jsonb_build_object('ok', false, 'error', 'device');
+  end if;
+  if p_want is null or p_want < 0 or p_want > 60 then
+    return jsonb_build_object('ok', false, 'error', 'want');
+  end if;
+
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  select remaining into v_rem from public.draw_stock where day = v_day for update;
+  if v_rem is null then return jsonb_build_object('ok', false, 'error', 'noday'); end if;
+
+  insert into public.draw_lease_hold (day, device) values (v_day, p_device)
+    on conflict (day, device) do nothing;
+  select hold into v_hold from public.draw_lease_hold
+    where day = v_day and device = p_device for update;
+
+  foreach v_k in array array['g3','g4','g5','miss'] loop
+    v_have := v_have + coalesce((v_hold->>v_k)::int, 0);
+  end loop;
+
+  -- 모자란 만큼만 채운다. 이미 충분히 들고 있으면 아무것도 옮기지 않는다(멱등).
+  for i in 1..greatest(p_want - v_have, 0) loop
+    v_pool := (v_rem - 'g1') - 'g2';
+    v_g := public._draw_pick(v_pool);
+    exit when v_g is null;
+    v_rem  := jsonb_set(v_rem,  array[v_g], to_jsonb(((v_rem->>v_g)::int - 1)));
+    v_hold := jsonb_set(v_hold, array[v_g],
+                        to_jsonb((coalesce((v_hold->>v_g)::int, 0) + 1)), true);
+  end loop;
+
+  update public.draw_stock set remaining = v_rem, updated_at = now() where day = v_day;
+  update public.draw_lease_hold set hold = v_hold, updated_at = now()
+    where day = v_day and device = p_device;
+
+  return jsonb_build_object('ok', true, 'day', v_day, 'hold', v_hold, 'remaining', v_rem);
+end $$;
+
+-- 오프라인에서 실제로 나간 예약분을 정산한다. client_id 유니크가 멱등성을 보장하므로
+-- 같은 목록을 몇 번 보내도 결과가 같다(전송이 끊겨 다시 보내는 일이 실제로 생긴다).
+create or replace function public.draw_lease_commit(p_token text, p_device text, p_items jsonb)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_day text; v_hold jsonb; it jsonb; v_g text; v_cid text;
+  v_ins int; v_done int := 0; v_skip int := 0;
+begin
+  if not public._draw_auth(p_token, 'kiosk') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  if p_device is null or p_device !~ '^[A-Za-z0-9_-]{1,16}$' then
+    return jsonb_build_object('ok', false, 'error', 'device');
+  end if;
+  if jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) > 200 then
+    return jsonb_build_object('ok', false, 'error', 'items');
+  end if;
+
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  select hold into v_hold from public.draw_lease_hold
+    where day = v_day and device = p_device for update;
+  if v_hold is null then return jsonb_build_object('ok', false, 'error', 'nohold'); end if;
+
+  for it in select * from jsonb_array_elements(p_items) loop
+    v_g   := it->>'grade';
+    v_cid := it->>'client_id';
+    -- 예약에 없던 등급은 거부한다. g1·g2가 여기로 들어오면 예약 경로가 깨졌다는 뜻이고,
+    -- 그대로 받아주면 서버가 막던 중복 당첨이 성립해 버린다.
+    if v_g is null or v_g not in ('g3','g4','g5','miss') then continue; end if;
+    if v_cid is null or length(v_cid) not between 8 and 64 then continue; end if;
+
+    insert into public.draw_log (day, grade, device, client_id, source)
+      values (v_day, v_g, p_device, v_cid, 'lease')
+      on conflict (client_id) do nothing;
+    get diagnostics v_ins = row_count;
+
+    if v_ins = 1 then
+      v_done := v_done + 1;
+      v_hold := jsonb_set(v_hold, array[v_g],
+                          to_jsonb(greatest(coalesce((v_hold->>v_g)::int, 0) - 1, 0)), true);
+    else
+      v_skip := v_skip + 1;
+    end if;
+  end loop;
+
+  update public.draw_lease_hold set hold = v_hold, updated_at = now()
+    where day = v_day and device = p_device;
+
+  return jsonb_build_object('ok', true, 'committed', v_done, 'already', v_skip, 'hold', v_hold);
+end $$;
+
+-- 남은 예약을 통째로 반납한다. "이 기기의 예약을 0으로 만든다"는 형태라 두 번 불러도 안전하다.
+create or replace function public.draw_lease_return(p_token text, p_device text)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare v_day text; v_rem jsonb; v_hold jsonb; v_k text; v_n int;
+begin
+  if not public._draw_auth(p_token, 'kiosk') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  select remaining into v_rem from public.draw_stock where day = v_day for update;
+  if v_rem is null then return jsonb_build_object('ok', false, 'error', 'noday'); end if;
+  select hold into v_hold from public.draw_lease_hold
+    where day = v_day and device = p_device for update;
+  if v_hold is null then
+    return jsonb_build_object('ok', true, 'returned', '{}'::jsonb, 'remaining', v_rem);
+  end if;
+
+  foreach v_k in array array['g3','g4','g5','miss'] loop
+    v_n := coalesce((v_hold->>v_k)::int, 0);
+    if v_n > 0 then
+      v_rem := jsonb_set(v_rem, array[v_k],
+                         to_jsonb((coalesce((v_rem->>v_k)::int, 0) + v_n)), true);
+    end if;
+  end loop;
+
+  update public.draw_stock set remaining = v_rem, updated_at = now() where day = v_day;
+  update public.draw_lease_hold set hold = '{}'::jsonb, updated_at = now()
+    where day = v_day and device = p_device;
+
+  return jsonb_build_object('ok', true, 'returned', v_hold, 'remaining', v_rem);
+end $$;
+
+-- ── 키오스크 상태 조회 ──────────────────────────────────────
+-- 아이패드가 주기적으로 부른다. 남은 수량을 등급별로 내려주지 않는 것은 의도다 —
+-- 화면이 참가자를 향해 있어서 "3등 2개 남음"이 보이면 그게 곧 정보 유출이다.
+create or replace function public.draw_state(p_token text, p_device text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare v_day text; v_rem jsonb; v_hold jsonb; v_k text;
+        v_srv int := 0; v_hld int := 0;
+begin
+  if not public._draw_auth(p_token, 'kiosk') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', true, 'open', false);
+  end if;
+
+  select remaining into v_rem from public.draw_stock where day = v_day;
+  select hold into v_hold from public.draw_lease_hold
+    where day = v_day and device = p_device;
+  v_hold := coalesce(v_hold, '{}'::jsonb);
+
+  foreach v_k in array array['g1','g2','g3','g4','g5','miss'] loop
+    v_srv := v_srv + greatest(coalesce((v_rem->>v_k)::int, 0), 0);
+  end loop;
+  foreach v_k in array array['g3','g4','g5','miss'] loop
+    v_hld := v_hld + greatest(coalesce((v_hold->>v_k)::int, 0), 0);
+  end loop;
+
+  return jsonb_build_object('ok', true, 'open', true, 'day', v_day,
+                            'server_left', v_srv, 'hold', v_hold, 'hold_left', v_hld);
+end $fn$;
+
+-- ── 관리 콘솔 ───────────────────────────────────────────────
+create or replace function public.draw_admin_state(p_token text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $fn$
+declare v_day text; v_rem jsonb; v_tally jsonb; v_holds jsonb; v_recent jsonb;
+begin
+  if not public._draw_auth(p_token, 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  select value into v_day from public.draw_config where key = 'active_day';
+
+  select remaining into v_rem from public.draw_stock where day = v_day;
+
+  -- 되돌린 건(undone)은 정산에서 뺀다 — 상품이 나가지 않았기 때문이다
+  select coalesce(jsonb_object_agg(grade, n), '{}'::jsonb) into v_tally from (
+    select grade, count(*)::int as n from public.draw_log
+     where day = v_day and not undone group by grade) t;
+
+  select coalesce(jsonb_object_agg(device, hold), '{}'::jsonb) into v_holds
+    from public.draw_lease_hold where day = v_day;
+
+  select coalesce(jsonb_agg(r order by r_id desc), '[]'::jsonb) into v_recent from (
+    select id as r_id, jsonb_build_object(
+             'id', id, 'grade', grade, 'device', device,
+             'source', source, 'at', at, 'undone', undone) as r
+      from public.draw_log where day = v_day order by id desc limit 20) s;
+
+  return jsonb_build_object('ok', true, 'day', coalesce(v_day, ''),
+                            'open', (v_day is not null and v_day <> ''),
+                            'remaining', coalesce(v_rem, '{}'::jsonb),
+                            'tally', v_tally, 'holds', v_holds, 'recent', v_recent);
+end $fn$;
+
+-- 날짜를 연다. 초기 재고(pool)는 노트북이 docs/draw-core.js의 DAY_POOLS에서 읽어 보낸다 —
+-- 수량을 SQL에도 적어두면 두 벌이 되어 한쪽만 고쳤을 때 조용히 어긋난다.
+create or replace function public.draw_admin_open(p_token text, p_day text, p_pool jsonb)
+returns jsonb
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $fn$
+declare v_k text; v_n int;
+begin
+  if not public._draw_auth(p_token, 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  if p_day is null or p_day !~ '^[A-Z0-9]{1,8}$' then
+    return jsonb_build_object('ok', false, 'error', 'day');
+  end if;
+  -- 여섯 등급이 전부 있고 0 이상의 정수여야 한다. 하나라도 빠지면 그 등급이 통째로 증발한다.
+  foreach v_k in array array['g1','g2','g3','g4','g5','miss'] loop
+    if p_pool->>v_k is null then
+      return jsonb_build_object('ok', false, 'error', 'pool:' || v_k);
+    end if;
+    v_n := (p_pool->>v_k)::int;
+    if v_n < 0 or v_n > 5000 then
+      return jsonb_build_object('ok', false, 'error', 'pool:' || v_k);
+    end if;
+  end loop;
+
+  -- 이미 열린 적 있는 날짜면 재고를 덮지 않는다. 덮으면 그날 나간 발권이 통째로 되살아난다.
+  insert into public.draw_stock (day, remaining) values (p_day, p_pool)
+    on conflict (day) do nothing;
+  update public.draw_config set value = p_day where key = 'active_day';
+
+  return jsonb_build_object('ok', true, 'day', p_day);
+end $fn$;
+
+create or replace function public.draw_admin_close(p_token text)
+returns jsonb
+language plpgsql volatile security definer set search_path = public
+as $fn$
+begin
+  if not public._draw_auth(p_token, 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  update public.draw_config set value = '' where key = 'active_day';
+  return jsonb_build_object('ok', true);
+end $fn$;
+
+create or replace function public.draw_admin_set(p_token text, p_grade text, p_n int)
+returns jsonb
+language plpgsql volatile security definer set search_path = public
+as $fn$
+declare v_day text; v_rem jsonb;
+begin
+  if not public._draw_auth(p_token, 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  if p_grade is null or p_grade not in ('g1','g2','g3','g4','g5','miss') then
+    return jsonb_build_object('ok', false, 'error', 'grade');
+  end if;
+  if p_n is null or p_n < 0 or p_n > 5000 then
+    return jsonb_build_object('ok', false, 'error', 'n');
+  end if;
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  select remaining into v_rem from public.draw_stock where day = v_day for update;
+  if v_rem is null then return jsonb_build_object('ok', false, 'error', 'noday'); end if;
+  v_rem := jsonb_set(v_rem, array[p_grade], to_jsonb(p_n), true);
+  update public.draw_stock set remaining = v_rem, updated_at = now() where day = v_day;
+  return jsonb_build_object('ok', true, 'remaining', v_rem);
+end $fn$;
+
+-- 마지막 1건 되돌리기. 부스에서 오조작은 반드시 생긴다.
+-- 예약분(source='lease')을 되돌려도 remaining으로 돌려준다 — 그 기기가 오프라인일 수 있어
+-- hold로 돌려주면 스태프가 확인할 방법이 없다.
+create or replace function public.draw_admin_undo(p_token text)
+returns jsonb
+language plpgsql volatile security definer set search_path = public
+as $fn$
+declare v_day text; v_rem jsonb; v_id bigint; v_grade text;
+begin
+  if not public._draw_auth(p_token, 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'auth');
+  end if;
+  select value into v_day from public.draw_config where key = 'active_day';
+  if v_day is null or v_day = '' then
+    return jsonb_build_object('ok', false, 'error', 'closed');
+  end if;
+
+  select remaining into v_rem from public.draw_stock where day = v_day for update;
+  if v_rem is null then return jsonb_build_object('ok', false, 'error', 'noday'); end if;
+
+  select id, grade into v_id, v_grade from public.draw_log
+    where day = v_day and not undone order by id desc limit 1 for update;
+  if v_id is null then return jsonb_build_object('ok', false, 'error', 'nothing'); end if;
+
+  update public.draw_log set undone = true where id = v_id;
+  v_rem := jsonb_set(v_rem, array[v_grade],
+                     to_jsonb((coalesce((v_rem->>v_grade)::int, 0) + 1)), true);
+  update public.draw_stock set remaining = v_rem, updated_at = now() where day = v_day;
+  return jsonb_build_object('ok', true, 'grade', v_grade, 'remaining', v_rem);
+end $fn$;
+
+-- ── 권한 ────────────────────────────────────────────────────
+-- ⚠️ Postgres는 새 함수의 EXECUTE를 public 롤에 자동으로 준다. 이 revoke를 빠뜨리면
+--    아래 grant를 아무리 좁게 잡아도 누구나 실행할 수 있다(토큰 검사만 남는 셈이 된다).
+revoke execute on function public._draw_auth(text, text)               from public, anon, authenticated;
+revoke execute on function public._draw_pick(jsonb)                    from public, anon, authenticated;
+revoke execute on function public.draw_pull(text, text, text)          from public, anon, authenticated;
+revoke execute on function public.draw_lease(text, text, int)          from public, anon, authenticated;
+revoke execute on function public.draw_lease_commit(text, text, jsonb) from public, anon, authenticated;
+revoke execute on function public.draw_lease_return(text, text)        from public, anon, authenticated;
+revoke execute on function public.draw_state(text, text)               from public, anon, authenticated;
+revoke execute on function public.draw_admin_state(text)               from public, anon, authenticated;
+revoke execute on function public.draw_admin_open(text, text, jsonb)   from public, anon, authenticated;
+revoke execute on function public.draw_admin_close(text)               from public, anon, authenticated;
+revoke execute on function public.draw_admin_set(text, text, int)      from public, anon, authenticated;
+revoke execute on function public.draw_admin_undo(text)                from public, anon, authenticated;
+
+-- 정적 페이지가 부르는 것만 anon에게 연다. _draw_auth·_draw_pick은 내부용이라 열지 않는다
+-- (security definer 함수 안에서는 호출자 권한과 무관하게 실행되므로 열 필요가 없다).
+grant execute on function public.draw_pull(text, text, text)          to anon;
+grant execute on function public.draw_lease(text, text, int)          to anon;
+grant execute on function public.draw_lease_commit(text, text, jsonb) to anon;
+grant execute on function public.draw_lease_return(text, text)        to anon;
+grant execute on function public.draw_state(text, text)               to anon;
+grant execute on function public.draw_admin_state(text)               to anon;
+grant execute on function public.draw_admin_open(text, text, jsonb)   to anon;
+grant execute on function public.draw_admin_close(text)               to anon;
+grant execute on function public.draw_admin_set(text, text, int)      to anon;
+grant execute on function public.draw_admin_undo(text)                to anon;

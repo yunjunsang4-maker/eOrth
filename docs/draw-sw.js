@@ -14,7 +14,7 @@
  */
 
 /** 캐시 이름 = 버전. 게시본을 고칠 때마다 v2, v3… 로 올린다 */
-const CACHE = 'eorth-draw-v1';
+const CACHE = 'eorth-draw-v3';
 
 /**
  * 프리캐시 대상. 이 페이지는 외부 폰트·이미지·CDN을 하나도 쓰지 않으므로
@@ -22,7 +22,10 @@ const CACHE = 'eorth-draw-v1';
  * 경로는 서비스 워커 위치 기준 상대경로다 — 공개본이 저장소 이름 경로 아래에
  * 놓이더라도 절대경로처럼 어긋나지 않는다.
  */
-const ASSETS = ['./draw.html', './draw-core.js'];
+// draw-admin.html은 오프라인에서 할 수 있는 일이 없다(모든 값이 서버에 있다).
+// 그래도 담는 이유는, 노트북 와이파이가 잠깐 끊겼을 때 브라우저 오류 페이지 대신
+// "연결 끊김"이 찍힌 콘솔이 떠야 스태프가 상황을 알아볼 수 있기 때문이다.
+const ASSETS = ['./draw.html', './draw-admin.html', './draw-core.js'];
 
 self.addEventListener('install', (event) => {
   // cache: 'reload'로 받아야 한다. 그냥 addAll(ASSETS)를 하면 HTTP 캐시를 경유하므로,
