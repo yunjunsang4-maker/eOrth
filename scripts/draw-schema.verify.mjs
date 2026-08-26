@@ -133,7 +133,13 @@ ok(/least\(floor\(random\(\) \* total\)::int, total - 1\)/.test(sqlPick),
    'ticket 계산식이 draw-core.js drawOne()과 같다 (min(floor(r*total), total-1))');
 
 console.log('\n8. 토큰 안전장치');
-inDraw(/CHANGE-ME-KIOSK/, 'placeholder 토큰이 심겨 있다');
+// ⚠️ 이 두 줄은 "실제 토큰이 저장소에 커밋되는 것"을 막는 게이트다.
+//    이 저장소는 공개라, 토큰이 커밋되는 순간 링크를 아는 누구나 소스에서 꺼내
+//    재고를 뽑아갈 수 있다. schema.sql에는 placeholder만 두고 실제 값은
+//    supabase/draw-tokens.local.sql(gitignore 대상)에서 update로 넣는다.
+//    ✗ 가 뜨면 검사를 지우지 말고 schema.sql을 placeholder로 되돌릴 것.
+inDraw(/'CHANGE-ME-KIOSK'/, 'schema.sql에 실제 kiosk 토큰이 없다 (placeholder 유지)');
+inDraw(/'CHANGE-ME-ADMIN'/, 'schema.sql에 실제 admin 토큰이 없다 (placeholder 유지)');
 inDraw(/like 'CHANGE-ME%'/, 'placeholder 그대로면 모든 호출을 거부한다');
 inDraw(/if v_kiosk = v_admin then return false/, '키오스크 토큰과 관리 토큰이 같으면 거부한다');
 inDraw(/if p_need = 'admin' then return p_token = v_admin/, "admin 경로는 관리 토큰만 통과한다");
@@ -145,7 +151,20 @@ for (const fn of ['draw_admin_state', 'draw_admin_open', 'draw_admin_close',
   ok(/_draw_auth\(p_token, 'admin'\)/.test(head), `${fn}: admin 토큰을 요구한다`);
 }
 
-console.log('\n9. 게시 목록');
+console.log('\n9. 토큰 파일이 커밋 경로에 없다');
+// 실제 토큰은 supabase/draw-tokens.local.sql 에만 있고 gitignore로 막혀 있어야 한다.
+const ignore = readFileSync('.gitignore', 'utf8');
+ok(/^supabase\/draw-tokens\*\.local\.sql$/m.test(ignore),
+   '.gitignore가 supabase/draw-tokens*.local.sql 을 막는다');
+// 템플릿에 실수로 실제 값을 채워 넣고 커밋하는 경로도 막는다
+const example = readFileSync('supabase/draw-tokens.example.sql', 'utf8');
+ok(/PUT-KIOSK-TOKEN-HERE/.test(example) && /PUT-ADMIN-TOKEN-HERE/.test(example),
+   '템플릿에 실제 토큰이 채워져 있지 않다');
+// insert로 쓰면 on conflict do nothing 때문에 조용히 아무 일도 안 일어난다
+ok(/update public\.draw_config/.test(example) && !/insert into public\.draw_config/.test(example),
+   '템플릿이 update를 쓴다 (insert는 on conflict로 무시된다)');
+
+console.log('\n10. 게시 목록');
 const pages = readFileSync('scripts/lib/pagesFiles.mjs', 'utf8');
 for (const f of ['draw.html', 'draw-admin.html', 'draw-core.js', 'draw-sw.js']) {
   ok(pages.includes(`'${f}'`), `PUBLISHED_FILES에 ${f}가 있다`);

@@ -449,32 +449,39 @@ HTTP 캐시를 경유해서, gh-pages의 `max-age` 창(약 10분) 안에 버전�
 
 한 번만 하면 되고, 순서를 지켜야 한다.
 
-### 1. 토큰 두 개를 정한다
-
-16자 이상 무작위 문자열 두 개. 서로 달라야 한다.
-
-```
-kiosk_token  → 아이패드 A·B에 입력
-admin_token  → 노트북에 입력
-```
-
-### 2. SQL을 실행한다
+### 1. SQL을 실행한다
 
 Supabase 대시보드 → SQL Editor에서 `supabase/schema.sql`의 **뽑기 절**(파일 끝
 "부스 뽑기 서버 재고" 주석부터 끝까지)을 실행한다. 전체를 다시 실행해도 되지만
 (전부 `if not exists` / `create or replace`), 뽑기만 필요하면 그 절만으로 충분하다.
 
-**⚠️ 실행 전에 `insert into public.draw_config` 의 `CHANGE-ME-KIOSK` / `CHANGE-ME-ADMIN`을
-1번에서 정한 값으로 바꿔야 한다.** 바꾸지 않으면 `_draw_auth`가 모든 호출을 거부한다
-(이것은 안전장치다 — placeholder 그대로 게시되는 사고를 막는다).
+이 시점에는 토큰이 `CHANGE-ME-*` placeholder라 **모든 RPC가 거부된다.** 정상이다.
 
-이미 실행한 뒤에 토큰을 바꾸려면 `insert`가 아니라 `update`여야 한다
-(`on conflict do nothing`이라 다시 넣어도 안 바뀐다):
+### 2. 토큰을 넣는다 — 저장소에는 남기지 않는다
 
-```sql
-update public.draw_config set value = '<새 토큰>' where key = 'kiosk_token';
-update public.draw_config set value = '<새 토큰>' where key = 'admin_token';
+**이 저장소는 공개다.** 토큰이 커밋되는 순간 링크를 아는 누구나 소스에서 꺼내 재고를
+뽑아갈 수 있으므로, `schema.sql`에는 placeholder만 두고 실제 값은 커밋되지 않는 파일에서만 넣는다.
+
 ```
+supabase/draw-tokens.example.sql   (템플릿, 추적됨)
+      ↓ 복사
+supabase/draw-tokens.local.sql     (실제 토큰, .gitignore로 차단됨)
+```
+
+복사해서 토큰 두 개를 채우고 SQL Editor에 붙여넣어 실행한다.
+템플릿에 토큰 생성 명령과 확인 쿼리가 들어 있다.
+
+- **16자 이상, 서로 달라야 한다.** 같으면 `_draw_auth`가 거부한다 — 같으면 아이패드가 곧 관리자다.
+- 아이패드 스태프가 손으로 입력하므로 헷갈리는 글자(`O`/`0`, `l`/`I`/`1`)는 빼는 편이 낫다.
+- **`insert`가 아니라 `update`여야 한다.** `schema.sql`의 insert는 `on conflict do nothing`이라
+  다시 넣어도 값이 안 바뀌는데, 오류도 안 나서 조용히 실패한다. 증상은 부스에서
+  "토큰이 맞지 않습니다"로만 보인다.
+- 확인 쿼리는 토큰 자체를 찍지 않는다(SQL Editor 결과가 화면에 남고 스크린샷에도 찍힌다) —
+  길이와 앞 3글자, placeholder 잔존 여부만 본다.
+
+`scripts/draw-schema.verify.mjs`가 `schema.sql`에 placeholder가 남아 있는지 지킨다.
+실제 토큰을 넣고 커밋하려 하면 `npm test`가 실패한다 — **그때 검사를 지우지 말고
+`schema.sql`을 placeholder로 되돌릴 것.**
 
 ### 3. 게시한다
 
@@ -509,6 +516,11 @@ update public.draw_config set value = '<새 토큰>' where key = 'admin_token';
 노트북에서 "둘째날 열기"를 누른다. **D1 재고는 그대로 남고 D2가 새로 열린다** —
 이미 열린 날짜는 덮지 않으므로(`on conflict do nothing`) 실수로 눌러도 첫날 발권이
 되살아나지 않는다.
+
+### 행사 뒤 — 토큰 폐기
+
+`supabase/draw-tokens.example.sql` 맨 아래의 되돌리기 문장을 실행하면 토큰이 placeholder로
+돌아가고 **모든 RPC가 즉시 거부한다.** 표 자체는 `event_participants`와 함께 파기한다.
 
 ## 추후 (이번 범위 밖)
 

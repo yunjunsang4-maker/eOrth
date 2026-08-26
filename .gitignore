@@ -96,3 +96,10 @@ _workspace/
 # 타임별 리포트(event-report-slot1.local.html 등)까지 덮도록 와일드카드로 둔다 —
 # 파일명 하나만 적어 두면 새 산출물이 조용히 추적 대상이 된다.
 event-report*.local.html
+
+# 부스 뽑기 실제 토큰(커밋 금지). 이 저장소는 공개라 토큰이 커밋되는 순간
+# 링크를 아는 누구나 소스에서 꺼내 재고를 뽑아갈 수 있다.
+# 템플릿인 supabase/draw-tokens.example.sql 만 추적한다.
+# 와일드카드로 둔 이유는 위 리포트와 같다 — 이름 하나만 적어 두면 변형(draw-tokens-d2.local.sql
+# 같은 것)이 조용히 추적 대상이 된다.
+supabase/draw-tokens*.local.sql
