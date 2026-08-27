@@ -40,22 +40,46 @@
   .stage{
     position:relative;background:linear-gradient(180deg,#100C1A,#0A0A0F);
     border:1px solid var(--line);border-radius:20px;
-    min-height:520px;display:flex;align-items:center;justify-content:center;
+    min-height:660px;display:flex;align-items:center;justify-content:center;
     overflow:hidden;
   }
   .stars{position:absolute;inset:0;pointer-events:none;opacity:.5}
-  /* ── 발권기 ── */
-  .kiosk{position:relative;width:min(100%,420px);display:flex;flex-direction:column}
+
+  /* ── 발권기 ──
+     세로형 셀프체크인 키오스크다. 위에서부터 브랜드 바 → 안내 화면 → 물리 버튼 →
+     통풍구 → 배출 슬롯이고, 슬롯 아래로 탑승권이 밀려 나온다.
+     순서가 곧 인과다 — 버튼이 화면 위에 떠 있거나 슬롯이 버튼 위에 있으면
+     "이 기계가 표를 뱉는다"로 읽히지 않는다. */
+  /* margin-bottom은 아래 .exit의 margin:-44px를 되돌려 놓는 값이다.
+     .exit는 배출된 탑승권을 레이아웃 높이에서 44px 빼고 계산시키는데, stage가
+     align-items:center라 그만큼 기계 전체가 아래로 밀려 표 밑동이 무대 밖으로 잘린다.
+     기계가 커질수록 이 44px가 그대로 잘림으로 나타난다 — 두 값은 항상 같이 움직여야 한다. */
+  /* 폭 500px은 스텁의 인스타 QR에서 거꾸로 나온 값이다 — QR 153px + 여백 4모듈(양쪽 18.5px)
+     = 190px 판이 들어가려면 스텁이 216px이어야 하고, 본권이 좁아 보이지 않으려면 500px이 필요하다.
+     아래 .pass의 216px · .seal의 right:230px과 한 몸이다. 하나만 고치면 스텁이 티켓을 잡아먹거나
+     REAL TICKET 도장이 스텁 위로 올라탄다. */
+  .kiosk{position:relative;width:min(100%,500px);margin-bottom:44px;display:flex;flex-direction:column}
 
   .face{
     position:relative;z-index:3;
-    background:linear-gradient(180deg,#221E30 0%,#15121D 62%,#0F0D16 100%);
-    border:1px solid #26222F;border-radius:16px 16px 7px 7px;
-    padding:14px 16px 0;display:flex;flex-direction:column;gap:12px;
-    box-shadow:0 20px 44px -26px #000, inset 0 1px 0 rgba(255,255,255,.06);
+    background:
+      /* 몸체 상단 좌우 볼트. 요소를 더 만들지 않고 배경으로 찍는다 —
+         padding-top이 20px이라 아래 브랜드 바(y=20~)와 겹치지 않는다. */
+      radial-gradient(circle at 13px 12px, #4A4459 0 1.5px, #100D17 2.1px, transparent 2.9px),
+      radial-gradient(circle at calc(100% - 13px) 12px, #4A4459 0 1.5px, #100D17 2.1px, transparent 2.9px),
+      linear-gradient(180deg,#272335 0%,#1C1927 46%,#131019 78%,#0E0C14 100%);
+    border:1px solid #2C2739;border-radius:18px 18px 7px 7px;
+    padding:20px 16px 0;display:flex;flex-direction:column;gap:12px;
+    box-shadow:
+      0 30px 64px -30px #000,
+      0 2px 0 rgba(0,0,0,.55),
+      inset 0 1px 0 rgba(255,255,255,.07),
+      inset 0 -50px 70px -60px rgba(191,133,252,.28);
   }
-  /* 급지 중 기계 진동. 부드럽게 흔들면 살아 있는 것처럼 보이므로 steps로 딱딱 끊는다 */
-  .face.busy{animation:hum .085s steps(4,end) infinite}
+  /* 기계 진동. 부드럽게 흔들면 살아 있는 것처럼 보이므로 steps로 딱딱 끊는다.
+     인쇄 구간(0.40s~1.90s)에만 떨어야 하므로 infinite가 아니라 횟수를 센다 — 18 × .085s ≈ 1.53s.
+     준비·절단 구간까지 떨면 기계가 아니라 화면이 흔들리는 것으로 보인다. */
+  .face.busy{animation:hum .085s steps(4,end) .4s 18}
   @keyframes hum{
     0%{transform:translate(0,0)}
     25%{transform:translate(.4px,-.3px)}
@@ -76,29 +100,122 @@
     font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;
     cursor:default;user-select:none;-webkit-user-select:none
   }
-
-  .start{
-    background:var(--neon);color:#0A0A0F;border:0;border-radius:11px;
-    padding:14px;font-size:16px;font-weight:800;font-family:var(--sans);cursor:pointer;
-    transition:transform .1s ease, box-shadow .2s ease, opacity .2s;
+  .face-code{
+    margin-left:auto;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;
+    color:#4E4860;text-transform:uppercase;user-select:none;-webkit-user-select:none
   }
-  .start:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 10px 26px -14px rgba(191,133,252,.9)}
-  .start:active:not(:disabled){transform:translateY(1px)}
-  .start:disabled{opacity:.45;cursor:default}
+
+  /* ── 안내 화면 ──
+     단계 문구는 서로 겹쳐 두고 opacity만 CSS 애니메이션으로 바꾼다.
+     JS 타이머로 텍스트를 갈아끼우면 prefers-reduced-motion에서 급지만 1ms로 줄고
+     문구는 2.2초를 그대로 흘러, 표가 이미 나온 뒤에도 "인쇄 중"이 남는다. */
+  .screen{
+    background:linear-gradient(180deg,#07060B,#0B0912);
+    border:1px solid #0A0810;border-radius:10px;padding:2px;
+    box-shadow:inset 0 2px 7px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05);
+  }
+  .screen-in{
+    border:1px solid rgba(191,133,252,.14);border-radius:8px;
+    padding:15px 14px 13px;display:flex;flex-direction:column;gap:12px;
+    background:repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  }
+  .msgs{display:grid;min-height:46px;align-items:center}
+  .msg{grid-area:1/1;opacity:0;display:flex;flex-direction:column;gap:5px;text-align:center}
+  .msg b{font-size:17px;font-weight:800;letter-spacing:-.01em}
+  .msg em{
+    font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--dim);
+    text-transform:uppercase;font-style:normal
+  }
+  .face.dry .msg[data-p="dry"] b{color:var(--dim)}
+  .face.wait .msg[data-p="wait"] b{color:var(--dim)}
+
+  /* 정지 상태 다섯. 우선순위는 net > done > wait > dry > ready 다.
+     done이 dry보다 먼저인 이유: 마지막 한 장을 뽑아 소진된 순간에 "발권 종료"부터 뜨면
+     방금 나온 표가 무효로 읽힌다. net이 맨 앞인 이유: 지금 벌어지는 일이기 때문이다. */
+  .face:not(.busy):not(.done):not(.dry):not(.wait):not(.net) .msg[data-p="ready"]{opacity:1}
+  .face.dry:not(.busy):not(.done):not(.wait):not(.net) .msg[data-p="dry"]{opacity:1}
+  .face.wait:not(.busy):not(.done):not(.net) .msg[data-p="wait"]{opacity:1}
+  .face.done:not(.busy):not(.net) .msg[data-p="done"]{opacity:1}
+  .face.net:not(.busy) .msg[data-p="net"]{opacity:1}
+  /* 대기 중에도 기계가 살아 있다는 신호 — 서버를 부르는 동안 LED가 깜빡인다 */
+  .face.net .led{background:#FFB25C;box-shadow:0 0 9px #FFB25C;animation:blink .42s steps(1,end) infinite}
+
+  /* 급지 중 셋. 아래 keyframes의 퍼센트는 feed 애니메이션과 같은 2.2초 눈금 위에 있다 —
+     한쪽만 고치면 화면 문구와 용지 위치가 어긋난다. */
+  .face.busy .msg[data-p="prep"] {animation:showPrep  2.2s linear forwards}
+  .face.busy .msg[data-p="print"]{animation:showPrint 2.2s linear forwards}
+  .face.busy .msg[data-p="cut"]  {animation:showCut   2.2s linear forwards}
+  @keyframes showPrep {0%,18.1%{opacity:1} 18.2%,100%{opacity:0}}
+  @keyframes showPrint{0%,18.1%{opacity:0} 18.2%,93.1%{opacity:1} 93.2%,100%{opacity:0}}
+  @keyframes showCut  {0%,93.1%{opacity:0} 93.2%,100%{opacity:1}}
+
+  .bar{height:4px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+  .bar i{
+    display:block;height:100%;width:0;border-radius:3px;
+    background:linear-gradient(90deg,var(--deep),var(--neon))
+  }
+  .face.busy .bar i{animation:barFill 2.2s linear forwards}
+  .face.done:not(.busy) .bar i{width:100%}
+  @keyframes barFill{from{width:0}to{width:100%}}
+
+  /* ── 물리 버튼 ──
+     몸체에 파인 자리(btn-well) 안에 박혀 있고, 옆면 4px이 그대로 눌림 깊이가 된다. */
+  .btn-well{
+    border-radius:15px;padding:9px;
+    background:linear-gradient(180deg,#0C0A11,#151221);
+    box-shadow:inset 0 3px 8px rgba(0,0,0,.85), inset 0 -1px 0 rgba(255,255,255,.04);
+  }
+  .start{
+    display:block;width:100%;
+    background:linear-gradient(180deg,#D8AEFF 0%,var(--neon) 46%,#A05FEA 100%);
+    color:#16081F;border:0;border-radius:11px;
+    padding:15px;font-size:17px;font-weight:800;font-family:var(--sans);cursor:pointer;
+    letter-spacing:-.01em;
+    box-shadow:0 4px 0 #5C1A93, 0 12px 24px -13px rgba(191,133,252,.9);
+    transition:transform .06s ease, box-shadow .06s ease, filter .2s ease;
+  }
+  .start:hover:not(:disabled){filter:brightness(1.06)}
+  /* 눌린 만큼 옆면을 없앤다. 둘을 같이 안 바꾸면 버튼이 내려가면서 두꺼워진다. */
+  .start:active:not(:disabled){transform:translateY(4px);box-shadow:0 0 0 #5C1A93, 0 5px 12px -9px rgba(191,133,252,.6)}
+  .start:disabled{
+    filter:grayscale(.55) brightness(.62);cursor:default;
+    transform:translateY(4px);box-shadow:0 0 0 #40156A;
+  }
   .start:focus-visible{outline:3px solid #fff;outline-offset:3px}
+
+  /* 통풍구 — 기계 아래쪽에 질감을 하나 더 준다. 슬롯 바로 위라 시선이 슬롯으로 내려간다. */
+  .vents{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 3px 1px}
+  .vents i{
+    width:76px;height:9px;border-radius:2px;
+    background:repeating-linear-gradient(90deg, #06050A 0 2px, transparent 2px 6px);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05)
+  }
+  .vents b{
+    font-family:var(--mono);font-size:8.5px;letter-spacing:.24em;color:#443E52;
+    text-transform:uppercase;font-weight:500;user-select:none;-webkit-user-select:none
+  }
 
   /* 슬롯은 기계의 아래 모서리 그 자체다. 안쪽에 여백을 두고 놓으면
      용지가 슬롯이 아니라 기계 밑동에서 삐져나오는 것으로 보인다. */
   .slot{
-    position:relative;height:13px;margin:0 -16px;border-radius:0 0 6px 6px;
-    background:linear-gradient(180deg,#000 0%,#07060C 100%);
-    box-shadow:inset 0 3px 8px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.06)
+    position:relative;height:15px;margin:0 -16px;border-radius:0 0 7px 7px;
+    background:linear-gradient(180deg,#000 0%,#05040A 62%,#0A0812 100%);
+    box-shadow:inset 0 4px 9px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.07)
   }
+  /* 슬롯 양 끝의 롤러 — 용지를 실제로 물고 있는 지점이 보여야 표가 어디서 나오는지 읽힌다 */
+  .slot::before,.slot::after{
+    content:"";position:absolute;top:4px;width:10px;height:7px;border-radius:2px;
+    background:linear-gradient(180deg,#2C2739,#15121D)
+  }
+  .slot::before{left:10px}
+  .slot::after{right:10px}
   .slot-glow{
     position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
     background:var(--neon);opacity:0;filter:blur(1.5px);transition:opacity .25s
   }
-  .face.busy .slot-glow{opacity:.95}
+  /* 발광도 인쇄 구간에 맞춰 늦게 켜진다 — 버튼을 누르자마자 켜지면 준비 단계가 사라진다 */
+  .face.busy .slot-glow{animation:glowSeq 2.2s linear forwards}
+  @keyframes glowSeq{0%,16%{opacity:0} 22%,88%{opacity:.95} 100%{opacity:.28}}
 
   /* 배출구 — 좌우·아래 여백은 그림자가 잘리지 않도록 두고, 위쪽만 슬롯에 물려 잘린다 */
   .exit{
@@ -109,17 +226,31 @@
     content:"";position:absolute;top:0;left:0;right:0;height:30px;z-index:2;pointer-events:none;
     background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,.36) 55%,transparent 100%)
   }
-  /* 감열 프린터는 롤러가 한 칸씩 돈다 — steps로 끊어야 종이가 밀려 나오는 것으로 읽힌다 */
+  /* 감열 프린터가 실제로 거치는 순서 그대로다 —
+     준비 0.40s(용지 안 움직임) → 인쇄 1.50s(롤러가 한 칸씩) → 절단 0.15s(멈칫) → 배출 0.15s(툭).
+     구간마다 timing-function을 따로 준다. 전체에 steps를 걸면 잘린 표가 떨어지는 마지막 순간까지
+     계단이라 "다 나왔는데 아직 인쇄 중"으로 보이고, 전체를 부드럽게 하면 종이가 아니라 화면 전환이 된다. */
   .feed{transform:translateY(-103%)}
-  .feed.out{animation:feed 1s steps(20,end) forwards}
-  @keyframes feed{from{transform:translateY(-103%)}to{transform:translateY(0)}}
+  .feed.out{animation:feed 2.2s forwards}
+  @keyframes feed{
+    0%    {transform:translateY(-103%);animation-timing-function:steps(1,end)}
+    18.2% {transform:translateY(-103%);animation-timing-function:steps(26,end)}
+    86.4% {transform:translateY(-7%);  animation-timing-function:steps(1,end)}
+    93.2% {transform:translateY(-7%);  animation-timing-function:ease-out}
+    100%  {transform:translateY(0)}
+  }
 
   /* ── 보딩패스 ── */
   .pass{
     --stripe:var(--dim);
     position:relative;background:linear-gradient(155deg,var(--ticket) 0%,var(--ticket-2) 100%);
     border:1px solid var(--line);border-radius:16px;overflow:hidden;
-    display:grid;grid-template-columns:1fr 104px;
+    /* 216px = QR 판 190px + .stub 좌우 패딩 12px씩 + .stub의 border-left 2px.
+       ⚠️ 이 파일에는 box-sizing 규칙이 없어 기본값이 content-box인데, .stub은 폭을 직접
+          주지 않고 그리드 트랙을 채우므로 패딩과 테두리가 트랙 '안쪽'을 먹는다.
+          테두리 2px을 빼먹고 214px으로 두면 QR이 2px 넘쳐 여백이 잘린다.
+       스텁 폭을 바꾸면 .seal의 right도 함께 (216 + 14 = 230). */
+    display:grid;grid-template-columns:1fr 216px;
     box-shadow:0 24px 60px -30px rgba(0,0,0,.9);
   }
   .pass::before{
@@ -181,15 +312,24 @@
   .pass.gold .rank{color:#FFD9A0}
   .rank small{font-size:13px;font-weight:600;margin-left:1px}
   .cap{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--dim);text-align:center}
-  .barcode{width:100%;height:44px;
-    background:repeating-linear-gradient(90deg,
-      var(--ink) 0 1px, transparent 1px 3px,
-      var(--ink) 3px 5px, transparent 5px 6px,
-      var(--ink) 6px 7px, transparent 7px 10px);
-    opacity:.72}
+  /* 인스타 QR — 옛 바코드 자리다.
+     ⚠️ 흰 판은 장식이 아니다. 어두운 티켓 위에 검은 QR만 올리면 명암이 반전되는데,
+        iOS 카메라는 대체로 읽지만 안드로이드 기본 카메라는 자주 실패한다.
+        그래서 판을 SVG 안에 함께 그렸다 — viewBox 41 = QR 33모듈 + 여백(quiet zone) 4+4모듈.
+        여백을 CSS padding으로 빼면 티켓 배경이 여백이 되어 반전 문제가 그대로 남는다.
+     ⚠️ crispEdges가 핵심이다. 190/41 = 4.63px 처럼 모듈이 정수 픽셀로 안 떨어져도
+        모듈 경계가 픽셀에 스냅돼 흐려지지 않는다. 이게 없으면 안티에일리어싱으로
+        경계가 뭉개져 화면-대-화면 스캔이 빡빡해진다.
+     참고: .pass.void의 opacity:.86이 여기에도 걸리지만(부모 opacity는 자식이 되돌릴 수 없다)
+        흰 판 222 / 모듈 12 로 대비가 14:1이라 꽝 티켓에서도 스캔에 지장이 없다. 계산해 본 값이다. */
+  .qr{width:190px;height:190px;display:block;border-radius:6px}
+  .qrbox{display:flex;flex-direction:column;align-items:center;gap:7px}
+  .qr-tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--dim)}
 
   .seal{
-    position:absolute;right:118px;bottom:16px;transform:rotate(-11deg);
+    /* right는 스텁 폭(216px)에 물려 있다 — 스텁을 넓히면 이 값도 같이 올려야
+       도장이 스텁 위로 올라타지 않는다 */
+    position:absolute;right:230px;bottom:16px;transform:rotate(-11deg);
     font-family:var(--mono);font-size:10px;letter-spacing:.2em;
     border:1.5px solid currentColor;border-radius:4px;padding:4px 8px;pointer-events:none;display:none
   }
@@ -202,60 +342,50 @@
   .setup{align-items:center;text-align:center;padding-top:48px}
   .setup h2{font-size:22px}
   .setup-note{color:var(--dim);font-size:14px;max-width:36ch;margin:0}
-  .day-picks{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(100%,420px);margin-top:8px}
-  .day{
-    display:flex;flex-direction:column;gap:6px;padding:22px 14px;cursor:pointer;
-    background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;
-    font-family:var(--sans);transition:border-color .15s,transform .1s
+  /* 기기 등록 폼 */
+  .reg{display:flex;flex-direction:column;gap:14px;width:min(100%,340px);margin-top:8px;text-align:left}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld span{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .fld input{
+    background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:13px 12px;font-family:var(--mono);font-size:16px;letter-spacing:.02em
   }
-  .day:hover{border-color:var(--neon)}
-  .day:active{transform:translateY(1px)}
-  .day:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
-  .day-name{font-size:18px;font-weight:800}
-  .day-sub{font-size:12px;color:var(--dim);font-family:var(--mono);letter-spacing:.03em}
+  .fld input:focus-visible{outline:2px solid var(--neon);outline-offset:1px}
+  .reg-go{margin-top:2px}
+  .reg-msg{margin:0;font-size:13px;color:var(--red);min-height:18px;text-align:center}
+
   .kiosk-wrap{align-items:center}
   .done-note{color:var(--dim);font-size:14px;text-align:center;margin:0}
+
+  /* 스태프 상태줄 — 읽기 전용 */
+  .statline{
+    margin:0;display:flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--dim)
+  }
+  .statline .dot{width:7px;height:7px;border-radius:50%;background:#3A3644;flex:none}
+  .statline .dot.on{background:#4ADE80;box-shadow:0 0 8px rgba(74,222,128,.7)}
+  .statline .dot.off{background:#FFB25C;box-shadow:0 0 8px rgba(255,178,92,.7)}
+  .statline b{font-weight:500;color:#4E4860}
 
   @media (max-width:520px){
     .iata{font-size:30px}
     .grid{grid-template-columns:repeat(2,1fr)}
     .seal{right:112px}
+    /* 세로형 몸체는 좁은 화면에서 버튼이 접힘 아래로 내려가기 쉽다 — 기계 자체를 줄인다 */
+    .stage{min-height:580px}
+    .screen-in{padding:12px 12px 11px;gap:10px}
+    .msgs{min-height:42px}
+    .msg b{font-size:16px}
+    .start{padding:14px;font-size:16px}
+    .vents i{width:52px}
   }
 
   @media (prefers-reduced-motion:reduce){
     *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+    /* 진동만은 아예 끈다. duration만 줄면 delay(.4s)는 그대로 남아 있다가
+       화면이 멈춘 뒤 몸체가 한 번 떨린다 — 줄이려던 바로 그 움직임이다. */
+    .face.busy{animation:none !important}
   }
-
-  /* ── 관리 패널 ── */
-  .admin{
-    width:min(100%,420px);background:var(--card);border:1px solid var(--line);
-    border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px
-  }
-  .admin-head{display:flex;align-items:center;justify-content:space-between}
-  .admin-head h3{margin:0;font-size:16px}
-  .x{background:none;border:0;color:var(--dim);font-size:16px;cursor:pointer;padding:4px 8px}
-  .x:hover{color:var(--ink)}
-  .admin-table{width:100%;border-collapse:collapse;font-size:14px}
-  .admin-table th{
-    font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
-    color:var(--dim);text-align:left;font-weight:500;padding-bottom:6px
-  }
-  .admin-table td{padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
-  .admin-table td:nth-child(2),.admin-table td:nth-child(3){width:76px}
-  .admin-table input{
-    width:64px;background:var(--bg);color:var(--ink);border:1px solid var(--line);
-    border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:14px
-  }
-  .admin-table input:focus-visible{outline:2px solid var(--neon);outline-offset:1px}
-  .admin-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .ghost{
-    background:transparent;color:var(--ink);border:1px solid var(--line);border-radius:10px;
-    padding:11px;font-size:13px;font-family:var(--sans);cursor:pointer
-  }
-  .ghost:hover{border-color:var(--neon);color:var(--neon)}
-  .ghost:focus-visible{outline:2px solid var(--neon);outline-offset:2px}
-  .ghost.danger:hover{border-color:var(--red);color:var(--red)}
-  .admin-msg{margin:0;font-size:13px;color:var(--neon);min-height:18px}
 
   /* ── 스태프 경고 ──
      발권 실패·다른 탭 충돌·저장소 오류처럼 "재고가 틀어질 수 있는" 사건만 여기에 띄운다.
@@ -273,23 +403,30 @@
   <!-- 스태프 경고 — 눌러야 닫힌다. 날짜 선택 화면에서도 보여야 해서 page 맨 위에 둔다 -->
   <p class="alert hidden" id="alert" role="alert"></p>
 
-  <!-- 날짜 선택 — 저장된 상태가 없을 때만 뜬다 -->
+  <!-- 기기 등록 — 토큰과 기기 이름이 없을 때만 뜬다.
+       ⚠️ 이 페이지에는 관리 기능이 없다. 재고 조정·되돌리기·날짜 열기는 전부
+          draw-admin.html(노트북) 쪽이고, 여기에는 그 코드가 한 줄도 들어오지 않는다.
+          "아이패드에서는 관리를 못 하게 한다"를 화면 숨김이 아니라 파일 분리로 지킨다. -->
   <section class="sec setup" id="setup">
-    <h2>오늘은 며칠째인가요?</h2>
-    <p class="setup-note">한 번 고르면 이 기기의 재고가 그날 것으로 정해집니다.
-      바꾸려면 관리 패널에서 초기화해야 합니다.</p>
-    <div class="day-picks">
-      <!-- 문구는 렌더 시점에 DAY_POOLS·EVENT_DAYS에서 만든다(아래 스크립트).
-           수량을 여기 적어두면 꽝 수량이 정해지는 순간 화면만 거짓말을 한다. -->
-      <button class="day" data-day="D1">
-        <span class="day-name"></span>
-        <span class="day-sub"></span>
-      </button>
-      <button class="day" data-day="D2">
-        <span class="day-name"></span>
-        <span class="day-sub"></span>
-      </button>
-    </div>
+    <h2>이 아이패드를 등록합니다</h2>
+    <p class="setup-note">부스 담당자에게 받은 발권 토큰을 한 번만 넣으면 됩니다.
+      이 기기에만 저장되고 화면에는 다시 보이지 않습니다.</p>
+    <form class="reg" id="regForm">
+      <label class="fld">
+        <span>발권 토큰</span>
+        <!-- type=password — 부스에서 참가자가 어깨너머로 보는 것을 막는다 -->
+        <input type="password" id="regToken" autocomplete="off" required
+               autocapitalize="off" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="fld">
+        <span>기기 이름</span>
+        <!-- 관리 콘솔에서 어느 아이패드인지 구분하는 이름이다. 재고를 나누지는 않는다 -->
+        <input type="text" id="regDevice" value="A" maxlength="16" required
+               autocapitalize="characters" autocorrect="off" spellcheck="false">
+      </label>
+      <button class="start reg-go" type="submit">등록</button>
+      <p class="reg-msg" id="regMsg"></p>
+    </form>
   </section>
 
   <!-- 발권기 -->
@@ -301,8 +438,35 @@
           <div class="face-top">
             <span class="led"></span>
             <span class="face-label" id="faceLabel">eOrth Boarding Pass</span>
+            <span class="face-code">Kiosk B04</span>
           </div>
-          <button class="start" id="start">시작하기</button>
+
+          <!-- 안내 화면. 여섯 문구가 겹쳐 있고 face의 상태 클래스(busy/done/dry)와
+               CSS 애니메이션만으로 하나가 뜬다 — JS는 여기 텍스트를 건드리지 않는다. -->
+          <div class="screen">
+            <div class="screen-in">
+              <div class="msgs">
+                <div class="msg" data-p="ready"><b>탑승권 발권</b><em>Press to issue</em></div>
+                <div class="msg" data-p="prep"><b>탑승권 확인 중</b><em>Verifying</em></div>
+                <div class="msg" data-p="print"><b>인쇄 중</b><em>EOR &rarr; DKU</em></div>
+                <div class="msg" data-p="cut"><b>절단 중</b><em>Cutting</em></div>
+                <div class="msg" data-p="done"><b>발권 완료</b><em>Please take your pass</em></div>
+                <div class="msg" data-p="dry"><b>발권 종료</b><em>Out of service</em></div>
+                <!-- 노트북에서 오늘 날짜를 아직 열지 않은 상태 -->
+                <div class="msg" data-p="wait"><b>준비 중</b><em>Opening soon</em></div>
+                <!-- 서버 응답 대기. 느린 와이파이에서 최대 6초까지 걸리는데, 표시가 없으면
+                     스태프가 "안 눌렸나" 하고 계속 누른다(연타는 막혀 있지만 불안하다). -->
+                <div class="msg" data-p="net"><b>확인 중</b><em>Connecting</em></div>
+              </div>
+              <div class="bar"><i></i></div>
+            </div>
+          </div>
+
+          <div class="btn-well">
+            <button class="start" id="start">시작하기</button>
+          </div>
+
+          <div class="vents"><i></i><b>Thermal</b><i></i></div>
           <div class="slot"><i class="slot-glow"></i></div>
         </div>
         <div class="exit">
@@ -312,26 +476,12 @@
     </div>
     <p class="done-note hidden" id="doneNote">오늘 발권이 모두 끝났습니다.</p>
 
-    <div class="admin hidden" id="admin">
-      <div class="admin-head">
-        <h3>관리</h3>
-        <button class="x" id="adminClose" aria-label="닫기">✕</button>
-      </div>
-
-      <table class="admin-table">
-        <thead><tr><th>등급</th><th>남음</th><th>발권</th></tr></thead>
-        <tbody id="adminRows"></tbody>
-      </table>
-
-      <div class="admin-acts">
-        <button class="ghost" id="undo">마지막 1건 되돌리기</button>
-        <button class="ghost" id="copyState">상태 복사</button>
-        <button class="ghost" id="pasteState">상태 붙여넣기</button>
-        <button class="ghost danger" id="resetDay">날짜 다시 고르기</button>
-      </div>
-
-      <p class="admin-msg" id="adminMsg"></p>
-    </div>
+    <!-- 스태프용 상태 표시. 읽기 전용이라 참가자가 봐도 조작할 것이 없다.
+         남은 재고 숫자는 일부러 넣지 않는다 — 화면이 참가자를 향해 있다. -->
+    <p class="statline" id="statline">
+      <i class="dot" id="netDot"></i><span id="netText">연결 확인 중</span>
+      <b id="holdText"></b>
+    </p>
   </section>
 
 </div>
@@ -377,7 +527,17 @@
 
     <aside class="stub">
       <div class="rank"><span data-f="rankNum"></span><small data-f="rankUnit"></small></div>
-      <div class="barcode"></div>
+      <div class="qrbox">
+        <!-- 인스타 QR. 외부 생성 API를 쓰면 와이파이가 끊긴 순간 QR만 빈칸이 되므로
+             (이 페이지의 오프라인 동작이 draw-sw.js의 "외부 리소스 0개" 전제 위에 있다)
+             한 번 생성해 인라인 SVG로 박아 둔다. 내용: https://www.instagram.com/eorth_app?utm_source=qr
+             바꾸려면 scripts/draw-qr.mjs 로 다시 만들 것 — 손으로 고칠 수 있는 문자열이 아니다. -->
+        <svg class="qr" viewBox="0 0 41 41" shape-rendering="crispEdges" role="img" aria-label="인스타그램 @eorth_app 팔로우">
+          <rect width="41" height="41" fill="#FFFFFF"/>
+          <path fill="#0A0A0F" d="M4 4h7v1h-7zM15 4h2v1h-2zM18 4h1v1h-1zM20 4h1v1h-1zM22 4h2v1h-2zM25 4h1v1h-1zM27 4h1v1h-1zM30 4h7v1h-7zM4 5h1v1h-1zM10 5h1v1h-1zM13 5h1v1h-1zM15 5h1v1h-1zM19 5h1v1h-1zM22 5h1v1h-1zM24 5h1v1h-1zM30 5h1v1h-1zM36 5h1v1h-1zM4 6h1v1h-1zM6 6h3v1h-3zM10 6h1v1h-1zM12 6h1v1h-1zM15 6h2v1h-2zM18 6h1v1h-1zM24 6h3v1h-3zM28 6h1v1h-1zM30 6h1v1h-1zM32 6h3v1h-3zM36 6h1v1h-1zM4 7h1v1h-1zM6 7h3v1h-3zM10 7h1v1h-1zM12 7h1v1h-1zM14 7h3v1h-3zM19 7h1v1h-1zM22 7h2v1h-2zM26 7h3v1h-3zM30 7h1v1h-1zM32 7h3v1h-3zM36 7h1v1h-1zM4 8h1v1h-1zM6 8h3v1h-3zM10 8h1v1h-1zM12 8h2v1h-2zM15 8h1v1h-1zM18 8h4v1h-4zM24 8h1v1h-1zM27 8h1v1h-1zM30 8h1v1h-1zM32 8h3v1h-3zM36 8h1v1h-1zM4 9h1v1h-1zM10 9h1v1h-1zM12 9h4v1h-4zM18 9h1v1h-1zM21 9h1v1h-1zM23 9h1v1h-1zM26 9h1v1h-1zM28 9h1v1h-1zM30 9h1v1h-1zM36 9h1v1h-1zM4 10h7v1h-7zM12 10h1v1h-1zM14 10h1v1h-1zM16 10h1v1h-1zM18 10h1v1h-1zM20 10h1v1h-1zM22 10h1v1h-1zM24 10h1v1h-1zM26 10h1v1h-1zM28 10h1v1h-1zM30 10h7v1h-7zM12 11h5v1h-5zM20 11h1v1h-1zM22 11h4v1h-4zM27 11h2v1h-2zM4 12h1v1h-1zM6 12h5v1h-5zM14 12h1v1h-1zM16 12h3v1h-3zM20 12h2v1h-2zM23 12h1v1h-1zM26 12h1v1h-1zM28 12h1v1h-1zM30 12h5v1h-5zM4 13h4v1h-4zM11 13h2v1h-2zM17 13h1v1h-1zM20 13h8v1h-8zM30 13h2v1h-2zM33 13h4v1h-4zM4 14h1v1h-1zM8 14h1v1h-1zM10 14h1v1h-1zM13 14h1v1h-1zM15 14h1v1h-1zM17 14h5v1h-5zM24 14h3v1h-3zM28 14h3v1h-3zM32 14h1v1h-1zM34 14h2v1h-2zM5 15h2v1h-2zM8 15h2v1h-2zM11 15h2v1h-2zM16 15h2v1h-2zM20 15h3v1h-3zM25 15h3v1h-3zM29 15h1v1h-1zM32 15h4v1h-4zM4 16h2v1h-2zM8 16h1v1h-1zM10 16h1v1h-1zM12 16h2v1h-2zM16 16h1v1h-1zM18 16h1v1h-1zM20 16h1v1h-1zM24 16h1v1h-1zM27 16h1v1h-1zM29 16h1v1h-1zM31 16h3v1h-3zM5 17h3v1h-3zM9 17h1v1h-1zM11 17h1v1h-1zM19 17h1v1h-1zM22 17h1v1h-1zM25 17h3v1h-3zM29 17h1v1h-1zM34 17h3v1h-3zM5 18h1v1h-1zM7 18h1v1h-1zM9 18h2v1h-2zM13 18h3v1h-3zM17 18h1v1h-1zM19 18h4v1h-4zM24 18h1v1h-1zM29 18h3v1h-3zM34 18h2v1h-2zM4 19h1v1h-1zM6 19h1v1h-1zM8 19h2v1h-2zM11 19h1v1h-1zM13 19h3v1h-3zM19 19h1v1h-1zM25 19h2v1h-2zM29 19h2v1h-2zM33 19h2v1h-2zM7 20h2v1h-2zM10 20h1v1h-1zM12 20h1v1h-1zM16 20h1v1h-1zM18 20h2v1h-2zM21 20h1v1h-1zM26 20h1v1h-1zM28 20h2v1h-2zM31 20h3v1h-3zM36 20h1v1h-1zM4 21h3v1h-3zM11 21h2v1h-2zM14 21h1v1h-1zM17 21h1v1h-1zM20 21h1v1h-1zM22 21h3v1h-3zM26 21h6v1h-6zM33 21h2v1h-2zM36 21h1v1h-1zM6 22h3v1h-3zM10 22h1v1h-1zM12 22h3v1h-3zM17 22h4v1h-4zM22 22h1v1h-1zM25 22h2v1h-2zM29 22h4v1h-4zM34 22h2v1h-2zM6 23h1v1h-1zM8 23h1v1h-1zM14 23h1v1h-1zM19 23h2v1h-2zM23 23h1v1h-1zM25 23h3v1h-3zM29 23h8v1h-8zM4 24h2v1h-2zM9 24h3v1h-3zM16 24h1v1h-1zM18 24h2v1h-2zM22 24h1v1h-1zM26 24h1v1h-1zM29 24h1v1h-1zM32 24h2v1h-2zM35 24h2v1h-2zM4 25h1v1h-1zM7 25h3v1h-3zM11 25h3v1h-3zM15 25h1v1h-1zM17 25h5v1h-5zM24 25h4v1h-4zM29 25h2v1h-2zM34 25h1v1h-1zM36 25h1v1h-1zM4 26h1v1h-1zM6 26h5v1h-5zM15 26h1v1h-1zM21 26h1v1h-1zM23 26h1v1h-1zM25 26h2v1h-2zM29 26h1v1h-1zM34 26h2v1h-2zM4 27h1v1h-1zM6 27h2v1h-2zM11 27h4v1h-4zM16 27h2v1h-2zM20 27h1v1h-1zM23 27h3v1h-3zM27 27h1v1h-1zM29 27h2v1h-2zM34 27h2v1h-2zM4 28h1v1h-1zM7 28h4v1h-4zM13 28h1v1h-1zM15 28h2v1h-2zM18 28h1v1h-1zM21 28h1v1h-1zM23 28h2v1h-2zM26 28h8v1h-8zM12 29h1v1h-1zM15 29h1v1h-1zM20 29h6v1h-6zM27 29h2v1h-2zM32 29h1v1h-1zM34 29h2v1h-2zM4 30h7v1h-7zM15 30h1v1h-1zM18 30h4v1h-4zM24 30h2v1h-2zM27 30h2v1h-2zM30 30h1v1h-1zM32 30h1v1h-1zM34 30h2v1h-2zM4 31h1v1h-1zM10 31h1v1h-1zM12 31h4v1h-4zM20 31h9v1h-9zM32 31h3v1h-3zM4 32h1v1h-1zM6 32h3v1h-3zM10 32h1v1h-1zM12 32h2v1h-2zM17 32h1v1h-1zM20 32h1v1h-1zM26 32h1v1h-1zM28 32h6v1h-6zM36 32h1v1h-1zM4 33h1v1h-1zM6 33h3v1h-3zM10 33h1v1h-1zM12 33h1v1h-1zM14 33h3v1h-3zM19 33h1v1h-1zM21 33h2v1h-2zM25 33h3v1h-3zM29 33h1v1h-1zM32 33h2v1h-2zM35 33h2v1h-2zM4 34h1v1h-1zM6 34h3v1h-3zM10 34h1v1h-1zM12 34h3v1h-3zM16 34h5v1h-5zM25 34h1v1h-1zM27 34h5v1h-5zM33 34h1v1h-1zM4 35h1v1h-1zM10 35h1v1h-1zM13 35h1v1h-1zM18 35h2v1h-2zM23 35h1v1h-1zM25 35h2v1h-2zM32 35h3v1h-3zM4 36h7v1h-7zM12 36h3v1h-3zM16 36h2v1h-2zM19 36h1v1h-1zM21 36h2v1h-2zM26 36h6v1h-6zM33 36h1v1h-1zM35 36h1v1h-1z"/>
+        </svg>
+        <div class="qr-tag">@eorth_app</div>
+      </div>
       <div class="cap" data-f="cap"></div>
     </aside>
 
@@ -388,11 +548,20 @@
 
 <script type="module">
   import {
-    GRADES, GRADE_KEYS, DAY_POOLS, EVENT_DAYS, makePool, drawOne, undoLast, setRemaining,
-    remaining, tally, restore, isExhausted,
+    GRADES, EVENT_DAYS,
+    LEASE_KEYS, LEASE_TARGET, LEASE_REFILL_AT,
+    drawOne, leaseState,
   } from './draw-core.js';
 
-  const KEY = 'eorth_draw_v1';
+  // event.html과 같은 운영 프로젝트다. anon 키는 공개돼도 되는 값이지만,
+  // 이 키만으로는 아무것도 못 한다 — 뽑기 테이블은 권한이 전부 회수돼 있고
+  // RPC는 스태프가 기기에 넣은 토큰을 따로 검사한다(supabase/schema.sql 참고).
+  const SUPABASE_URL = 'https://blweolnunmsxgztmvzfd.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8';
+
+  const K_TOKEN  = 'eorth_draw_token';
+  const K_DEVICE = 'eorth_draw_device';
+  const K_LOCAL  = 'eorth_draw_local_v2';   // { day, hold, pending, inflight }
 
   const setup     = document.getElementById('setup');
   const kioskWrap = document.getElementById('kioskWrap');
@@ -405,36 +574,96 @@
   const doneNote  = document.getElementById('doneNote');
   const tpl       = document.getElementById('passTpl');
   const alertBox  = document.getElementById('alert');
+  const netDot    = document.getElementById('netDot');
+  const netText   = document.getElementById('netText');
+  const holdText  = document.getElementById('holdText');
 
   /** 스태프에게 남기는 경고. 저절로 사라지지 않고, 눌러야 닫힌다. */
   function warn(msg){
     alertBox.textContent = msg;
     alertBox.classList.remove('hidden');
-    // 배너는 페이지 맨 위인데 관리 패널은 발권기 아래에 있다. 스태프가 패널을 보는 중에
-    // 뜬 경고는 스크롤 위쪽이라 그냥 안 보인다 — 놓치면 안 되는 것들이므로 시야로 끌어온다.
-    // warn()은 실패 경로에서 불리므로 여기서 절대 던지면 안 된다(구형 브라우저 옵션 미지원 등).
-    try { alertBox.scrollIntoView({ block: 'nearest' }); } catch { /* 지원 안 하면 그냥 넘어간다 */ }
+    try { alertBox.scrollIntoView({ block: 'nearest' }); } catch { /* 미지원 브라우저 */ }
   }
   alertBox.addEventListener('click', function(){ alertBox.classList.add('hidden'); });
 
-  // localStorage는 iOS 사파리 프라이빗 탭 등에서 '읽는 것 자체'가 예외를 던진다.
-  // 막지 않으면 이 모듈이 통째로 실행되지 않아 아무 설명 없는 흰 화면이 된다.
-  let state = null;
-  try {
-    state = restore(localStorage.getItem(KEY));
-  } catch (e) {
-    warn('이 브라우저에서 저장소를 쓸 수 없습니다(프라이빗 모드일 수 있습니다). ' +
-         '발권은 되지만 새로고침하면 재고가 사라집니다 — 일반 탭에서 다시 열어 주세요.');
+  // ── 저장소 ──
+  // iOS 사파리 프라이빗 탭은 읽는 것 자체가 던진다. 막지 않으면 모듈이 통째로 실행되지
+  // 않아 아무 설명 없는 흰 화면이 된다.
+  function lsGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); return true; } catch { return false; } }
+
+  let token  = lsGet(K_TOKEN)  || '';
+  let device = lsGet(K_DEVICE) || '';
+
+  /**
+   * 이 기기가 들고 있는 것.
+   * - hold     : 서버에서 미리 받아 둔 예약 재고(오프라인일 때만 쓴다)
+   * - pending  : 오프라인에서 실제로 나간 것. 온라인이 되면 서버에 올려 정산한다
+   * - inflight : 서버에 보냈지만 응답을 못 받은 발권 1건. 아래 issue() 주석 참고
+   */
+  const EMPTY = { day: '', hold: {}, pending: [], inflight: null };
+  let store = EMPTY;
+  (function restoreLocal(){
+    const raw = lsGet(K_LOCAL);
+    if (!raw) return;
+    try {
+      const o = JSON.parse(raw);
+      if (o && typeof o === 'object' && o.hold && Array.isArray(o.pending)) {
+        store = { day: o.day || '', hold: o.hold, pending: o.pending, inflight: o.inflight || null };
+      }
+    } catch { /* 깨졌으면 빈 상태로 시작한다 — 서버가 진실이라 복구 가능하다 */ }
+  })();
+  function saveLocal(){
+    if (!lsSet(K_LOCAL, JSON.stringify(store))) {
+      warn('이 브라우저에서 저장소를 쓸 수 없습니다(프라이빗 모드일 수 있습니다). ' +
+           '발권은 되지만 와이파이가 끊기면 버틸 수 없습니다 — 일반 탭에서 다시 열어 주세요.');
+    }
   }
 
-  function save(){
-    localStorage.setItem(KEY, JSON.stringify(state));
+  function holdTotal(){
+    return LEASE_KEYS.reduce(function(n, k){ return n + (store.hold[k] || 0); }, 0);
   }
 
-  // ── 별 배경 ───────────────────────────────────────────────
-  // 시안에서는 페이지 로드 즉시 그렸지만, 이 화면은 날짜 선택 전엔 발권기가
-  // 숨어 있어 캔버스 크기가 0이다 — 즉시 실행하면 아무것도 안 그려진다.
-  // 그래서 enterKiosk()가 화면을 보여준 뒤에 호출한다.
+  function newClientId(){
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch { /* 폴백 */ }
+    return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+
+  // ── 서버 호출 ──
+  // 타임아웃이 없으면 "연결은 됐는데 응답이 없는" 부스 와이파이에서 버튼이 영원히 멈춘다.
+  async function rpc(fn, args, ms){
+    const ctl = new AbortController();
+    const timer = setTimeout(function(){ ctl.abort(); }, ms || 6000);
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(args),
+        signal: ctl.signal,
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  let online = null;        // null=아직 모름, true/false
+  let serverLeft = null;    // 서버 잔량 합계(등급별로는 받지 않는다)
+  let dayOpen = null;       // 노트북이 오늘 날짜를 열었는가
+
+  function paintStat(){
+    netDot.classList.toggle('on', online === true);
+    netDot.classList.toggle('off', online === false);
+    netText.textContent = online === null ? '연결 확인 중'
+                        : online ? '온라인' : '오프라인 — 예약분으로 발권 중';
+    const h = holdTotal();
+    const p = store.pending.length;
+    holdText.textContent = '· 예약 ' + h + '장' + (p ? ' · 미정산 ' + p + '건' : '');
+  }
+
+  // ── 별 배경 ──
   function paintStars(){
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = stage.clientWidth, h = stage.clientHeight;
@@ -444,8 +673,7 @@
     const ctx = stars.getContext('2d');
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    // 시드 고정 난수 — 리사이즈해도 별자리가 갈리지 않는다
-    let s = 20260909;
+    let s = 20260909;                                  // 시드 고정 — 리사이즈해도 별자리가 안 갈린다
     const rnd = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
     for (let i = 0; i < 90; i++){
       const x = rnd() * w, y = rnd() * h, r = rnd() * 1.3 + .3;
@@ -458,13 +686,14 @@
 
   /**
    * 템플릿을 복제해 등급 하나를 그린다.
-   * 이 페이지는 innerHTML을 쓰지 않는다 — 막아주는 훅이나 lint 규칙이 있어서가 아니라
-   * (이 저장소에는 없다) 마크업을 문자열로 조립하기 시작하면 나중에 사람이 넣은 값이
-   * 섞여 들어가기 때문이다. cloneNode + textContent만 쓴다.
+   * innerHTML을 쓰지 않는다 — 막아주는 규칙이 있어서가 아니라, 마크업을 문자열로 조립하기
+   * 시작하면 나중에 사람이 넣은 값이 섞여 들어가기 때문이다. cloneNode + textContent만 쓴다.
    */
-  function renderPass(gradeKey){
+  function renderPass(gradeKey, dayKey){
     const g = GRADES[gradeKey];
-    const day = EVENT_DAYS[state.day];
+    const day = EVENT_DAYS[dayKey];
+    if (!g) throw new Error('알 수 없는 등급: ' + gradeKey);
+    if (!day) throw new Error('알 수 없는 날짜: ' + dayKey);
     const node = tpl.content.firstElementChild.cloneNode(true);
 
     node.style.setProperty('--stripe', g.stripe);
@@ -485,108 +714,237 @@
     passSlot.replaceChildren(node);
   }
 
-  // 급지(용지 배출 애니메이션)가 도는 동안 참이다.
-  // refreshKiosk()는 run() 말고도 여러 곳에서 불린다 — 특히 다른 탭의 storage 이벤트는
-  // 급지 도중에도 도착한다. 이 플래그가 없으면 그 순간 버튼이 되살아나 연타가 뚫리고
-  // 라벨도 '다시 뽑기'로 미리 바뀐다(설계 문서의 "급지 중 disabled"가 거짓이 된다).
+  // 급지가 도는 동안 참이다. 이 플래그가 없으면 주기 동기화가 급지 도중에 버튼을 되살려
+  // 연타가 뚫리고, 아직 나오지도 않은 탑승권이 이미 나온 것처럼 라벨이 바뀐다.
   let feeding = false;
+  let busyNet = false;      // 서버 응답 대기 중 — 이때도 버튼을 잠근다
 
-  /** 재고가 바닥나면 버튼을 잠근다 — 조용히 꽝을 주지 않는다 */
   function refreshKiosk(){
-    const dry = isExhausted(state);
-    start.disabled = dry || feeding;         // 급지 중에는 누가 불러도 버튼을 되살리지 않는다
-    doneNote.classList.toggle('hidden', !dry);
-    // 라벨도 매번 현재 상태에서 다시 정한다. 한 번 '발권 종료'로 바꾸고 되돌리지 않으면,
-    // 관리 패널로 재고를 채우거나 되돌리기를 해도 버튼에 '발권 종료'가 남아 스태프가 안 누른다.
-    // 급지 중에는 건드리지 않는다 — 아직 나오지도 않은 탑승권이 이미 나온 것처럼 읽힌다.
-    // 애니메이션이 끝나면 animationend가 부르는 이 함수가 곧바로 제대로 정한다.
-    if (feeding) return;
-    start.textContent = dry ? '발권 종료' : (state.history.length ? '다시 뽑기' : '시작하기');
+    const noStock = (serverLeft === 0 && holdTotal() === 0);
+    const closed  = (dayOpen === false);
+    const blocked = noStock || closed || !token;
+
+    start.disabled = blocked || feeding || busyNet;
+    doneNote.classList.toggle('hidden', !noStock);
+    face.classList.toggle('dry', noStock);
+    face.classList.toggle('wait', closed);
+    face.classList.toggle('net', busyNet && !feeding);
+    paintStat();
+    if (feeding || busyNet) return;
+    start.textContent = closed ? '준비 중' : (noStock ? '발권 종료' : '시작하기');
   }
 
-  function run(){
-    if (isExhausted(state)) return;
-    start.disabled = true;
-    feeding = true;                          // 급지 시작 — 실패 경로에서도 반드시 내려야 한다
+  // ── 발권 ──
 
-    // 실패하면 되돌릴 직전 상태. renderPass는 표가 어긋나면 던진다.
-    const prev = state;
-    let result;
-    let saveFailed = false;
+  /**
+   * 한 장을 확보한다. 반환: { grade, day, via }
+   *
+   * ⚠️ 여기서 가장 위험한 것은 "서버는 차감했는데 응답을 못 받은" 경우다.
+   *    그때 새 client_id로 다시 뽑으면 재고가 두 번 빠지고 참가자는 한 장만 받는다.
+   *    그래서 응답을 못 받은 건은 inflight로 남겨 두고, **다음 발권은 그 id를 그대로
+   *    다시 보낸다.** 서버가 이미 처리했다면 같은 등급을 그대로 돌려주고(replay),
+   *    처리 전이었다면 그때 정상 처리된다. 어느 쪽이든 한 번만 나간다.
+   */
+  async function issue(){
+    if (!token) throw new Error('기기가 등록되지 않았습니다');
+
+    // 1) 온라인 경로. inflight가 있으면 새 id를 만들지 않고 그것부터 해소한다.
+    const cid = store.inflight ? store.inflight.cid : newClientId();
+    if (online !== false){
+      store.inflight = { cid: cid, at: Date.now() };
+      saveLocal();
+      try {
+        const r = await rpc('draw_pull', { p_token: token, p_device: device, p_client_id: cid });
+        online = true;
+        if (r && r.ok){
+          store.inflight = null;
+          saveLocal();
+          return { grade: r.grade, day: r.day || store.day, via: r.replay ? 'replay' : 'server' };
+        }
+        // 서버가 명확히 거절한 경우 — 재시도해도 같으므로 inflight를 남기지 않는다
+        if (r && (r.error === 'auth' || r.error === 'closed' || r.error === 'device')){
+          store.inflight = null;
+          saveLocal();
+          if (r.error === 'auth')   throw new Error('토큰이 거부됐습니다. 부스 담당자에게 확인하세요.');
+          if (r.error === 'closed') throw new Error('노트북에서 오늘 날짜가 아직 열리지 않았습니다.');
+          throw new Error('기기 이름이 올바르지 않습니다.');
+        }
+        // 서버 재고 소진 → 아래 예약분으로 내려간다. 서버가 처리한 것은 없으므로 inflight를 지운다.
+        store.inflight = null;
+        saveLocal();
+        if (r && r.error === 'empty') serverLeft = 0;
+      } catch (e) {
+        // 네트워크·타임아웃. inflight는 **일부러 남긴다**(위 주석).
+        online = false;
+        paintStat();
+      }
+    }
+
+    // 2) 예약분(오프라인 경로)
+    const day = store.day;
+    if (!day) throw new Error('예약 재고가 없습니다. 와이파이를 확인해 주세요.');
+    const st = leaseState(day, store.hold);        // g1·g2는 여기서 0으로 깔린다(2차 방어선)
+    const out = drawOne(st);                       // 재고가 0이면 던진다 — 조용히 꽝을 주지 않는다
+    store.hold = { ...store.hold, [out.grade]: (store.hold[out.grade] || 0) - 1 };
+    store.pending = store.pending.concat([
+      { client_id: newClientId(), grade: out.grade, at: Date.now() },
+    ]);
+    saveLocal();
+    return { grade: out.grade, day: day, via: 'lease' };
+  }
+
+  async function run(){
+    if (start.disabled) return;
+    start.disabled = true;
+    busyNet = true;
+    refreshKiosk();
+
+    let got;
     try {
-      result = drawOne(state);
-      state = result.state;
-      // 저장은 애니메이션 전에 한다 — 도중에 앱이 꺼져도 재고가 맞는다.
-      // 다만 저장 실패로 발권을 롤백하지는 않는다. iOS 사파리 프라이빗 탭처럼 쓰기가
-      // 매번 던지는 환경에서 롤백하면 탑승권이 한 장도 안 나온다 —
-      // 화면 안내가 약속한 "이대로도 발권은 됩니다"를 지키려면 메모리 재고로 계속 가야 한다.
-      try { save(); } catch (eSave) { saveFailed = true; }
-      renderPass(result.grade);
+      got = await issue();
     } catch (e) {
-      // 여기까지 왔다는 건 참가자가 탑승권을 못 봤다는 뜻이다 — 상품이 안 나갔으므로 차감을
-      // 되돌린다. 안 되돌리면 실패할 때마다 재고가 한 개씩 조용히 증발한다(스태프는 알 방법이 없다).
-      feeding = false;                       // 빠뜨리면 버튼이 영구히 잠긴다
-      // 경고를 가장 먼저 띄운다 — 아래 정리 중 무엇이 또 던져도 스태프에게 메시지는 남는다.
-      warn('발권에 실패해 이 1건을 되돌렸습니다(재고는 그대로입니다). 다시 눌러 주세요. — ' +
+      busyNet = false;
+      warn('발권하지 못했습니다 — ' + (e && e.message ? e.message : String(e)));
+      refreshKiosk();
+      return;
+    }
+    busyNet = false;
+
+    // 지난 탑승권을 먼저 슬롯 안으로 되돌린다. renderPass보다 뒤에 하면 새 표가
+    // 이미 배출된 위치에 한 프레임 그려졌다가 위로 빨려 올라간다.
+    face.classList.remove('done');
+    feed.classList.remove('out');
+    void feed.offsetWidth;                    // 리플로우 — 두 번째부터도 애니메이션이 다시 걸리게
+
+    try {
+      renderPass(got.grade, got.day);
+    } catch (e) {
+      // 참가자가 표를 못 봤다 = 상품이 안 나갔다. 서버 차감은 이미 됐으므로 되돌릴 수
+      // 없다 — 스태프에게 노트북에서 되돌리라고 명시적으로 알린다. 조용히 넘어가면
+      // 재고가 한 장 증발하고 아무도 모른다.
+      face.classList.remove('busy', 'done');
+      warn('탑승권을 그리지 못했습니다. 이 1건은 서버에서 이미 차감됐으니 ' +
+           '노트북 관리 화면에서 "마지막 1건 되돌리기"를 눌러 주세요. — ' +
            (e && e.message ? e.message : String(e)));
-      state = prev;
-      try { save(); } catch (e2) { /* 저장 자체가 막힌 상황 — 메모리 재고라도 맞춰 둔다 */ }
-      passSlot.replaceChildren();
-      face.classList.remove('busy');
-      refreshKiosk();                        // 버튼을 되살린다 — 안 그러면 새로고침 말고는 복구가 없다
-      syncAdminNumbers();
+      refreshKiosk();
       return;
     }
 
-    face.classList.remove('done');
-    feed.classList.remove('out');
-    void feed.offsetWidth;                   // 리플로우 — 두 번째부터도 애니메이션이 다시 걸리게
+    feeding = true;
     face.classList.add('busy');
     feed.classList.add('out');
 
-    // 발권은 이미 성공했다. 아래 둘은 부수 작업이라 롤백 try 바깥에 둔다 —
-    // 안에 두면 여기서 던졌을 때 정상 발권이 취소되고 화면의 탑승권이 지워진다.
-    if (saveFailed){
-      warn('재고가 저장되지 않았습니다(프라이빗 모드일 수 있습니다). 발권은 정상 처리했지만, ' +
-           '새로고침하면 오늘 기록이 사라집니다 — 일반 탭에서 다시 열어 주세요.');
+    if (got.via === 'lease'){
+      // 조용히 넘어가면 스태프가 오프라인인 줄 모른 채 하루를 보낸다
+      paintStat();
     }
-    // 패널을 열어둔 채 발권해도 숫자가 박제되지 않게. 실패해도 발권에는 영향이 없다.
-    try { syncAdminNumbers(); }
-    catch (e3) { warn('관리 패널의 숫자를 갱신하지 못했습니다. 패널을 닫았다 다시 열어 주세요.'); }
+    sync();                                   // 발권 직후 한 번 — 예약 잔량을 바로 채운다
   }
 
-  feed.addEventListener('animationend', function(){
-    feeding = false;  // 급지 끝 — 이제 버튼이 다시 눌려야 한다
+  feed.addEventListener('animationend', function(e){
+    // animationend는 버블링된다. 지금 탑승권에는 애니메이션이 없지만, 나중에 표 안에
+    // 짧은 연출이라도 넣으면 그 종료가 여기로 올라와 급지가 끝나기 전에 버튼이 풀린다.
+    if (e.target !== feed) return;
+    feeding = false;
     face.classList.remove('busy');
     face.classList.add('done');
-    refreshKiosk();   // 버튼 활성화와 라벨('다시 뽑기'/'발권 종료')을 여기서 한 곳으로 모은다
+    refreshKiosk();
   });
 
   start.addEventListener('click', run);
 
-  // ── 날짜 선택 ──
-  for (const btn of document.querySelectorAll('.day')){
-    // 이름과 개수는 표에서 만든다 — 꽝 수량이 정해지면 DAY_POOLS만 고쳐도 버튼이 따라온다.
-    // 하드코딩해 두면 "501개"라고 적힌 버튼이 실제로는 531개를 나눠주게 된다.
-    const day  = btn.dataset.day;
-    const pool = DAY_POOLS[day];
-    const sum  = GRADE_KEYS.reduce(function(n, k){ return n + (pool[k] || 0); }, 0);
-    btn.querySelector('.day-name').textContent = EVENT_DAYS[day].label;
-    btn.querySelector('.day-sub').textContent =
-      (pool.g1 > 0 ? '항공권 포함' : '항공권 없음') + ' · ' + sum + '개';
-
-    btn.addEventListener('click', function(){
-      state = makePool(btn.dataset.day);
-      // 저장이 막혀도 화면은 연다 — 메모리 재고로라도 부스를 돌릴 수 있어야 한다
-      try {
-        save();
-      } catch (e) {
-        warn('재고를 저장하지 못했습니다(프라이빗 모드일 수 있습니다). ' +
-             '이대로도 발권은 되지만 새로고침하면 오늘 기록이 사라집니다.');
+  // ── 서버 동기화 ──
+  // 순서가 중요하다. ① 오프라인에서 나간 것을 먼저 정산해야 ② 서버가 내려주는 hold가
+  // 맞는 값이 된다. 뒤집으면 이미 쓴 예약분을 아직 들고 있는 것으로 착각한다.
+  let syncing = false;
+  async function sync(){
+    if (!token || syncing) return;
+    syncing = true;
+    try {
+      // ① 미정산 예약분 올리기 (client_id 유니크라 몇 번 보내도 결과가 같다)
+      if (store.pending.length){
+        const items = store.pending.slice(0, 200);
+        const r = await rpc('draw_lease_commit',
+          { p_token: token, p_device: device, p_items: items }, 8000);
+        if (r && r.ok){
+          const sent = new Set(items.map(function(i){ return i.client_id; }));
+          store.pending = store.pending.filter(function(i){ return !sent.has(i.client_id); });
+          saveLocal();
+        }
       }
-      enterKiosk();
-    });
+
+      // ② 응답을 못 받았던 발권 해소
+      if (store.inflight){
+        const r = await rpc('draw_pull',
+          { p_token: token, p_device: device, p_client_id: store.inflight.cid });
+        if (r && r.ok){
+          // 서버는 처리했는데 그때 화면에는 표가 안 나왔다 → 상품이 안 나간 1건이 남아 있다.
+          // 스태프가 노트북에서 되돌려야 재고가 맞는다. 자동으로 되돌리지 않는 이유는,
+          // 표가 실제로 나왔는지 여부를 기기가 알 방법이 없기 때문이다.
+          warn('네트워크 지연으로 처리 여부가 불분명했던 발권 1건(' +
+               (GRADES[r.grade] ? GRADES[r.grade].rank : r.grade) +
+               ')이 서버에 기록돼 있습니다. 참가자에게 상품이 나가지 않았다면 ' +
+               '노트북에서 "마지막 1건 되돌리기"를 눌러 주세요.');
+        }
+        store.inflight = null;
+        saveLocal();
+      }
+
+      // ③ 상태 읽고 예약 채우기
+      const st = await rpc('draw_state', { p_token: token, p_device: device });
+      online = true;
+      if (!st || !st.ok){
+        if (st && st.error === 'auth') warn('토큰이 거부됐습니다. 부스 담당자에게 확인하세요.');
+        return;
+      }
+      dayOpen = !!st.open;
+      if (!st.open){ serverLeft = null; refreshKiosk(); return; }
+
+      store.day = st.day;
+      store.hold = st.hold || {};
+      serverLeft = st.server_left;
+      saveLocal();
+
+      if (holdTotal() < LEASE_REFILL_AT && serverLeft > 0){
+        const r = await rpc('draw_lease',
+          { p_token: token, p_device: device, p_want: LEASE_TARGET });
+        if (r && r.ok){ store.hold = r.hold || {}; saveLocal(); }
+      }
+    } catch (e) {
+      online = false;
+    } finally {
+      syncing = false;
+      refreshKiosk();
+    }
   }
+
+  // ── 기기 등록 ──
+  const regForm = document.getElementById('regForm');
+  const regMsg  = document.getElementById('regMsg');
+  regForm.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const t = document.getElementById('regToken').value.trim();
+    const d = document.getElementById('regDevice').value.trim().toUpperCase();
+    if (t.length < 8){ regMsg.textContent = '토큰이 너무 짧습니다.'; return; }
+    if (!/^[A-Z0-9_-]{1,16}$/.test(d)){
+      regMsg.textContent = '기기 이름은 영문·숫자 16자 이내여야 합니다.'; return;
+    }
+    regMsg.textContent = '확인 중…';
+    try {
+      const r = await rpc('draw_state', { p_token: t, p_device: d });
+      if (!r || !r.ok){
+        regMsg.textContent = r && r.error === 'auth'
+          ? '토큰이 맞지 않습니다.' : '서버가 거부했습니다. 담당자에게 알려주세요.';
+        return;
+      }
+      token = t; device = d;
+      lsSet(K_TOKEN, t); lsSet(K_DEVICE, d);
+      regMsg.textContent = '';
+      enterKiosk();
+    } catch {
+      regMsg.textContent = '서버에 연결하지 못했습니다. 와이파이를 확인해 주세요.';
+    }
+  });
 
   function enterKiosk(){
     setup.classList.add('hidden');
@@ -594,10 +952,10 @@
     paintStars();
     refreshKiosk();
     keepAwake();
+    sync();
   }
 
   // ── 화면 꺼짐 방지 ──
-  // 부스에서 화면이 꺼지면 스태프가 매번 깨워야 한다. 미지원 브라우저에서는 조용히 넘어간다.
   let wakeLock = null;
   async function keepAwake(){
     try {
@@ -605,178 +963,24 @@
     } catch { /* 배터리 절약 모드 등에서 거부될 수 있다 — 기능이 아니라 편의다 */ }
   }
   document.addEventListener('visibilitychange', function(){
-    if (document.visibilityState === 'visible') keepAwake();
+    if (document.visibilityState === 'visible'){ keepAwake(); sync(); }
   });
 
-  // ── 관리 패널 ──
-  // 라벨을 3초 길게 눌러 연다. 참가자가 실수로 열 수 없어야 하고,
-  // 스태프는 안내 없이도 찾을 수 있어야 해서 "누르고 있으면 열리는" 방식을 골랐다.
-  const admin     = document.getElementById('admin');
-  const adminRows = document.getElementById('adminRows');
-  const adminMsg  = document.getElementById('adminMsg');
-  const faceLabel = document.getElementById('faceLabel');
-
-  let holdTimer = 0;
-  const startHold = () => {
-    clearTimeout(holdTimer);
-    holdTimer = setTimeout(openAdmin, 3000);
-  };
-  const cancelHold = () => clearTimeout(holdTimer);
-
-  faceLabel.addEventListener('pointerdown', startHold);
-  faceLabel.addEventListener('pointerup', cancelHold);
-  faceLabel.addEventListener('pointercancel', cancelHold);
-  faceLabel.addEventListener('pointerleave', cancelHold);
-
-  function say(msg){
-    adminMsg.textContent = msg;
-    setTimeout(function(){ if (adminMsg.textContent === msg) adminMsg.textContent = ''; }, 3000);
-  }
-
-  function openAdmin(){
-    renderAdmin();
-    admin.classList.remove('hidden');
-  }
-
-  function renderAdmin(){
-    const left = remaining(state);
-    const done = tally(state);
-    adminRows.replaceChildren();
-
-    for (const k of GRADE_KEYS){
-      const tr = document.createElement('tr');
-
-      const name = document.createElement('td');
-      name.textContent = GRADES[k].rank + ' · ' + GRADES[k].prize;
-
-      const leftCell = document.createElement('td');
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.min = '0';
-      input.value = String(left[k] || 0);
-      input.addEventListener('change', function(){
-        // 빈 칸은 0이 아니다. Number('')이 0이고 Number.isInteger(0)이 참이라 setRemaining이
-        // 통과해 버리므로, "고치려고 지웠다가 다른 데를 눌렀다"만으로 그 등급이 영구 소진된다.
-        // change는 블러 때 발화하므로 이 경로가 실제로 매우 쉽게 밟힌다.
-        if (input.value.trim() === ''){
-          input.value = String(remaining(state)[k] || 0);
-          return;
-        }
-        const n = Number(input.value);
-        try {
-          state = setRemaining(state, k, n);
-          save();
-          refreshKiosk();
-          say(GRADES[k].rank + ' 재고를 ' + n + '개로 맞췄습니다');
-        } catch (e) {
-          input.value = String(remaining(state)[k] || 0);
-          say('0 이상의 정수만 넣을 수 있습니다');
-        }
-      });
-      leftCell.appendChild(input);
-
-      const doneCell = document.createElement('td');
-      doneCell.textContent = String(done[k] || 0);
-
-      tr.append(name, leftCell, doneCell);
-      adminRows.appendChild(tr);
-    }
-  }
-
-  /**
-   * 패널이 열려 있으면 숫자만 제자리에서 갱신한다.
-   * 패널은 발권기 바로 아래 같은 화면에 있고 자동으로 닫히지도 않아, 스태프가 열어둔 채
-   * 계속 발권하는 것이 자연스러운 동선이다 — 갱신하지 않으면 정산을 옛 숫자 위에서 하게 된다.
-   *
-   * renderAdmin()을 다시 부르지 않는 이유: 그러면 행을 새로 만들어서 스태프가 입력 중이던
-   * 값이 날아간다. 지금 포커스가 있는 칸은 아예 건드리지 않는다.
-   */
-  function syncAdminNumbers(){
-    if (admin.classList.contains('hidden')) return;
-    const left = remaining(state);
-    const done = tally(state);
-    const rows = adminRows.children;
-    if (rows.length !== GRADE_KEYS.length) return;   // 아직 그려지기 전이면 아무것도 하지 않는다
-    GRADE_KEYS.forEach(function(k, i){
-      const row = rows[i];
-      const input = row.querySelector('input');
-      if (input && input !== document.activeElement) input.value = String(left[k] || 0);
-      row.lastElementChild.textContent = String(done[k] || 0);
-    });
-  }
-
-  document.getElementById('adminClose').addEventListener('click', function(){
-    admin.classList.add('hidden');
-  });
-
-  document.getElementById('undo').addEventListener('click', function(){
-    if (!state.history.length){ say('되돌릴 발권이 없습니다'); return; }
-    const last = state.history[state.history.length - 1];
-    state = undoLast(state);
-    save();
-    renderAdmin();
-    refreshKiosk();
-    say(GRADES[last.grade].rank + ' 1건을 되돌렸습니다');
-  });
-
-  // 클립보드는 권한·보안 컨텍스트에 따라 막힌다. 실패하면 텍스트를 화면에 띄워
-  // 스태프가 직접 복사할 수 있게 한다 — "복사됐겠거니" 하고 넘어가면 백업이 없다.
-  document.getElementById('copyState').addEventListener('click', async function(){
-    const text = JSON.stringify(state);
-    try {
-      await navigator.clipboard.writeText(text);
-      say('상태를 복사했습니다');
-    } catch {
-      window.prompt('아래 내용을 직접 복사해 두세요', text);
-    }
-  });
-
-  document.getElementById('pasteState').addEventListener('click', function(){
-    const raw = window.prompt('복사해 둔 상태를 붙여넣으세요');
-    if (raw === null) return;
-    const next = restore(raw.trim());
-    if (!next){ say('형식이 맞지 않아 반영하지 않았습니다'); return; }
-    state = next;
-    save();
-    renderAdmin();
-    refreshKiosk();
-    say('상태를 복원했습니다');
-  });
-
-  document.getElementById('resetDay').addEventListener('click', function(){
-    const n = state.history.length;
-    if (!window.confirm('발권 ' + n + '건 기록이 지워지고 재고가 초기화됩니다. 계속할까요?')) return;
-    localStorage.removeItem(KEY);
-    location.reload();
-  });
+  window.addEventListener('online',  function(){ online = true;  sync(); });
+  window.addEventListener('offline', function(){ online = false; refreshKiosk(); });
+  setInterval(sync, 12000);
 
   // ── 다른 탭 감지 ──
-  // 재고는 localStorage에 있지만 state는 탭마다 따로 메모리에 있고 save()는 무조건 덮어쓴다.
-  // 탭 A가 300→299를 쓴 뒤 탭 B(메모리엔 아직 300)가 발권하면 다시 299를 쓴다 —
-  // 상품은 2개 나가고 차감은 1개다. 화면에도 이력에도 아무 신호가 없다.
-  // storage 이벤트는 '다른 탭'의 변경만 오므로 이걸로 잡는다. 조용히 맞추기만 하면 스태프가
-  // 두 탭을 계속 쓰게 되므로 반드시 눈에 띄게 알린다.
+  // 서버 재고는 이제 안전하지만 **예약분은 이 기기의 localStorage에 있다.**
+  // 같은 아이패드에서 탭을 두 개 열면 두 탭이 각자 오래된 hold를 들고 있다가
+  // 오프라인 구간에서 같은 예약분을 두 번 쓴다.
   window.addEventListener('storage', function(e){
-    if (e.key !== KEY) return;
-    const next = restore(e.newValue);
-    if (!next){
-      // 덮어쓰지 않는다 — 이 탭이 들고 있는 재고가 그나마 성한 쪽일 수 있다
-      warn('다른 탭이 재고를 지웠거나 알아볼 수 없는 값으로 바꿨습니다. ' +
-           '이 탭의 재고는 그대로 두었습니다 — 탭을 하나만 열어 두세요.');
-      return;
-    }
-    const wasSetup = !state;
-    state = next;
-    // 날짜 선택 화면이었다면 그 화면을 닫는다. 남겨두면 스태프가 날짜를 눌러 다른 탭의
-    // 재고까지 초기화해 버린다.
-    if (wasSetup) enterKiosk(); else refreshKiosk();
-    syncAdminNumbers();
-    warn(wasSetup
-      ? '다른 탭에서 이미 오늘 재고를 열어 두었습니다. 이 탭을 같은 재고로 맞췄습니다 — 탭을 하나만 열어 두세요.'
-      : '다른 탭에서 발권이 있었습니다. 이 탭의 재고를 방금 맞췄습니다 — 탭을 하나만 열어 두세요.');
+    if (e.key !== K_LOCAL) return;
+    warn('이 기기에서 뽑기 화면이 두 개 열려 있습니다. 예약 재고가 어긋날 수 있으니 ' +
+         '하나만 남기고 닫아 주세요.');
   });
 
-  if (state) enterKiosk();
+  if (token && device) enterKiosk();
 </script>
 
 <!-- 오프라인 대비 서비스 워커 등록.

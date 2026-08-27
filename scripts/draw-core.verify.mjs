@@ -3,6 +3,7 @@
 import {
   GRADE_KEYS, GRADES, DAY_POOLS, EVENT_DAYS, makePool, drawOne, undoLast, setRemaining,
   remaining, totalRemaining, isExhausted, tally, restore,
+  LEASE_KEYS, LEASE_TARGET, LEASE_REFILL_AT, leaseState,
 } from '../docs/draw-core.js';
 
 let fail = 0;
@@ -172,6 +173,47 @@ console.log('뽑기 재고');
 
 // ── 알 수 없는 날짜 ──
 throws(() => makePool('D3'), '정의되지 않은 날짜는 거부한다');
+
+// ── 예약 재고(오프라인 대비) ──
+// 여기서 틀리면 와이파이가 끊긴 동안 두 아이패드가 각각 1등을 뽑는다.
+// 서버(schema.sql draw_lease)도 g1·g2를 빼지만, 이 층은 "서버가 실수로 담아 보내도
+// 기기가 그걸 뽑지는 않는다"를 보장하는 두 번째 방어선이다.
+{
+  console.log('\n예약 재고');
+  ok_(!LEASE_KEYS.includes('g1'), 'LEASE_KEYS에 1등이 없다');
+  ok_(!LEASE_KEYS.includes('g2'), 'LEASE_KEYS에 2등이 없다');
+  ok_(LEASE_KEYS.every((k) => GRADE_KEYS.includes(k)), 'LEASE_KEYS가 전부 알려진 등급이다');
+
+  // 서버가 1등·2등을 담아 보낸 상황을 흉내 낸다 — 기기는 그걸 0으로 깔아야 한다
+  const poisoned = { g1: 5, g2: 5, g3: 2, g4: 3, miss: 1 };
+  const st = leaseState('D2', poisoned);
+  eq(remaining(st).g1, 0, '서버가 1등을 담아 보내도 예약 상태에서는 0');
+  eq(remaining(st).g2, 0, '서버가 2등을 담아 보내도 예약 상태에서는 0');
+  eq(totalRemaining(st), 6, '예약 등급 수량만 합산된다 (2+3+0+1)');
+
+  // 예약분을 전부 뽑아도 1등·2등은 단 한 번도 나오지 않아야 한다
+  const seen = {};
+  let cur = leaseState('D2', poisoned);
+  for (let i = 0; i < 6; i++) {
+    const out = drawOne(cur, seeded(9001 + i));
+    seen[out.grade] = (seen[out.grade] || 0) + 1;
+    cur = out.state;
+  }
+  ok_(!seen.g1 && !seen.g2, '예약분을 전부 소진해도 1등·2등이 나오지 않는다');
+  eq(seen.g3 || 0, 2, '3등은 예약된 2장이 전부 나온다');
+  eq(seen.g4 || 0, 3, '4등은 예약된 3장이 전부 나온다');
+  ok_(isExhausted(cur), '예약분을 다 쓰면 소진 상태가 된다');
+  throws(() => drawOne(cur), '예약분이 바닥나면 던진다 (조용히 꽝을 주지 않는다)');
+
+  // 빈 예약·깨진 값
+  eq(totalRemaining(leaseState('D1', {})), 0, '빈 예약은 합계 0');
+  eq(totalRemaining(leaseState('D1', { g3: -4, g4: 1.5, g5: null })), 0,
+     '음수·소수·null은 0으로 무시된다');
+  throws(() => leaseState('D9', { g3: 1 }), '정의되지 않은 날짜의 예약은 거부한다');
+
+  ok_(LEASE_REFILL_AT < LEASE_TARGET,
+      `보충 기준(${LEASE_REFILL_AT})이 목표(${LEASE_TARGET})보다 작다 — 같거나 크면 매번 다시 채운다`);
+}
 
 console.log(fail === 0 ? '\n뽑기 재고 ✓ 전부 통과' : `\n뽑기 재고 ✗ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

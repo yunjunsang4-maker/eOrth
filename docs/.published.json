@@ -8,6 +8,10 @@
     "account-deletion.html": "31073ae3d1449f2f",
     "notices.json": "2f5a2103d4b2f76a",
     "event-dna.js": "a340f96344655bf2",
-    "event.html": "8cd9a1033ea5e8b1"
+    "event.html": "8cd9a1033ea5e8b1",
+    "draw-core.js": "7677d95e895a249e",
+    "draw.html": "a4a6097092a839ac",
+    "draw-admin.html": "3b0e89c96d2eb4b2",
+    "draw-sw.js": "a16ba4ec24ccc047"
   }
 }
