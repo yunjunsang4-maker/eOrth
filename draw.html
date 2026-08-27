@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>eOrth 부스 뽑기</title>
+<style>
+  :root{
+    --bg:#0A0A0F;
+    --ink:#F5F3FA;
+    --dim:#A1A1B0;
+    --line:#1A1A26;
+    --card:#2E2E3B;
+    --neon:#BF85FC;
+    --deep:#6B21A8;
+    --red:#FF3B30;
+    --ticket:#17141F;
+    --ticket-2:#100E18;
+    --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;
+  }
+
+  body{
+    margin:0;
+    background:
+      radial-gradient(120% 80% at 50% -10%, #191129 0%, transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .page{max-width:1080px;margin:0 auto;padding:48px 20px 96px;display:flex;flex-direction:column;gap:64px}
+
+  h2{font-size:20px;margin:0;letter-spacing:-.01em}
+  .sec{display:flex;flex-direction:column;gap:20px}
+
+  /* ── 데모 무대 ── */
+  .stage{
+    position:relative;background:linear-gradient(180deg,#100C1A,#0A0A0F);
+    border:1px solid var(--line);border-radius:20px;
+    min-height:660px;display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  .stars{position:absolute;inset:0;pointer-events:none;opacity:.5}
+
+  /* ── 발권기 ──
+     세로형 셀프체크인 키오스크다. 위에서부터 브랜드 바 → 안내 화면 → 물리 버튼 →
+     통풍구 → 배출 슬롯이고, 슬롯 아래로 탑승권이 밀려 나온다.
+     순서가 곧 인과다 — 버튼이 화면 위에 떠 있거나 슬롯이 버튼 위에 있으면
+     "이 기계가 표를 뱉는다"로 읽히지 않는다. */
+  /* margin-bottom은 아래 .exit의 margin:-44px를 되돌려 놓는 값이다.
+     .exit는 배출된 탑승권을 레이아웃 높이에서 44px 빼고 계산시키는데, stage가
+     align-items:center라 그만큼 기계 전체가 아래로 밀려 표 밑동이 무대 밖으로 잘린다.
+     기계가 커질수록 이 44px가 그대로 잘림으로 나타난다 — 두 값은 항상 같이 움직여야 한다. */
+  .kiosk{position:relative;width:min(100%,420px);margin-bottom:44px;display:flex;flex-direction:column}
+
+  .face{
+    position:relative;z-index:3;
+    background:
+      /* 몸체 상단 좌우 볼트. 요소를 더 만들지 않고 배경으로 찍는다 —
+         padding-top이 20px이라 아래 브랜드 바(y=20~)와 겹치지 않는다. */
+      radial-gradient(circle at 13px 12px, #4A4459 0 1.5px, #100D17 2.1px, transparent 2.9px),
+      radial-gradient(circle at calc(100% - 13px) 12px, #4A4459 0 1.5px, #100D17 2.1px, transparent 2.9px),
+      linear-gradient(180deg,#272335 0%,#1C1927 46%,#131019 78%,#0E0C14 100%);
+    border:1px solid #2C2739;border-radius:18px 18px 7px 7px;
+    padding:20px 16px 0;display:flex;flex-direction:column;gap:12px;
+    box-shadow:
+      0 30px 64px -30px #000,
+      0 2px 0 rgba(0,0,0,.55),
+      inset 0 1px 0 rgba(255,255,255,.07),
+      inset 0 -50px 70px -60px rgba(191,133,252,.28);
+  }
+  /* 기계 진동. 부드럽게 흔들면 살아 있는 것처럼 보이므로 steps로 딱딱 끊는다.
+     인쇄 구간(0.40s~1.90s)에만 떨어야 하므로 infinite가 아니라 횟수를 센다 — 18 × .085s ≈ 1.53s.
+     준비·절단 구간까지 떨면 기계가 아니라 화면이 흔들리는 것으로 보인다. */
+  .face.busy{animation:hum .085s steps(4,end) .4s 18}
+  @keyframes hum{
+    0%{transform:translate(0,0)}
+    25%{transform:translate(.4px,-.3px)}
+    50%{transform:translate(-.35px,.3px)}
+    75%{transform:translate(.25px,.25px)}
+    100%{transform:translate(0,0)}
+  }
+
+  .face-top{display:flex;align-items:center;gap:9px}
+  .led{
+    width:7px;height:7px;border-radius:50%;background:#3A3644;flex:none;
+    transition:background .25s,box-shadow .25s
+  }
+  .face.busy .led{background:#FFB25C;box-shadow:0 0 9px #FFB25C;animation:blink .42s steps(1,end) infinite}
+  .face.done .led{background:var(--neon);box-shadow:0 0 9px var(--neon)}
+  @keyframes blink{0%,58%{opacity:1}59%,100%{opacity:.22}}
+  .face-label{
+    font-family:var(--mono);font-size:9.5px;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;
+    cursor:default;user-select:none;-webkit-user-select:none
+  }
+  .face-code{
+    margin-left:auto;font-family:var(--mono);font-size:8.5px;letter-spacing:.18em;
+    color:#4E4860;text-transform:uppercase;user-select:none;-webkit-user-select:none
+  }
+
+  /* ── 안내 화면 ──
+     단계 문구는 서로 겹쳐 두고 opacity만 CSS 애니메이션으로 바꾼다.
+     JS 타이머로 텍스트를 갈아끼우면 prefers-reduced-motion에서 급지만 1ms로 줄고
+     문구는 2.2초를 그대로 흘러, 표가 이미 나온 뒤에도 "인쇄 중"이 남는다. */
+  .screen{
+    background:linear-gradient(180deg,#07060B,#0B0912);
+    border:1px solid #0A0810;border-radius:10px;padding:2px;
+    box-shadow:inset 0 2px 7px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.05);
+  }
+  .screen-in{
+    border:1px solid rgba(191,133,252,.14);border-radius:8px;
+    padding:15px 14px 13px;display:flex;flex-direction:column;gap:12px;
+    background:repeating-linear-gradient(180deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  }
+  .msgs{display:grid;min-height:46px;align-items:center}
+  .msg{grid-area:1/1;opacity:0;display:flex;flex-direction:column;gap:5px;text-align:center}
+  .msg b{font-size:17px;font-weight:800;letter-spacing:-.01em}
+  .msg em{
+    font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--dim);
+    text-transform:uppercase;font-style:normal
+  }
+  .face.dry .msg[data-p="dry"] b{color:var(--dim)}
+  .face.wait .msg[data-p="wait"] b{color:var(--dim)}
+
+  /* 정지 상태 다섯. 우선순위는 net > done > wait > dry > ready 다.
+     done이 dry보다 먼저인 이유: 마지막 한 장을 뽑아 소진된 순간에 "발권 종료"부터 뜨면
+     방금 나온 표가 무효로 읽힌다. net이 맨 앞인 이유: 지금 벌어지는 일이기 때문이다. */
+  .face:not(.busy):not(.done):not(.dry):not(.wait):not(.net) .msg[data-p="ready"]{opacity:1}
+  .face.dry:not(.busy):not(.done):not(.wait):not(.net) .msg[data-p="dry"]{opacity:1}
+  .face.wait:not(.busy):not(.done):not(.net) .msg[data-p="wait"]{opacity:1}
+  .face.done:not(.busy):not(.net) .msg[data-p="done"]{opacity:1}
+  .face.net:not(.busy) .msg[data-p="net"]{opacity:1}
+  /* 대기 중에도 기계가 살아 있다는 신호 — 서버를 부르는 동안 LED가 깜빡인다 */
+  .face.net .led{background:#FFB25C;box-shadow:0 0 9px #FFB25C;animation:blink .42s steps(1,end) infinite}
+
+  /* 급지 중 셋. 아래 keyframes의 퍼센트는 feed 애니메이션과 같은 2.2초 눈금 위에 있다 —
+     한쪽만 고치면 화면 문구와 용지 위치가 어긋난다. */
+  .face.busy .msg[data-p="prep"] {animation:showPrep  2.2s linear forwards}
+  .face.busy .msg[data-p="print"]{animation:showPrint 2.2s linear forwards}
+  .face.busy .msg[data-p="cut"]  {animation:showCut   2.2s linear forwards}
+  @keyframes showPrep {0%,18.1%{opacity:1} 18.2%,100%{opacity:0}}
+  @keyframes showPrint{0%,18.1%{opacity:0} 18.2%,93.1%{opacity:1} 93.2%,100%{opacity:0}}
+  @keyframes showCut  {0%,93.1%{opacity:0} 93.2%,100%{opacity:1}}
+
+  .bar{height:4px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+  .bar i{
+    display:block;height:100%;width:0;border-radius:3px;
+    background:linear-gradient(90deg,var(--deep),var(--neon))
+  }
+  .face.busy .bar i{animation:barFill 2.2s linear forwards}
+  .face.done:not(.busy) .bar i{width:100%}
+  @keyframes barFill{from{width:0}to{width:100%}}
+
+  /* ── 물리 버튼 ──
+     몸체에 파인 자리(btn-well) 안에 박혀 있고, 옆면 4px이 그대로 눌림 깊이가 된다. */
+  .btn-well{
+    border-radius:15px;padding:9px;
+    background:linear-gradient(180deg,#0C0A11,#151221);
+    box-shadow:inset 0 3px 8px rgba(0,0,0,.85), inset 0 -1px 0 rgba(255,255,255,.04);
+  }
+  .start{
+    display:block;width:100%;
+    background:linear-gradient(180deg,#D8AEFF 0%,var(--neon) 46%,#A05FEA 100%);
+    color:#16081F;border:0;border-radius:11px;
+    padding:15px;font-size:17px;font-weight:800;font-family:var(--sans);cursor:pointer;
+    letter-spacing:-.01em;
+    box-shadow:0 4px 0 #5C1A93, 0 12px 24px -13px rgba(191,133,252,.9);
+    transition:transform .06s ease, box-shadow .06s ease, filter .2s ease;
+  }
+  .start:hover:not(:disabled){filter:brightness(1.06)}
+  /* 눌린 만큼 옆면을 없앤다. 둘을 같이 안 바꾸면 버튼이 내려가면서 두꺼워진다. */
+  .start:active:not(:disabled){transform:translateY(4px);box-shadow:0 0 0 #5C1A93, 0 5px 12px -9px rgba(191,133,252,.6)}
+  .start:disabled{
+    filter:grayscale(.55) brightness(.62);cursor:default;
+    transform:translateY(4px);box-shadow:0 0 0 #40156A;
+  }
+  .start:focus-visible{outline:3px solid #fff;outline-offset:3px}
+
+  /* 통풍구 — 기계 아래쪽에 질감을 하나 더 준다. 슬롯 바로 위라 시선이 슬롯으로 내려간다. */
+  .vents{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 3px 1px}
+  .vents i{
+    width:76px;height:9px;border-radius:2px;
+    background:repeating-linear-gradient(90deg, #06050A 0 2px, transparent 2px 6px);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05)
+  }
+  .vents b{
+    font-family:var(--mono);font-size:8.5px;letter-spacing:.24em;color:#443E52;
+    text-transform:uppercase;font-weight:500;user-select:none;-webkit-user-select:none
+  }
+
+  /* 슬롯은 기계의 아래 모서리 그 자체다. 안쪽에 여백을 두고 놓으면
+     용지가 슬롯이 아니라 기계 밑동에서 삐져나오는 것으로 보인다. */
+  .slot{
+    position:relative;height:15px;margin:0 -16px;border-radius:0 0 7px 7px;
+    background:linear-gradient(180deg,#000 0%,#05040A 62%,#0A0812 100%);
+    box-shadow:inset 0 4px 9px rgba(0,0,0,.95), inset 0 1px 0 rgba(255,255,255,.07)
+  }
+  /* 슬롯 양 끝의 롤러 — 용지를 실제로 물고 있는 지점이 보여야 표가 어디서 나오는지 읽힌다 */
+  .slot::before,.slot::after{
+    content:"";position:absolute;top:4px;width:10px;height:7px;border-radius:2px;
+    background:linear-gradient(180deg,#2C2739,#15121D)
+  }
+  .slot::before{left:10px}
+  .slot::after{right:10px}
+  .slot-glow{
+    position:absolute;left:12px;right:12px;bottom:1px;height:2px;border-radius:2px;
+    background:var(--neon);opacity:0;filter:blur(1.5px);transition:opacity .25s
+  }
+  /* 발광도 인쇄 구간에 맞춰 늦게 켜진다 — 버튼을 누르자마자 켜지면 준비 단계가 사라진다 */
+  .face.busy .slot-glow{animation:glowSeq 2.2s linear forwards}
+  @keyframes glowSeq{0%,16%{opacity:0} 22%,88%{opacity:.95} 100%{opacity:.28}}
+
+  /* 배출구 — 좌우·아래 여백은 그림자가 잘리지 않도록 두고, 위쪽만 슬롯에 물려 잘린다 */
+  .exit{
+    position:relative;overflow:hidden;
+    padding:0 26px 44px;margin:-4px -26px -44px
+  }
+  .exit::before{
+    content:"";position:absolute;top:0;left:0;right:0;height:30px;z-index:2;pointer-events:none;
+    background:linear-gradient(180deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,.36) 55%,transparent 100%)
+  }
+  /* 감열 프린터가 실제로 거치는 순서 그대로다 —
+     준비 0.40s(용지 안 움직임) → 인쇄 1.50s(롤러가 한 칸씩) → 절단 0.15s(멈칫) → 배출 0.15s(툭).
+     구간마다 timing-function을 따로 준다. 전체에 steps를 걸면 잘린 표가 떨어지는 마지막 순간까지
+     계단이라 "다 나왔는데 아직 인쇄 중"으로 보이고, 전체를 부드럽게 하면 종이가 아니라 화면 전환이 된다. */
+  .feed{transform:translateY(-103%)}
+  .feed.out{animation:feed 2.2s forwards}
+  @keyframes feed{
+    0%    {transform:translateY(-103%);animation-timing-function:steps(1,end)}
+    18.2% {transform:translateY(-103%);animation-timing-function:steps(26,end)}
+    86.4% {transform:translateY(-7%);  animation-timing-function:steps(1,end)}
+    93.2% {transform:translateY(-7%);  animation-timing-function:ease-out}
+    100%  {transform:translateY(0)}
+  }
+
+  /* ── 보딩패스 ── */
+  .pass{
+    --stripe:var(--dim);
+    position:relative;background:linear-gradient(155deg,var(--ticket) 0%,var(--ticket-2) 100%);
+    border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    display:grid;grid-template-columns:1fr 104px;
+    box-shadow:0 24px 60px -30px rgba(0,0,0,.9);
+  }
+  .pass::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--stripe);
+  }
+  .pass.gold::before{
+    background:linear-gradient(180deg,#BF85FC 0%,#FFD9A0 45%,#7EE7E0 100%);
+  }
+  .pass.gold{border-color:rgba(255,217,160,.28)}
+  .pass.void{filter:saturate(.25);opacity:.86}
+
+  .main{padding:20px 20px 16px 22px;display:flex;flex-direction:column;gap:18px;min-width:0}
+
+  .brand{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .wordmark{display:flex;align-items:center;gap:8px;font-weight:800;letter-spacing:-.01em;font-size:15px}
+  .orb{width:16px;height:16px;border-radius:50%;flex:none;
+    background:radial-gradient(circle at 32% 30%, #E6CBFF, var(--neon) 42%, var(--deep) 100%);
+    box-shadow:0 0 10px rgba(191,133,252,.6)}
+  .class{
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--stripe);border:1px solid currentColor;border-radius:999px;padding:3px 9px;white-space:nowrap;
+  }
+  .pass.gold .class{color:#FFD9A0;border-color:rgba(255,217,160,.55)}
+
+  .route{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px}
+  .iata{font-family:var(--mono);font-size:36px;font-weight:700;letter-spacing:.02em;line-height:1}
+  .city{font-size:11.5px;color:var(--dim);margin-top:5px;letter-spacing:.02em}
+  .to{text-align:right}
+  .arc{position:relative;height:22px;color:var(--dim);opacity:.75}
+  .arc svg{width:100%;height:100%;display:block}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 10px;margin:0}
+  .f{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .f dt{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .f dd{margin:0;font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums;letter-spacing:.02em;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .prize{
+    border-top:1px dashed rgba(161,161,176,.25);padding-top:13px;
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px
+  }
+  .prize .label{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .prize .val{font-size:15px;font-weight:700;text-align:right}
+  .pass.gold .prize .val{color:#FFD9A0}
+  .pass.void .prize .val{color:var(--dim);font-weight:600}
+
+  /* 스텁 */
+  .stub{
+    position:relative;border-left:2px dashed rgba(161,161,176,.28);
+    padding:20px 12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:14px;
+    background:rgba(0,0,0,.22)
+  }
+  .stub::before,.stub::after{
+    content:"";position:absolute;left:-9px;width:16px;height:16px;border-radius:50%;background:var(--bg)
+  }
+  .stub::before{top:-9px}
+  .stub::after{bottom:-9px}
+  .rank{font-family:var(--mono);font-size:30px;font-weight:700;line-height:1;color:var(--stripe)}
+  .pass.gold .rank{color:#FFD9A0}
+  .rank small{font-size:13px;font-weight:600;margin-left:1px}
+  .cap{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--dim);text-align:center}
+  .barcode{width:100%;height:44px;
+    background:repeating-linear-gradient(90deg,
+      var(--ink) 0 1px, transparent 1px 3px,
+      var(--ink) 3px 5px, transparent 5px 6px,
+      var(--ink) 6px 7px, transparent 7px 10px);
+    opacity:.72}
+
+  .seal{
+    position:absolute;right:118px;bottom:16px;transform:rotate(-11deg);
+    font-family:var(--mono);font-size:10px;letter-spacing:.2em;
+    border:1.5px solid currentColor;border-radius:4px;padding:4px 8px;pointer-events:none;display:none
+  }
+  .pass.gold .seal.real{display:block;color:#FFD9A0;opacity:.9}
+  .pass.void .seal.void{display:block;color:var(--dim);opacity:.75}
+
+  .hidden{display:none}
+
+  /* ── 날짜 선택 / 발권기 래퍼 ── */
+  .setup{align-items:center;text-align:center;padding-top:48px}
+  .setup h2{font-size:22px}
+  .setup-note{color:var(--dim);font-size:14px;max-width:36ch;margin:0}
+  /* 기기 등록 폼 */
+  .reg{display:flex;flex-direction:column;gap:14px;width:min(100%,340px);margin-top:8px;text-align:left}
+  .fld{display:flex;flex-direction:column;gap:6px}
+  .fld span{font-family:var(--mono);font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .fld input{
+    background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;
+    padding:13px 12px;font-family:var(--mono);font-size:16px;letter-spacing:.02em
+  }
+  .fld input:focus-visible{outline:2px solid var(--neon);outline-offset:1px}
+  .reg-go{margin-top:2px}
+  .reg-msg{margin:0;font-size:13px;color:var(--red);min-height:18px;text-align:center}
+
+  .kiosk-wrap{align-items:center}
+  .done-note{color:var(--dim);font-size:14px;text-align:center;margin:0}
+
+  /* 스태프 상태줄 — 읽기 전용 */
+  .statline{
+    margin:0;display:flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--dim)
+  }
+  .statline .dot{width:7px;height:7px;border-radius:50%;background:#3A3644;flex:none}
+  .statline .dot.on{background:#4ADE80;box-shadow:0 0 8px rgba(74,222,128,.7)}
+  .statline .dot.off{background:#FFB25C;box-shadow:0 0 8px rgba(255,178,92,.7)}
+  .statline b{font-weight:500;color:#4E4860}
+
+  @media (max-width:520px){
+    .iata{font-size:30px}
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .seal{right:112px}
+    /* 세로형 몸체는 좁은 화면에서 버튼이 접힘 아래로 내려가기 쉽다 — 기계 자체를 줄인다 */
+    .stage{min-height:580px}
+    .screen-in{padding:12px 12px 11px;gap:10px}
+    .msgs{min-height:42px}
+    .msg b{font-size:16px}
+    .start{padding:14px;font-size:16px}
+    .vents i{width:52px}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+    /* 진동만은 아예 끈다. duration만 줄면 delay(.4s)는 그대로 남아 있다가
+       화면이 멈춘 뒤 몸체가 한 번 떨린다 — 줄이려던 바로 그 움직임이다. */
+    .face.busy{animation:none !important}
+  }
+
+  /* ── 스태프 경고 ──
+     발권 실패·다른 탭 충돌·저장소 오류처럼 "재고가 틀어질 수 있는" 사건만 여기에 띄운다.
+     관리 패널 토스트(3초)와 달리 저절로 사라지지 않는다 — 부스 소음 속에서 3초는 없는 것과 같다. */
+  .alert{
+    margin:0;background:var(--card);border:1px solid var(--neon);border-left:4px solid var(--neon);
+    border-radius:12px;padding:14px 16px;font-size:15px;line-height:1.5;cursor:pointer
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- 스태프 경고 — 눌러야 닫힌다. 날짜 선택 화면에서도 보여야 해서 page 맨 위에 둔다 -->
+  <p class="alert hidden" id="alert" role="alert"></p>
+
+  <!-- 기기 등록 — 토큰과 기기 이름이 없을 때만 뜬다.
+       ⚠️ 이 페이지에는 관리 기능이 없다. 재고 조정·되돌리기·날짜 열기는 전부
+          draw-admin.html(노트북) 쪽이고, 여기에는 그 코드가 한 줄도 들어오지 않는다.
+          "아이패드에서는 관리를 못 하게 한다"를 화면 숨김이 아니라 파일 분리로 지킨다. -->
+  <section class="sec setup" id="setup">
+    <h2>이 아이패드를 등록합니다</h2>
+    <p class="setup-note">부스 담당자에게 받은 발권 토큰을 한 번만 넣으면 됩니다.
+      이 기기에만 저장되고 화면에는 다시 보이지 않습니다.</p>
+    <form class="reg" id="regForm">
+      <label class="fld">
+        <span>발권 토큰</span>
+        <!-- type=password — 부스에서 참가자가 어깨너머로 보는 것을 막는다 -->
+        <input type="password" id="regToken" autocomplete="off" required
+               autocapitalize="off" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="fld">
+        <span>기기 이름</span>
+        <!-- 관리 콘솔에서 어느 아이패드인지 구분하는 이름이다. 재고를 나누지는 않는다 -->
+        <input type="text" id="regDevice" value="A" maxlength="16" required
+               autocapitalize="characters" autocorrect="off" spellcheck="false">
+      </label>
+      <button class="start reg-go" type="submit">등록</button>
+      <p class="reg-msg" id="regMsg"></p>
+    </form>
+  </section>
+
+  <!-- 발권기 -->
+  <section class="sec kiosk-wrap hidden" id="kioskWrap">
+    <div class="stage" id="stage">
+      <canvas class="stars" id="stars"></canvas>
+      <div class="kiosk">
+        <div class="face" id="face">
+          <div class="face-top">
+            <span class="led"></span>
+            <span class="face-label" id="faceLabel">eOrth Boarding Pass</span>
+            <span class="face-code">Kiosk B04</span>
+          </div>
+
+          <!-- 안내 화면. 여섯 문구가 겹쳐 있고 face의 상태 클래스(busy/done/dry)와
+               CSS 애니메이션만으로 하나가 뜬다 — JS는 여기 텍스트를 건드리지 않는다. -->
+          <div class="screen">
+            <div class="screen-in">
+              <div class="msgs">
+                <div class="msg" data-p="ready"><b>탑승권 발권</b><em>Press to issue</em></div>
+                <div class="msg" data-p="prep"><b>탑승권 확인 중</b><em>Verifying</em></div>
+                <div class="msg" data-p="print"><b>인쇄 중</b><em>EOR &rarr; DKU</em></div>
+                <div class="msg" data-p="cut"><b>절단 중</b><em>Cutting</em></div>
+                <div class="msg" data-p="done"><b>발권 완료</b><em>Please take your pass</em></div>
+                <div class="msg" data-p="dry"><b>발권 종료</b><em>Out of service</em></div>
+                <!-- 노트북에서 오늘 날짜를 아직 열지 않은 상태 -->
+                <div class="msg" data-p="wait"><b>준비 중</b><em>Opening soon</em></div>
+                <!-- 서버 응답 대기. 느린 와이파이에서 최대 6초까지 걸리는데, 표시가 없으면
+                     스태프가 "안 눌렸나" 하고 계속 누른다(연타는 막혀 있지만 불안하다). -->
+                <div class="msg" data-p="net"><b>확인 중</b><em>Connecting</em></div>
+              </div>
+              <div class="bar"><i></i></div>
+            </div>
+          </div>
+
+          <div class="btn-well">
+            <button class="start" id="start">시작하기</button>
+          </div>
+
+          <div class="vents"><i></i><b>Thermal</b><i></i></div>
+          <div class="slot"><i class="slot-glow"></i></div>
+        </div>
+        <div class="exit">
+          <div class="feed" id="feed"><div id="passSlot"></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="done-note hidden" id="doneNote">오늘 발권이 모두 끝났습니다.</p>
+
+    <!-- 스태프용 상태 표시. 읽기 전용이라 참가자가 봐도 조작할 것이 없다.
+         남은 재고 숫자는 일부러 넣지 않는다 — 화면이 참가자를 향해 있다. -->
+    <p class="statline" id="statline">
+      <i class="dot" id="netDot"></i><span id="netText">연결 확인 중</span>
+      <b id="holdText"></b>
+    </p>
+  </section>
+
+</div>
+
+<template id="passTpl">
+  <article class="pass">
+    <div class="main">
+      <div class="brand">
+        <span class="wordmark"><i class="orb"></i>eOrth</span>
+        <span class="class" data-f="cls"></span>
+      </div>
+
+      <div class="route">
+        <div>
+          <div class="iata">EOR</div>
+          <div class="city">이어스</div>
+        </div>
+        <div class="arc">
+          <svg viewBox="0 0 120 22" fill="none" aria-hidden="true">
+            <path d="M2 18 C 30 2, 90 2, 118 18" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 5"/>
+          </svg>
+        </div>
+        <div class="to">
+          <div class="iata">DKU</div>
+          <div class="city">단국대</div>
+        </div>
+      </div>
+
+      <dl class="grid">
+        <div class="f"><dt>Passenger</dt><dd>부스 방문객</dd></div>
+        <div class="f"><dt>Flight</dt><dd data-f="flight"></dd></div>
+        <div class="f"><dt>Date</dt><dd data-f="date"></dd></div>
+        <div class="f"><dt>Gate</dt><dd>B04</dd></div>
+        <div class="f"><dt>Seat</dt><dd data-f="seat"></dd></div>
+        <div class="f"><dt>Boarding</dt><dd data-f="boarding"></dd></div>
+      </dl>
+
+      <div class="prize">
+        <span class="label">Baggage</span>
+        <span class="val" data-f="prize"></span>
+      </div>
+    </div>
+
+    <aside class="stub">
+      <div class="rank"><span data-f="rankNum"></span><small data-f="rankUnit"></small></div>
+      <div class="barcode"></div>
+      <div class="cap" data-f="cap"></div>
+    </aside>
+
+    <span class="seal real">REAL TICKET</span>
+    <span class="seal void">STANDBY</span>
+  </article>
+</template>
+
+<script type="module">
+  import {
+    GRADES, EVENT_DAYS,
+    LEASE_KEYS, LEASE_TARGET, LEASE_REFILL_AT,
+    drawOne, leaseState,
+  } from './draw-core.js';
+
+  // event.html과 같은 운영 프로젝트다. anon 키는 공개돼도 되는 값이지만,
+  // 이 키만으로는 아무것도 못 한다 — 뽑기 테이블은 권한이 전부 회수돼 있고
+  // RPC는 스태프가 기기에 넣은 토큰을 따로 검사한다(supabase/schema.sql 참고).
+  const SUPABASE_URL = 'https://blweolnunmsxgztmvzfd.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8';
+
+  const K_TOKEN  = 'eorth_draw_token';
+  const K_DEVICE = 'eorth_draw_device';
+  const K_LOCAL  = 'eorth_draw_local_v2';   // { day, hold, pending, inflight }
+
+  const setup     = document.getElementById('setup');
+  const kioskWrap = document.getElementById('kioskWrap');
+  const stage     = document.getElementById('stage');
+  const stars     = document.getElementById('stars');
+  const face      = document.getElementById('face');
+  const feed      = document.getElementById('feed');
+  const start     = document.getElementById('start');
+  const passSlot  = document.getElementById('passSlot');
+  const doneNote  = document.getElementById('doneNote');
+  const tpl       = document.getElementById('passTpl');
+  const alertBox  = document.getElementById('alert');
+  const netDot    = document.getElementById('netDot');
+  const netText   = document.getElementById('netText');
+  const holdText  = document.getElementById('holdText');
+
+  /** 스태프에게 남기는 경고. 저절로 사라지지 않고, 눌러야 닫힌다. */
+  function warn(msg){
+    alertBox.textContent = msg;
+    alertBox.classList.remove('hidden');
+    try { alertBox.scrollIntoView({ block: 'nearest' }); } catch { /* 미지원 브라우저 */ }
+  }
+  alertBox.addEventListener('click', function(){ alertBox.classList.add('hidden'); });
+
+  // ── 저장소 ──
+  // iOS 사파리 프라이빗 탭은 읽는 것 자체가 던진다. 막지 않으면 모듈이 통째로 실행되지
+  // 않아 아무 설명 없는 흰 화면이 된다.
+  function lsGet(k){ try { return localStorage.getItem(k); } catch { return null; } }
+  function lsSet(k, v){ try { localStorage.setItem(k, v); return true; } catch { return false; } }
+
+  let token  = lsGet(K_TOKEN)  || '';
+  let device = lsGet(K_DEVICE) || '';
+
+  /**
+   * 이 기기가 들고 있는 것.
+   * - hold     : 서버에서 미리 받아 둔 예약 재고(오프라인일 때만 쓴다)
+   * - pending  : 오프라인에서 실제로 나간 것. 온라인이 되면 서버에 올려 정산한다
+   * - inflight : 서버에 보냈지만 응답을 못 받은 발권 1건. 아래 issue() 주석 참고
+   */
+  const EMPTY = { day: '', hold: {}, pending: [], inflight: null };
+  let store = EMPTY;
+  (function restoreLocal(){
+    const raw = lsGet(K_LOCAL);
+    if (!raw) return;
+    try {
+      const o = JSON.parse(raw);
+      if (o && typeof o === 'object' && o.hold && Array.isArray(o.pending)) {
+        store = { day: o.day || '', hold: o.hold, pending: o.pending, inflight: o.inflight || null };
+      }
+    } catch { /* 깨졌으면 빈 상태로 시작한다 — 서버가 진실이라 복구 가능하다 */ }
+  })();
+  function saveLocal(){
+    if (!lsSet(K_LOCAL, JSON.stringify(store))) {
+      warn('이 브라우저에서 저장소를 쓸 수 없습니다(프라이빗 모드일 수 있습니다). ' +
+           '발권은 되지만 와이파이가 끊기면 버틸 수 없습니다 — 일반 탭에서 다시 열어 주세요.');
+    }
+  }
+
+  function holdTotal(){
+    return LEASE_KEYS.reduce(function(n, k){ return n + (store.hold[k] || 0); }, 0);
+  }
+
+  function newClientId(){
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch { /* 폴백 */ }
+    return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  }
+
+  // ── 서버 호출 ──
+  // 타임아웃이 없으면 "연결은 됐는데 응답이 없는" 부스 와이파이에서 버튼이 영원히 멈춘다.
+  async function rpc(fn, args, ms){
+    const ctl = new AbortController();
+    const timer = setTimeout(function(){ ctl.abort(); }, ms || 6000);
+    try {
+      const res = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(args),
+        signal: ctl.signal,
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  let online = null;        // null=아직 모름, true/false
+  let serverLeft = null;    // 서버 잔량 합계(등급별로는 받지 않는다)
+  let dayOpen = null;       // 노트북이 오늘 날짜를 열었는가
+
+  function paintStat(){
+    netDot.classList.toggle('on', online === true);
+    netDot.classList.toggle('off', online === false);
+    netText.textContent = online === null ? '연결 확인 중'
+                        : online ? '온라인' : '오프라인 — 예약분으로 발권 중';
+    const h = holdTotal();
+    const p = store.pending.length;
+    holdText.textContent = '· 예약 ' + h + '장' + (p ? ' · 미정산 ' + p + '건' : '');
+  }
+
+  // ── 별 배경 ──
+  function paintStars(){
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    stars.width = w * dpr; stars.height = h * dpr;
+    stars.style.width = w + 'px'; stars.style.height = h + 'px';
+    const ctx = stars.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    let s = 20260909;                                  // 시드 고정 — 리사이즈해도 별자리가 안 갈린다
+    const rnd = () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let i = 0; i < 90; i++){
+      const x = rnd() * w, y = rnd() * h, r = rnd() * 1.3 + .3;
+      ctx.globalAlpha = rnd() * .55 + .15;
+      ctx.fillStyle = rnd() > .82 ? '#BF85FC' : '#FFFFFF';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  window.addEventListener('resize', paintStars);
+
+  /**
+   * 템플릿을 복제해 등급 하나를 그린다.
+   * innerHTML을 쓰지 않는다 — 막아주는 규칙이 있어서가 아니라, 마크업을 문자열로 조립하기
+   * 시작하면 나중에 사람이 넣은 값이 섞여 들어가기 때문이다. cloneNode + textContent만 쓴다.
+   */
+  function renderPass(gradeKey, dayKey){
+    const g = GRADES[gradeKey];
+    const day = EVENT_DAYS[dayKey];
+    if (!g) throw new Error('알 수 없는 등급: ' + gradeKey);
+    if (!day) throw new Error('알 수 없는 날짜: ' + dayKey);
+    const node = tpl.content.firstElementChild.cloneNode(true);
+
+    node.style.setProperty('--stripe', g.stripe);
+    if (g.gold) node.classList.add('gold');
+    if (g.isVoid) node.classList.add('void');
+
+    const set = (name, text) => { node.querySelector('[data-f="' + name + '"]').textContent = text; };
+    set('cls', g.cls);
+    set('seat', g.seat);
+    set('boarding', g.isVoid ? 'WAIT' : 'NOW');
+    set('prize', g.prize);
+    set('date', day.date);
+    set('flight', day.flight);
+    set('rankNum', g.isVoid ? '꽝' : g.rank.replace('등', ''));
+    set('rankUnit', g.isVoid ? '' : '등');
+    set('cap', day.flight.replace(' ', '') + ' · ' + g.seat);
+
+    passSlot.replaceChildren(node);
+  }
+
+  // 급지가 도는 동안 참이다. 이 플래그가 없으면 주기 동기화가 급지 도중에 버튼을 되살려
+  // 연타가 뚫리고, 아직 나오지도 않은 탑승권이 이미 나온 것처럼 라벨이 바뀐다.
+  let feeding = false;
+  let busyNet = false;      // 서버 응답 대기 중 — 이때도 버튼을 잠근다
+
+  function refreshKiosk(){
+    const noStock = (serverLeft === 0 && holdTotal() === 0);
+    const closed  = (dayOpen === false);
+    const blocked = noStock || closed || !token;
+
+    start.disabled = blocked || feeding || busyNet;
+    doneNote.classList.toggle('hidden', !noStock);
+    face.classList.toggle('dry', noStock);
+    face.classList.toggle('wait', closed);
+    face.classList.toggle('net', busyNet && !feeding);
+    paintStat();
+    if (feeding || busyNet) return;
+    start.textContent = closed ? '준비 중' : (noStock ? '발권 종료' : '시작하기');
+  }
+
+  // ── 발권 ──
+
+  /**
+   * 한 장을 확보한다. 반환: { grade, day, via }
+   *
+   * ⚠️ 여기서 가장 위험한 것은 "서버는 차감했는데 응답을 못 받은" 경우다.
+   *    그때 새 client_id로 다시 뽑으면 재고가 두 번 빠지고 참가자는 한 장만 받는다.
+   *    그래서 응답을 못 받은 건은 inflight로 남겨 두고, **다음 발권은 그 id를 그대로
+   *    다시 보낸다.** 서버가 이미 처리했다면 같은 등급을 그대로 돌려주고(replay),
+   *    처리 전이었다면 그때 정상 처리된다. 어느 쪽이든 한 번만 나간다.
+   */
+  async function issue(){
+    if (!token) throw new Error('기기가 등록되지 않았습니다');
+
+    // 1) 온라인 경로. inflight가 있으면 새 id를 만들지 않고 그것부터 해소한다.
+    const cid = store.inflight ? store.inflight.cid : newClientId();
+    if (online !== false){
+      store.inflight = { cid: cid, at: Date.now() };
+      saveLocal();
+      try {
+        const r = await rpc('draw_pull', { p_token: token, p_device: device, p_client_id: cid });
+        online = true;
+        if (r && r.ok){
+          store.inflight = null;
+          saveLocal();
+          return { grade: r.grade, day: r.day || store.day, via: r.replay ? 'replay' : 'server' };
+        }
+        // 서버가 명확히 거절한 경우 — 재시도해도 같으므로 inflight를 남기지 않는다
+        if (r && (r.error === 'auth' || r.error === 'closed' || r.error === 'device')){
+          store.inflight = null;
+          saveLocal();
+          if (r.error === 'auth')   throw new Error('토큰이 거부됐습니다. 부스 담당자에게 확인하세요.');
+          if (r.error === 'closed') throw new Error('노트북에서 오늘 날짜가 아직 열리지 않았습니다.');
+          throw new Error('기기 이름이 올바르지 않습니다.');
+        }
+        // 서버 재고 소진 → 아래 예약분으로 내려간다. 서버가 처리한 것은 없으므로 inflight를 지운다.
+        store.inflight = null;
+        saveLocal();
+        if (r && r.error === 'empty') serverLeft = 0;
+      } catch (e) {
+        // 네트워크·타임아웃. inflight는 **일부러 남긴다**(위 주석).
+        online = false;
+        paintStat();
+      }
+    }
+
+    // 2) 예약분(오프라인 경로)
+    const day = store.day;
+    if (!day) throw new Error('예약 재고가 없습니다. 와이파이를 확인해 주세요.');
+    const st = leaseState(day, store.hold);        // g1·g2는 여기서 0으로 깔린다(2차 방어선)
+    const out = drawOne(st);                       // 재고가 0이면 던진다 — 조용히 꽝을 주지 않는다
+    store.hold = { ...store.hold, [out.grade]: (store.hold[out.grade] || 0) - 1 };
+    store.pending = store.pending.concat([
+      { client_id: newClientId(), grade: out.grade, at: Date.now() },
+    ]);
+    saveLocal();
+    return { grade: out.grade, day: day, via: 'lease' };
+  }
+
+  async function run(){
+    if (start.disabled) return;
+    start.disabled = true;
+    busyNet = true;
+    refreshKiosk();
+
+    let got;
+    try {
+      got = await issue();
+    } catch (e) {
+      busyNet = false;
+      warn('발권하지 못했습니다 — ' + (e && e.message ? e.message : String(e)));
+      refreshKiosk();
+      return;
+    }
+    busyNet = false;
+
+    // 지난 탑승권을 먼저 슬롯 안으로 되돌린다. renderPass보다 뒤에 하면 새 표가
+    // 이미 배출된 위치에 한 프레임 그려졌다가 위로 빨려 올라간다.
+    face.classList.remove('done');
+    feed.classList.remove('out');
+    void feed.offsetWidth;                    // 리플로우 — 두 번째부터도 애니메이션이 다시 걸리게
+
+    try {
+      renderPass(got.grade, got.day);
+    } catch (e) {
+      // 참가자가 표를 못 봤다 = 상품이 안 나갔다. 서버 차감은 이미 됐으므로 되돌릴 수
+      // 없다 — 스태프에게 노트북에서 되돌리라고 명시적으로 알린다. 조용히 넘어가면
+      // 재고가 한 장 증발하고 아무도 모른다.
+      face.classList.remove('busy', 'done');
+      warn('탑승권을 그리지 못했습니다. 이 1건은 서버에서 이미 차감됐으니 ' +
+           '노트북 관리 화면에서 "마지막 1건 되돌리기"를 눌러 주세요. — ' +
+           (e && e.message ? e.message : String(e)));
+      refreshKiosk();
+      return;
+    }
+
+    feeding = true;
+    face.classList.add('busy');
+    feed.classList.add('out');
+
+    if (got.via === 'lease'){
+      // 조용히 넘어가면 스태프가 오프라인인 줄 모른 채 하루를 보낸다
+      paintStat();
+    }
+    sync();                                   // 발권 직후 한 번 — 예약 잔량을 바로 채운다
+  }
+
+  feed.addEventListener('animationend', function(e){
+    // animationend는 버블링된다. 지금 탑승권에는 애니메이션이 없지만, 나중에 표 안에
+    // 짧은 연출이라도 넣으면 그 종료가 여기로 올라와 급지가 끝나기 전에 버튼이 풀린다.
+    if (e.target !== feed) return;
+    feeding = false;
+    face.classList.remove('busy');
+    face.classList.add('done');
+    refreshKiosk();
+  });
+
+  start.addEventListener('click', run);
+
+  // ── 서버 동기화 ──
+  // 순서가 중요하다. ① 오프라인에서 나간 것을 먼저 정산해야 ② 서버가 내려주는 hold가
+  // 맞는 값이 된다. 뒤집으면 이미 쓴 예약분을 아직 들고 있는 것으로 착각한다.
+  let syncing = false;
+  async function sync(){
+    if (!token || syncing) return;
+    syncing = true;
+    try {
+      // ① 미정산 예약분 올리기 (client_id 유니크라 몇 번 보내도 결과가 같다)
+      if (store.pending.length){
+        const items = store.pending.slice(0, 200);
+        const r = await rpc('draw_lease_commit',
+          { p_token: token, p_device: device, p_items: items }, 8000);
+        if (r && r.ok){
+          const sent = new Set(items.map(function(i){ return i.client_id; }));
+          store.pending = store.pending.filter(function(i){ return !sent.has(i.client_id); });
+          saveLocal();
+        }
+      }
+
+      // ② 응답을 못 받았던 발권 해소
+      if (store.inflight){
+        const r = await rpc('draw_pull',
+          { p_token: token, p_device: device, p_client_id: store.inflight.cid });
+        if (r && r.ok){
+          // 서버는 처리했는데 그때 화면에는 표가 안 나왔다 → 상품이 안 나간 1건이 남아 있다.
+          // 스태프가 노트북에서 되돌려야 재고가 맞는다. 자동으로 되돌리지 않는 이유는,
+          // 표가 실제로 나왔는지 여부를 기기가 알 방법이 없기 때문이다.
+          warn('네트워크 지연으로 처리 여부가 불분명했던 발권 1건(' +
+               (GRADES[r.grade] ? GRADES[r.grade].rank : r.grade) +
+               ')이 서버에 기록돼 있습니다. 참가자에게 상품이 나가지 않았다면 ' +
+               '노트북에서 "마지막 1건 되돌리기"를 눌러 주세요.');
+        }
+        store.inflight = null;
+        saveLocal();
+      }
+
+      // ③ 상태 읽고 예약 채우기
+      const st = await rpc('draw_state', { p_token: token, p_device: device });
+      online = true;
+      if (!st || !st.ok){
+        if (st && st.error === 'auth') warn('토큰이 거부됐습니다. 부스 담당자에게 확인하세요.');
+        return;
+      }
+      dayOpen = !!st.open;
+      if (!st.open){ serverLeft = null; refreshKiosk(); return; }
+
+      store.day = st.day;
+      store.hold = st.hold || {};
+      serverLeft = st.server_left;
+      saveLocal();
+
+      if (holdTotal() < LEASE_REFILL_AT && serverLeft > 0){
+        const r = await rpc('draw_lease',
+          { p_token: token, p_device: device, p_want: LEASE_TARGET });
+        if (r && r.ok){ store.hold = r.hold || {}; saveLocal(); }
+      }
+    } catch (e) {
+      online = false;
+    } finally {
+      syncing = false;
+      refreshKiosk();
+    }
+  }
+
+  // ── 기기 등록 ──
+  const regForm = document.getElementById('regForm');
+  const regMsg  = document.getElementById('regMsg');
+  regForm.addEventListener('submit', async function(e){
+    e.preventDefault();
+    const t = document.getElementById('regToken').value.trim();
+    const d = document.getElementById('regDevice').value.trim().toUpperCase();
+    if (t.length < 8){ regMsg.textContent = '토큰이 너무 짧습니다.'; return; }
+    if (!/^[A-Z0-9_-]{1,16}$/.test(d)){
+      regMsg.textContent = '기기 이름은 영문·숫자 16자 이내여야 합니다.'; return;
+    }
+    regMsg.textContent = '확인 중…';
+    try {
+      const r = await rpc('draw_state', { p_token: t, p_device: d });
+      if (!r || !r.ok){
+        regMsg.textContent = r && r.error === 'auth'
+          ? '토큰이 맞지 않습니다.' : '서버가 거부했습니다. 담당자에게 알려주세요.';
+        return;
+      }
+      token = t; device = d;
+      lsSet(K_TOKEN, t); lsSet(K_DEVICE, d);
+      regMsg.textContent = '';
+      enterKiosk();
+    } catch {
+      regMsg.textContent = '서버에 연결하지 못했습니다. 와이파이를 확인해 주세요.';
+    }
+  });
+
+  function enterKiosk(){
+    setup.classList.add('hidden');
+    kioskWrap.classList.remove('hidden');
+    paintStars();
+    refreshKiosk();
+    keepAwake();
+    sync();
+  }
+
+  // ── 화면 꺼짐 방지 ──
+  let wakeLock = null;
+  async function keepAwake(){
+    try {
+      if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+    } catch { /* 배터리 절약 모드 등에서 거부될 수 있다 — 기능이 아니라 편의다 */ }
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible'){ keepAwake(); sync(); }
+  });
+
+  window.addEventListener('online',  function(){ online = true;  sync(); });
+  window.addEventListener('offline', function(){ online = false; refreshKiosk(); });
+  setInterval(sync, 12000);
+
+  // ── 다른 탭 감지 ──
+  // 서버 재고는 이제 안전하지만 **예약분은 이 기기의 localStorage에 있다.**
+  // 같은 아이패드에서 탭을 두 개 열면 두 탭이 각자 오래된 hold를 들고 있다가
+  // 오프라인 구간에서 같은 예약분을 두 번 쓴다.
+  window.addEventListener('storage', function(e){
+    if (e.key !== K_LOCAL) return;
+    warn('이 기기에서 뽑기 화면이 두 개 열려 있습니다. 예약 재고가 어긋날 수 있으니 ' +
+         '하나만 남기고 닫아 주세요.');
+  });
+
+  if (token && device) enterKiosk();
+</script>
+
+<!-- 오프라인 대비 서비스 워커 등록.
+     발권 모듈과 일부러 분리된 블록이다 — 등록이 어떻게 실패하든 위 모듈은 이미 실행을
+     끝냈고, 여기서 던진 예외가 발권 동작에 닿지 않는다.
+     서비스 워커는 보안 컨텍스트(HTTPS·localhost)에서만 동작한다. 공개본은 gh-pages라
+     HTTPS지만, file://이나 평문 http로 열면 등록이 실패한다 — 그때도 페이지는 예전과
+     똑같이 돌아야 하므로 기능 감지 + try/catch + .catch()로 세 겹 감싼다. -->
+<script>
+  if ('serviceWorker' in navigator) {
+    // load 이후에 등록한다. 발권 화면이 먼저 뜨고 나서 캐시를 채우게 해 첫 진입을 막지 않는다.
+    window.addEventListener('load', function(){
+      try {
+        // 절대경로(/draw-sw.js)를 쓰면 저장소 이름이 붙는 경로에서 404가 난다. 반드시 상대경로.
+        navigator.serviceWorker.register('./draw-sw.js').catch(function(){
+          // 등록 실패는 조용히 넘긴다. 캐시가 없을 뿐 발권은 그대로 되고,
+          // 여기서 스태프에게 경고를 띄우면 부스에서 아무 조치도 못 할 문구만 남는다.
+        });
+      } catch (e) { /* 보안 컨텍스트가 아닌 경우 등 — 동기 예외까지 막는다 */ }
+    });
+  }
+</script>
+
+</body>
+</html>
