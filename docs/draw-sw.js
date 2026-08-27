@@ -14,7 +14,7 @@
  */
 
 /** 캐시 이름 = 버전. 게시본을 고칠 때마다 v2, v3… 로 올린다 */
-const CACHE = 'eorth-draw-v3';
+const CACHE = 'eorth-draw-v4';
 
 /**
  * 프리캐시 대상. 이 페이지는 외부 폰트·이미지·CDN을 하나도 쓰지 않으므로
