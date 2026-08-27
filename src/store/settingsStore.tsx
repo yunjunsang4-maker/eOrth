@@ -721,7 +721,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
     notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
     tutorialsSeen, tutorialSeen: !!tutorialsSeen.main,
-    lastImportAt,
+    // lastImportAt은 일부러 싣지 않는다 — 기기 로컬 값이다(로컬 persist에는 그대로 남는다).
+    // 'since' 기간의 뜻은 "이 기기에서 지난번 불러온 이후"인데, 기기 간 복원되면 새 기기·재설치에서
+    // 기록만 없고 시각만 살아남아 과거 사진이 통째로 스캔에서 잘려 결과가 무조건 0건이 됐다.
   });
   const applySettingsBackup = (b: Record<string, unknown>) => {
     const v = b as any;
@@ -784,10 +786,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     } else if (typeof v.tutorialSeen === 'boolean') {
       setTutorialsSeen((prev) => ({ ...prev, main: prev.main || v.tutorialSeen }));
     }
-    // 다른 기기에서 더 최근에 가져왔다면 그 시각을 채택(재스캔 기본 기간이 과하게 넓어지지 않게)
-    if (typeof v.lastImportAt === 'number') {
-      setLastImportAt((prev) => (prev == null ? v.lastImportAt : Math.max(prev, v.lastImportAt)));
-    }
+    // lastImportAt은 복원하지 않는다(구버전 앱이 올려 둔 백업에 값이 남아 있어도 무시).
+    // 예전엔 "다른 기기의 더 최근 시각을 채택"했는데, 가져온 사진 자체는 그 기기에만 있으므로
+    // 새 기기·재설치에서는 '지난 불러오기 이후'가 스캔할 게 없는 빈 구간을 가리켰다.
+    // 이제 이 값은 오직 로컬 persist에서만 살아남는다 — 같은 기기 재실행에서는 종전과 동일하다.
   };
 
   // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다

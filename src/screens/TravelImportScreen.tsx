@@ -11,6 +11,7 @@ import {
   Modal,
   Easing,
   Alert,
+  PermissionsAndroid,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -446,9 +447,19 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     () => (lastImportAt ? [makeSincePeriod(lastImportAt), ...BASE_SCAN_PERIODS] : BASE_SCAN_PERIODS),
     [lastImportAt]
   );
-  // 기본 선택: 재스캔이면 '지난 불러오기 이후', 첫 스캔이면 최근 1년
+  // 이 기기에 가져온 사진첩(viewType='album')이 실제로 남아 있는지 — since 기본값의 2차 방어선.
+  // 1차 방어는 settingsStore 쪽이다: lastImportAt을 서버 설정 백업에서 뺐으므로 새 기기·재설치에서는
+  // 'since' 칩이 아예 뜨지 않는다. 다만 기록(records)은 재로그인 시 서버에서 복원될 수 있어
+  // (useAccountBoundary → hydrateMyRecords → mapRowToRecord가 viewType='album'까지 되살린다)
+  // "앨범이 있다"만으로는 이 기기에서 스캔했다는 보장이 안 된다. 두 조건이 모두 참일 때만
+  // since를 기본으로 삼아, 어느 한쪽이 깨져도 과거 사진이 통째로 잘리지 않게 한다.
+  // (records는 프로필 진입 시점엔 hydrate가 끝난 상태다. 온보딩 진입은 lastImportAt이 애초에
+  //  null이라 이 판정과 무관하다.)
+  const hasImportedAlbum = useMemo(() => records.some((r) => r.viewType === 'album'), [records]);
+  // 기본 선택: 가져온 앨범이 남아 있는 재스캔이면 '지난 불러오기 이후', 그 외엔 최근 1년.
+  // ('since' 칩 자체는 lastImportAt만 있으면 계속 목록에 노출된다 — 바뀌는 건 기본 선택뿐)
   const [period, setPeriod] = useState<ScanPeriodOption>(() =>
-    lastImportAt ? makeSincePeriod(lastImportAt) : BASE_SCAN_PERIODS[0]
+    lastImportAt && hasImportedAlbum ? makeSincePeriod(lastImportAt) : BASE_SCAN_PERIODS[0]
   );
 
   // 스캔 중 실시간으로 발견한 해외 나라(중복 제외) — 국기 칩으로 톡톡 등장
@@ -485,6 +496,37 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     });
   }, [scannedTrips]);
 
+  // 사진 EXIF의 GPS 접근 권한(안드로이드 10+, ACCESS_MEDIA_LOCATION)이 거부됐는지.
+  // 이 권한이 없으면 네이티브 배치도 getAssetInfoAsync도 좌표를 한 건도 못 돌려줘,
+  // 스캔은 정상으로 보이면서 결과만 조용히 0건이 된다 → 빈 화면에 이유로 노출한다.
+  const [mediaLocationDenied, setMediaLocationDenied] = useState(false);
+  const ensureMediaLocationPermission = async () => {
+    if (Platform.OS !== 'android') return;
+    // API 29 미만에는 이 권한 자체가 없다(요청하면 항상 거부로 떨어져 오탐이 된다)
+    if (typeof Platform.Version === 'number' && Platform.Version < 29) return;
+    try {
+      // 미디어 읽기가 이미 승인돼 있으면 시스템이 다이얼로그 없이 조용히 결과만 돌려준다
+      const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION);
+      setMediaLocationDenied(res !== PermissionsAndroid.RESULTS.GRANTED);
+    } catch {
+      // 요청 자체가 실패하면 판단을 보류한다 — 이 권한 때문에 스캔을 막지는 않는다
+    }
+  };
+  // 스캔이 시작될 때마다 권한 상태만 다시 읽는다. request가 아니라 check인 이유:
+  // 사용자가 설정에서 권한을 켜고 돌아와 '전체 기간으로 다시 찾기'를 눌러도 최초 요청 결과가
+  // 그대로 남아 낡은 사유 줄이 계속 떴다. 그렇다고 매 스캔마다 request를 부르면 거부 후에는
+  // 다이얼로그가 반복해 뜰 수 있어, 상태 갱신은 조회로만 한다(최초 요청은 requestPermission에 그대로).
+  const refreshMediaLocationStatus = async () => {
+    if (Platform.OS !== 'android') return;
+    if (typeof Platform.Version === 'number' && Platform.Version < 29) return;
+    try {
+      const ok = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_MEDIA_LOCATION);
+      setMediaLocationDenied(!ok);
+    } catch {
+      // 조회 실패는 무시 — 직전 판단을 그대로 둔다
+    }
+  };
+
   const requestPermission = async () => {
     try {
       // 사진(MediaLibrary) 권한만 요청한다. 위치 권한은 불필요:
@@ -496,6 +538,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         // '선택한 사진만'은 status가 아니라 accessPrivileges로 온다 —
         // status==='limited' 비교는 절대 참이 되지 않아 제한 접근 안내가 전부 빗나갔다.
         setIsLimited(perm.accessPrivileges === 'limited');
+        await ensureMediaLocationPermission();
         startScan();
       } else {
         setPermissionStatus('denied');
@@ -538,6 +581,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     const cancelled = () => scanGenRef.current !== myGen;
     // 이 스캔이 만든 여행 id의 세션 토큰 — 세션 간 사진 폴더 충돌 방지(pastTripScan 참고)
     const sessionId = newScanSessionId();
+    // 모든 스캔 진입 경로(최초·재스캔·'전체 기간으로 다시 찾기')가 여기를 거친다 — 권한을
+    // 켜고 돌아온 경우에도 사유 줄이 최신이 되게 매번 갱신한다. 조회는 스캔을 지연시킬
+    // 이유가 없어 기다리지 않는다(결과는 빈 화면에서만 쓰인다).
+    void refreshMediaLocationStatus();
     setScanning(true);
     setProgress(0);
     progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
@@ -673,6 +720,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         // 비용이 이 구간으로 옮겨왔으니 진행률도 여기서 움직여야 한다(안드로이드는 수 초 걸린다).
         // 0~70%를 배치 진행에 쓰고, 뒤이은 탐침 루프는 자기 공식으로 80%까지 올린다.
         prefetched = await fetchLocationsInBatches(ids, getLocations, {
+          // 안드로이드는 배치 하나가 곧 원본 EXIF 파일 I/O 수천 건이라(장당 10~30ms),
+          // 기본 2,000장이면 진행 콜백 사이가 수십 초로 벌어져 진행바가 멈춘 것처럼 보인다.
+          // iOS는 Photos DB 필드 조회라 사실상 즉시 끝나므로 기본값을 그대로 둔다.
+          size: Platform.OS === 'android' ? 250 : undefined,
           // 취소되면 네이티브 배치 루프 자체를 끊는다. 안 끊으면 이전 스캔의 배치가
           // 끝까지 돌며 새 스캔의 진행바를 되돌려 놓는다.
           shouldCancel: cancelled,
@@ -981,6 +1032,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     ...(canWidenPeriod ? [t('imports.emptyReasonPeriod', { period: periodLabel(period, t) })] : []),
     ...(lastImportAt ? [t('imports.emptyReasonAlreadyImported')] : []),
     ...(isLimited ? [t('imports.emptyReasonLimited')] : []),
+    // 부분 접근(선택한 사진만)이면 그 안내가 우선이다 — 둘 다 "권한을 바꿔라"는 같은 말이라
+    // 나란히 띄우면 어느 설정을 봐야 하는지가 흐려진다.
+    ...(mediaLocationDenied && !isLimited ? [t('imports.emptyReasonNoMediaLocation')] : []),
   ];
 
   // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.

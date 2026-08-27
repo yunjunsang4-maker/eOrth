@@ -1504,6 +1504,7 @@ const en = {
     emptyReasonPeriod: 'Photos taken outside {{period}} were left out of this scan.',
     emptyReasonAlreadyImported: 'Trips you already imported were skipped to avoid duplicates.',
     emptyReasonLimited: 'Only selected photos were analyzed. Switch to "All Photos" in Settings to find more.',
+    emptyReasonNoMediaLocation: 'Without access to your photos\' location data, we can\'t find any trips. Check Settings > Apps > eOrth > Permissions.',
     retryFullPeriod: 'Search all time instead',
     skip: 'Skip',
     foundTripsPrefix: 'Found ',

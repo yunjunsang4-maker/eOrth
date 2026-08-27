@@ -363,7 +363,13 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
     <View ref={rootRef} onLayout={onRootLayout} style={styles.root} pointerEvents="box-none">
       {/* overflow hidden 필수 — 딤이 화면의 몇 배 크기(거대 테두리 뷰)라, 클리핑 없이는
           진입 페이드·전환 때 화면 밖 영역까지 통째로 합성돼 GPU 픽셀 비용이 수십 배가 된다. */}
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: mount, overflow: 'hidden' }]}>
+      {/* pointerEvents는 opacity가 아니라 visible로 판단한다 — 닫힘 페이드의 완료 콜백은
+          finished가 보장되지 않아(visible 재토글 등으로 중단되면 setRendered(false)가 영영
+          안 불린다) 투명해진 전면 쉘이 남아 아래 화면의 터치를 통째로 삼켰다. */}
+      <Animated.View
+        pointerEvents={visible ? 'auto' : 'none'}
+        style={[StyleSheet.absoluteFill, { opacity: mount, overflow: 'hidden' }]}
+      >
         {/* 배경 탭은 아래 UI 터치만 차단(진행 X) */}
         <Pressable style={StyleSheet.absoluteFill} onPress={() => {}} />
 
