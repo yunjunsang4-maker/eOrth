@@ -6,17 +6,37 @@
 - 프로젝트 ref: `blweolnunmsxgztmvzfd`
 - 적용 경로: Supabase 대시보드 > SQL Editor (SQL) / `supabase functions deploy <name>` (Edge Function)
 
-> ⏳ **2026-08-26 미반영 1건 — 부스 뽑기 서버 재고.**
+> ✅ **2026-08-27 반영 완료 — 부스 뽑기 서버 재고.**
 > `schema.sql` 끝의 "부스 뽑기 서버 재고" 절(표 4개 `draw_stock`·`draw_lease_hold`·`draw_log`·
-> `draw_config`, RPC 12개)은 **아직 실행하지 않았다.** 실행 절차와 주의사항은
-> `docs/superpowers/specs/2026-08-24-event-draw-boarding-pass-design.md`의 "서버 준비 절차"에 있다.
+> `draw_config`, RPC 12개)을 **실행했고, 토큰도 실제 값으로 넣었다.**
 >
-> **실행 전에 반드시 `draw_config`의 `CHANGE-ME-KIOSK`·`CHANGE-ME-ADMIN`을 실제 토큰으로 바꿀 것.**
-> 안 바꾸면 `_draw_auth`가 모든 호출을 거부한다(placeholder 그대로 게시되는 사고를 막는 안전장치).
-> 이미 실행한 뒤 토큰을 바꾸려면 `insert`가 아니라 `update`여야 한다 — `on conflict do nothing`이라
-> 다시 넣어도 값이 안 바뀐다.
+> **실측 근거**(anon 키로 운영 프로젝트에 직접 RPC 호출):
+>
+> | 호출 | 결과 | 뜻 |
+> |---|---|---|
+> | `draw_state(올바른 kiosk 토큰)` | `{"ok":true,"open":false}` | RPC 존재 + 토큰 반영됨 |
+> | `draw_state(틀린 토큰)` | `{"ok":false,"error":"auth"}` | `_draw_auth`가 실제로 막고 있음 |
+> | `draw_admin_state(admin 토큰)` | `{"ok":true,"day":""}` | 관리 토큰도 반영됨 |
+>
+> 토큰 자체는 저장소에 없다 — `supabase/draw-tokens.local.sql`(`.gitignore`로 차단)에만 있다.
+> 토큰을 바꾸려면 `insert`가 아니라 **`update`**여야 한다(`on conflict do nothing`이라 다시 넣어도
+> 값이 안 바뀌고 오류도 안 난다). 절차는 `supabase/draw-tokens.example.sql`.
+>
+> ⚠️ **`active_day`가 지금 비어 있다(`open:false`) — 발권이 안 되는 상태가 정상이다.**
+> 행사 당일 노트북 `draw-admin.html`에서 날짜를 열어야 아이패드가 발권을 시작한다.
+>
+> ⚠️ **`draw_admin_open`은 `on conflict do nothing`이다.** 테스트로 D1을 이미 열었다면 그 행이
+> 남아 있어, 행사 당일 D1을 다시 열어도 **초기 수량으로 되돌아가지 않는다.** 행사 전에 확인할 것:
+>
+> ```sql
+> select day, remaining, updated_at from public.draw_stock order by day;
+> ```
+>
+> 수량이 `DAY_POOLS`(`docs/draw-core.js`)와 다르면 관리 콘솔의 되돌리기나
+> `draw_admin_set(토큰, 등급, 수량)`으로 맞춘다.
 >
 > 행사 종료 후 `event_participants`와 함께 파기한다(일회성 표).
+> 토큰 폐기는 `draw-tokens.example.sql` 맨 아래 되돌리기 문장.
 >
 > **2026-08-02 기준 서버 반영은 모두 끝났다.** 아래는 그 근거와, 앞으로 무엇을 건드리면 안 되는지의 기록이다.
 >
