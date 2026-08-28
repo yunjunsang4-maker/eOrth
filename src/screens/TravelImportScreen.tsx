@@ -37,7 +37,8 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
-import { countryTagLabel, countryLabel } from '../utils/countryLabel';
+// countryTagLabel(국기+이름 한 문자열)은 위 셰이핑 결함 때문에 이 화면에서 더는 쓰지 않는다
+import { countryLabel } from '../utils/countryLabel';
 import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
@@ -349,8 +350,14 @@ function TripCard({
         <AssetImage uri={trip.medias[0]} assetId={trip.photos[0]?.id} style={styles.cardImage} />
         <View style={styles.cardInfo}>
           <View style={styles.cardHeaderRow}>
+            {/* 국기와 국가명을 한 Text에 넣지 말 것 — 삼성 갤럭시 S21+(Android 15) 실기기에서
+                [국기 이모지 + 한글]이 한 텍스트 런 안에 있으면 특정 국가(🇻🇳 베트남·🇵🇹 포르투갈)의
+                한글 글리프가 통째로 안 그려진다(폭은 확보되는데 글자만 사라짐. 2026-08-27 확인).
+                UI 트리 덤프상 문자열은 정상이므로 데이터가 아니라 삼성 기기의 텍스트 셰이핑 결함이다.
+                같은 화면의 FlagChip은 국기·이름을 별도 Text로 나눠 그려 이 문제가 없어, 그 구조에 맞춘다. */}
             <View style={styles.countryBadge}>
-              <Text style={styles.countryText}>{countryTagLabel(trip.country, lang)}</Text>
+              <Text style={styles.countryText}>{trip.countryFlag}</Text>
+              <Text style={styles.countryText}>{countryLabel(trip.countryName, lang)}</Text>
             </View>
             {/* 같은 국가·기간의 기록이 이미 있는 여행 — 기본 선택에서 빠져 있고, 원하면 직접 선택 */}
             {trip.alreadyImported && (
@@ -1889,6 +1896,10 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
   },
   countryBadge: {
+    // 국기·국가명을 별도 Text로 나눠 그리므로 가로 배치 + gap으로 원래의 공백 한 칸을 대신한다
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
