@@ -20,6 +20,7 @@ import {
   PanResponder,
   ActivityIndicator,
   LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import * as Clipboard from 'expo-clipboard';
@@ -34,7 +35,9 @@ import Reanimated, {
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, G as SvgG } from 'react-native-svg';
+import FeedTape from '../components/FeedTape';
+import { SERIF } from '../components/ads/adPolaroidStyles';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
@@ -63,6 +66,14 @@ import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { regionDisplayName } from '../utils/regionLabel';
+
+// 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전).
+// FAQ 아코디언(FAQScreen.tsx:21)·ProfileScreen과 같은 가드다. 이 파일은 예전부터
+// LayoutAnimation을 써 왔는데(사진 비율 반영 2곳) 이 가드만 없었다 —
+// 티켓 접기/펼치기를 붙이며 저장소 관례에 맞춘다.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 /**
  * 폭·높이는 더 이상 모듈 최상위에 박제하지 않는다 — 폴드를 펼치면 스토리 페이저의
@@ -208,6 +219,229 @@ const companionIcon = (name: string): React.ReactNode => {
     '형제': <SiblingIcon />,
   };
   return map[name] || <FriendIcon />;
+};
+
+// ─── 안쪽을 향하는 셰브런 ───
+// 마이티켓(ProfileTicketScreen) 시안 134:1155~1170의 path. 그 파일은 수정 금지이고
+// 컴포넌트도 export되어 있지 않아, 여기서 필요한 만큼만(3개 세트) 재구현했다.
+const TICK_CHEV_D =
+  'M1.67775 0.277683C1.28426 -0.102065 0.657432 -0.090929 0.277684 0.302557C-0.102065 0.696043 -0.0909286 1.32287 0.302557 1.70262L0.990153 0.990153L1.67775 0.277683ZM7.99015 7.98162L8.70458 8.66718C9.07071 8.28563 9.07241 7.68373 8.70845 7.30012L7.99015 7.98162ZM0.275722 14.5909C-0.102901 14.9855 -0.0899736 15.6123 0.304596 15.9909C0.699165 16.3695 1.32596 16.3566 1.70458 15.962L0.990153 15.2764L0.275722 14.5909ZM5.33716 5.1854L6.05546 4.50389L6.04045 4.48807L6.02475 4.47293L5.33716 5.1854ZM7.99015 7.98162L7.27572 7.29607L0.275722 14.5909L0.990153 15.2764L1.70458 15.962L8.70458 8.66718L7.99015 7.98162ZM0.990153 0.990153L0.302557 1.70262L4.64956 5.89786L5.33716 5.1854L6.02475 4.47293L1.67775 0.277683L0.990153 0.990153ZM5.33716 5.1854L4.61886 5.8669L7.27186 8.66313L7.99015 7.98162L8.70845 7.30012L6.05546 4.50389L5.33716 5.1854Z';
+const TICK_CHEV_W = 8.9803;
+const TICK_CHEV_H = 16.2666;
+const TICK_CHEV_PITCH = 7.5; // 시안 좌표 간격(152→159→167)
+// 마이티켓은 3개 세트지만 여기선 2개다 — 히어로 두 칸(목적지·기간) 사이에 끼우는 자리라,
+// 3개를 쓰면 가운데가 넓어져 'YYYY.MM.DD' 한 줄이 열 폭을 넘어 잘렸다.
+const TICK_CHEV_COUNT = 2;
+const TICK_CHEV_SET_W = TICK_CHEV_PITCH * (TICK_CHEV_COUNT - 1) + TICK_CHEV_W;
+
+const TicketChevrons = ({ color, flip }: { color: string; flip?: boolean }) => (
+  <Svg
+    width={TICK_CHEV_SET_W}
+    height={TICK_CHEV_H}
+    viewBox={`0 0 ${TICK_CHEV_SET_W} ${TICK_CHEV_H}`}
+    style={flip ? { transform: [{ scaleX: -1 }] } : undefined}
+  >
+    {Array.from({ length: TICK_CHEV_COUNT }).map((_, i) => (
+      <SvgG key={i} x={i * TICK_CHEV_PITCH}>
+        <SvgPath d={TICK_CHEV_D} fill={color} />
+      </SvgG>
+    ))}
+  </Svg>
+);
+
+/**
+ * ─── 티켓풍 메타 블록 (피드·스트립 상세의 시그니처) ───
+ *
+ * 국가 태그·작성 시각·별점·여행정보 칩이 전부 같은 칩 언어(틴트 배경 + 라운드 + 12~13px)로
+ * 흩어져 있어 위계가 없었다 — 이 화면이 목업처럼 보이던 주범이다. 탑승권 한 장으로 묶는다.
+ *
+ * 시각 문법은 마이티켓(ProfileTicketScreen)에서 **값만** 옮겨 왔다: 라벨 13px/600/#9CA3AF,
+ * 값은 크게·900, 절취선(dash 행)과 마주 보는 셰브런.
+ * 다만 배경은 흰 카드가 아니라 이 화면의 다크 문법(반투명 카드 + 헤어라인)이다 —
+ * 흰 티켓을 그대로 박으면 마이티켓과 혼동되고 다크 배경에서 과하게 튄다.
+ *
+ * 라벨(BOARDING PASS/DESTINATION/DATE/…)은 번역하지 않는 **디자인 텍스처**다.
+ * 탑승권의 영문 대문자 라벨 자체가 이 블록의 조형이라 i18n 키로 빼지 않았다
+ * (값은 전부 데이터이고 국가명·날씨는 기존 i18n 유틸을 그대로 경유한다).
+ *
+ * 값이 없는 필드는 행 자체를 생략하고, 하나도 없으면 블록을 아예 그리지 않는다.
+ */
+const TravelTicket = ({ record }: { record: TravelRecord }) => {
+  const { s } = useSheets();
+  const { t, i18n } = useTranslation();
+  const skinAccent = useSkinAccent();
+  // 접힘 상태 — 기본은 펼침. 이 컴포넌트 안에 두는 이유와 화면의 travelInfoPref를
+  // 재사용하지 않은 이유는 아래 canCollapse 주석 참고.
+  const [collapsed, setCollapsed] = useState(false);
+
+  // 목적지 — 기존 renderCountries()와 동일한 데이터 우선순위(countries → country → countryName).
+  //
+  // 다만 **접기 임계는 다르다(의도)**: 기존 칩은 3개까지 전부 펼쳤지만 티켓은 2개까지만 펼치고
+  // 3개부터 "첫 나라 +N"으로 접는다. 히어로 칸은 19px/900 값이 카드 반쪽 폭에 들어가야 하는
+  // 자리라 3개를 나란히 두면 넘친다 — 폭 제약에서 온 확정된 설계 결정이지 이식 누락이 아니다.
+  // (반대로 countryName 폴백은 기존 칩에 없던 것이라, 국가가 아예 안 보이던 기록이 새로 보인다.)
+  const destination =
+    record.countries && record.countries.length > 0
+      ? record.countries.length <= 2
+        ? record.countries.map((c) => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join('   ')
+        : `${record.countries[0].flag} ${countryLabel(record.countries[0].name, i18n.language)} +${record.countries.length - 1}`
+      : record.country
+        ? countryTagLabel(record.country, i18n.language)
+        : record.countryName
+          ? `${record.countryFlag ? `${record.countryFlag} ` : ''}${countryLabel(record.countryName, i18n.language)}`
+          : '';
+
+  // 기간은 마이티켓과 같은 두 줄 표기(시작 / ~종료) — 한 줄로 붙이면 900 웨이트 20px에서 넘친다
+  const dateValue = record.startDate
+    ? record.endDate && record.endDate !== record.startDate
+      ? `${record.startDate}\n~ ${record.endDate}`
+      : record.startDate
+    : '';
+
+  // 히어로(큰 값)는 목적지·기간 순으로 두 칸까지. 하나뿐이면 왼쪽 한 칸만 쓰고 셰브런도 안 그린다.
+  const hero = ([
+    destination ? { label: 'DESTINATION', value: destination } : null,
+    dateValue ? { label: 'DATE', value: dateValue } : null,
+  ].filter(Boolean) as { label: string; value: string }[]);
+
+  const companions = record.companions && record.companions.length > 0 ? record.companions.join(', ') : '';
+  const cells: { key: string; label: string; text?: string; node?: React.ReactNode }[] = [];
+  if (normalizeWeather(record.weather)) {
+    cells.push({
+      key: 'weather',
+      label: 'WEATHER',
+      // 기록 화면과 같은 제작 SVG 세트 — 이모지는 기기 폰트마다 모양이 달랐다(기존 칩과 동일 이유)
+      node: <View style={s.ticketIconValue}><WeatherIcon value={record.weather} size={20} color={C.white} /></View>,
+    });
+  }
+  if (record.flightType) cells.push({ key: 'flight', label: 'FLIGHT', text: record.flightType });
+  // budget은 **객체**라 amount가 0이어도 truthy다 — 기존 칩 경로는 그대로 "₩ 0"을 그렸는데,
+  // 접힌 12px 회색 칩일 때는 티가 안 나던 것이 티켓의 16px/900 흰 값으로는 크게 드러난다.
+  // 티켓에서만 amount > 0으로 좁힌다(블로그가 쓰는 아래 infoChip 경로는 건드리지 않는다).
+  if (record.budget && record.budget.amount > 0) {
+    cells.push({
+      key: 'budget',
+      label: 'BUDGET',
+      text: `${currencySymbol(record.budget.currency)} ${record.budget.amount.toLocaleString()}`,
+    });
+  }
+  if (companions) cells.push({ key: 'companion', label: 'COMPANION', text: companions });
+  if (record.rating != null && record.rating > 0) {
+    cells.push({
+      key: 'rating',
+      label: 'RATING',
+      // 앱 공용 0.5 단위 별점 — 예전 userRow의 RatingStars를 그대로 옮긴 것
+      node: (
+        <View style={s.ticketIconValue}>
+          <RatingStars score={record.rating} size={13} gap={2} fullColor={skinAccent.accent} emptyColor="rgba(255,255,255,0.18)" />
+        </View>
+      ),
+    });
+  }
+
+  if (hero.length === 0 && cells.length === 0) return null;
+
+  /**
+   * 접기 가능 여부 — 접힘 상태의 정의가 "히어로 행만 남긴다"이므로 히어로가 없으면
+   * 접어도 남는 게 없다. 그런 조합(격자 필드만 있고 국가·기간이 전부 없는 기록)에서는
+   * 탭 자체를 비활성화한다.
+   *
+   * 상태를 화면(PostDetailScreen)의 `travelInfoPref`로 합치지 않은 이유:
+   *   ① 기본값이 반대다. `travelInfoOpen = travelInfoPref ?? travelInfoCount <= 2`는
+   *      항목이 3개 이상이면 **접힌 채로** 시작하는데, 티켓의 요구는 "기본 펼침"이다.
+   *   ② 세는 필드 집합이 다르다. travelInfoCount는 startDate·weather·flightType·budget
+   *      4개뿐이라 티켓의 목적지·동행·별점을 모른다.
+   *   ③ 지금은 blog(칩)와 feed·cut(티켓)이 상호 배타라 공유해도 런타임 충돌은 없지만,
+   *      블로그까지 티켓으로 옮기는 순간 두 경로가 한 상태를 놓고 싸운다.
+   * 영속도 불필요하다 — 화면을 나가면 초기값(펼침)으로 돌아가는 편이 예측 가능하다.
+   */
+  const canCollapse = hero.length > 0;
+  const isCollapsed = canCollapse && collapsed;
+  const toggle = () => {
+    // 이 파일이 이미 쓰는 프리셋(사진 비율 반영 2곳)이자 FAQ 아코디언에서 검증된 방식.
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setCollapsed((v) => !v);
+  };
+
+  const body = (
+    <>
+      {/* 상단 스트립 — 탑승권 브랜드 라인(좌) + 작성 시각·접기 셰브런(우) */}
+      <View style={s.ticketStrip}>
+        <Text style={s.ticketBrand}>BOARDING PASS</Text>
+        <View style={s.ticketStripRight}>
+          {!record.isExample && <Text style={s.ticketStamp}>{timeAgo(record.timestamp)}</Text>}
+          {/* 접힘 어포던스 — 티켓의 절제된 룩을 지키려 라벨 없이 셰브런만 둔다.
+              방향 규약은 이 파일의 여행정보 토글과 같다(펼쳐져 있으면 ▲). */}
+          {canCollapse && <ChevronIcon size={16} color="#9CA3AF" up={!isCollapsed} />}
+        </View>
+      </View>
+
+      {hero.length > 0 && (
+        <View style={s.ticketHero}>
+          <View style={s.ticketCol}>
+            <Text style={s.ticketLabel} {...andFitText}>{hero[0].label}</Text>
+            <Text style={s.ticketValue} numberOfLines={2}>{hero[0].value}</Text>
+          </View>
+          {hero.length > 1 && (
+            <>
+              {/* 마주 보는 셰브런 — 세로 정렬 계산은 스타일(ticketChevPair.marginTop) 주석 참고 */}
+              <View style={s.ticketChevPair}>
+                <TicketChevrons color={skinAccent.tint(0.55)} />
+                <TicketChevrons color={skinAccent.tint(0.55)} flip />
+              </View>
+              <View style={[s.ticketCol, s.ticketColRight]}>
+                <Text style={s.ticketLabel} {...andFitText}>{hero[1].label}</Text>
+                <Text style={[s.ticketValue, s.ticketValueRight]} numberOfLines={2}>{hero[1].value}</Text>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      {/* 접히면 절취선·격자를 숨기고 히어로 행만 남긴다 — '간략화'의 자연스러운 단위 */}
+      {!isCollapsed && hero.length > 0 && cells.length > 0 && (
+        <View style={s.ticketPerforation}>
+          {/* 좌우 반원 노치 — 카드의 overflow:'hidden'이 반만 남겨 '뚫린 구멍'으로 읽힌다 */}
+          <View style={[s.ticketNotch, s.ticketNotchL]} />
+          <View style={[s.ticketNotch, s.ticketNotchR]} />
+          <View style={s.ticketDashRow}>
+            {Array.from({ length: 56 }).map((_, i) => <View key={i} style={s.ticketDash} />)}
+          </View>
+        </View>
+      )}
+
+      {!isCollapsed && cells.length > 0 && (
+        <View style={s.ticketGrid}>
+          {cells.map((c) => (
+            <View key={c.key} style={s.ticketCell}>
+              <Text style={s.ticketLabel} {...andFitText}>{c.label}</Text>
+              {c.node ?? <Text style={s.ticketCellValue} numberOfLines={2}>{c.text}</Text>}
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  );
+
+  // 접을 게 없으면 터치 요소로 만들지 않는다 — 눌러도 아무 일 없는 버튼을 만들지 않기 위해.
+  if (!canCollapse) return <View style={s.ticket}>{body}</View>;
+
+  // 탭 영역은 티켓 전체. 티켓 내부는 전부 표시 전용(Text·View·아이콘)이라
+  // 중첩 터치 요소가 없다 — 탭이 삼켜지거나 겹칠 여지가 없음을 확인했다.
+  return (
+    <TouchableOpacity
+      style={s.ticket}
+      activeOpacity={0.9}
+      onPress={toggle}
+      accessibilityRole="button"
+      // 새 키를 만들지 않고 기존 postDetail.travelInfo('여행정보'/'Travel info')를 재사용한다.
+      // 펼침/접힘 상태는 문구가 아니라 accessibilityState.expanded로 알린다(스크린리더 표준).
+      accessibilityLabel={t('postDetail.travelInfo')}
+      accessibilityState={{ expanded: !isCollapsed }}
+    >
+      {body}
+    </TouchableOpacity>
+  );
 };
 
 // ─── 좋아요 하트 (SVG) ───
@@ -1589,6 +1823,27 @@ export default function PostDetailScreen() {
   // 여행정보 펼침 여부 — 사용자가 토글했으면 그 값, 아니면 항목 수 기준 자동
   const travelInfoCount = [record.startDate, record.weather, record.flightType, record.budget].filter(Boolean).length;
   const travelInfoOpen = travelInfoPref ?? travelInfoCount <= 2;
+  // ── 티켓풍 메타 블록을 그릴지 ──
+  // 피드·스트립에서만 쓴다. 앨범은 게시물이 아니라 사진 모음이고, 블로그는 본문 블록이
+  // 주인공이라 기존 배치(여행정보 토글 + 칩)를 그대로 둔다.
+  // 조건은 TravelTicket 내부의 "하나도 없으면 안 그린다" 판정과 같은 필드 집합이다 —
+  // 여기서 true인데 티켓이 비면 국가·시각·별점이 어디에도 안 남는다.
+  const ticketOn =
+    (viewType === 'feed' || viewType === 'cut') &&
+    !!(
+      record.countries?.length ||
+      record.country ||
+      record.countryName ||
+      record.startDate ||
+      normalizeWeather(record.weather) ||
+      record.flightType ||
+      // amount > 0 조건은 TravelTicket의 budget 셀과 반드시 같아야 한다 —
+      // 여기만 넓으면 '0원 예산'뿐인 게시물이 티켓을 켜 놓고 티켓은 빈 채로 null을 반환해,
+      // 아래 !ticketOn 가드에 가려진 작성시각·국가가 어디에도 안 남는다.
+      (record.budget != null && record.budget.amount > 0) ||
+      record.companions?.length ||
+      (record.rating != null && record.rating > 0)
+    );
   // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
   // 피드에서 photoTexts가 있으면 memo는 대표 글 복사본이라 캐러셀에서 표시됨 → bodyText 숨김
   const bodyText = (viewType === 'feed' && record.photoTexts && record.photoTexts.length > 0)
@@ -1880,6 +2135,27 @@ export default function PostDetailScreen() {
     </>
   ) : null;
 
+  // ── 스트립(cut) '책상 위 인화지' 연출 재료 ──
+  // 데코 테이프 2종 랜덤 — id 해시라 게시물마다 고정(리렌더에도 안 바뀜).
+  // SocialScreen 폴라로이드 카드와 동일한 기법·동일한 해시식.
+  const tapeVariant = (Math.abs(
+    String(record.id).split('').reduce((acc: number, ch: string) => ((acc * 31 + ch.charCodeAt(0)) | 0), 7)
+  ) % 2) as 0 | 1;
+  // 인화지에 손으로 적은 메모 같은 한 줄 캡션(세리프).
+  // 제목(content)이 본문으로도 나오는 경우엔 같은 글을 두 번 읽히므로 국가·날짜로 대체한다.
+  const cutTitle = (record.content || '').trim();
+  const cutCaption =
+    cutTitle && cutTitle !== bodyText.trim()
+      ? cutTitle
+      : [
+          record.countryName
+            ? `${record.countryFlag ? `${record.countryFlag} ` : ''}${countryLabel(record.countryName, i18n.language)}`
+            : '',
+          record.startDate || '',
+        ]
+          .filter(Boolean)
+          .join('   ·   ');
+
   // 더블탭 좋아요 하트 버스트 (사진/네컷 위 오버레이)
   const heartOverlay = heartBurst ? (
     <Animated.View pointerEvents="none" style={[s.heartBurst, { transform: [{ scale: heartScale }] }]}>
@@ -1992,14 +2268,18 @@ export default function PostDetailScreen() {
                             <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
                           )}
                         </View>
-                        <View style={s.userMeta}>
-                          {renderCountries()}
-                          {!record.isExample && <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>}
-                        </View>
+                        {/* 티켓이 그려지면 국가·작성시각은 그쪽으로 흡수된다(같은 값 두 번 노출 방지) */}
+                        {!ticketOn && (
+                          <View style={s.userMeta}>
+                            {renderCountries()}
+                            {!record.isExample && <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>}
+                          </View>
+                        )}
                       </View>
                     </TouchableOpacity>
-                    {record.rating != null && record.rating > 0 && (
+                    {!ticketOn && record.rating != null && record.rating > 0 && (
                       // 앱 공용 0.5 단위 별점 — 예전 '★'.repeat는 4.5점이 별 4개로 잘렸다
+                      // (티켓이 있으면 RATING 칸으로 옮겨간다)
                       <RatingStars
                         score={record.rating}
                         size={13}
@@ -2064,7 +2344,9 @@ export default function PostDetailScreen() {
               ) : (
                 <>
                   {viewType === 'cut' && record.cutPhoto?.previewUri ? (
-                    /* 네컷: 합성 미리보기 — '책상 위 인화지' 실물 연출(글로우+기울임+그림자) */
+                    /* 네컷: 합성 미리보기 — '책상 위 인화지' 실물 연출
+                       (글로우 + 기울임 + 그림자 + 데코 테이프 + 세리프 캡션) */
+                    <>
                     <Animated.View style={[s.mediaWrap, entMedia]}>
                       {/* 뒤 은은한 글로우 — 프레임색을 따라감(프레임 사진이면 스킨색) */}
                       <LiquidCardGlow
@@ -2075,6 +2357,13 @@ export default function PostDetailScreen() {
                       />
                       {/* 기울임 계단현상은 래스터화+블리드 링 3종 세트로 방지 (SocialScreen 폴라로이드와 동일 기법) */}
                       <View style={s.cutTiltWrap}>
+                        {/* 데코 테이프 — 인화지 위 모서리에 붙인다(2종 중 게시물별 고정 랜덤).
+                            기울임 래퍼 '안'이라 종이와 같이 기울어져 실제로 붙은 것처럼 읽힌다.
+                            variant 1(사선 테이프)은 원본 높이가 커서 조금 더 올린다 —
+                            −13은 SocialScreen 원본값 그대로다(cutTiltWrap의 블리드 여유가 이를 받는다). */}
+                        <View pointerEvents="none" style={[s.cutTape, tapeVariant === 1 && { top: -13 }]}>
+                          <FeedTape variant={tapeVariant} />
+                        </View>
                         <View collapsable={false} style={{ margin: -1, padding: 1 }} shouldRasterizeIOS renderToHardwareTextureAndroid>
                           <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage(cutViewerUris, 0))}>
                             <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout, SCREEN_W, SCREEN_H)]} resizeMode="cover" />
@@ -2084,6 +2373,14 @@ export default function PostDetailScreen() {
                       {companionsOverlay}
                       {heartOverlay}
                     </Animated.View>
+                    {/* 인화지에 적은 메모 — 세리프 + 흐린 색. 종이와 같은 각도로 살짝 눕힌다.
+                        mediaWrap '밖'에 두는 이유: 안에 넣으면 컨테이너가 캡션만큼 길어져
+                        bottom 기준으로 붙는 동행자 버튼(tagBtn)이 사진을 벗어나 캡션 위로 내려온다.
+                        배경 비네트·텍스처는 넣지 않는다 — 이 화면은 캡처·공유 대상이라 절제를 우선. */}
+                    {!!cutCaption && (
+                      <Text style={s.cutCaption} numberOfLines={1} ellipsizeMode="tail">{cutCaption}</Text>
+                    )}
+                    </>
                   ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
                     /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음)
                        섹션(albumSections)이 있으면 섹션 제목별로 나눠 그린다 (보기 전용) */
@@ -2183,8 +2480,14 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 여행정보 토글 버튼 (앨범 제외) ── */}
-          {viewType !== 'album' && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {/* ── 티켓풍 메타 블록 (피드·스트립) ──
+              예전에는 국가 태그·작성시각·별점·여행정보 칩이 화면 곳곳에 같은 칩 언어로
+              흩어져 있었다. 한 장의 탑승권으로 묶어 이 화면의 위계를 만든다. */}
+          {ticketOn && <TravelTicket record={record} />}
+
+          {/* ── 여행정보 토글 버튼 (블로그 전용) ──
+              피드·스트립은 위 티켓이 흡수했다. 앨범은 원래부터 제외. */}
+          {!ticketOn && viewType !== 'album' && (record.startDate || record.weather || record.budget || record.flightType) && (
             <TouchableOpacity
               style={[s.travelInfoBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}
               activeOpacity={0.8}
@@ -2196,8 +2499,8 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* ── 정보 칩들 ── */}
-          {viewType !== 'album' && travelInfoOpen && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {/* ── 정보 칩들 (블로그 전용 — 피드·스트립은 티켓으로 흡수) ── */}
+          {!ticketOn && viewType !== 'album' && travelInfoOpen && (record.startDate || record.weather || record.budget || record.flightType) && (
             <View style={s.infoRow}>
               {record.startDate && record.endDate && (
                 <View style={s.infoChip}>
@@ -2664,6 +2967,16 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   cutTiltWrap: {
     alignSelf: 'center',
     transform: [{ rotate: '-1.5deg' }],
+    // ── 테이프 블리드 여유 (margin −14 / padding +14) ──
+    // 데코 테이프는 absolute + 음수 top이라 '부모 경계 밖'에 놓이기 쉬운데, 안드로이드는
+    // 경계를 벗어난 절대배치 자식을 클리핑하는 경우가 잦다(형제에 renderToHardwareTextureAndroid가
+    // 걸려 합성 경로가 더 민감하다). iOS는 멀쩡해서 tsc·lint·layout-parity 어느 것도 못 잡는다.
+    // 원본(SocialScreen d.polaFront)은 padding 10이 있어 top:-8/-13이 카드 '안쪽'에 떨어졌다 —
+    // 여기엔 그 패딩이 없었으므로 같은 조건을 만들어 준다.
+    // 상쇄 margin으로 레이아웃 위치는 그대로 두는 건 이 저장소의 블리드 링 기법
+    // (바로 아래 래스터화 래퍼의 `margin:-1, padding:1`)과 같은 원리다.
+    marginTop: -14,
+    paddingTop: 14,
     ...Platform.select({
       ios: {
         shadowColor: '#000000',
@@ -2689,6 +3002,23 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   cutImage: {
     width: SCREEN_W - 40, height: SCREEN_H * 0.6, borderRadius: 12,
     marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',
+  },
+  // 인화지 위 데코 테이프 — 소셜 폴라로이드(d.polaTape)와 같은 배치값(top −8, variant 1은 −13).
+  // 절대배치 자식의 top은 부모의 '패딩 안쪽'(content box)이 기준이라, 위 cutTiltWrap의
+  // paddingTop 14 덕분에 −13까지도 부모 경계 밖으로 나가는 픽셀이 0이다.
+  //   variant 0(높이 ≈ 17.1): 바깥 위 모서리 기준 +6 ~ +23.1
+  //   variant 1(높이 ≈ 27.6): 바깥 위 모서리 기준 +1 ~ +28.6
+  cutTape: {
+    position: 'absolute', top: -8, left: 0, right: 0,
+    alignItems: 'center', zIndex: 5, elevation: 5,
+  },
+  // 인화지 아래 손글씨풍 캡션 — 세리프(SERIF)는 광고·소셜 폴라로이드 캡션과 같은 서체 규약.
+  // 종이(cutTiltWrap −1.5deg)와 같은 각도로 눕혀 '인화지에 적은 메모'로 읽히게 한다.
+  cutCaption: {
+    fontFamily: SERIF, fontSize: 13, color: 'rgba(255,255,255,0.55)',
+    textAlign: 'center', alignSelf: 'center',
+    maxWidth: '86%', marginTop: 2, marginBottom: 10,
+    transform: [{ rotate: '-1.5deg' }],
   },
   heartBurst: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
@@ -2726,9 +3056,59 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
 
   // ── 본문 ──
   content: {
-    // 아래 키워드와 한 덩어리로 읽히도록 좁게 — 섹션 경계는 statsRow에서 벌린다
-    fontSize: 15, color: C.white, lineHeight: 24, marginBottom: 12,
+    // 아래 키워드와 한 덩어리로 읽히도록 좁게 — 섹션 경계는 statsRow에서 벌린다.
+    // 15px/24는 주변 칩·라벨과 크기가 거의 같아 "본문이 본문으로 안 읽혔다".
+    // 16px/27로 한 단계 올려 글이 이 화면의 주인공임을 크기로 말한다(색은 유지).
+    fontSize: 16, color: C.white, lineHeight: 27, marginBottom: 12,
   },
+
+  // ── 티켓풍 메타 블록 (피드·스트립) ──
+  // 흰 카드가 아니라 다크 티켓이다 — 마이티켓과의 혼동을 피하고 이 화면의 문법을 지킨다.
+  // overflow:'hidden'은 절취선 좌우의 반원 노치를 '반만' 남겨 구멍처럼 보이게 하는 장치이기도 하다.
+  ticket: {
+    marginTop: 10, marginBottom: 16,
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14,
+    borderRadius: 14, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+  },
+  ticketStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  // 작성 시각 + 접기 셰브런을 한 덩어리로(우측 정렬)
+  ticketStripRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // 소형 대문자 + 넓은 자간 — 이 화면 라벨류의 공통 문법(댓글 제목과 같은 계열)
+  ticketBrand: { fontSize: 10, fontWeight: '800', letterSpacing: 1.8, color: '#6B7280' },
+  ticketStamp: { fontSize: 11, color: C.muted },
+  ticketHero: { flexDirection: 'row', alignItems: 'flex-start' },
+  ticketCol: { flex: 1 },
+  ticketColRight: { alignItems: 'flex-end' },
+  // 라벨 13px/600/#9CA3AF — 마이티켓 statLabel과 같은 값. 영문 대문자라 자간을 얹었다.
+  ticketLabel: { fontSize: 13, fontWeight: '600', color: '#9CA3AF', letterSpacing: 1.2 },
+  // 값은 크게·900(마이티켓 subValue 문법). lineHeight를 명시해야 플랫폼별 기본 행간 차이로
+  // 셰브런 세로 정렬이 어긋나지 않는다 — 안드로이드 타이트 행간 글리프 잘림 방지도 겸한다.
+  // 20이 아니라 19인 건 'YYYY.MM.DD' 한 줄이 히어로 반쪽 열에 들어가는 실측 상한이기 때문이다.
+  ticketValue: { fontSize: 19, fontWeight: '900', color: C.white, lineHeight: 24, marginTop: 4 },
+  ticketValueRight: { textAlign: 'right' },
+  // marginTop 24 ≈ 라벨 한 줄(≈15.5) + 값 marginTop(4) + (값 lineHeight 24 − 셰브런 16.27)/2
+  // → 셰브런이 값 첫 줄의 세로 중앙에 온다(마이티켓 chevPair와 같은 계산 방식).
+  ticketChevPair: { flexDirection: 'row', gap: 16, alignItems: 'center', marginTop: 24, paddingHorizontal: 6 },
+  // ── 절취선 ──
+  // marginHorizontal은 카드 좌우 패딩(16)을 상쇄해 선이 카드 끝까지 닿게 한다.
+  ticketPerforation: { height: 24, justifyContent: 'center', marginHorizontal: -16, marginTop: 12 },
+  ticketDashRow: { flexDirection: 'row', overflow: 'hidden', marginHorizontal: 16 },
+  ticketDash: { width: 5, height: 1.5, backgroundColor: 'rgba(255,255,255,0.22)', marginRight: 4 },
+  // 반원 노치 — 배경색 원을 카드 밖으로 절반 내밀고 overflow:'hidden'으로 잘라 낸다
+  ticketNotch: {
+    position: 'absolute', top: 5, width: 14, height: 14, borderRadius: 7,
+    backgroundColor: C.bg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+  },
+  ticketNotchL: { left: -7 },
+  ticketNotchR: { right: -7 },
+  // ── 하단 필드 격자 ──
+  ticketGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 18, marginTop: 12 },
+  ticketCell: { minWidth: 76 },
+  ticketCellValue: { fontSize: 16, fontWeight: '900', color: C.white, lineHeight: 21, marginTop: 4 },
+  // 아이콘·별점처럼 텍스트가 아닌 값의 자리 — 텍스트 값(marginTop 4 + 상승분)과 광학적으로 맞춘다
+  ticketIconValue: { marginTop: 7, flexDirection: 'row', alignItems: 'center' },
 
   // ── 정보 칩들 ──
   infoRow: {
@@ -2800,7 +3180,9 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.cardBorder, marginBottom: 16 },
 
   // ── 댓글 목록 ──
-  commentTitle: { fontSize: 14, fontWeight: '700', color: C.white, marginBottom: 14 },
+  // 섹션 제목은 '라벨'이지 본문이 아니다 — 티켓 라벨과 같은 문법(작게·자간·#9CA3AF)으로
+  // 통일해, 본문 16px과 무게가 겹치지 않게 한 단계 낮춘다.
+  commentTitle: { fontSize: 12, fontWeight: '700', letterSpacing: 1.2, color: '#9CA3AF', marginBottom: 14 },
   commentItem: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   commentAvatar: {
     width: 32, height: 32, borderRadius: 16,
