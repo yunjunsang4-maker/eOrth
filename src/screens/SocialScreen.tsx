@@ -2000,7 +2000,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
 
   const handleShare = async () => {
     const text = (item.content || item.memo || '').trim();
-    const url = `https://eorth.app/post/${item.id}`;
+    // 게시물별 웹 페이지가 없어 스토어 링크를 내보낸다(미등록 도메인 죽은 링크 방지)
+    const url = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
     try {
       await Share.share({ message: text ? `${text}\n${url}` : url, url });
     } catch (e: any) {
