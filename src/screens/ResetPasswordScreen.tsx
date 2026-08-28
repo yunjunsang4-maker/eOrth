@@ -14,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
+import RequirementList from '../components/RequirementList';
 import { updatePassword, signOut } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -29,6 +30,19 @@ export default function ResetPasswordScreen({ navigation }: Props) {
   const [showPassword, setShowPassword] = useState(false);
 
   const canSubmit = !submitting && password.length >= 6 && confirm === password;
+
+  // 비밀번호 조건 — 회원가입(LoginScreen)과 같은 방식. 빨간 문구로 뒤늦게 지적하는 대신
+  // 조건을 먼저 전부 보여주고 충족되면 밝아진다(components/RequirementList).
+  const passwordRequirements = [
+    { key: 'length', label: t('login.passwordReqLength'), met: password.length >= 6 },
+  ];
+  const confirmRequirements = [
+    {
+      key: 'match',
+      label: t('login.passwordReqMatch'),
+      met: password.length > 0 && confirm === password,
+    },
+  ];
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -88,9 +102,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
                 <Text style={styles.eye}>{showPassword ? '🙈' : '👁️'}</Text>
               </TouchableOpacity>
             </View>
-            {password.length > 0 && password.length < 6 && (
-              <Text style={styles.hint}>{t('login.passwordHint')}</Text>
-            )}
+            <RequirementList items={passwordRequirements} style={styles.reqList} />
           </View>
 
           {/* 새 비밀번호 확인 */}
@@ -113,9 +125,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
                 onSubmitEditing={handleSubmit}
               />
             </View>
-            {confirm.length > 0 && confirm !== password && (
-              <Text style={[styles.hint, { color: '#FF6B6B' }]}>{t('login.passwordMismatch')}</Text>
-            )}
+            <RequirementList items={confirmRequirements} style={styles.reqList} />
           </View>
 
           <PrimaryButton
@@ -171,11 +181,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   eye: { fontSize: 18, paddingLeft: Spacing[1] },
-  hint: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    marginTop: Spacing[1],
+  reqList: {
+    marginTop: Spacing[2],
     paddingLeft: Spacing[1],
   },
 });

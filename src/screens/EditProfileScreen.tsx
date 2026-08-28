@@ -20,11 +20,15 @@ import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
 import { useSettings } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
+import RequirementList from '../components/RequirementList';
 
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
+
+// 아이디 중복 검사 디바운스 — 온보딩(BasicInfoScreen)과 같은 값으로 맞춘다.
+const HANDLE_CHECK_DEBOUNCE_MS = 500;
 
 const PROFILE_MEDIA_DIR = 'profile/';
 
@@ -96,6 +100,72 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
   const goBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wentBackRef = useRef(false);
 
+  // 아이디 입력 조건 — 온보딩(BasicInfoScreen)과 같은 규칙. 저장을 누른 뒤 알림으로
+  // 지적하는 대신 조건을 먼저 보여주고 충족되면 밝아진다(components/RequirementList).
+  // 단 여기선 **아이디를 실제로 바꾸는 중일 때만** 띄운다 — 칸에 현재 아이디가 이미 채워져
+  // 있어서, 안 바꾸는데도 체크 세 줄이 늘 켜져 있으면 잔소리로만 보인다.
+  const trimmedHandle = handle.trim();
+  const handleChanged = trimmedHandle !== globalHandle;
+  const handleFormatOk = HANDLE_RE.test(trimmedHandle);
+  const showHandleRequirements = canChangeHandle && handleChanged;
+
+  // 중복 검사 상태 — 'idle'은 아직 서버를 부르지 않은 상태, 'unknown'은 검사 불가
+  // (미설정·오프라인·타임아웃). 둘 다 줄을 감춘다. 최종 방어는 handleSave의 제출 시점
+  // 검사와 profiles.handle UNIQUE 제약이 그대로 맡는다.
+  const [handleAvail, setHandleAvail] =
+    useState<'idle' | 'checking' | 'available' | 'taken' | 'unknown'>('idle');
+
+  useEffect(() => {
+    // 안 바꾸는 중이거나 형식부터 틀렸으면 서버를 부르지 않는다.
+    if (!showHandleRequirements || !handleFormatOk) {
+      setHandleAvail('idle');
+      return;
+    }
+    let cancelled = false;
+    setHandleAvail('checking');
+    // 입력이 바뀌면 이전 타이머와 응답을 모두 버려서, 늦게 온 옛 응답이 최신 결과를
+    // 덮어쓰지 못하게 한다(순서 뒤바뀜 방지).
+    const timer = setTimeout(() => {
+      void isHandleAvailable(trimmedHandle).then((avail) => {
+        if (cancelled) return;
+        setHandleAvail(avail === null ? 'unknown' : avail ? 'available' : 'taken');
+      });
+    }, HANDLE_CHECK_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmedHandle, showHandleRequirements, handleFormatOk]);
+
+  const handleRequirements = [
+    {
+      key: 'length',
+      label: t('basicInfo.handleReqLength'),
+      met: trimmedHandle.length >= 4 && trimmedHandle.length <= 30,
+    },
+    {
+      key: 'charset',
+      label: t('basicInfo.handleReqCharset'),
+      met: trimmedHandle.length > 0 && /^[a-zA-Z0-9_]+$/.test(trimmedHandle),
+    },
+    ...(handleAvail === 'idle' || handleAvail === 'unknown'
+      ? []
+      : [
+          {
+            key: 'available',
+            label:
+              handleAvail === 'checking'
+                ? t('basicInfo.handleReqChecking')
+                : handleAvail === 'taken'
+                  ? t('basicInfo.handleReqTaken')
+                  : t('basicInfo.handleReqAvailable'),
+            met: handleAvail === 'available',
+            pending: handleAvail === 'checking',
+            failed: handleAvail === 'taken',
+          },
+        ]),
+  ];
+
   // 언마운트 시 예약된 타이머 정리 — 남겨두면 이미 떠난 화면에서 goBack이 한 번 더 돈다.
   useEffect(() => {
     wentBackRef.current = false; // 재마운트 시 잠금이 남아 뒤로가기가 막히지 않게 초기화
@@ -162,8 +232,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
         return;
       }
 
-      const trimmedHandle = handle.trim();
-      const handleChanged = trimmedHandle !== globalHandle;
+      // trimmedHandle·handleChanged는 위(조건 목록과 공용)에서 이미 계산한 값을 쓴다.
       if (handleChanged) {
         if (!canChangeHandle) {
           Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleChangeBlocked'));
@@ -298,6 +367,9 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
               />
               {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
             </View>
+            {showHandleRequirements && (
+              <RequirementList items={handleRequirements} style={s.reqList} />
+            )}
             {!canChangeHandle && (
               <View style={s.lockNoticeRow}>
                 <LockClosedIcon size={11} color="#FFB800" />
@@ -529,6 +601,10 @@ const s = StyleSheet.create({
   },
   inputDisabled: {
     color: '#4A4A59',
+  },
+  reqList: {
+    marginTop: 8,
+    marginLeft: 4,
   },
   // 안내가 두 줄로 넘어갈 수 있어 아이콘은 첫 줄에 맞춰 위쪽 고정
   lockNoticeRow: {

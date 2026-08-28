@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -37,6 +37,7 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PersonIcon, CameraIcon } from '../components/icons';
+import RequirementList from '../components/RequirementList';
 import { COUNTRIES, type Country } from '../constants/countries';
 
 const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
@@ -94,6 +95,10 @@ const glassBtn = StyleSheet.create({
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
+// 아이디 중복 검사 디바운스 — 타이핑이 멎고 이만큼 지나야 서버를 부른다.
+// 짧으면 글자마다 요청이 나가고, 길면 결과가 늦어 "확인 중"만 오래 보인다.
+const HANDLE_CHECK_DEBOUNCE_MS = 500;
+
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 
@@ -138,6 +143,72 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const [stayCountry, setStayCountry] = useState<Country | null>(null);
   const [stayType, setStayType] = useState<StayType>('exchange');
   const [stayCountryModalVisible, setStayCountryModalVisible] = useState(false);
+
+  // 아이디 입력 조건 — 빨간 오류 문구로 뒤늦게 지적하는 대신 조건을 미리 전부 보여주고,
+  // 충족되면 밝아진다. 앞 두 줄을 모두 만족하면 곧 HANDLE_RE를 통과한다(정의를 나눠 적은 것).
+  // charset 줄은 입력 단계에서 이미 걸러지지만(onChangeText), 한글을 쳤을 때 아무것도
+  // 입력되지 않는 이유를 알려주는 역할을 하므로 그대로 노출한다.
+  const trimmedHandle = handle.trim();
+  const handleFormatOk = HANDLE_RE.test(trimmedHandle);
+
+  // 중복 검사 상태 — 'idle'은 형식이 아직 안 맞아 서버를 부르지 않은 상태,
+  // 'unknown'은 검사 불가(Supabase 미설정·오프라인·타임아웃). 둘 다 조건 줄을 감춘다.
+  // 확인해 주지도 못하면서 "사용할 수 있어요"라고 단정할 수는 없기 때문이다.
+  // (최종 방어는 그대로 handleFinish의 제출 시점 검사 + profiles.handle UNIQUE 제약)
+  const [handleAvail, setHandleAvail] =
+    useState<'idle' | 'checking' | 'available' | 'taken' | 'unknown'>('idle');
+
+  useEffect(() => {
+    // 형식부터 틀렸으면 서버를 부르지 않는다 — 위의 두 조건 줄이 먼저 안내한다.
+    if (!handleFormatOk) {
+      setHandleAvail('idle');
+      return;
+    }
+    let cancelled = false;
+    setHandleAvail('checking');
+    // 글자마다 서버를 때리지 않도록 디바운스. 입력이 바뀌면 이전 타이머와 응답을 모두 버려서
+    // 늦게 도착한 옛 응답이 최신 입력의 결과를 덮어쓰지 못하게 한다(순서 뒤바뀜 방지).
+    const timer = setTimeout(() => {
+      void isHandleAvailable(trimmedHandle).then((avail) => {
+        if (cancelled) return;
+        setHandleAvail(avail === null ? 'unknown' : avail ? 'available' : 'taken');
+      });
+    }, HANDLE_CHECK_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [trimmedHandle, handleFormatOk]);
+
+  const handleRequirements = [
+    {
+      key: 'length',
+      label: t('basicInfo.handleReqLength'),
+      met: trimmedHandle.length >= 4 && trimmedHandle.length <= 30,
+    },
+    {
+      key: 'charset',
+      label: t('basicInfo.handleReqCharset'),
+      met: trimmedHandle.length > 0 && /^[a-zA-Z0-9_]+$/.test(trimmedHandle),
+    },
+    // 중복 검사 줄은 실제로 검사했을 때만 붙인다(idle·unknown이면 줄 자체를 감춘다).
+    ...(handleAvail === 'idle' || handleAvail === 'unknown'
+      ? []
+      : [
+          {
+            key: 'available',
+            label:
+              handleAvail === 'checking'
+                ? t('basicInfo.handleReqChecking')
+                : handleAvail === 'taken'
+                  ? t('basicInfo.handleReqTaken')
+                  : t('basicInfo.handleReqAvailable'),
+            met: handleAvail === 'available',
+            pending: handleAvail === 'checking',
+            failed: handleAvail === 'taken',
+          },
+        ]),
+  ];
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -298,6 +369,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               />
               <Text style={styles.charCount}>{handle.length}/30</Text>
             </View>
+            <RequirementList items={handleRequirements} style={{ marginTop: Spacing[2] }} />
             <Text style={[styles.fieldHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
           </View>
 
@@ -625,7 +697,9 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
   },
   fieldHint: {
-    color: '#FF3B30',
+    // 오류가 아니라 설명문이다. 빨강(#FF3B30)은 이 앱에서 오류·삭제 전용이라
+    // 평상시부터 빨강을 쓰면 진짜 오류(아이디 중복 등)와 구분되지 않는다.
+    color: Colors.textMuted,
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
   },

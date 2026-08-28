@@ -22,6 +22,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
+import RequirementList from '../components/RequirementList';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -124,6 +125,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // 확인 칸의 빨간 테두리를 blur 후에만 띄우기 위한 포커스 추적 (회원가입 화면과 동일한 규칙)
+  const [confirmPwFocused, setConfirmPwFocused] = useState(false);
   const [passwordSubmitting, setPasswordSubmitting] = useState(false); // 서버 처리 중 중복 제출 방지
 
   // 계정 삭제 모달 상태
@@ -278,6 +281,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setConfirmPwFocused(false);
   };
 
   const handleDeleteAccount = () => {
@@ -570,6 +574,13 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 value={newPassword}
                 onChangeText={setNewPassword}
               />
+              {/* 조건은 미리 전부 보여주고 충족되면 밝아진다 (components/RequirementList) */}
+              <RequirementList
+                style={styles.reqList}
+                items={[
+                  { key: 'length', label: t('login.passwordReqLength'), met: newPassword.length >= 6 },
+                ]}
+              />
             </View>
 
             {/* 새 비밀번호 확인 */}
@@ -578,7 +589,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[
                   styles.modalInput,
-                  confirmPassword.length > 0 && newPassword !== confirmPassword && styles.modalInputError
+                  // 빨간 테두리는 입력을 끝낸 뒤(blur)에만 — 확인 비밀번호를 치는 도중에는
+                  // 거의 매 글자가 '불일치'라 타이핑 내내 빨갛다. 입력 중 안내는 아래 조건 줄이 맡는다.
+                  !confirmPwFocused && confirmPassword.length > 0 && newPassword !== confirmPassword && styles.modalInputError
                 ]}
                  placeholder={t('accountSettings.confirmPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
@@ -586,10 +599,19 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 maxLength={72}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
+                onFocus={() => setConfirmPwFocused(true)}
+                onBlur={() => setConfirmPwFocused(false)}
               />
-              {confirmPassword.length > 0 && newPassword !== confirmPassword && (
-                <Text style={styles.inputErrorText}>{t('accountSettings.passwordMismatchHint')}</Text>
-              )}
+              <RequirementList
+                style={styles.reqList}
+                items={[
+                  {
+                    key: 'match',
+                    label: t('login.passwordReqMatch'),
+                    met: newPassword.length > 0 && newPassword === confirmPassword,
+                  },
+                ]}
+              />
             </View>
 
             {/* 버튼 그룹 */}
@@ -938,6 +960,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.red,
     marginTop: 4,
+    marginLeft: 2,
+  },
+  reqList: {
+    marginTop: 8,
     marginLeft: 2,
   },
   modalBtnGroup: {

@@ -55,6 +55,7 @@ import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
 import * as Network from 'expo-network';
 import { GoogleIcon, AppleIcon } from '../components/icons';
+import RequirementList from '../components/RequirementList';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 
@@ -408,6 +409,19 @@ export default function LoginScreen({ navigation }: Props) {
     password.length >= 6 &&
     (isSignup ? confirmPassword === password : true);
 
+  // 회원가입 비밀번호 조건 — 다 채우고 나서 빨간 오류로 지적하는 대신, 조건을 먼저
+  // 전부 보여주고 충족되면 밝아진다. 조건 자체는 기존 규칙(canSubmit) 그대로다.
+  const passwordRequirements = [
+    { key: 'length', label: t('login.passwordReqLength'), met: password.length >= 6 },
+  ];
+  const confirmRequirements = [
+    {
+      key: 'match',
+      label: t('login.passwordReqMatch'),
+      met: password.length > 0 && confirmPassword === password,
+    },
+  ];
+
   // 인증 메일 재전송 (Confirm email 활성화 시 메일 미수신 대비)
   const handleResendConfirmation = async (targetEmail: string) => {
     if (!targetEmail) return;
@@ -604,8 +618,8 @@ export default function LoginScreen({ navigation }: Props) {
                   <Image source={showPassword ? EMOJI_EYE_CLOSED : EMOJI_EYE_OPEN} style={styles.eyeIcon} />
                 </TouchableOpacity>
               </View>
-              {isSignup && password.length > 0 && password.length < 6 && (
-                <Text style={styles.fieldHint}>{t('login.passwordHint')}</Text>
+              {isSignup && (
+                <RequirementList items={passwordRequirements} style={styles.reqList} />
               )}
             </View>
 
@@ -613,8 +627,11 @@ export default function LoginScreen({ navigation }: Props) {
             {isSignup && (
               <View style={styles.fieldWrap}>
                 <Text style={styles.fieldLabel}>{t('login.confirmPassword')}</Text>
+                {/* 빨간 테두리는 입력을 끝낸 뒤(blur)에만 — 확인 비밀번호를 치는 도중에는
+                    거의 매 글자가 '불일치'라 타이핑 내내 빨갛게 뜨는 게 원래 문제였다.
+                    입력 중 안내는 아래 조건 목록이 맡는다. */}
                 <View style={[styles.inputBox, confirmFocused && styles.inputBoxFocused,
-                  confirmPassword.length > 0 && confirmPassword !== password && styles.inputBoxError,
+                  !confirmFocused && confirmPassword.length > 0 && confirmPassword !== password && styles.inputBoxError,
                 ]}>
                   <Image source={EMOJI_KEY} style={styles.inputIcon} />
                   <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
@@ -646,11 +663,7 @@ export default function LoginScreen({ navigation }: Props) {
                     <Image source={showConfirm ? EMOJI_EYE_CLOSED : EMOJI_EYE_OPEN} style={styles.eyeIcon} />
                   </TouchableOpacity>
                 </View>
-                {confirmPassword.length > 0 && confirmPassword !== password && (
-                  <Text style={[styles.fieldHint, { color: '#FF6B6B' }]}>
-                    {t('login.passwordMismatch')}
-                  </Text>
-                )}
+                <RequirementList items={confirmRequirements} style={styles.reqList} />
               </View>
             )}
 
@@ -967,6 +980,10 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
     color: Colors.textMuted,
+    paddingLeft: Spacing[1],
+  },
+  reqList: {
+    marginTop: Spacing[2],
     paddingLeft: Spacing[1],
   },
   forgotBtn: {
