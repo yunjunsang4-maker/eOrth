@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { setCoachFreezeGlobe } from './coachOverlayState';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
+import { TAB_BAR_H, TAB_BAR_GAP } from '../utils/tabBar';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -78,7 +79,11 @@ const SPOTLIGHT_GLIDE = false;
  */
 const RING_PULSE = false;
 const TOOLTIP_BG = 'rgba(18,16,26,0.96)'; // 딥다크 글래스 말풍선
-const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
+// 말풍선 높이의 폴백값(실측 전 첫 프레임에만 쓰인다). 실제 배치는 onLayout으로 잰
+// tipH를 쓴다 — 이 상수만으로 판단하면 설명이 두 줄 이상인 단계에서 아래쪽(다음 버튼)이
+// 화면 밖·탭 바 밑으로 밀려도 "공간 충분"으로 오판한다.
+const TIP_MIN = 160;
+const TIP_GAP = 14; // 강조 요소와 말풍선 사이 간격
 
 // 진행 점 — 활성 시 길어지고 강조색으로 물든다(온보딩 PageDot 언어).
 // 상태 변경은 말풍선이 완전히 사라진 시점(trans=0)에 일어나 애니메이션 없이도 티가 나지 않는다.
@@ -135,6 +140,16 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
   const [rootSize, setRootSize] = useState({ w: SCREEN_W, h: SCREEN_H });
   const [measured, setMeasured] = useState(false);
+
+  // 말풍선 실제 높이 — 배치(위/아래 판정과 클램프)에 쓴다.
+  // 단계마다 설명 줄 수가 달라 높이가 바뀌고, 안드로이드 한글 폰트(Noto Sans KR)는 같은
+  // 문장도 한 줄 더 늘어난다. 상수 하나로 잡으면 그만큼이 통째로 화면 밖으로 밀린다.
+  // 위치는 높이에 영향을 주지 않으므로(좌우 고정) 이 갱신은 한 번에 수렴한다.
+  const [tipH, setTipH] = useState(0);
+  const onTipLayout = (e: { nativeEvent: { layout: { height: number } } }) => {
+    const h = e.nativeEvent.layout.height;
+    if (h > 0 && Math.abs(h - tipH) > 1) setTipH(h);
+  };
 
   const onRootLayout = (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
     const { width, height } = e.nativeEvent.layout;
@@ -323,32 +338,49 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   const isCircle = step.shape === 'circle';
   const box = geom ? { y: geom.y, h: geom.h } : null;
 
+  // 하단 탭 바가 잡아먹는 높이. 코치마크는 화면 안에 그려지는데 탭 바(CustomTabBar)는
+  // 네비게이터 오버레이라 이 오버레이보다 앞 레이어다. 게다가 튜토리얼 중에는 탭 전환을
+  // 막으려고 pointerEvents="auto" 딤을 덮는다 — 즉 이 구간에 들어간 말풍선은 보이지도,
+  // 눌리지도 않는다. 프로필 마지막 단계(여행 기록)에서 '다음' 버튼이 여기 잠겨
+  // 튜토리얼을 넘길 수 없던 것이 이 계산을 빠뜨린 결과다.
+  const bottomReserve = insets.bottom + TAB_BAR_GAP + TAB_BAR_H;
+  const tipNeed = tipH > 0 ? tipH : TIP_MIN;
+  const topLimit = insets.top + 52;                    // 우상단 종료 X 아래
+  const bottomLimit = rootSize.h - bottomReserve - 8;  // 탭 바 윗면 위
+  // 위아래 모두 모자라면 위쪽이 잘리더라도 '다음' 버튼이 보이는 쪽을 택한다
+  // (제목이 조금 가려지는 것보다 진행 불가가 훨씬 나쁘다).
+  const clampTop = (v: number) =>
+    Math.min(Math.max(v, topLimit), Math.max(8, bottomLimit - tipNeed));
+
   let tipStyle: { top?: number; bottom?: number };
   let arrowDir: 'up' | 'down' | null = null;
   if (step.tipBottom != null) {
     tipStyle = { bottom: step.tipBottom };
     arrowDir = 'down';
   } else if (step.tipBelow && box) {
-    tipStyle = { top: Math.min(box.y + box.h + 16, rootSize.h - TIP_MIN) };
-    arrowDir = 'up';
+    // 클램프로 자리가 밀리면 꼬리가 가리키는 곳이 없어지므로 꼬리를 뗀다
+    const want = box.y + box.h + 16;
+    const top = clampTop(want);
+    tipStyle = { top };
+    arrowDir = Math.abs(top - want) < 2 ? 'up' : null;
   } else if (isCircle && box) {
-    tipStyle = { top: Math.min(Math.max(box.y, 24), rootSize.h - TIP_MIN) };
+    tipStyle = { top: clampTop(Math.max(box.y, 24)) };
     arrowDir = null;
   } else if (box) {
-    const spaceAbove = box.y;
-    const spaceBelow = rootSize.h - (box.y + box.h);
-    if (spaceBelow >= TIP_MIN) {
-      tipStyle = { top: box.y + box.h + 14 };
+    const spaceAbove = box.y - TIP_GAP - topLimit;
+    const spaceBelow = bottomLimit - (box.y + box.h) - TIP_GAP;
+    if (spaceBelow >= tipNeed) {
+      tipStyle = { top: box.y + box.h + TIP_GAP };
       arrowDir = 'up';
-    } else if (spaceAbove >= TIP_MIN) {
-      tipStyle = { bottom: rootSize.h - box.y + 14 };
+    } else if (spaceAbove >= tipNeed) {
+      tipStyle = { bottom: rootSize.h - box.y + TIP_GAP };
       arrowDir = 'down';
     } else {
-      tipStyle = { top: Math.min(Math.max(box.y + box.h / 2 - 90, 24), rootSize.h - TIP_MIN) };
+      tipStyle = { top: clampTop(box.y + box.h / 2 - tipNeed / 2) };
       arrowDir = null;
     }
   } else {
-    tipStyle = { top: rootSize.h * 0.42 };
+    tipStyle = { top: clampTop(rootSize.h * 0.42) };
     arrowDir = null;
   }
 
@@ -466,7 +498,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
         />
 
         {/* 설명 말풍선 — 크로스페이드 + 그라데이션 테두리 + 꼬리 + 내용 스태거 */}
-        <Animated.View style={[styles.tooltipPos, tipStyle, { opacity: trans }]}>
+        <Animated.View onLayout={onTipLayout} style={[styles.tooltipPos, tipStyle, { opacity: trans }]}>
           {arrowDir === 'up' && <View style={[styles.arrowUp, { left: arrowX }]} />}
           {arrowDir === 'down' && <View style={[styles.arrowDown, { left: arrowX }]} />}
           <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tipBorder}>
