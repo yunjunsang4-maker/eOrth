@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
+import { DETECTOR_KEYS } from '../store/persist';
 import { COUNTRIES } from '../constants/countries';
 import {
   detectCurrentCountry,
@@ -24,7 +25,9 @@ import i18n from '../i18n';
 // 앱을 포그라운드로 열 때마다 체크(귀국 직후 앱을 열면 바로 감지). 2분 디바운스는
 // 빠른 앱 전환 시 위치 조회 남발만 막는 용도 — 사실상 "앱 열 때마다 체크".
 const CHECK_INTERVAL = 2 * 60 * 1000; // 2분
-const ABROAD_LAST_KEY = '@eorth/returnDetect/abroadLast'; // 직전 해외 여부 영속 키
+// 직전 해외 여부 영속 키 — 문자열 자체는 store/persist.ts의 DETECTOR_KEYS가 유일한 정의처다
+// (다른 감지기와 같은 규칙). 여기 복붙해 두면 clearPersistedStores가 지우는 키와 갈라진다.
+const ABROAD_LAST_KEY = DETECTOR_KEYS.returnAbroadLast;
 // 스로틀 기준 시각 — 컴포넌트 ref가 아니라 모듈 스코프에 둬서 리마운트에도 4시간 간격이 유지되게 함
 let lastCheckAt = 0;
 

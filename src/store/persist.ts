@@ -28,6 +28,24 @@ export const STORE_KEYS = {
   travelDna: '@eorth/travelDna',
 } as const;
 
+/**
+ * 상시 감지기(스냅·도착·귀국)의 '이미 보냈는가' 영속 상태 키 — **여기가 유일한 정의처다.**
+ *
+ * STORE_KEYS와 분리한 이유: 저쪽은 usePersistence의 봉투 스키마({version,updatedAt,payload})로
+ * 읽고 쓰는 스토어 키지만, 이쪽은 감지기가 직접 raw 문자열('true' / ISO2 코드)로 읽고 쓴다.
+ * 같은 목록에 섞으면 누군가 loadEnvelope로 읽으려 들거나 SCHEMA_VERSION 폐기 대상으로 오해한다.
+ *
+ * ⚠️ 키 문자열을 감지기 파일에 복붙하지 마라. 한쪽만 고치면 '지우는 쪽이 다른 키를 지워
+ *    발송 기록이 고착 → 그 여행 내내 알림 0건'이 되는데, 컴파일도 lint도 통과하고 증상은
+ *    해외에 나가야만 나온다. 감지기는 이 상수를 별칭으로 받아 쓴다
+ *    (scripts/snap-detect-guard.verify.mjs가 그 별칭 문장을 대조한다).
+ */
+export const DETECTOR_KEYS = {
+  snapSent: '@eorth/snapDetect/sent', // SnapDetector — 이번 해외 체류에서 스냅을 보냈는가('true')
+  arrivalSentCountry: '@eorth/arrivalDetect/sentCountry', // ArrivalNotifier — 도착 알림을 낸 나라 ISO2
+  returnAbroadLast: '@eorth/returnDetect/abroadLast', // ReturnDetector — 직전 판정이 해외였는가
+} as const;
+
 interface Envelope<T> {
   version: number;
   updatedAt: number;
@@ -135,9 +153,27 @@ export function usePersistence<T>(
  * records 등은 서버에서 재다운로드하지 않아 지우면 데이터 손실이지만, travelDna는 서버가
  * 진실이라 지워도 다음 진입에 다시 받아온다 — 그래서 여기 포함해도 안전하고, 계정 귀속
  * 데이터라 포함하지 않으면 다음 계정에 이전 계정의 유형이 그대로 남는다).
+ *
+ * DETECTOR_KEYS도 함께 지운다. 근거는 **이 함수가 STORE_KEYS.settings를 지운다**는 것이다 —
+ * 거주국(homeCountryCode)이 초기화되면 세 감지기의 '해외' 기준 자체가 달라지므로, 옛 기준으로
+ * 남긴 발송 기록은 전부 무효다. 남겨 두면 상태와 기준이 어긋난 채 고착된다:
+ *  · snapDetect/sent='true'가 남으면 그 여행 내내 스냅이 0건(실측). 사용자는 원인도 모르고
+ *    되돌릴 수도 없다 — 스냅 토글을 껐다 켜야만 풀린다.
+ *  · arrivalDetect/sentCountry가 남으면 같은 나라 도착 알림이 그 여행 내내 침묵한다.
+ *  · returnDetect/abroadLast는 지워도 다음 포그라운드 체크가 현재 위치로 곧바로 다시 기록한다.
+ *    잃는 것은 '초기화 직후 앱을 한 번도 열지 않고 귀국한' 경우의 귀국 알림 1건뿐이고,
+ *    남겼을 때의 위험(옛 거주국 기준의 해외 판정으로 엉뚱한 귀국 알림)과 맞바꿀 값이 아니다.
+ * 지웠을 때의 대가는 전부 '알림 1건 중복 또는 누락'이고, 남겼을 때의 대가는 '여행 내내 침묵'이다.
+ * 감지기 상태는 계정이 아니라 기기·위치에 묶인 값이지만, 그 판정 기준(거주국)이 여기서
+ * 함께 사라지므로 네 호출부(계정 전환·데이터 초기화·탈퇴 파기 2곳) 모두 지우는 쪽이 옳다.
  */
 export async function clearPersistedStores(): Promise<void> {
-  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead, STORE_KEYS.travelDna]);
+  await AsyncStorage.multiRemove([
+    STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead, STORE_KEYS.travelDna,
+    // Object.values로 도는 이유: 감지기 키가 늘어나도 여기 한 줄을 고칠 필요가 없다.
+    // 열거를 손으로 적어 두면 '새 감지기를 추가하고 여기 빠뜨리는' 사고가 정확히 반복된다.
+    ...Object.values(DETECTOR_KEYS),
+  ]);
 }
 
 /**
