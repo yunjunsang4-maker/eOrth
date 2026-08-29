@@ -302,6 +302,22 @@ export default function AppNavigator() {
                   translateX: current.progress.interpolate({
                     inputRange: [0, 1],
                     outputRange: [layouts.screen.width, 0],
+                    // clamp 필수 — 스와이프 중 progress는 [0,1]에 갇혀 있지 않다.
+                    // **아래 gestureResponseDistance(150dp) 안, 즉 화면 왼쪽 띠에서** 손가락을
+                    // 내려 뒤로가기와 반대 방향(우→좌)으로 끌면 translationX가 음수가 되고
+                    // CardStack의 getProgressFromGesture가 progress > 1을 내놓는다. clamp가
+                    // 없으면 선형 외삽으로 translateX가 음수가 되어 **화면이 손가락을 따라
+                    // 왼쪽으로 끌려갔다가 튕겨 돌아온다.**
+                    //
+                    // 방향 게이트가 왜 못 막나: react-navigation이 RNGH에 넘기는 minOffsetX는
+                    // RNGH v1 이름이라 2.x(현재 2.28.0)에서 조용히 버려진다(허용목록 밖 prop은
+                    // filterConfig가 통째로 무시). hitSlop만 살아서 '왼쪽 150dp'는 지켜지지만
+                    // '좌→우만'은 지켜지지 않는다 — upstream 결함이고 앱에서 끌 방법이 없다.
+                    // 그래서 렌더 쪽에서 막는다. 기본 forHorizontalIOS도 모든 보간에 clamp를 건다.
+                    //
+                    // ⚠️ 재현할 때 화면 오른쪽 끝에서 밀면 hitSlop 밖이라 아무 일도 안 난다.
+                    //    "재현 안 됨"으로 오판하지 말 것.
+                    extrapolate: 'clamp',
                   }),
                 },
               ],
@@ -311,6 +327,7 @@ export default function AppNavigator() {
               opacity: current.progress.interpolate({
                 inputRange: [0, 1],
                 outputRange: [0, 0.6],
+                extrapolate: 'clamp', // 같은 이유 — 없으면 과도 스와이프에서 0.6을 넘어 더 어두워진다
               }),
             },
           }),
@@ -437,6 +454,9 @@ export default function AppNavigator() {
                     scale: current.progress.interpolate({
                       inputRange: [0, 1],
                       outputRange: [0.9, 1],
+                      // 전역 인터폴레이터와 같은 이유 — progress는 스와이프 중 1을 넘을 수 있고,
+                      // clamp가 없으면 화면이 1보다 크게 확대됐다 돌아온다.
+                      extrapolate: 'clamp',
                     }),
                   },
                 ],
@@ -446,6 +466,7 @@ export default function AppNavigator() {
                 opacity: current.progress.interpolate({
                   inputRange: [0, 1],
                   outputRange: [0, 0.5],
+                  extrapolate: 'clamp',
                 }),
               },
             }),
