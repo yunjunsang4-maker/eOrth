@@ -46,6 +46,27 @@ export const DETECTOR_KEYS = {
   returnAbroadLast: '@eorth/returnDetect/abroadLast', // ReturnDetector — 직전 판정이 해외였는가
 } as const;
 
+/**
+ * 감지기 관련 '기기당 1회 안내' UX 플래그 — DETECTOR_KEYS와 목록을 나눠 둔다.
+ *
+ * 저쪽은 **발송 기록**이라 남으면 증상이 '알림이 영영 안 온다'이고, 이쪽은 **안내 기록**이라
+ * 남으면 증상이 '기능을 발견할 경로가 사라진다'다. 지우는 근거가 달라 한 목록에 섞으면
+ * 다음 사람이 둘 중 하나의 근거만 읽고 판단하게 된다.
+ *
+ * 그래도 clearPersistedStores에서는 **함께 지운다.** 이 앱의 관례가 "데이터 초기화 시 1회
+ * 안내 플래그도 되돌린다"이기 때문이다 — 같은 성격의 tutorialsSeen(코치마크)을
+ * settingsStore.resetSettings가 초기화하고, 데이터 초기화 화면은 그 둘을 같은 흐름에서 부른다
+ * (SettingsScreen의 초기화: clearPersistedStores → resetSettings). 넛지 플래그만 raw
+ * AsyncStorage에 있어서 그 관례에서 혼자 빠져 있었다(7차 QA 발견 22).
+ *
+ * 구체적으로: 데이터 초기화는 notifPrefs를 기본값으로 되돌리는데 returnDetect의 기본값이
+ * false다. 즉 사용자는 귀국 감지가 **꺼진 상태**로 돌아가는데, 켜라고 권하는 1회 안내는
+ * 'true'가 남아 다시 뜨지 않는다 → 그 기능을 다시 알 방법이 없다.
+ */
+export const NUDGE_KEYS = {
+  returnDetectNudged: '@eorth/returnDetect/nudged', // ReturnDetectNudge — 켜기 안내를 이미 띄웠는가
+} as const;
+
 interface Envelope<T> {
   version: number;
   updatedAt: number;
@@ -166,6 +187,10 @@ export function usePersistence<T>(
  * 지웠을 때의 대가는 전부 '알림 1건 중복 또는 누락'이고, 남겼을 때의 대가는 '여행 내내 침묵'이다.
  * 감지기 상태는 계정이 아니라 기기·위치에 묶인 값이지만, 그 판정 기준(거주국)이 여기서
  * 함께 사라지므로 네 호출부(계정 전환·데이터 초기화·탈퇴 파기 2곳) 모두 지우는 쪽이 옳다.
+ *
+ * NUDGE_KEYS도 함께 지운다(근거는 그 선언부에). 여기서 지워도 안내가 곧바로 다시 뜨지는
+ * 않는다 — 넛지의 조건은 '해외 여행 기록이 있을 것'인데 records도 이 함수가 함께 지우므로,
+ * 사용자가 해외 기록을 다시 갖게 된 시점에야 뜬다. 그게 원래 의도한 등장 시점이다.
  */
 export async function clearPersistedStores(): Promise<void> {
   await AsyncStorage.multiRemove([
@@ -173,6 +198,7 @@ export async function clearPersistedStores(): Promise<void> {
     // Object.values로 도는 이유: 감지기 키가 늘어나도 여기 한 줄을 고칠 필요가 없다.
     // 열거를 손으로 적어 두면 '새 감지기를 추가하고 여기 빠뜨리는' 사고가 정확히 반복된다.
     ...Object.values(DETECTOR_KEYS),
+    ...Object.values(NUDGE_KEYS),
   ]);
 }
 

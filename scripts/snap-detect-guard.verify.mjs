@@ -390,6 +390,14 @@ const DETECTOR_KEY_VALUES = {
   arrivalSentCountry: '@eorth/arrivalDetect/sentCountry',
   returnAbroadLast: '@eorth/returnDetect/abroadLast',
 };
+// 같은 규칙을 받는 두 번째 목록 — '기기당 1회 안내' 플래그.
+// 발송 기록과 목록을 나눠 둔 이유는 persist.ts 주석에 있고, 여기서는 **똑같이** 검사한다:
+// 정의처가 하나여야 하고, clearPersistedStores가 전부 지워야 하고, 리터럴이 밖에 없어야 한다.
+// 이 키가 초기화에서 빠져 있어서 '데이터 초기화 → 귀국 감지는 꺼졌는데 켜라는 안내는
+// 다시 안 뜸'이 됐다(7차 QA 발견 22).
+const NUDGE_KEY_VALUES = {
+  returnDetectNudged: '@eorth/returnDetect/nudged',
+};
 const persist = readSafe(PERSIST);
 if (persist === null) {
   check(false, `${PERSIST} 파일이 없다`);
@@ -412,22 +420,45 @@ if (persist === null) {
     /\.\.\.Object\.values\(DETECTOR_KEYS\)/.test(clearBody),
     `${PERSIST}: clearPersistedStores가 DETECTOR_KEYS 전체를 지운다 (열거 누락 원천 차단)`,
   );
+
+  // 넛지 키도 같은 규칙 — 정의·값·전개를 함께 고정한다.
+  check(/export const NUDGE_KEYS = \{/.test(persist), `${PERSIST}: NUDGE_KEYS를 export 한다`);
+  for (const [member, value] of Object.entries(NUDGE_KEY_VALUES)) {
+    check(
+      new RegExp(`${member}:\\s*'${value}'`).test(persist),
+      `${PERSIST}: NUDGE_KEYS.${member} = '${value}'`,
+    );
+  }
+  check(
+    /\.\.\.Object\.values\(NUDGE_KEYS\)/.test(clearBody),
+    `${PERSIST}: clearPersistedStores가 NUDGE_KEYS 전체를 지운다 (초기화 후 안내가 다시 뜬다)`,
+  );
 }
+
+// 넛지 키를 쓰는 쪽도 별칭이어야 한다(감지기 3파일과 같은 규칙).
+const NUDGE = 'src/components/ReturnDetectNudge.tsx';
+const nudge = readSafe(NUDGE);
+check(
+  nudge !== null && nudge.includes('const NUDGED_KEY = NUDGE_KEYS.returnDetectNudged;'),
+  `${NUDGE}: 영속 키가 NUDGE_KEYS.returnDetectNudged의 별칭이다 (복붙 금지)`,
+);
 
 // 키 문자열 리터럴이 persist.ts 밖에 나타나지 않는가 — 별칭 검사(규칙 1)만으로는 '별칭도
 // 두고 다른 파일에 리터럴도 두는' 상태를 못 잡는다. 이쪽이 그 뒷문을 막는다.
+// 감지기 키 3개와 넛지 키 1개를 **함께** 본다 — 둘 다 clearPersistedStores가 지우는 대상이라
+// 갈라졌을 때의 증상(초기화했는데 상태가 남음)이 같다.
 const strayLiterals = [];
 for (const p of collect('src')) {
   const r = rel(p);
   if (r === PERSIST) continue;
   const text = readFileSync(p, 'utf8');
-  for (const value of Object.values(DETECTOR_KEY_VALUES)) {
+  for (const value of [...Object.values(DETECTOR_KEY_VALUES), ...Object.values(NUDGE_KEY_VALUES)]) {
     if (text.includes(`'${value}'`) || text.includes(`"${value}"`)) strayLiterals.push(`${value} (${r})`);
   }
 }
 check(
   strayLiterals.length === 0,
-  `감지기 키 문자열이 ${PERSIST} 밖에 없다 (밖에 있는 것: ${strayLiterals.join(', ') || '없음'})`,
+  `감지기·넛지 키 문자열이 ${PERSIST} 밖에 없다 (밖에 있는 것: ${strayLiterals.join(', ') || '없음'})`,
 );
 
 // ── 규칙 7: MomentNotifier의 '양보'가 도착 알림 발송 여부와 실제로 연동돼 있다 ──
@@ -500,8 +531,74 @@ if (svc !== null) {
     arrivalSrc !== null && arrivalSrc.includes('if (sentCountry !== cur) {'),
     `${ARRIVAL}: 발송 조건이 'sentCountry !== cur'이다 (willArrivalNotify와 한 쌍 — 한쪽만 바뀌면 발견 17 재발)`,
   );
-  // MomentNotifier에는 try/catch가 없다(범위 밖). 여기서 새는 예외는 곧 unhandled rejection이다.
+  // 호출부(MomentNotifier)는 이제 catch를 갖췄지만(규칙 8), 그건 예외를 **삼키는** 것이지
+  // 판정을 살리는 것이 아니다 — 여기서 throw하면 그 회차의 양보 판정이 통째로 날아가고
+  // 상주 알림 유지·해제까지 건너뛴다. 그래서 판정 함수 쪽에서 읽기 실패를 흡수하는 것이 맞다.
   check(/\.catch\(\(\) => null\)/.test(wBody), `${SERVICE}: willArrivalNotify가 읽기 실패를 삼킨다`);
+}
+
+// ── 규칙 8: 네 감지기가 예외를 같은 모양으로 처리한다 ──
+//
+// 네 컴포넌트 모두 check()를 `await` 없이 부른다(AppState 콜백 + 마운트 시 1회). 그래서
+// check() 안에서 throw가 새어 나오면 그대로 unhandled rejection이 되고, 스로틀 선점은 이미
+// 소모돼 그 감지기가 한 주기 동안 조용해진다. 서비스 계층(snapService·momentService)에는
+// try/catch가 없어서 권한·발송·예약·AsyncStorage가 전부 throw 가능 경로다.
+//
+// 검사는 파일마다 (1) check() **본문 안**에 catch 블록이 있는가
+// (2) 그 catch 안에 __DEV__ 로그가 있고 (3) 태그가 그 파일의 이름과 같은가 를 본다.
+// (3)은 복붙 사고 방지용이다 — 태그가 틀리면 실기기 로그에서 엉뚱한 감지기를 쫓게 된다.
+//
+// 본문의 끝은 `\n    };`(effect 안 4칸 들여쓰기로 닫히는 화살표 함수)로 잡는다. 네 파일 모두
+// check()를 useEffect 안에서 그 형태로 선언한다. 처음에는 'check() 정의 ~ AppState 구독 사이'로
+// 느슨하게 잡았는데, **catch를 check() 밖으로 옮기고 그 사이에 죽은 catch를 심은 변이가
+// 통과했다**(주석은 '안'이라고 적고 검사는 '사이'를 읽는, 이 작업에서 네 번 반복된 실패 양식).
+// 구간을 본문으로 좁힌 뒤 잡힌다.
+//
+// ⚠️ 이 검사는 catch의 **존재**만 본다. 무엇을 삼키는지, 삼킨 뒤 상태가 옳은지는 보지 못한다.
+//    SnapDetector·ArrivalNotifier의 선점 정리(abort)는 규칙 1-(f)가 따로 검사하고,
+//    MomentNotifier·ReturnDetector에는 abort가 **의도적으로 없다**(각 파일 주석 참조).
+for (const [path, tag] of [
+  [SNAP, 'SnapDetector'],
+  [ARRIVAL, 'ArrivalNotifier'],
+  [MOMENT, 'MomentNotifier'],
+  ['src/components/ReturnDetector.tsx', 'ReturnDetector'],
+]) {
+  const src = readSafe(path);
+  if (src === null) {
+    check(false, `${path} 파일이 없다 (이름이 바뀌었으면 이 가드도 함께 고칠 것)`);
+    continue;
+  }
+  const cAt = src.indexOf('const check = async');
+  // 본문의 끝. 못 찾으면(선언 형태가 바뀌면) -1이 되어 아래 검사가 실패한다 — 조용히 통과 금지.
+  const endAt = cAt < 0 ? -1 : src.indexOf('\n    };', cAt);
+  // `} catch {`와 `} catch (e) {` 둘 다 받는다(규칙 1-(f)와 같은 이유 — 표기가 아니라 규칙을 본다).
+  const m = cAt < 0 || endAt < 0 ? null : /\}\s*catch\s*(\([\w$]*\)\s*)?\{/.exec(src.slice(cAt, endAt));
+  check(
+    cAt > 0 && endAt > cAt && m !== null,
+    `${path}: check() 본문 안에 catch가 있다 (없으면 unhandled rejection + 감지 공백)`,
+  );
+  // 로그도 **catch 블록 안**에서만 찾는다. 파일 전체를 보면 catch 밖 어딘가의 console.warn이
+  // 이 검사를 대신 만족시켜 준다(위와 같은 구간 함정).
+  // catch 블록의 끝은 뒤따르는 `} finally {`로 잡는다. 없으면 본문 끝.
+  // endAt까지 통째로 보면 **finally까지 새서**, 로그를 finally로 옮긴 변이가 통과한다
+  // (8차 QA 발견 25 — "catch 안에서만 찾는다"고 적고 실제로는 finally까지 읽던 자리다.
+  //  이 작업에서 다섯 번째로 나온 '주장 범위 > 읽는 범위'라, 이번엔 구간을 실제로 좁혔다).
+  const catchStart = m === null ? -1 : cAt + m.index;
+  const finallyRel = catchStart < 0 ? -1 : src.slice(catchStart, endAt).search(/\}\s*finally\s*\{/);
+  const catchEnd = finallyRel < 0 ? endAt : catchStart + finallyRel;
+  const catchBody = catchStart < 0 ? '' : src.slice(catchStart, catchEnd);
+  check(
+    new RegExp(`if \\(__DEV__\\) console\\.warn\\('\\[${tag}\\]`).test(catchBody),
+    `${path}: 삼킨 예외를 catch 안에서 __DEV__ 로그로 남긴다 (태그 [${tag}])`,
+  );
+  // 다시 던지면 catch가 있어도 unhandled rejection이 그대로 난다 — 이 규칙이 막으려는 것이
+  // 정확히 그것이므로, 존재만 보지 말고 '삼키는가'까지 본다(발견 25).
+  // 주석을 걷어내고 본다 — 이 파일들의 주석에는 "throw할 수 있는데"처럼 단어가 흔하다.
+  const catchCode = catchBody.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  check(
+    catchStart >= 0 && !/(^|[;{}\s])throw\s/.test(catchCode),
+    `${path}: catch가 예외를 다시 던지지 않는다 (던지면 catch가 있어도 unhandled rejection)`,
+  );
 }
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
