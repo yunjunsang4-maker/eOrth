@@ -292,7 +292,14 @@ export default function AppNavigator() {
           animation: 'slide_from_right',
           gestureEnabled: true,
           gestureDirection: 'horizontal',
-          gestureResponseDistance: 150,
+          // react-navigation 기본값(GESTURE_RESPONSE_DISTANCE_HORIZONTAL = 50)을 그대로 쓴다.
+          // 예전엔 150이었는데 근거 없이 대량 커밋(182b45b)에 묻어 들어온 값이었고, 뒤로가기
+          // 제스처가 잡히는 띠를 화면 폭의 ~38%까지 넓혀 두 가지 대가를 치렀다:
+          //  ① 아래 clamp가 막는 '화면 끌림'의 발생 면적이 그만큼 넓었다
+          //  ② 그 띠 안의 세로 스크롤·가로 카드 스트립 드래그가 카드 제스처에 터치를 뺏긴다
+          //     (RNGH 2.x가 minOffsetX를 버려 방향 게이트가 죽어 있어 더 잘 뺏긴다 — 아래 주석)
+          // 좁히면 가장자리에서 시작한 스와이프만 뒤로가기로 잡힌다(iOS 기본 감각과 같다).
+          gestureResponseDistance: 50,
           // 스와이프 뒤로가기 중 이전 화면이 분리되어 흰 화면이 깜빡이는 버그 방지
           detachPreviousScreen: false,
           cardStyleInterpolator: ({ current, next, layouts }) => ({
@@ -303,7 +310,7 @@ export default function AppNavigator() {
                     inputRange: [0, 1],
                     outputRange: [layouts.screen.width, 0],
                     // clamp 필수 — 스와이프 중 progress는 [0,1]에 갇혀 있지 않다.
-                    // **아래 gestureResponseDistance(150dp) 안, 즉 화면 왼쪽 띠에서** 손가락을
+                    // **위 gestureResponseDistance(50dp) 안, 즉 화면 왼쪽 가장자리에서** 손가락을
                     // 내려 뒤로가기와 반대 방향(우→좌)으로 끌면 translationX가 음수가 되고
                     // CardStack의 getProgressFromGesture가 progress > 1을 내놓는다. clamp가
                     // 없으면 선형 외삽으로 translateX가 음수가 되어 **화면이 손가락을 따라
@@ -311,12 +318,13 @@ export default function AppNavigator() {
                     //
                     // 방향 게이트가 왜 못 막나: react-navigation이 RNGH에 넘기는 minOffsetX는
                     // RNGH v1 이름이라 2.x(현재 2.28.0)에서 조용히 버려진다(허용목록 밖 prop은
-                    // filterConfig가 통째로 무시). hitSlop만 살아서 '왼쪽 150dp'는 지켜지지만
+                    // filterConfig가 통째로 무시). hitSlop만 살아서 '왼쪽 가장자리'는 지켜지지만
                     // '좌→우만'은 지켜지지 않는다 — upstream 결함이고 앱에서 끌 방법이 없다.
                     // 그래서 렌더 쪽에서 막는다. 기본 forHorizontalIOS도 모든 보간에 clamp를 건다.
                     //
-                    // ⚠️ 재현할 때 화면 오른쪽 끝에서 밀면 hitSlop 밖이라 아무 일도 안 난다.
-                    //    "재현 안 됨"으로 오판하지 말 것.
+                    // ⚠️ 재현할 때 가장자리를 벗어난 곳에서 밀면 hitSlop 밖이라 아무 일도 안 난다.
+                    //    "재현 안 됨"으로 오판하지 말 것. (응답 거리를 50으로 낮춘 뒤로는 띠가
+                    //     좁아져 이 clamp가 실제로 발동할 일 자체가 드물다 — 그래도 남겨 둔다.)
                     extrapolate: 'clamp',
                   }),
                 },
