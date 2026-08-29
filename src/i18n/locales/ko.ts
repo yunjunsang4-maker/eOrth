@@ -66,6 +66,11 @@ const ko = {
     language: '언어',
     residence: '거주국가',
     residenceSelect: '거주국가 선택',
+    useCurrentLocation: '현재 위치로 자동 입력',
+    useCurrentLocationHint: '위치는 거주국가를 채우는 데만 쓰고 저장하지 않아요.',
+    locating: '현재 위치 확인 중…',
+    locateFailed: '현재 위치를 확인하지 못했어요.\n위치 권한을 허용했는지 확인하고 다시 시도하거나, 목록에서 직접 선택해주세요.',
+    locateUnsupported: '현재 위치의 국가는 아직 지원하지 않아요.\n목록에서 직접 선택해주세요.',
     stayToggle: '지금 해외에 장기체류 중',
     stayCountryLabel: '체류 국가',
     stayTypeLabel: '체류 유형',
@@ -458,6 +463,11 @@ const ko = {
     permissionTitle: '알림 권한이 꺼져 있어요',
     permissionDesc: '기기 설정에서 알림을 허용해야\n아래 알림을 받을 수 있어요.',
     openSettings: '설정 열기',
+    // 위치 권한 배너 — 여행 감지 알림 4종(도착·스냅·순간·귀국)이 전부 현재 위치를 읽는다.
+    // 권한이 없으면 토글만 켜진 채 기능이 조용히 죽으므로 그 사실을 여기서 알린다.
+    locationPermissionTitle: '위치 권한이 꺼져 있어요',
+    locationPermissionDesc: '여행 감지 알림은 현재 위치로 해외 도착·귀국을 판단해요.\n위치를 허용해야 아래 감지 알림이 실제로 동작해요.',
+    locationPermissionBtn: '위치 허용',
     sectionBasic: '기본 알림 설정',
     masterLabel: '푸시 알림 허용',
     masterDesc: 'eOrth에서 보내는 모든 푸시 알림을 켜고 끕니다',

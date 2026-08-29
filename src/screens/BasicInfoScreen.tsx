@@ -34,6 +34,7 @@ import { useSettings, type AppLanguage } from '../store/settingsStore';
 import { isHandleAvailable, markOnboarded } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { detectCurrentCountry } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PersonIcon, CameraIcon } from '../components/icons';
@@ -139,6 +140,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  const [locating, setLocating] = useState(false);
   const [stayOn, setStayOn] = useState(false);
   const [stayCountry, setStayCountry] = useState<Country | null>(null);
   const [stayType, setStayType] = useState<StayType>('exchange');
@@ -224,6 +226,43 @@ export default function BasicInfoScreen({ navigation }: Props) {
     });
     if (!result.canceled && result.assets[0]) {
       setPhoto(result.assets[0].uri);
+    }
+  };
+
+  // 현재 위치로 거주국 자동 입력.
+  //
+  // 앱을 통틀어 위치 권한을 얻을 수 있는 경로가 사실상 기록 작성 화면뿐이었다. 감지기 4종은
+  // 절대 팝업을 띄우지 않고(snapService.detectCurrentCountry의 기본 무팝업 정책 — 로그인 전
+  // 스플래시 위에 위치 팝업이 뜨는 App Store 5.1.1 거부 사유를 막는 설계라 유지한다),
+  // 기록을 한 번도 안 써본 사용자는 해외에 도착해도 감지기가 전부 조용히 죽어 있었다.
+  // 여기가 온보딩에서 위치를 물을 수 있는 유일하게 정당한 지점이다 — "어디 사세요?" 옆에서
+  // 사용자가 직접 버튼을 눌렀을 때만 요청하므로 왜 필요한지가 화면에 드러나 있다.
+  const handleUseCurrentLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    try {
+      const { countryCode } = await detectCurrentCountry({ allowPrompt: true });
+      // 권한 거부·오프라인·역지오코딩 실패는 전부 countryCode=null로 돌아온다(스로우하지 않는다).
+      // 버튼을 눌렀는데 아무 일도 안 일어나면 고장으로 보이므로 반드시 알린다.
+      //
+      // 여기서 emitToast를 쓸 수 없다: ToastHost는 useIsAppEntered()가 false면 큐를 비우는데,
+      // 온보딩(BasicInfo)은 루트 스택에 'Main'이 없어 항상 false다 → 토스트가 조용히 버려진다.
+      // 이 화면의 다른 안내들(handleInvalid·handleTaken)과 같이 Alert로 알린다.
+      if (!countryCode) {
+        Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.locateFailed'));
+        return;
+      }
+      // 지원 목록(COUNTRIES)에 없는 국가는 저장하지 않는다 — 저장되면 거주국 제외·통계·
+      // 프로필 매칭이 전부 실패한다(SettingsScreen의 VALID_COUNTRY_CODES 방어와 같은 이유).
+      // 실패해도 기존 선택은 그대로 두고 목록에서 직접 고르도록 안내한다.
+      const matched = COUNTRIES.find((c) => codeOf(c) === countryCode.toUpperCase());
+      if (!matched) {
+        Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.locateUnsupported'));
+        return;
+      }
+      setSelectedCountry(matched);
+    } finally {
+      setLocating(false);
     }
   };
 
@@ -429,11 +468,46 @@ export default function BasicInfoScreen({ navigation }: Props) {
               activeOpacity={0.8}
               onPress={() => { setCountrySearch(''); setCountryModalVisible(true); }}
             >
-              <Text style={[styles.input, { paddingVertical: 16 }]}>
-                {selectedCountry.flag} {selectedCountry.name}
-              </Text>
+              {/* 국기와 국가명을 한 Text에 넣지 말 것 — 삼성 갤럭시 S21+(Android 15)에서
+                  [국기 이모지 + 한글]이 한 텍스트 런에 있으면 특정 국가(🇻🇳 베트남·🇵🇹 포르투갈)의
+                  한글 글리프가 통째로 안 그려진다(폭은 확보되는데 글자만 사라짐). 6ae35f9와 같은 분리다.
+                  Text는 flex 컨테이너가 아니라 gap이 안 먹으므로 공백 한 칸을 별도 Text로 둔다. */}
+              <View style={styles.countryValueRow}>
+                <Text style={styles.countryFlagText}>{selectedCountry.flag}</Text>
+                <Text style={[styles.input, { paddingVertical: 16 }]}>{selectedCountry.name}</Text>
+              </View>
               <Text style={styles.charCount}>{t('common.change')}</Text>
             </TouchableOpacity>
+
+            {/* 현재 위치로 자동 입력 — 기존 '변경'(국가 모달)은 그대로 두고 보조 수단으로 추가.
+                로딩 표시는 버튼 안 인라인 스피너다. 짧은 수명 로딩 오버레이에 Modal을 쓰면
+                껍데기가 남아 터치가 먹통이 되는 사고가 이 저장소에서 났다 — 오버레이 자체를
+                만들지 않는 편이 그 함정을 아예 비껴간다. */}
+            <TouchableOpacity
+              style={[styles.locateBtn, locating && { opacity: 0.6 }]}
+              activeOpacity={0.8}
+              onPress={handleUseCurrentLocation}
+              disabled={locating}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: locating, busy: locating }}
+              accessibilityLabel={t('basicInfo.useCurrentLocation')}
+            >
+              {locating ? (
+                <>
+                  <ActivityIndicator size="small" color="#EC34F7" />
+                  <Text style={styles.locateBtnTxt}>{t('basicInfo.locating')}</Text>
+                </>
+              ) : (
+                // 이모지와 한글을 한 Text에 넣지 않는다 — 삼성 갤럭시(Android 15)에서 한 텍스트 런에
+                // [이모지 + 한글]이 섞이면 한글 글리프가 통째로 안 그려진 전례가 있다(6ae35f9).
+                // row + gap 8이 원래의 공백 한 칸을 대신한다.
+                <>
+                  <Text style={styles.locateBtnTxt}>📍</Text>
+                  <Text style={styles.locateBtnTxt}>{t('basicInfo.useCurrentLocation')}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.privacyHint}>{t('basicInfo.useCurrentLocationHint')}</Text>
           </View>
 
           {/* 장기체류 */}
@@ -447,9 +521,18 @@ export default function BasicInfoScreen({ navigation }: Props) {
               <>
                 <TouchableOpacity style={styles.inputWrapper} activeOpacity={0.8}
                   onPress={() => { setCountrySearch(''); setStayCountryModalVisible(true); }}>
-                  <Text style={[styles.input, { paddingVertical: 16 }]}>
-                    {stayCountry ? `${stayCountry.flag} ${stayCountry.name}` : t('basicInfo.stayCountryPlaceholder')}
-                  </Text>
+                  {/* 위 거주국가와 같은 이유로 국기·국가명을 분리한다(6ae35f9).
+                      미선택 플레이스홀더는 이모지가 없어 한 Text 그대로 둔다. */}
+                  {stayCountry ? (
+                    <View style={styles.countryValueRow}>
+                      <Text style={styles.countryFlagText}>{stayCountry.flag}</Text>
+                      <Text style={[styles.input, { paddingVertical: 16 }]}>{stayCountry.name}</Text>
+                    </View>
+                  ) : (
+                    <Text style={[styles.input, { paddingVertical: 16 }]}>
+                      {t('basicInfo.stayCountryPlaceholder')}
+                    </Text>
+                  )}
                   <Text style={styles.charCount}>{t('common.change')}</Text>
                 </TouchableOpacity>
                 <View style={styles.stayTypeRow}>
@@ -515,7 +598,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 style={styles.modalItem}
                 onPress={() => { setSelectedCountry(item); setCountryModalVisible(false); setCountrySearch(''); }}
               >
-                <Text style={styles.modalItemText}>{item.flag} {item.name}</Text>
+                {/* 국기·국가명 분리 — 위 거주국가 행과 같은 이유(6ae35f9) */}
+                <View style={styles.countryValueRow}>
+                  <Text style={styles.modalItemText}>{item.flag}</Text>
+                  <Text style={styles.modalItemText}>{item.name}</Text>
+                </View>
                 {codeOf(item) === codeOf(selectedCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
               </TouchableOpacity>
             )}
@@ -559,7 +646,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 style={styles.modalItem}
                 onPress={() => { setStayCountry(item); setStayCountryModalVisible(false); setCountrySearch(''); }}
               >
-                <Text style={styles.modalItemText}>{item.flag} {item.name}</Text>
+                {/* 국기·국가명 분리 — 위 거주국가 행과 같은 이유(6ae35f9) */}
+                <View style={styles.countryValueRow}>
+                  <Text style={styles.modalItemText}>{item.flag}</Text>
+                  <Text style={styles.modalItemText}>{item.name}</Text>
+                </View>
                 {stayCountry && codeOf(item) === codeOf(stayCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
               </TouchableOpacity>
             )}
@@ -702,6 +793,43 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
+  },
+  // 국기·국가명을 별도 Text로 나눠 그리므로 가로 배치 + gap으로 원래의 공백 한 칸을 대신한다
+  // (6ae35f9의 countryBadge와 같은 구조·같은 gap — 삼성 텍스트 셰이핑 결함 회피).
+  // flex: 1은 긴 국가명이 오른쪽 '변경' 라벨을 밀어내지 않게 한다.
+  countryValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flex: 1,
+  },
+  // ⚠️ 국기 쪽에는 flex를 주지 말 것. 이 화면의 styles.input에는 flex: 1이 들어 있어서,
+  //    국기와 이름 두 Text에 그것을 그대로 붙이면 형제가 폭을 50:50으로 나눠
+  //    국기와 이름 사이가 화면 절반만큼 벌어지고 긴 국가명이 잘린다(11차 QA 발견 34).
+  //    국기는 고유 폭, 이름이 남은 폭을 갖는 것이 분리 전과 같은 배치다.
+  countryFlagText: {
+    color: Colors.textPrimary,
+    fontSize: Typography.fontSize.base,
+    fontFamily: Typography.fontFamily.regular,
+    paddingVertical: 16,
+  },
+  // 현재 위치로 자동 입력 — 거주국 입력칸 아래 보조 버튼(주 경로는 위의 '변경' 모달)
+  locateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: Spacing[2],
+    paddingVertical: 12,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(236,52,247,0.4)',
+    backgroundColor: 'rgba(236,52,247,0.08)',
+  },
+  locateBtnTxt: {
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: '#EC34F7',
   },
   privacyHint: {
     color: Colors.textMuted,

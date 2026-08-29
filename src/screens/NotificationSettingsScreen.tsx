@@ -18,6 +18,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
+import { shouldShowLocationBanner } from '../utils/locationDetectorBanner';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -96,8 +97,15 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
     if (!next) return;
     try {
       const cur = await Location.getForegroundPermissionsAsync();
-      if (cur.status === 'granted' || !cur.canAskAgain) return;
-      await Location.requestForegroundPermissionsAsync();
+      if (cur.status === 'granted' || !cur.canAskAgain) {
+        // 이미 허용됐거나 다시 물을 수 없는 상태 — 배너 판정만 최신화하고 끝낸다.
+        setLocationGranted(cur.status === 'granted');
+        return;
+      }
+      const res = await Location.requestForegroundPermissionsAsync();
+      // 여기서 갱신하지 않으면 방금 허용했는데도 아래 위치 권한 배너가 그대로 남는다
+      // (AppState 'active'는 앱을 벗어났다 돌아올 때만 뛴다 — 인앱 팝업에서는 안 뛴다).
+      setLocationGranted(res.status === 'granted');
     } catch {
       /* 권한 모듈 오류는 무시 — 토글 자체는 저장됐다 */
     }
@@ -116,13 +124,17 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
 
   // 기기 알림 권한 상태
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+  // 위치 권한 상태 (null = 아직 확인 전). 여행 감지 알림 4종이 전부 현재 위치를 읽는다.
+  const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
 
   useEffect(() => {
     checkPermission();
+    checkLocationPermission();
     // OS 설정에서 권한을 바꾸고 돌아와도 배너가 그대로였다(마운트 1회만 확인) —
     // 앱이 포그라운드로 복귀할 때마다 다시 확인해 배너를 갱신한다.
+    // 위치 권한도 같은 경로로 바뀌므로(설정 → eOrth → 위치) 함께 태운다.
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') checkPermission();
+      if (state === 'active') { checkPermission(); checkLocationPermission(); }
     });
     return () => sub.remove();
   }, []);
@@ -136,6 +148,43 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
       setPermissionGranted(true);
     }
   };
+
+  const checkLocationPermission = async () => {
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      setLocationGranted(status === 'granted');
+    } catch {
+      // 알림 권한과 같은 규칙 — 확인 자체가 실패하면 배너를 띄우지 않는다
+      // (확인도 못 하면서 "권한이 없다"고 단정하면 허용한 사용자에게 거짓 배너가 남는다)
+      setLocationGranted(true);
+    }
+  };
+
+  // 위치 권한 요청. 이미 거부돼 canAskAgain === false면 requestForegroundPermissionsAsync가
+  // 팝업 없이 즉시 denied를 돌려준다 — 버튼을 눌러도 아무 일이 없어 고장으로 보이므로
+  // 그 경우엔 OS 설정으로 보낸다(위 알림 권한 배너의 requestPermission과 같은 패턴).
+  const requestLocationPermission = async () => {
+    try {
+      const cur = await Location.getForegroundPermissionsAsync();
+      if (cur.status === 'granted') { setLocationGranted(true); return; }
+      if (!cur.canAskAgain) { openSettings(); return; }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') setLocationGranted(true);
+      else openSettings();
+    } catch {
+      openSettings();
+    }
+  };
+
+  // 배너 조건은 감지기 4종의 게이트와 한 글자씩 맞아야 해서 순수 함수로 분리했다
+  // (src/utils/locationDetectorBanner.ts — 근거 주석과 검증 파일이 그쪽에 있다).
+  const showLocationBanner = shouldShowLocationBanner(locationGranted, {
+    master: notifPrefs.master,
+    arrivalDetect,
+    snapEnabled,
+    travelMoment: notifPrefs.travelMoment,
+    returnDetect: notifPrefs.returnDetect,
+  });
 
   const requestPermission = async () => {
     try {
@@ -193,6 +242,31 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
               activeOpacity={0.8}
             >
               <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.openSettings')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── 위치 권한 배너 ──
+            여행 감지 알림(도착·스냅·순간·귀국)은 전부 현재 위치를 읽는데, 감지기들은 절대
+            권한 팝업을 띄우지 않는다(로그인 전 스플래시 위에 뜨는 것을 막기 위함 —
+            App Store 5.1.1). 그래서 권한이 없으면 토글만 켜진 채 기능이 조용히 죽는다.
+            위 알림 권한 배너와 동시에 뜰 수 있다 — 같은 스타일·같은 자리에 세로로 쌓이고
+            permissionBanner의 marginTop 12가 두 배너 사이 간격이 된다. */}
+        {showLocationBanner && (
+          <View style={styles.permissionBanner}>
+            <View style={styles.permissionTextWrap}>
+              <Text style={styles.permissionTitle}>{t('notifSettings.locationPermissionTitle')}</Text>
+              <Text style={styles.permissionDesc}>
+                {t('notifSettings.locationPermissionDesc')}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.permissionBtn}
+              onPress={requestLocationPermission}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+            >
+              <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.locationPermissionBtn')}</Text>
             </TouchableOpacity>
           </View>
         )}
