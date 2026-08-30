@@ -9,7 +9,7 @@ import { View, StyleSheet, TouchableOpacity, Alert, BackHandler, Animated, Easin
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
+import { select, warn } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
@@ -136,7 +136,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const choose = (choice: 'A' | 'B') => {
     if (saving) return;
     touchedRef.current = true;
-    Haptics.selectionAsync().catch(() => {});
+    select();
     const next = { ...answers, [q.id]: choice };
     setAnswers(next);
     if (idx + 1 < questions.length) { goTo(idx + 1); return; }
@@ -156,6 +156,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const quit = () => {
     if (saving) return;
     if (Object.keys(answers).length === 0) { leave(); return; }
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('dna.quitTitle'), t('dna.quitMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('dna.quitOk'), style: 'destructive', onPress: leave },

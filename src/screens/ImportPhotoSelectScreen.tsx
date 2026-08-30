@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { select, warn } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
@@ -239,7 +239,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
     // 손가락이 닿지도 않은 옆 사진이 선택된다
     if (idx === null || idx === dragLastIdxRef.current) return;
     dragLastIdxRef.current = idx;
-    Haptics.selectionAsync().catch(() => {}); // 새 셀에 들어갈 때만 (매 프레임 아님)
+    select(); // 새 셀에 들어갈 때만 (매 프레임 아님)
     paintRange(dragAnchorRef.current, idx);
   };
 
@@ -288,7 +288,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           dragCappedRef.current = false;
           // 시작 사진의 상태가 이 드래그의 성격을 정한다(선택돼 있었으면 '해제 칠하기')
           dragModeRef.current = cur.includes(photos[idx].uri) ? 'deselect' : 'select';
-          Haptics.selectionAsync().catch(() => {});
+          select();
           paintRange(idx, idx);
         })
         .onUpdate((e) => {
@@ -312,7 +312,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           dragCappedRef.current = false;
           // 상한 안내는 손을 뗀 뒤 한 번만 — 드래그 중에 장마다 띄우면 기능을 쓸 수 없다
           if (capped) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+            warn();
             Alert.alert(t('imports.noticeTitle'), t('imports.maxPhotosAlert', { max: maxPhotosPerTrip }));
           }
         }),
@@ -347,16 +347,16 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const toggle = (uri: string) => {
     const cur = selected[trip.id] ?? [];
     if (cur.includes(uri)) {
-      Haptics.selectionAsync().catch(() => {});
+      select();
       setSelected((prev) => ({ ...prev, [trip.id]: (prev[trip.id] ?? []).filter((u) => u !== uri) }));
       return;
     }
     if (cur.length >= maxPhotosPerTrip) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      warn();
       Alert.alert(t('imports.noticeTitle'), t('imports.maxPhotosAlert', { max: maxPhotosPerTrip }));
       return;
     }
-    Haptics.selectionAsync().catch(() => {});
+    select();
     setSelected((prev) => ({ ...prev, [trip.id]: [...(prev[trip.id] ?? []), uri] }));
   };
   toggleRef.current = toggle; // 위 onToggle이 항상 최신 toggle을 부르도록
@@ -367,7 +367,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const canAddMore = visibleUris.some((u) => !sel.includes(u)) && sel.length < maxPhotosPerTrip;
   const showDeselect = !canAddMore && sel.length > 0;
   const toggleSelectAll = () => {
-    Haptics.selectionAsync().catch(() => {});
+    select();
     setSelected((prev) => {
       const cur = prev[trip.id] ?? [];
       if (showDeselect) {
@@ -376,7 +376,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       const toAdd = visibleUris.filter((u) => !cur.includes(u));
       const room = Math.max(0, maxPhotosPerTrip - cur.length);
       if (toAdd.length > room) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        warn();
       }
       return { ...prev, [trip.id]: [...cur, ...toAdd.slice(0, room)] };
     });
@@ -414,6 +414,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
     if (index > 0) { prev(); return; }
     const hasPicked = Object.values(selected).some((a) => a.length > 0);
     if (!hasPicked) { navigation.goBack(); return; }
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('imports.leaveSelectTitle'), t('imports.leaveSelectMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('imports.leaveSelectOk'), style: 'destructive', onPress: () => navigation.goBack() },

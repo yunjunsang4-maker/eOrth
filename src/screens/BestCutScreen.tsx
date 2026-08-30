@@ -8,6 +8,7 @@
  * 표시는 thumbnailUri(file://) 우선 → 없으면 원본 uri.
  */
 
+import { select } from '../utils/haptics';
 import React, { useState, useEffect } from 'react';
 import * as TaskManager from 'expo-task-manager';
 import {
@@ -132,7 +133,7 @@ export default function BestCutScreen() {
           <Text style={styles.bgToggleLabel}>{t('bestCut.bgAuto')}</Text>
           <Switch
             value={bgOn}
-            onValueChange={toggleBackground}
+            onValueChange={(v) => { select(); toggleBackground(v); }}
             trackColor={{ false: Colors.dotInactive, true: skinAccent.accent }}
             thumbColor={Colors.white}
           />

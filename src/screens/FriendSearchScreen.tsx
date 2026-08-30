@@ -27,7 +27,7 @@ import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from
 import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
 import { matchPercent, pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
-import { buzz } from '../utils/haptics';
+import { tap } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
 import { useTravelDna } from '../store/travelDnaStore';
@@ -371,7 +371,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   };
 
   const onNeighborToggle = (friend: ContactFriend) => {
-    buzz('light');
+    tap();
     if (isNeighbor(friend.id)) {
       removeNeighbor(friend.id);
       bumpFollowerCount(friend.id, -1);

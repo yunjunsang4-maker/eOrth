@@ -22,7 +22,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { success } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
@@ -225,7 +225,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
     // 여기서 애니메이션을 시작하면 첫 수백 ms가 통째로 드롭된다. 전환이 끝난 뒤 시작한다.
     InteractionManager.runAfterInteractions(() => {
       if (!aliveRef.current) return;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      success();
       const target = scoresRef.current;
       Animated.parallel([
         Animated.spring(cardScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),

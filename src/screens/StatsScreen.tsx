@@ -13,7 +13,7 @@ import {
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import { grab, select } from '../utils/haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
@@ -372,7 +372,7 @@ export default function StatsScreen() {
       if (Math.abs(v) < 0.0004) {
         momentumRef.current.raf = null;
         snapOrbitRef.current();
-        Haptics.selectionAsync().catch(() => {});
+        select();
         return;
       }
       momentumRef.current.raf = requestAnimationFrame(tick);
@@ -430,7 +430,7 @@ export default function StatsScreen() {
           d.dragging = true;
           d.timer = null;
           setOrbitDragging(true); // 스크롤 잠금
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          grab();
         }, 350);
       },
       onPanResponderMove: (_e, g) => {
@@ -456,7 +456,7 @@ export default function StatsScreen() {
           if (arcFewRef.current) {
             // 4개국 이하: 관성·스냅 없이 원래 배치로 고무줄 복귀
             springBackRef.current();
-            Haptics.selectionAsync().catch(() => {});
+            select();
             return;
           }
           // 놓는 순간 속도(px/ms)를 슬롯/ms로 변환 — 빠르면 관성 회전, 느리면 즉시 스냅
@@ -465,7 +465,7 @@ export default function StatsScreen() {
             startMomentumRef.current(v);
           } else {
             snapOrbitRef.current();
-            Haptics.selectionAsync().catch(() => {});
+            select();
           }
         } else if (Math.abs(g.dx) < 10 && Math.abs(g.dy) < 10) {
           goToDetailRef.current('rating'); // 짧은 탭 = 평가 상세(기존 동작)

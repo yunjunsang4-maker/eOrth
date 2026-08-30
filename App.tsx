@@ -13,6 +13,7 @@ import { configureAdContent } from './src/lib/tracking';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
+import HapticsBridge from './src/components/HapticsBridge';
 import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
 import { DMProvider } from './src/store/dmStore';
@@ -127,6 +128,7 @@ export default function App() {
             <ErrorBoundary>
               <SettingsProvider>
                 <LanguageBridge />
+                <HapticsBridge />
                 <TravelDnaProvider>
                   <RecordProvider>
                     <MomentProvider>

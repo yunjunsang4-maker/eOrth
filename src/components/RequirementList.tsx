@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../ui/Text';
 import { Colors, Typography, Spacing } from '../constants';
+import { select } from '../utils/haptics';
 
 /**
  * 입력 조건 체크리스트 — 아이디·비밀번호처럼 형식 제약이 있는 칸 아래에
@@ -52,6 +53,18 @@ export default function RequirementList({
   style?: StyleProp<ViewStyle>;
 }) {
   const { t } = useTranslation();
+
+  // 조건이 '전부' 충족되는 순간 한 번만 울린다.
+  // 조건별로 울리면 비밀번호를 타이핑하는 동안 서너 번 진동해 시끄럽다 —
+  // 여기서 알리고 싶은 건 "이제 다음으로 갈 수 있다"는 한 번의 신호다.
+  const allMet = items.length > 0 && items.every((i) => i.met && !i.pending && !i.failed);
+  const wasAllMet = useRef(allMet);
+  useEffect(() => {
+    if (allMet && !wasAllMet.current) select();
+    wasAllMet.current = allMet;
+  }, [allMet]);
+
+  // ⚠️ 훅은 이 조기 반환보다 위에 있어야 한다(조건부 호출 금지)
   if (items.length === 0) return null;
   return (
     <View style={[styles.wrap, style]}>

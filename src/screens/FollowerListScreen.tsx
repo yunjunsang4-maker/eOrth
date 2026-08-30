@@ -21,7 +21,7 @@ import {
   type IncomingNeighborRequest,
 } from '../services/social';
 import { useRecords } from '../store/recordStore';
-import { buzz } from '../utils/haptics';
+import { tap, warn } from '../utils/haptics';
 import { PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
@@ -68,7 +68,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
 
   // DM으로 이동
   const openDM = (follower: NeighborProfile) => {
-    buzz('light');
+    tap();
     const name = follower.handle || '여행자';
     navigation.navigate('DM', {
       friend: { name, handle: follower.handle || name, emoji: follower.emoji || '👤', photo: follower.photo ?? undefined, id: follower.id },
@@ -79,8 +79,10 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   const [removingId, setRemovingId] = useState<string | null>(null);
   const handleRemoveNeighbor = (neighbor: NeighborProfile) => {
     if (removingId) return;
-    buzz('light');
     const name = neighbor.handle || '여행자';
+    // 기존의 tap()을 뺐다 — 바로 아래 warn()과 연달아 울려 한 번의 탭에 두 번 진동했다.
+    // 되돌릴 수 없는 동작이므로 더 강한 신호인 warn() 하나만 남긴다.
+    warn();
     Alert.alert(t('friends.removeNeighborTitle'), t('friends.removeNeighborMsg', { name }), [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -123,7 +125,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   // 신청 수락 → 요청자가 메이트이 되므로 메이트 목록에 즉시 반영
   const handleAccept = (req: IncomingNeighborRequest) => {
     if (processingId) return;
-    buzz('light');
+    tap();
     setProcessingId(req.requesterId);
     try {
       acceptNeighbor(req.requesterId);
@@ -140,7 +142,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
 
   const handleDecline = (req: IncomingNeighborRequest) => {
     if (processingId) return;
-    buzz('light');
+    tap();
     setProcessingId(req.requesterId);
     try {
       declineNeighbor(req.requesterId);

@@ -11,7 +11,7 @@ import {
 import { Text, FONT_SCALE_CAP } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { select, success } from '../utils/haptics';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -300,7 +300,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
     //   committed : 리액트 커밋 비용  ← 전환 렉의 원인을 가르는 핵심 숫자
     //   settled   : 페이드인 실측(설계값 220ms)
     traceStart('coach:step');
-    Haptics.selectionAsync().catch(() => {});
+    select();
     // 글라이드 모드에서만 글로우를 미리 접는다(이동 중 헤일로는 애니메이션 대상이 아니라서).
     // 글라이드 off면 글로우는 아예 애니메이션하지 않는다 — iOS에서 그림자(shadowRadius) 달린
     // 뷰의 투명도 페이드는 프레임마다 오프스크린 렌더+블러라, 지구본만 한 헤일로에선 그 자체가 렉이다.
@@ -315,7 +315,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   };
   const next = () => {
     if (isLast) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      success();
       onClose();
     } else {
       animateTo(idx + 1);

@@ -1,3 +1,4 @@
+import { warn } from '../utils/haptics';
 import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -319,6 +320,7 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('login.recoverTitle'),
       t('login.recoverMsg', { days: daysUntilPurge(pending) }),

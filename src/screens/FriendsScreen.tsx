@@ -20,7 +20,7 @@ import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
 import { getProfileByHandle } from '../services/profile';
-import { buzz } from '../utils/haptics';
+import { tap } from '../utils/haptics';
 import Toast from '../components/Toast';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { andFitText } from '../utils/fitText';
@@ -305,7 +305,7 @@ export default function FriendsScreen({ navigation }: Props) {
                   onLongPress={(anchor) => {
                     // 좌표 측정 실패 시 진입하지 않음 — 메뉴 없이 행만 어두워지는 상태 방지
                     if (!anchor) return;
-                    buzz('light');
+                    tap();
                     setSelectedFriendId(f.id);
                     setPopupAnchor({ ...anchor, placeBelow: idx === 0 });
                   }}

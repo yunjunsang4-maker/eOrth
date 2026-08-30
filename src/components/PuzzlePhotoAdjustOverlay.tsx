@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { useTranslation } from 'react-i18next';
-import * as Haptics from 'expo-haptics';
+import { select, tap } from '../utils/haptics';
 import { useSkinAccent } from '../constants/skinTheme';
 import { buildCountryShape, buildSilhouettePaths } from '../utils/countryShape';
 
@@ -141,7 +141,7 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
       const s = cur.current.scale;
       if (s !== 1 && Math.abs(s - 1) < 0.06) {
         apply(1, cur.current.tx, cur.current.ty);
-        Haptics.selectionAsync().catch(() => {});
+        select();
       }
     });
   const panG = Gesture.Pan()
@@ -156,7 +156,7 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
     .runOnJS(true)
     .onEnd(() => {
       apply(1, 0, 0);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      tap();
     });
   const composed = Gesture.Simultaneous(pinchG, panG, doubleTapG);
 

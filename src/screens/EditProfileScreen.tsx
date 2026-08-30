@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { warn } from '../utils/haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -336,12 +337,13 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
             <Text style={s.avatarHint}>{t('editProfile.avatarHint')}</Text>
             {profilePhoto && (
               <TouchableOpacity
-                onPress={() =>
+                onPress={() => {
+                  warn(); // 되돌릴 수 없는 동작을 묻는 중
                   Alert.alert(t('editProfile.removePhoto'), t('editProfile.removePhotoMsg'), [
                     { text: t('common.cancel'), style: 'cancel' },
                     { text: t('editProfile.delete'), style: 'destructive', onPress: () => setProfilePhoto(null) },
-                  ])
-                }
+                  ]);
+                }}
                 activeOpacity={0.7}
               >
                 <Text style={s.removePhotoText}>{t('editProfile.removePhoto')}</Text>

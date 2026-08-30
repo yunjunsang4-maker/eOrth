@@ -1,5 +1,6 @@
 // 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록.
 // 삭제: 왼쪽 스와이프로 드러난 삭제 버튼 탭 또는 길게 누르기 — 둘 다 확인 Alert를 거친다.
+import { warn } from '../../utils/haptics';
 import React from 'react';
 import { View, Modal, FlatList, Alert, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Text } from '../../ui/Text';
@@ -30,6 +31,7 @@ export default function MomentListSheet({
   // 삭제 확인 — 스와이프 버튼·롱프레스가 같은 경로를 쓴다.
   // swipeable을 받으면 취소 시 열려 있던 행을 닫아 준다(확정 시엔 행 자체가 사라진다).
   const confirmDelete = (m: TravelMoment, swipeable?: SwipeableMethods) => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('moments.deleteTitle'), m.text || m.mood || '', [
       { text: t('common.cancel'), style: 'cancel', onPress: () => swipeable?.close() },
       { text: t('moments.deleteConfirm'), style: 'destructive', onPress: () => removeMoment(m.id) },

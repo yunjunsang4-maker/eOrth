@@ -1,3 +1,4 @@
+import { select } from '../utils/haptics';
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -72,7 +73,7 @@ const ToggleRow = ({
         </View>
         <Switch
           value={displayValue}
-          onValueChange={onValueChange}
+          onValueChange={(v) => { select(); onValueChange(v); }}
           disabled={disabled}
           trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
           thumbColor="#FFFFFF"

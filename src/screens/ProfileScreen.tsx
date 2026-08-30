@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { warn } from '../utils/haptics';
 import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -1791,6 +1792,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     const [targetId, ...sourceIds] = mergeSelected;
     const target = displayTrips.find((tr) => tr.id === targetId);
     if (!target || sourceIds.length === 0) return;
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('profile.mergeConfirmTitle'),
       t('profile.mergeConfirmMsg', { count: mergeSelected.length, title: `${target.countryFlag} ${target.title}`.trim() }),
@@ -1856,6 +1858,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
   const handleDeletePhoto = () => {
     setActionSheetVisible(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('profile.deletePhotoTitle'),
       t('profile.deletePhotoMsg'),
@@ -1885,6 +1888,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     if (stayNudgeDismissedFor === activeStayGroup.id) return;
     const snap = { countryCode: '', status: activeStayGroup.stay.status, lastActiveAt: activeStayGroup.stay.lastActiveAt };
     if (!shouldNudgeEnd(snap, Date.now())) return;
+    // 여기엔 햅틱을 넣지 않는다 — 이 넛지는 사용자가 누른 게 아니라 조건이 되면 스스로 뜬다.
+    // 촉각 경고는 "내가 방금 되돌릴 수 없는 걸 눌렀다"는 신호라, 자동 팝업에 붙이면
+    // 아무것도 안 했는데 진동하는 꼴이 된다.
     Alert.alert(
       t('stay.nudgeTitle'),
       t('stay.nudgeMsg', { country: activeStayGroup.countryName ?? '' }),
@@ -2389,6 +2395,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         onEnd={() => {
           setStaySheetVisible(false);
           if (!activeStayGroup) return;
+          warn(); // 되돌릴 수 없는 동작을 묻는 중
           Alert.alert(
             t('stay.endConfirmTitle'),
             t('stay.endConfirmMsg', { country: activeStayGroup.countryName ?? '' }),

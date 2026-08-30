@@ -1,3 +1,4 @@
+import { warn } from '../utils/haptics';
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -166,6 +167,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     }
     if (frameImage) {
       // 이미 적용됨 → 변경/제거 선택
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('cut.framePhotoTitle'), '', [
         { text: t('cut.framePhotoChange'), onPress: pickFrameImage },
         { text: t('cut.framePhotoRemove'), style: 'destructive', onPress: () => setFrameImage(null) },
@@ -258,6 +260,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (handedOffRef.current || !hasPhotosRef.current) return;
       e.preventDefault();
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('cut.exitTitle'), t('cut.exitMsg'), [
         { text: t('cut.continueEdit'), style: 'cancel' },
         { text: t('cut.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },

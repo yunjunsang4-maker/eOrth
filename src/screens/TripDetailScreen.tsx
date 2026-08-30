@@ -1,3 +1,4 @@
+import { warn } from '../utils/haptics';
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -349,6 +350,7 @@ export default function TripDetailScreen() {
       Alert.alert(t('trip.noticeTitle'), t('trip.sampleNoDelete'));
       return;
     }
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.deleteCardTitle'), t('trip.deleteCardMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       {

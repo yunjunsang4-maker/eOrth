@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { select, success } from '../utils/haptics';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,
@@ -807,7 +807,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                 ? prev
                 : [...prev, { code, flag: cinfo0.countryFlag, name: cinfo0.countryName }]
             );
-            Haptics.selectionAsync().catch(() => {});
+            select();
           }
           return geo.code;
         } catch {
@@ -912,7 +912,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
       if (cancelled()) return;
       setProgress(100);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      success();
       setTimeout(() => {
         if (cancelled()) return;
         setScanning(false);
@@ -948,8 +948,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   };
 
   const toggleSelect = (id: string) => {
-    Haptics.selectionAsync().catch(() => {});
-    const select = () =>
+    select();
+    // 이름을 applyToggle로 둔다 — utils/haptics의 select()와 겹치면 이 함수 안에서
+    // 햅틱 호출이 지역 변수에 가려진다(TDZ 오류).
+    const applyToggle = () =>
       setSelectedIds((prev) =>
         prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
       );
@@ -961,11 +963,11 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     if (trip?.alreadyImported && !selectedIds.includes(id)) {
       Alert.alert(t('imports.dupTripTitle'), t('imports.dupTripMsg', { title: trip.title }), [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('imports.dupTripConfirm'), onPress: select },
+        { text: t('imports.dupTripConfirm'), onPress: applyToggle },
       ]);
       return;
     }
-    select();
+    applyToggle();
   };
 
   // ── 여행 합치기 ──

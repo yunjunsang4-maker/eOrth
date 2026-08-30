@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthorAvatar from './AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, PinIcon, StarIcon } from './icons';
 import { useSkinAccent } from '../constants/skinTheme';
+import { success } from '../utils/haptics';
 import type { ToastVisual } from '../store/toastStore';
 
 interface ToastProps {
@@ -46,6 +47,10 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
 
   useEffect(() => {
     if (visible) {
+      // 배지 획득만 촉각으로 축하한다. 배지는 표시 시점이 큐에 밀려 늦춰질 수 있어
+      // 발생 지점(BadgeToastHost)이 아니라 실제로 배너가 뜨는 여기서 울려야 맞다.
+      // 좋아요·댓글 같은 알림 배너는 제외 — 자주 떠서 진동이 소음이 된다.
+      if (visual?.icon === 'badge') success();
       drag.setValue(0); // 이전 배너에서 끌던 위치가 남지 않게
       Animated.parallel([
         Animated.timing(opacity,     { toValue: 1, duration: 180, useNativeDriver: true }),

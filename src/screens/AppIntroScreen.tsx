@@ -11,7 +11,7 @@ import {
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
+import { select, tap } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import Svg, {
   Defs as SvgDefs,
@@ -131,7 +131,7 @@ export default function AppIntroScreen({ navigation }: Props) {
   const flatListRef = useRef<FlatList>(null);
 
   const goNext = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    tap();
     if (activeIdx < SLIDES.length - 1) {
       setActiveIdx(activeIdx + 1);
     } else {
@@ -154,7 +154,7 @@ export default function AppIntroScreen({ navigation }: Props) {
     readyAnim.setValue(0);
     const timer = setTimeout(() => {
       setNextReady(true);
-      Haptics.selectionAsync().catch(() => {});
+      select();
       Animated.timing(readyAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     }, NEXT_DELAY_MS);
     return () => clearTimeout(timer);
@@ -180,7 +180,7 @@ export default function AppIntroScreen({ navigation }: Props) {
     .runOnJS(true)
     .direction(Directions.RIGHT)
     .onStart(() => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      tap();
       setActiveIdx((cur) => Math.max(0, cur - 1));
     });
 

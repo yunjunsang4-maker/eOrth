@@ -1,3 +1,4 @@
+import { grab, warn } from '../utils/haptics';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -272,6 +273,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (savedRef.current || (!backPhoto && !frontPhoto)) return;
       e.preventDefault();
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('snap.exitTitle'), t('snap.exitMsg'), [
         { text: t('snap.continue'), style: 'cancel' },
         { text: t('snap.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
@@ -325,6 +327,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     ]).start();
 
     try {
+      // 셔터는 여기 한 번만. 앞뒤를 연속 촬영하지만 사용자가 누른 건 한 번이라
+      // 두 번째 촬영(secondPhoto)에는 넣지 않는다 — 넣으면 연타처럼 느껴진다.
+      grab();
       // 1) 현재 카메라(후면 or 전면) 촬영
       const firstPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
       if (!firstPhoto) { setShooting(false); return; }

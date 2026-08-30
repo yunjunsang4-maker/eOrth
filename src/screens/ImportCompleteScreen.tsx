@@ -4,7 +4,7 @@ import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import { success } from '../utils/haptics';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { requestNotificationPermission } from '../services/snapService';
@@ -57,7 +57,7 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
   const burstOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    success();
     Animated.sequence([
       Animated.parallel([
         Animated.spring(checkScale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),

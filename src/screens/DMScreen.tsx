@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
-import { buzz } from '../utils/haptics';
+import { tap, warn } from '../utils/haptics';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
@@ -256,7 +256,7 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
       // 답글 임계점 도달 시 한 번만 진동 (인스타 답글과 유사한 가벼운 톡)
       if (!triggered.current && e.translationX <= -60) {
         triggered.current = true;
-        buzz('light');
+        tap();
       }
     })
     .onEnd((e: any) => {
@@ -269,7 +269,7 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
     .runOnJS(true)
     .minDuration(350)
     .onStart(() => {
-      buzz('light');
+      tap();
       // 눌린 말풍선의 화면상 위치를 재서 그 주변에 컨텍스트 메뉴를 띄운다
       if (rowRef.current?.measureInWindow) {
         rowRef.current.measureInWindow((x: number, y: number, w: number, h: number) => onLongPress({ x, y, w, h }));
@@ -489,6 +489,7 @@ export default function DMScreen({ navigation, route }: Props) {
     const target = menuMsg;
     setMenuMsg(null);
     if (!target) return;
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('dm.deleteMsgTitle'), t('dm.deleteMsgMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('dm.delete'), style: 'destructive', onPress: () => deleteMessage(friend.handle, target.id) },
@@ -498,6 +499,7 @@ export default function DMScreen({ navigation, route }: Props) {
   // ─── 헤더 메뉴: 대화 비우기 / 나가기 ───
   const handleClearConversation = () => {
     setHeaderMenuOpen(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('dm.clearChatTitle'), t('dm.clearChatMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('dm.clear'), style: 'destructive', onPress: () => clearConversation(friend.handle) },
@@ -523,6 +525,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
   const handleLeaveConversation = () => {
     setHeaderMenuOpen(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('dm.leaveChatTitle'), t('dm.leaveChatMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -1000,7 +1003,7 @@ export default function DMScreen({ navigation, route }: Props) {
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
           />
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Animated.View
             // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
             style={[st.sheet, st.sheetAnchor, { paddingBottom: Platform.OS === 'ios' ? 34 : insets.bottom + 14 }, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [240, 0] }) }] }]}

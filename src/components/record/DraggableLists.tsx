@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
+import { grab } from '../../utils/haptics';
 import { Text } from '../../ui/Text';
 import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
@@ -86,6 +87,7 @@ function DraggableRow({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        grab(); // 항목이 '집힌' 순간 — 소셜 퀵셰어 드래그와 같은 촉감
         latestProps.current.onDragStart(latestProps.current.i);
       },
       onPanResponderMove: (evt, gestureState) => {

@@ -1,3 +1,4 @@
+import { grab } from '../utils/haptics';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -46,6 +47,7 @@ export default function CameraCaptureModal({
 
   const shoot = async () => {
     if (!cameraRef.current || shooting || !ready) return;
+    grab(); // 셔터 — 물리 버튼을 누른 감각. 촬영 성공 여부와 무관하게 누른 즉시 울린다
     setShooting(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });

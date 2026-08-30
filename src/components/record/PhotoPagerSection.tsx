@@ -1,6 +1,7 @@
 // 피드 작성 — 큰 사진 페이저 + 현재 사진의 글 입력 + 사진 액션(대표·비공개·삭제).
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
+import { warn } from '../../utils/haptics';
 import React, { useRef, useState, useEffect } from 'react';
 import { View, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
 import { Text, TextInput } from '../../ui/Text';
@@ -118,6 +119,7 @@ export default function PhotoPagerSection({
         <TouchableOpacity
           style={[st.actionBtn, st.actionBtnDelete]}
           onPress={() => {
+            warn(); // 되돌릴 수 없는 동작을 묻는 중
             Alert.alert(
               t('newRecord.deletePhotoTitle'),
               t('newRecord.deletePhotoDesc'),

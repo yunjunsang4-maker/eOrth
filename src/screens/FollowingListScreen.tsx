@@ -15,7 +15,7 @@ import { useRecords } from '../store/recordStore';
 import { PersonIcon } from '../components/icons';
 import UserActionSheet from '../components/UserActionSheet';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
-import { buzz } from '../utils/haptics';
+import { tap } from '../utils/haptics';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // DM 말풍선 아이콘 — CLAUDE.md 아이콘 규칙(SVG 말풍선, scaleX -1)
@@ -53,7 +53,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
 
   // DM으로 이동 — username은 handle과 동일 값이라 name/handle 겸용
   const openDM = (friend: (typeof neighbors)[number]) => {
-    buzz('light');
+    tap();
     navigation.navigate('DM', {
       friend: { name: friend.username, handle: friend.username, emoji: friend.emoji || '👤', photo: friend.photo, id: friend.id },
     });
@@ -63,7 +63,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
   // store가 메이트 제거·서버 blocks까지 처리
   const [menuTarget, setMenuTarget] = useState<(typeof neighbors)[number] | null>(null);
   const openMenu = (friend: (typeof neighbors)[number]) => {
-    buzz('light');
+    tap();
     setMenuTarget(friend);
   };
   const handleMenuUnfollow = () => {

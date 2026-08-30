@@ -1,3 +1,4 @@
+import { warn } from '../utils/haptics';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -236,6 +237,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // 다중 삭제 확인
   const handleDeleteSelected = () => {
     if (selected.length === 0) return;
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotosMsg', { count: selected.length }), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('trip.delete'), style: 'destructive', onPress: () => { doDeletePhotos(selected); exitSelecting(); } },
@@ -330,6 +332,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     markReorderHintSeen();
   };
   const handleReorderRemove = (globalIndex: number) => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('trip.delete'), style: 'destructive', onPress: () => doDeletePhoto(globalIndex) },
@@ -374,6 +377,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const closeSectionMenu = () => setSectionMenu(null);
   const handleSectionDelete = (index: number) => {
     if (!sections) return;
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -386,6 +390,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   const handleDelete = () => {
     setMenuVisible(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.recordDeleteTitle'), t('trip.recordDeleteMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       {

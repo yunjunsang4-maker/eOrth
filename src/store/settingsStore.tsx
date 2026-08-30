@@ -71,6 +71,9 @@ interface SettingsContextType {
   setHomeCountryCode: (v: string) => void;
   snapEnabled: boolean;
   setSnapEnabled: (v: boolean) => void;
+  /** 촉각 피드백 — 끄면 utils/haptics의 전 호출부가 조용해진다(HapticsBridge가 전달) */
+  hapticsEnabled: boolean;
+  setHapticsEnabled: (v: boolean) => void;
   diaryCardMode: DiaryCardMode;
   setDiaryCardMode: (v: DiaryCardMode) => void;
   language: AppLanguage;
@@ -213,6 +216,7 @@ interface SettingsPersistPayload {
   showCounts: boolean;
   homeCountryCode: string;
   snapEnabled: boolean;
+  hapticsEnabled?: boolean; // 과거 저장본엔 없을 수 있어 optional
   diaryCardMode: DiaryCardMode;
   language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
   handle: string;
@@ -275,6 +279,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [showCounts, setShowCounts] = useState(true);
   const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
+  const [hapticsEnabled, setHapticsEnabled] = useState(true);    // 촉각 피드백(기본 켜짐)
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
   // 기본 언어: 한국어 기기만 ko, 그 외 기기는 en — 저장된 언어가 있으면 hydrate가 덮는다
   const [language, setLanguage] = useState<AppLanguage>(DEVICE_DEFAULT_LANGUAGE);
@@ -405,6 +410,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setShowCounts(p.showCounts);
       setHomeCountryCode(p.homeCountryCode);
       setSnapEnabled(p.snapEnabled);
+      setHapticsEnabled(p.hapticsEnabled ?? true); // 과거 저장본엔 없다 — 기본 켜짐
       setDiaryCardMode(p.diaryCardMode);
       // 과거 저장본에 language가 없으면 기기 언어 기본값(한국어 기기만 ko)으로
       setLanguage(p.language ?? DEVICE_DEFAULT_LANGUAGE);
@@ -521,6 +527,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       showCounts,
       homeCountryCode,
       snapEnabled,
+      hapticsEnabled,
       diaryCardMode,
       language,
       handle,
@@ -574,6 +581,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       showCounts,
       homeCountryCode,
       snapEnabled,
+      hapticsEnabled,
       diaryCardMode,
       language,
       handle,
@@ -650,6 +658,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setShowCounts(true);
     setHomeCountryCode('KR');
     setSnapEnabled(true);
+    setHapticsEnabled(true);
     setDiaryCardMode('full');
     setBio('');
     setProfilePhoto(null);
@@ -711,7 +720,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
   // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
-    showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
+    showCounts, snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
     taggedRegions, dismissedRegionTagChips, regionFavoriteCodes,
@@ -729,6 +738,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const v = b as any;
     if (typeof v.showCounts === 'boolean') setShowCounts(v.showCounts);
     if (typeof v.snapEnabled === 'boolean') setSnapEnabled(v.snapEnabled);
+    if (typeof v.hapticsEnabled === 'boolean') setHapticsEnabled(v.hapticsEnabled);
     if (typeof v.diaryCardMode === 'string') setDiaryCardMode(v.diaryCardMode);
     if (v.language === 'ko' || v.language === 'en') setLanguage(v.language);
     if (typeof v.arrivalDetect === 'boolean') setArrivalDetect(v.arrivalDetect);
@@ -806,6 +816,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setHomeCountryCode,
         snapEnabled,
         setSnapEnabled,
+        hapticsEnabled,
+        setHapticsEnabled,
         diaryCardMode,
         setDiaryCardMode,
         language,

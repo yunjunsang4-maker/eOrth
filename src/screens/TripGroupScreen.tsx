@@ -1,3 +1,4 @@
+import { warn } from '../utils/haptics';
 import React, { useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -112,6 +113,7 @@ export default function TripGroupScreen() {
 
   const handleUngroup = () => {
     setMenuVisible(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('trip.ungroupTitle'),
       t('trip.ungroupMsg'),
@@ -131,6 +133,7 @@ export default function TripGroupScreen() {
 
   const handleDelete = () => {
     setMenuVisible(false);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('trip.groupDeleteTitle'),
       t('trip.groupDeleteMsg'),
