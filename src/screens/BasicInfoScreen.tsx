@@ -1,3 +1,5 @@
+import { select, warn } from '../utils/haptics';
+import CountryPickerModal from '../components/CountryPickerModal';
 import React, { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -41,7 +43,9 @@ import { PersonIcon, CameraIcon } from '../components/icons';
 import RequirementList from '../components/RequirementList';
 import { COUNTRIES, type Country } from '../constants/countries';
 
-const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
+// 국가 코드 추출은 공용 것을 쓴다 — 같은 함수를 화면마다 다시 정의하면
+// 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
+import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
 
 // 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
 function GlassButton({ label, onPress, disabled, loading, style }: {
@@ -270,6 +274,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
   // 자동 재로그인하므로, 확인 후 signOut을 기다렸다가 Login으로 리셋한다.
   // (로그아웃은 local-first 원칙대로 로컬 데이터를 지우지 않는다)
   const handleBackToLogin = () => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('basicInfo.backToLoginTitle'), t('basicInfo.backToLoginMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       {
@@ -514,7 +519,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <View style={styles.stayToggleRow}>
               <Text style={styles.inputLabel}>{t('basicInfo.stayToggle')}</Text>
-              <Switch value={stayOn} onValueChange={setStayOn}
+              <Switch value={stayOn} onValueChange={(v) => { select(); setStayOn(v); }}
                 trackColor={{ false: '#3A3A46', true: '#EC34F7' }} thumbColor="#FFFFFF" />
             </View>
             {stayOn && (
@@ -561,55 +566,16 @@ export default function BasicInfoScreen({ navigation }: Props) {
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        {/* 검색 TextInput이 autoFocus라 열리자마자 키보드가 올라온다 — KAV 없이는
-            안드로이드에서 목록 하단이 키보드에 그대로 먹힌다(이 화면 본문과 같은 패턴). */}
-        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]}
-          accessibilityViewIsModal
-        >
-        {/* RN Modal은 App.tsx 루트 클램프 밖이라 콘텐츠 폭을 여기서 다시 가둔다.
-            modalRoot(불투명 페이지 배경)는 전면 유지 — 좁히면 양옆이 모달 기본 배경이 된다. */}
-        <View style={styles.modalClamp}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{t('basicInfo.residenceSelect')}</Text>
-            <TouchableOpacity onPress={() => setCountryModalVisible(false)}>
-              <Text style={styles.modalClose}>{t('common.close')}</Text>
-            </TouchableOpacity>
-          </View>
-          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-            style={styles.modalSearch}
-            placeholder={t('basicInfo.residenceSearchPlaceholder')}
-            placeholderTextColor={Colors.textMuted}
-            value={countrySearch}
-            onChangeText={setCountrySearch}
-            autoFocus
-          />
-          <FlatList
-            data={countrySearch.trim()
-              ? COUNTRIES.filter((c) => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()))
-              : COUNTRIES}
-            keyExtractor={(c) => c.term}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.modalItem}
-                onPress={() => { setSelectedCountry(item); setCountryModalVisible(false); setCountrySearch(''); }}
-              >
-                {/* 국기·국가명 분리 — 위 거주국가 행과 같은 이유(6ae35f9) */}
-                <View style={styles.countryValueRow}>
-                  <Text style={styles.modalItemText}>{item.flag}</Text>
-                  <Text style={styles.modalItemText}>{item.name}</Text>
-                </View>
-                {codeOf(item) === codeOf(selectedCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* 거주 국가 선택 — 설정 화면과 같은 공용 모달(components/CountryPickerModal).
+          이 화면에 있던 마크업을 그대로 옮긴 것이라 동작·모양은 이전과 같다. */}
+      <CountryPickerModal
+        visible={countryModalVisible}
+        onClose={() => setCountryModalVisible(false)}
+        onSelect={(c) => { setSelectedCountry(c); setCountryModalVisible(false); }}
+        title={t('basicInfo.residenceSelect')}
+        searchPlaceholder={t('basicInfo.residenceSearchPlaceholder')}
+        selectedCode={codeOf(selectedCountry)}
+      />
 
       <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
         {/* 위 거주국 모달과 동일 — autoFocus 검색창 때문에 KAV가 필요하고, Modal은 루트

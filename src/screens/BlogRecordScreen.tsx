@@ -1,3 +1,4 @@
+import { success, warn } from '../utils/haptics';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -30,6 +31,7 @@ import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -767,6 +769,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // ─── 임시저장 삭제 ───
   const handleDeleteDraft = (id: string) => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('blog.draftDeleteTitle'), t('blog.draftDeleteMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('blog.delete'), style: 'destructive', onPress: () => {
@@ -1269,6 +1272,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       }
       // 발행 성공 — 이 글의 임시저장본은 제거 (남겨두면 초안 목록에서 재발행 → 중복 게시)
       if (draftId) deleteDraft(draftId);
+      success(); // 글 발행 완료
       navigation.goBack();
     } catch {
       // 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
@@ -1343,12 +1347,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       e.preventDefault();
       const leave = () => navigation.dispatch(e.data.action);
       if (editing) {
+        warn(); // 되돌릴 수 없는 동작을 묻는 중
         Alert.alert(t('blog.editExitTitle'), t('blog.editExitMsg'), [
           { text: t('blog.exit'), style: 'destructive', onPress: leave },
           { text: t('blog.continueEdit'), style: 'cancel' },
         ]);
         return;
       }
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('blog.draftExitTitle'), t('blog.draftExitMsg'), [
         { text: t('blog.dontSave'), style: 'destructive', onPress: leave },
         { text: t('blog.saveDraft'), onPress: () => { draftSaveRef.current?.(false); leave(); } },
@@ -1706,22 +1712,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               {/* 날짜 */}
               <PanelRow label="" icon={<SvgCalendarIcon size={18} color={skinAccent.accent} />} labelText={t('blog.date')} required>
-                <TouchableOpacity
-                  style={st.dateBtn}
+                <DateRangeField
+                  startLabel={t('blog.departDate')}
+                  startValue={startDate || '—'}
+                  endLabel={t('blog.arriveDate')}
+                  endValue={endDate || '—'}
                   onPress={() => setCalendarVisible(true)}
-                  activeOpacity={0.85}
-                >
-                  <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.departDate')}</Text>
-                    <Text style={st.dateBtnVal}>{startDate || '—'}</Text>
-                  </View>
-                  <Text style={st.dateBtnArrow}>→</Text>
-                  <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.arriveDate')}</Text>
-                    <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
-                  </View>
-                  <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={skinAccent.accent} /></View>
-                </TouchableOpacity>
+                />
               </PanelRow>
 
               {/* 동행자 (필수) */}
@@ -1920,7 +1917,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}
             {friendPickerVisible && (
               <View style={st.calOverlay}>
-                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
                 <View style={[st.friendPickerSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
                   <View style={st.panelHandle} />
@@ -1962,7 +1959,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {/* 기타 통화 선택 오버레이 (여행정보 패널 위에 표시) */}
             {currencyModalVisible && (
               <View style={st.calOverlay}>
-                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
                 {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
                 <View style={[st.currModalSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
                   <View style={st.panelHandle} />
@@ -2115,7 +2112,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 임시저장 목록 — 비공개 대상 선택 시트와 같은 디자인 언어(카드형 행·아이콘 배지·그라데이션 CTA) */}
       <Modal visible={draftListVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
         <View style={st.dlOverlay} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setDraftListVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setDraftListVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[st.dlSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
             <View style={st.dlHandle} />
@@ -2631,7 +2628,7 @@ function RepPhotoModal({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={rpm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <Animated.View style={[rpm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }, { transform: [{ translateY }] }]}>
           {/* 핸들 */}
@@ -2872,11 +2869,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
   panelLabel: { color: C.dim, fontSize: 13, fontWeight: '600' },
   reqTag: { color: a, fontSize: 11, fontWeight: '700', marginLeft: 4 },
-  dateBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.cardLight, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: C.divider },
-  dateBtnCol: { flex: 1 },
-  dateBtnLabel: { fontSize: 11, color: C.muted, marginBottom: 4 },
-  dateBtnVal: { fontSize: 15, fontWeight: '600' as const, color: C.white },
-  dateBtnArrow: { fontSize: 18, color: C.muted, marginHorizontal: 12 },
+  // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
   ratingRow: { flexDirection: 'row' as const, gap: 6, alignItems: 'center' as const },
   starBase: { fontSize: 24, color: '#3A3A55', textAlign: 'center' as const, lineHeight: 28, width: 28 },
   starAbsolute: { position: 'absolute' as const, left: 0, top: 0, width: 28 },

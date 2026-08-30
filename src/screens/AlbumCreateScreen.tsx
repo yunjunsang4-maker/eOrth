@@ -1,3 +1,4 @@
+import { select, success } from '../utils/haptics';
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -27,7 +28,10 @@ import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
-import { CalendarBottomSheet } from './NewRecordScreen';
+// 공용 달력은 components/record에서 직접 가져온다 — 예전엔 NewRecordScreen의 재수출을 거쳐
+// 화면 하나가 다른 화면 모듈 전체를 끌고 들어왔다.
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { DateRangeField } from '../components/record/DateRangeField';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
 import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon } from '../components/icons';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -437,6 +441,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           endDate: mergedEnd ? fmtDate(mergedEnd) : appendTarget.endDate,
         };
         updateRecord(appendTarget.id, merged);
+        success(); // 기존 사진첩에 이어 담기 완료 — 신규 생성과 같은 완료 신호를 준다
         if (failCount > 0) {
           Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
         }
@@ -470,6 +475,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       if (failCount > 0) {
         Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
       }
+      success(); // 사진첩 생성 완료
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
@@ -588,11 +594,13 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           )}
 
           <Text style={[st.fieldLabel, { marginTop: 20 }]}>{t('album.period')}</Text>
-          <TouchableOpacity style={[st.dateBtn, { borderColor: skinAccent.tint(0.4), backgroundColor: skinAccent.tint(0.08) }]} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
-            <Text style={st.dateTxt}>{fmtDate(startDate)}</Text>
-            <Text style={[st.dateArrow, { color: skinAccent.accent }]}>→</Text>
-            <Text style={st.dateTxt}>{fmtDate(endDate)}</Text>
-          </TouchableOpacity>
+          <DateRangeField
+            startLabel={t('album.startLabel')}
+            startValue={fmtDate(startDate)}
+            endLabel={t('album.endLabel')}
+            endValue={fmtDate(endDate)}
+            onPress={() => setCalendarVisible(true)}
+          />
 
           {/* 같은 기간·같은 국가에 사진첩이 이미 있으면 그 사진첩에 이어 담는다(카드당 사진첩 1개) */}
           {overlappingAlbum && (
@@ -946,13 +954,7 @@ const st = StyleSheet.create({
   countryNameSelected: { color: '#BF85FC', fontWeight: '600' },
   countryCheckMark: { marginLeft: 'auto' },
   noResultText: { color: '#A1A1B0', fontSize: 14, textAlign: 'center', marginVertical: 24 },
-  dateBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
-    paddingVertical: 16, borderRadius: 16, borderWidth: 1,
-    borderColor: 'rgba(123, 97, 255, 0.4)', backgroundColor: 'rgba(123, 97, 255, 0.08)',
-  },
-  dateTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  dateArrow: { color: '#BF85FC', fontSize: 16 },
+  // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
   loadBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 24 },
   loadGrad: { paddingVertical: 18, alignItems: 'center' },
   loadTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },

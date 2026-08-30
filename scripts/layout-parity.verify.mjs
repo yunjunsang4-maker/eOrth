@@ -263,6 +263,13 @@ const ALLOW_FULL_CLAMP = new Map([
        + 'binder/closeBtn처럼 margin과 width:100%가 충돌하는 걸 피하려고 래퍼로 분리한 것이라 '
        + 'flex:1 + 클램프가 한 객체에 함께 있는 게 정상이다.',
   }],
+  ['src/components/CountryPickerModal.tsx', {
+    count: 1,
+    why: 'clamp — 국가 선택 Modal 콘텐츠의 폭 제한 전용 래퍼다. BasicInfoScreen.modalClamp를 '
+       + '공용 컴포넌트로 옮긴 것이라 위 항목과 같은 사유가 그대로 적용된다: backgroundColor가 '
+       + '없어 아무것도 가리지 않으므로 딤이 아니다(불투명 페이지 배경은 같은 파일의 root가 맡고, '
+       + '그쪽은 전면 유지해야 양옆이 모달 기본 배경으로 드러나지 않는다).',
+  }],
   ['src/screens/ProfileScreen.tsx', {
     count: 1,
     why: 'binderClamp — 배지 앨범 보드(binderWrapper, marginHorizontal:16)의 폭 제한 전용 래퍼. '

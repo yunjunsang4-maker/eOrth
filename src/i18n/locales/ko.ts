@@ -14,6 +14,30 @@ const ko = {
     requirementUnmet: '아직 충족되지 않음',
     requirementChecking: '확인 중',
     requirementFailed: '사용할 수 없음',
+    // 자리표시(스켈레톤)의 스크린리더 낭독용 — 회색 상자를 하나씩 읽는 대신 이 한 줄만 읽는다
+    loading: '불러오는 중',
+  },
+  // 공용 달력(components/record/CalendarBottomSheet) — 기록·스트립·블로그·사진첩이 함께 쓴다.
+  // 화면별 네임스페이스에 흩어져 있던 달력 문구를 여기로 모은다.
+  calendar: {
+    week0: '일', week1: '월', week2: '화', week3: '수', week4: '목', week5: '금', week6: '토',
+    yearMonth: '{{y}}년 {{m}}월',
+    yearLabel: '{{y}}년',
+    // 연·월 점프 패널의 월 버튼. 영어는 축약 월명이 필요해 숫자 보간 대신 12개를 따로 둔다
+    m1: '1월', m2: '2월', m3: '3월', m4: '4월', m5: '5월', m6: '6월',
+    m7: '7월', m8: '8월', m9: '9월', m10: '10월', m11: '11월', m12: '12월',
+    today: '오늘',
+    nights: '{{n}}박 {{d}}일',
+    sameDay: '당일',
+    a11yDay: '{{y}}년 {{m}}월 {{d}}일',
+    a11yPrevMonth: '이전 달',
+    a11yNextMonth: '다음 달',
+    a11yPrevYear: '이전 해',
+    a11yNextYear: '다음 해',
+    a11yPickMonth: '연·월 선택',
+    a11yToday: '이번 달로 이동',
+    a11yRecorded: '기록 있음',
+    a11yDateField: '날짜 선택',
   },
   permission: {
     gallery: '갤러리',
@@ -122,6 +146,7 @@ const ko = {
     mateRecoNote: '내가 방문한 나라·도시 이름을 다른 이용자와의 공통점 계산에 사용합니다. 사진·본문·날짜는 사용하지 않습니다. 끄면 내 방문 국가가 다른 이용자의 추천 목록에 나타나지 않으며, 나에게 표시되는 추천의 정확도도 함께 낮아집니다. 끄더라도 다른 기능은 그대로 이용할 수 있습니다.',
     mateRecoSaveFail: '설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.',
     showCounts: '좋아요·댓글 수 표시',
+    haptics: '터치할 때 진동',
     diaryInteraction: '소셜 카드 상호작용 표시',
     globeSkin: '지구본 스킨',
     premiumBadge: '프리미엄', // 자물쇠는 화면에서 아이콘으로 붙인다
@@ -168,8 +193,9 @@ const ko = {
     logoutConfirm: '정말 로그아웃할까요?',
     footer: 'eOrth · v1.0.0 · © 2025',
     countryModalTitle: '거주 국가',
-    countryModalDesc: '국가 코드를 입력하세요 (예: KR, US, JP)',
-    countryInvalidMsg: '지원하지 않는 국가 코드예요.\n두 자리 코드로 입력해주세요 (예: KR, US, JP)',
+    countrySearchPlaceholder: '국가 검색',
+    // countryModalDesc·countryInvalidMsg는 제거됐다 — 코드 직접 입력 방식이던 시절의 문구로,
+    // 이제 목록에서만 고르므로 잘못된 코드가 들어올 경로 자체가 없다.
   },
   premium: {
     // 페이월 (PremiumScreen)

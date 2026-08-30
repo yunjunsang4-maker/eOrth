@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { select, warn } from '../utils/haptics';
+import CountryPickerModal, { countryCodeOf } from '../components/CountryPickerModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -37,6 +39,7 @@ import {
   BlockIcon,
   ArchiveIcon,
   EyeIcon,
+  SparkleIcon,
   GlobeSkinIcon,
   LanguageIcon,
   MoonIcon,
@@ -61,15 +64,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // 개인정보처리방침·이용약관 게시 URL — 가입 화면과 공유하므로 constants/legalLinks 가 단일 출처
 import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
-import { andFitText } from '../utils/fitText';
 // 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
 const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
-// 지원하는 거주 국가 코드(ISO 2자) — COUNTRIES의 term 첫 토큰이 국가 코드다.
-// 거주국 판정(체류국 제외·통계·프로필)이 전부 이 코드로 매칭되므로 목록 밖 값은 저장을 막는다.
-const VALID_COUNTRY_CODES = new Set(
-  COUNTRIES.map((c) => c.term.split(' ')[0].toUpperCase()),
-);
+// (VALID_COUNTRY_CODES 제거 — 거주국을 코드로 직접 입력받던 시절의 방어였다.
+//  이제 CountryPickerModal이 COUNTRIES 목록에서만 고르게 하므로 목록 밖 값이 들어올 수 없다.)
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -95,6 +94,8 @@ const SettingGroup = ({
     icon: React.ReactNode;
     label: string;
     value?: string;
+    /** value 대신 직접 그릴 노드 — 국기+이름처럼 Text를 나눠야 하는 값에 쓴다 */
+    valueNode?: React.ReactNode;
     badge?: string;
     toggle?: boolean;
     onToggle?: (v: boolean) => void;
@@ -119,7 +120,10 @@ const SettingGroup = ({
           {item.onToggle != null ? (
             <Switch
               value={item.toggle}
-              onValueChange={item.onToggle}
+              // 스위치가 켜지고 꺼지는 순간 — SettingGroup이 공용이라 이 그룹의 모든 토글에 적용된다.
+              // '햅틱' 스위치 자신도 여기를 지난다: 끌 때는 게이트가 아직 열려 있어 마지막 한 번이
+              // 울리고, 켤 때는 반영 전이라 울리지 않는다. 어느 쪽이든 오작동이 아니다.
+              onValueChange={(v) => { select(); item.onToggle?.(v); }}
               trackColor={{ false: '#3A3A4A', true: skinAccent.accent }}
               thumbColor="#FFFFFF"
             />
@@ -127,6 +131,12 @@ const SettingGroup = ({
             <View style={[st.premiumBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
               <SvgLockClosedIcon size={9} color={skinAccent.accent} />
               <Text style={[st.premiumBadgeText, { color: skinAccent.accent }]}>{item.badge}</Text>
+            </View>
+          ) : item.valueNode ? (
+            // 국기+이름처럼 한 Text에 합치면 안 되는 값 — 삼성 기기에서 한글이 사라진다(6ae35f9)
+            <View style={st.settingRight}>
+              {item.valueNode}
+              <Text style={st.chevron}>›</Text>
             </View>
           ) : item.value ? (
             <View style={st.settingRight}>
@@ -148,6 +158,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const { t, i18n } = useTranslation();
   const {
     showCounts, setShowCounts,
+    hapticsEnabled, setHapticsEnabled,
     homeCountryCode, setHomeCountryCode,
     diaryCardMode, setDiaryCardMode,
     language, setLanguage,
@@ -213,21 +224,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const [skinModalVisible, setSkinModalVisible] = useState(false);
   const currentSkin = GLOBE_SKINS.find((s) => s.id === globeSkin) ?? GLOBE_SKINS[0];
 
-  // 거주 국가 코드 입력 모달 — Alert.prompt는 iOS 전용이라 양 플랫폼 공용 모달로 처리
+  // 거주 국가 선택 모달 — 목록에서 고르므로 유효성 검사가 필요 없다.
+  // (예전 코드 직접 입력 방식에는 VALID_COUNTRY_CODES 방어가 있었다. 지원 목록 밖 코드가
+  //  저장되면 거주국 제외·통계·프로필 매칭이 전부 실패하기 때문인데, 이제 목록에 있는
+  //  국가만 고를 수 있어 그 경로 자체가 사라졌다.)
   const [countryModalVisible, setCountryModalVisible] = useState(false);
-  const [countryDraft, setCountryDraft] = useState('');
-  const openCountryModal = () => { setCountryDraft(homeCountryCode); setCountryModalVisible(true); };
-  const submitCountry = () => {
-    const v = countryDraft.trim().toUpperCase();
-    if (!v) { setCountryModalVisible(false); return; } // 빈 입력은 변경 없이 닫기(취소와 동일)
-    // 지원 목록에 없는 코드는 저장하지 않는다 — 저장되면 거주국 제외·통계·프로필이 모두 매칭에 실패한다.
-    if (!VALID_COUNTRY_CODES.has(v)) {
-      Alert.alert(t('settings.countryModalTitle'), t('settings.countryInvalidMsg'));
-      return;
-    }
-    setHomeCountryCode(v);
-    setCountryModalVisible(false);
-  };
+  const openCountryModal = () => setCountryModalVisible(true);
 
   // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
   // step: null=닫힘, 'country'=국가 선택, 'type'=유형 선택
@@ -235,11 +237,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const [stayCountrySearch, setStayCountrySearch] = useState('');
   const [staySelectedCountry, setStaySelectedCountry] = useState<{ name: string; flag: string } | null>(null);
 
-  // 거주국가 이름(homeCountryCode → 국가명) — 체류국 선택 시 거주국 제외
-  const homeCountryName = useMemo(
-    () => COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
+  // 거주국가(homeCountryCode → Country) — 설정 행의 국기·국가명 표시와 체류국 목록 제외에 함께 쓴다
+  const homeCountry = useMemo(
+    () => COUNTRIES.find((c) => countryCodeOf(c) === (homeCountryCode || '').toUpperCase()) ?? null,
     [homeCountryCode],
   );
+  const homeCountryName = homeCountry?.name ?? null;
 
   // 검색어 필터링 (거주국 제외)
   const stayFilteredCountries = useMemo(() => {
@@ -329,6 +332,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
   const handleStayPress = () => {
     if (activeStayGroup) {
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(
         t('stay.alreadyActiveTitle'),
         t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
@@ -343,6 +347,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   };
 
   const handleResetData = () => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('settings.resetTitle'),
       t('settings.resetMsg'),
@@ -448,6 +453,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <SettingGroup
           items={[
             { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
+            // 촉각 피드백 — 끄면 utils/haptics를 경유하는 전 호출부가 조용해진다(HapticsBridge)
+            { icon: <SparkleIcon size={22} />, label: t('settings.haptics'), toggle: hapticsEnabled, onToggle: setHapticsEnabled },
             { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
               // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
@@ -471,7 +478,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <InfoIcon size={22} />,
               label: t('settings.residence'),
-              value: homeCountryCode,
+              // 코드('KR') 대신 국기+국가명. 국기와 이름은 각각 Text여야 한다(6ae35f9)
+              valueNode: (
+                <View style={st.settingValueRow}>
+                  <Text style={st.settingValue}>{homeCountry?.flag ?? ''}</Text>
+                  <Text style={st.settingValue}>{homeCountry?.name ?? homeCountryCode}</Text>
+                </View>
+              ),
               onPress: openCountryModal,
             },
             {
@@ -584,7 +597,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <TouchableOpacity
           style={st.logoutBtn}
           activeOpacity={0.7}
-          onPress={() =>
+          onPress={() => {
+            warn(); // 되돌릴 수 없는 동작을 묻는 중
             Alert.alert(t('settings.logout'), t('settings.logoutConfirm'), [
               { text: t('common.cancel'), style: 'cancel' },
               {
@@ -596,8 +610,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                 },
               },
-            ])
-          }
+            ]);
+          }}
         >
           <View style={st.logoutInner}>
             <ExitIcon size={22} />
@@ -611,41 +625,17 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             외부 저작물을 다시 쓰게 되면 여기에 출처를 되살릴 것. */}
       </ScrollView>
 
-      {/* 거주 국가 입력 모달 (iOS/Android 공용) */}
-      <Modal
+      {/* 거주 국가 선택 — 온보딩과 같은 공용 목록 모달.
+          예전에는 국가 코드 두 자리를 직접 타이핑하게 했다(“예: KR, US, JP”). 같은 값을
+          정하는데 온보딩은 목록이고 여기만 사용자가 자기 나라의 ISO 코드를 알아야 했다. */}
+      <CountryPickerModal
         visible={countryModalVisible}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setCountryModalVisible(false)}
-      >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={st.modalOverlay} accessibilityViewIsModal>
-          <View style={st.modalCard}>
-            <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
-            <Text style={st.modalDesc}>{t('settings.countryModalDesc')}</Text>
-            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-              style={st.modalInput}
-              value={countryDraft}
-              onChangeText={setCountryDraft}
-              placeholder="KR"
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="characters"
-              autoCorrect={false}
-              maxLength={2}
-            />
-            <View style={st.modalBtnRow}>
-              <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel]} activeOpacity={0.7} onPress={() => setCountryModalVisible(false)}>
-                <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[st.modalBtn, st.modalBtnSubmit]} activeOpacity={0.7} onPress={submitCountry}>
-                <Text style={st.modalBtnSubmitText} {...andFitText}>{t('common.confirm')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        onClose={() => setCountryModalVisible(false)}
+        onSelect={(c) => { setHomeCountryCode(countryCodeOf(c)); setCountryModalVisible(false); }}
+        title={t('settings.countryModalTitle')}
+        searchPlaceholder={t('settings.countrySearchPlaceholder')}
+        selectedCode={homeCountryCode}
+      />
 
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
       <Modal
@@ -943,6 +933,8 @@ const st = StyleSheet.create({
     fontSize: 11,
     color: COLORS.textDim,
   },
+  // 국기와 이름을 각각 Text로 두되 한 줄로 붙여 보이게 하는 래퍼(6ae35f9)
+  settingValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chevron: {
     fontSize: 18,
     color: COLORS.textMuted,

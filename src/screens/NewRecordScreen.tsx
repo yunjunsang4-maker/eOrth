@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import Svg, { Path as SvgPath, Circle as SvgCircle } from 'react-native-svg';
-import * as Haptics from 'expo-haptics';
+import { success, tap, warn } from '../utils/haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +30,7 @@ import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList } from '../components/record/DraggableLists';
 import PhotoPagerSection from '../components/record/PhotoPagerSection';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { MediaPickerModal } from '../components/record/MediaPickerModal';
 import WeatherIcon from '../components/WeatherIcon';
@@ -48,12 +49,10 @@ import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { stageWidthNow } from '../utils/stage';
-import { andFitText } from '../utils/fitText';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
   SearchIcon as SvgSearchIcon,
-  CalendarIcon as SvgCalendarIcon,
   GalleryIcon as SvgGalleryIcon,
   LockClosedIcon as SvgLockClosedIcon,
   LockOpenIcon as SvgLockOpenIcon,
@@ -81,8 +80,8 @@ if (Platform.OS === 'android') {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 }
-// AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
-export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+// (CalendarBottomSheet 재export 제거 — 마지막 사용처였던 AlbumCreateScreen이
+//  components/record/CalendarBottomSheet를 직접 import하도록 바뀌었다)
 
 const SCREEN_W = stageWidthNow();
 
@@ -104,10 +103,6 @@ const IC = COLORS.purpleNeon;
 
 const SearchIcon = ({ size = 16, color = IC }: { size?: number; color?: string }) => (
   <SvgSearchIcon size={size} color={color} />
-);
-
-const CalendarIcon = ({ size = 16, color = IC }: { size?: number; color?: string }) => (
-  <SvgCalendarIcon size={size} color={color} />
 );
 
 const GalleryIcon = ({ size = 20, color = IC }: { size?: number; color?: string }) => (
@@ -1214,6 +1209,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         }
       }
       savedRef.current = true;
+      success(); // 기록 발행 완료 — 화면을 떠나기 직전이라 여기가 유일한 성공 확정 지점이다
       navigation.goBack();
     } catch {
       // 저장 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
@@ -1235,6 +1231,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (savedRef.current || !hasInputRef.current) return;
       e.preventDefault();
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('newRecord.cancelWriteTitle'), t('newRecord.cancelWriteMsg'), [
         { text: t('newRecord.continueWrite'), style: 'cancel' },
         { text: t('newRecord.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
@@ -1575,22 +1572,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
                     )}
                   </View>
-                  <TouchableOpacity
-                    style={s.dateBtn}
+                  <DateRangeField
+                    startLabel={t('newRecord.departDate')}
+                    startValue={formatDate(startDate)}
+                    endLabel={t('newRecord.arriveDate')}
+                    endValue={formatDate(endDate)}
                     onPress={() => setCalendarVisible(true)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.departDate')}</Text>
-                      <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
-                    </View>
-                    <Text style={s.dateBtnArrow}>→</Text>
-                    <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.arriveDate')}</Text>
-                      <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
-                    </View>
-                    <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
-                  </TouchableOpacity>
+                  />
                 </View>
 
                 {/* ── 동행자 선택 ── */}
@@ -2002,7 +1990,7 @@ function BoxChevron({ expanded }: { expanded: boolean }) {
 
     // '쾅'은 펼칠 때만
     if (expanded) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      tap();
       pop.setValue(1);
       Animated.sequence([
         Animated.timing(pop, { toValue: 1.18, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
@@ -2419,18 +2407,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
   },
   hintToastText: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  dateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  dateBtnCol: { flex: 1 },
-  dateBtnLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
-  dateBtnVal:   { fontSize: 15, fontWeight: '600', color: COLORS.white },
-  dateBtnArrow: { fontSize: 18, color: COLORS.textMuted, marginHorizontal: 12 },
+  // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
 
   ratingLabelRow: {
     flexDirection: 'row',

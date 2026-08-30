@@ -6,27 +6,41 @@ import {
   StyleSheet,
   Modal,
   Animated,
+  PanResponder,
   Platform,
 } from 'react-native';
+import { select } from '../../utils/haptics';
 import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
+import {
+  toDateKey,
+  isSameDay,
+  isBeforeDay,
+  buildMonthGrid,
+  daysInMonth as daysInMonthOf,
+  shiftMonth,
+  tripLength,
+} from '../../utils/calendarRange';
 
 /**
- * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
+ * 기간 선택 캘린더 바텀시트 — 기록·스트립·블로그·사진첩 공용.
  * (NewRecordScreen 에서 분리)
+ *
+ * 날짜 계산은 utils/calendarRange.ts의 순수 함수에 위임한다(검증 파일이 그쪽에 붙어 있다).
+ * 트리거 버튼은 DateRangeField가 담당한다 — 이 시트를 여는 모양도 화면마다 같아야 한다.
  */
 
-// ─── 날짜 유틸 ───
-const toDateKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
-const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
+const WEEK_DAY_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
+// 연·월 점프 패널의 월 라벨. 템플릿 문자열로 키를 만들면 t()의 키 타입 검사를 빠져나가므로 나열한다
+const MONTH_KEYS = ['calendar.m1', 'calendar.m2', 'calendar.m3', 'calendar.m4', 'calendar.m5', 'calendar.m6',
+  'calendar.m7', 'calendar.m8', 'calendar.m9', 'calendar.m10', 'calendar.m11', 'calendar.m12'] as const;
 
-const WEEK_DAY_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
+/** 스와이프로 월을 넘길 최소 이동 거리(dp). 이보다 짧으면 탭·세로 스크롤로 본다 */
+const SWIPE_THRESHOLD = 44;
 
 export function CalendarBottomSheet({
   visible,
@@ -76,36 +90,91 @@ export function CalendarBottomSheet({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const [viewYear, setViewYear]         = useState(initialStart.getFullYear());
-  const [viewMonth, setViewMonth]       = useState(initialStart.getMonth());
+  // 보이는 달은 {year, month} 한 덩어리로 둔다. 스와이프 핸들러가 setView(v => …) 형태로만
+  // 갱신하면 PanResponder가 첫 렌더 값을 박제해도(stale closure) 엉뚱한 달로 튀지 않는다.
+  const [view, setView] = useState({ year: initialStart.getFullYear(), month: initialStart.getMonth() });
+  const [pickerOpen, setPickerOpen]     = useState(false); // 연·월 점프 패널
+  const [pickerYear, setPickerYear]     = useState(initialStart.getFullYear());
   const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
   const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
   const [selectingEnd, setSelectingEnd] = useState(false);
   const translateY = useRef(new Animated.Value(600)).current;
+  // 월 전환 연출 — 넘어온 방향에서 미끄러져 들어온다
+  const slideX  = useRef(new Animated.Value(0)).current;
+  const fadeIn  = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible) {
       setTempStart(initialStart);
       setTempEnd(initialEnd);
       setSelectingEnd(false);
-      setViewYear(initialStart.getFullYear());
-      setViewMonth(initialStart.getMonth());
+      setView({ year: initialStart.getFullYear(), month: initialStart.getMonth() });
+      setPickerYear(initialStart.getFullYear());
+      setPickerOpen(false);
       Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
     } else {
       translateY.setValue(600);
     }
   }, [visible]);
 
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
+  /** delta 개월 이동 + 연출. 값 갱신이 함수형이라 어디서 불려도 안전하다 */
+  const changeMonth = useCallback((delta: number) => {
+    if (delta === 0) return;
+    setView(v => shiftMonth(v.year, v.month, delta));
+    slideX.setValue(delta > 0 ? 26 : -26);
+    fadeIn.setValue(0.35);
+    Animated.parallel([
+      Animated.timing(slideX, { toValue: 0, duration: 190, useNativeDriver: true }),
+      Animated.timing(fadeIn, { toValue: 1, duration: 190, useNativeDriver: true }),
+    ]).start();
+    select();
+  }, [slideX, fadeIn]); // 둘 다 useRef로 고정된 Animated.Value — 재생성되지 않는다
+
+  // PanResponder는 useRef로 한 번만 만들어져 첫 렌더의 클로저를 박제한다.
+  // 최신 콜백을 ref 경유로 부른다 (utils 없이 컴포넌트 안에서 지키는 규칙).
+  const changeMonthRef = useRef(changeMonth);
+  changeMonthRef.current = changeMonth;
+  const pan = useRef(
+    PanResponder.create({
+      // ⚠️ 반드시 **캡처** 단계여야 한다. 날짜 칸이 TouchableOpacity라 터치 시작 시점에
+      // 자식이 이미 responder를 가져가고, 그 뒤 버블 단계의 onMoveShouldSetPanResponder는
+      // 아예 호출되지 않는다(ScrollView가 터치어블 위에서 스크롤되는 것과 같은 이유).
+      // 탭은 dx가 0에 가까워 조건에 걸리지 않으므로 날짜 선택은 그대로 동작한다.
+      onMoveShouldSetPanResponderCapture: (_e, g) =>
+        Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.6,
+      // 한 번 잡은 가로 제스처는 끝까지 유지 — 중간에 뺏기면 월이 넘어가지 않는다
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderRelease: (_e, g) => {
+        if (g.dx <= -SWIPE_THRESHOLD) changeMonthRef.current(1);       // 왼쪽으로 밀면 다음 달
+        else if (g.dx >= SWIPE_THRESHOLD) changeMonthRef.current(-1);  // 오른쪽으로 밀면 이전 달
+      },
+    }),
+  ).current;
+
+  const handlePrevMonth = () => changeMonth(-1);
+  const handleNextMonth = () => changeMonth(1);
+
+  const isThisMonth = view.year === today.getFullYear() && view.month === today.getMonth();
+  const goToday = () => {
+    if (isThisMonth) return;
+    const delta = (today.getFullYear() * 12 + today.getMonth()) - (view.year * 12 + view.month);
+    changeMonth(delta);
   };
-  const handleNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
+
+  const openPicker = () => {
+    setPickerYear(view.year);
+    setPickerOpen(o => !o);
+    select();
+  };
+  const pickMonth = (m: number) => {
+    const delta = (pickerYear * 12 + m) - (view.year * 12 + view.month);
+    setPickerOpen(false);
+    if (delta === 0) { select(); return; }
+    changeMonth(delta);
   };
 
   const handleDayPress = (date: Date) => {
+    select();
     // 단일 날짜 모드 — 시작=종료로 한 번에 확정. 기간 선택 단계(selectingEnd)로 넘어가지 않는다
     if (singleDate) {
       setTempStart(date); setTempEnd(date); setSelectingEnd(false);
@@ -125,7 +194,7 @@ export function CalendarBottomSheet({
       }
       setTempStart(date); setTempEnd(null); setSelectingEnd(true);
     } else {
-      if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
+      if (isBeforeDay(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
       else { setTempEnd(date); setSelectingEnd(false); }
     }
   };
@@ -137,33 +206,29 @@ export function CalendarBottomSheet({
     onClose();
   };
 
-  const buildGrid = useCallback(() => {
-    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const cells: (Date | null)[] = [];
-    for (let i = 0; i < firstDay; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(viewYear, viewMonth, d);
-      date.setHours(0, 0, 0, 0);
-      cells.push(date);
-    }
-    // 항상 6주(42칸)로 패딩 — 월 전환 시 4~6주 차이로 시트 높이가 출렁이는 것 방지
-    while (cells.length < 42) cells.push(null);
-    return cells;
-  }, [viewYear, viewMonth]);
-
-  const grid = buildGrid();
-  const daysInViewMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
+  const grid = buildMonthGrid(view.year, view.month);
+  const daysInViewMonth = daysInMonthOf(view.year, view.month);
+  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBeforeDay(d, tempStart) && !isBeforeDay(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
+  // 선택 기간 요약 — 기간 모드에서 양끝이 정해졌을 때만
+  const lengthText = (() => {
+    if (singleDate || !tempStart || !tempEnd) return null;
+    const { nights, days } = tripLength(tempStart, tempEnd);
+    return nights === 0 ? t('calendar.sameDay') : t('calendar.nights', { n: nights, d: days });
+  })();
+
+  // 연·월 패널은 그리드 자리를 그대로 차지한다 — 높이를 맞춰야 열고 닫을 때 시트가 출렁이지 않는다
+  const GRID_H = CELL_SIZE * 6 + 32;
+  const PICKER_CELL_H = Math.floor((GRID_H - 48) / 4);
+
   // 시트 본체 — Modal 래핑과 오버레이 모드가 공유
   const body = (
       <View style={[calS.overlay, asOverlay && StyleSheet.absoluteFillObject]} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <Animated.View style={[calS.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
@@ -188,84 +253,194 @@ export function CalendarBottomSheet({
               </>
             )}
           </View>
+
+          {/* 기간 요약 · 오늘로 이동 — 월 내비게이션의 좌우 대칭을 깨지 않도록 별도 줄에 둔다 */}
+          <View style={calS.toolRow}>
+            {lengthText ? (
+              <View style={[calS.lengthChip, { backgroundColor: skinAccent.tint(0.14) }]}>
+                <Text style={[calS.lengthTxt, { color: skinAccent.accent }]} {...andFitText}>{lengthText}</Text>
+              </View>
+            ) : <View />}
+            <TouchableOpacity
+              onPress={goToday}
+              disabled={isThisMonth}
+              activeOpacity={0.8}
+              style={[calS.todayChip, { borderColor: skinAccent.tint(isThisMonth ? 0.15 : 0.45) }]}
+              accessibilityRole="button"
+              accessibilityLabel={t('calendar.a11yToday')}
+              accessibilityState={{ disabled: isThisMonth }}
+            >
+              <Text style={[calS.todayTxt, { color: isThisMonth ? 'rgba(255,255,255,0.3)' : skinAccent.accent }]} {...andFitText}>
+                {t('calendar.today')}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={calS.monthNav}>
-            <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text></TouchableOpacity>
-            <Text style={calS.monthTitle}>{t('cutInfo.yearMonth', { y: viewYear, m: viewMonth + 1 })}</Text>
-            <TouchableOpacity onPress={handleNextMonth} style={calS.navBtn}><Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text></TouchableOpacity>
+            <TouchableOpacity
+              onPress={handlePrevMonth}
+              style={calS.navBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('calendar.a11yPrevMonth')}
+            >
+              <Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text>
+            </TouchableOpacity>
+            {/* 월 타이틀 탭 → 연·월 점프. 2년 전 여행을 넣으려고 ‹ 를 24번 누르던 것을 두 번으로 줄인다 */}
+            <TouchableOpacity
+              onPress={openPicker}
+              style={calS.monthTitleBtn}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('calendar.a11yPickMonth')}
+              accessibilityState={{ expanded: pickerOpen }}
+            >
+              <Text style={calS.monthTitle}>{t('calendar.yearMonth', { y: view.year, m: view.month + 1 })}</Text>
+              <Text style={[calS.monthCaret, { color: skinAccent.accent }, pickerOpen && calS.monthCaretOpen]}>▾</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleNextMonth}
+              style={calS.navBtn}
+              accessibilityRole="button"
+              accessibilityLabel={t('calendar.a11yNextMonth')}
+            >
+              <Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text>
+            </TouchableOpacity>
           </View>
-          <View style={calS.weekRow}>
-            {WEEK_DAY_KEYS.map((dk, i) => (
-              <Text key={dk} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{t(dk)}</Text>
-            ))}
-          </View>
-          <View style={calS.grid}>
-            {grid.map((date, idx) => {
-              if (!date) return <View key={`e-${idx}`} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
-              const dow = date.getDay();
-              const isToday = isSameDay(date, today);
-              const isStart = isRangeStart(date);
-              const isEnd   = isRangeEnd(date);
-              const inRange = isInRange(date);
-              const isEdge  = isStart || isEnd;
-              const key = toDateKey(date);
-              const band = recordedRanges?.get(key);
-              const isTripStart = !!band && isSameDay(date, band.start);
-              // 인접일이 같은 여행인지 — Date 생성자가 월 경계를 자동 롤오버하므로 전/다음달 날짜도 정확히 조회된다
-              const prevSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() - 1)))?.recordId === band.recordId;
-              const nextSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() + 1)))?.recordId === band.recordId;
-              const isMonthFirst = date.getDate() === 1;
-              const isMonthLast  = date.getDate() === daysInViewMonth;
-              // 캡(반원)으로 닫는 지점: 옆날이 같은 여행이 아닐 때(시작/끝·다른 여행과 인접)·주 경계·월 경계
-              const bandLeftRound  = !!band && (!prevSame || dow === 0 || isMonthFirst);
-              const bandRightRound = !!band && (!nextSame || dow === 6 || isMonthLast);
-              // 국가 칩: 여행 시작일, 또는 지난달부터 이어진 여행의 이번 달 첫 칸
-              const showChip = !!band && !!band.countryLabel && (isTripStart || (isMonthFirst && prevSame));
-              const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
-              return (
+
+          {pickerOpen ? (
+            // ── 연·월 점프 패널 ── 그리드와 같은 높이를 차지한다
+            <View style={{ height: GRID_H }}>
+              <View style={calS.yearNav}>
                 <TouchableOpacity
-                  key={key}
-                  onPress={() => handleDayPress(date)}
-                  activeOpacity={0.7}
-                  style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
-                    inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
-                    isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
-                    isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
-                  ]}
+                  onPress={() => { setPickerYear(y => y - 1); select(); }}
+                  style={calS.navBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('calendar.a11yPrevYear')}
                 >
-                  {band && (
-                    <View
-                      pointerEvents="none"
-                      style={[calS.bandSeg, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.55) },
-                        bandLeftRound && calS.bandSegLeft,
-                        bandRightRound && calS.bandSegRight,
-                      ]}
-                    />
-                  )}
-                  {band && showChip && (
-                    <View style={[calS.countryChip, { backgroundColor: skinAccent.accent, maxWidth: CELL_SIZE + 20 }]} pointerEvents="none">
-                      <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
-                    </View>
-                  )}
-                  <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
-                    <Text style={[calS.dayText,
-                      isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
-                      dow===0 && !isEdge && calS.sundayText,
-                      dow===6 && !isEdge && calS.saturdayText,
-                      isEdge && calS.edgeText,
-                    ]}>{date.getDate()}</Text>
-                    {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
-                  </View>
+                  <Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </View>
+                <Text style={calS.yearTitle}>{t('calendar.yearLabel', { y: pickerYear })}</Text>
+                <TouchableOpacity
+                  onPress={() => { setPickerYear(y => y + 1); select(); }}
+                  style={calS.navBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('calendar.a11yNextYear')}
+                >
+                  <Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={calS.monthGrid}>
+                {MONTH_KEYS.map((mk, m) => {
+                  const on = pickerYear === view.year && m === view.month;
+                  const isCurrent = pickerYear === today.getFullYear() && m === today.getMonth();
+                  return (
+                    <TouchableOpacity
+                      key={mk}
+                      onPress={() => pickMonth(m)}
+                      activeOpacity={0.8}
+                      style={[calS.monthCell, { height: PICKER_CELL_H },
+                        on && [calS.monthCellOn, { backgroundColor: skinAccent.accent }],
+                        !on && isCurrent && { borderColor: skinAccent.tint(0.5), borderWidth: 1 },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                    >
+                      <Text style={[calS.monthCellTxt, on && calS.monthCellTxtOn]} {...andFitText}>{t(mk)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            // ── 날짜 그리드 ── 가로 스와이프로 월 전환
+            <Animated.View {...pan.panHandlers} style={{ opacity: fadeIn, transform: [{ translateX: slideX }] }}>
+              <View style={calS.weekRow}>
+                {WEEK_DAY_KEYS.map((dk, i) => (
+                  <Text key={dk} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{t(dk)}</Text>
+                ))}
+              </View>
+              <View style={calS.grid}>
+                {grid.map((date, idx) => {
+                  if (!date) return <View key={`e-${idx}`} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
+                  const dow = date.getDay();
+                  const isToday = isSameDay(date, today);
+                  const isStart = isRangeStart(date);
+                  const isEnd   = isRangeEnd(date);
+                  const inRange = isInRange(date);
+                  const isEdge  = isStart || isEnd;
+                  const key = toDateKey(date);
+                  const band = recordedRanges?.get(key);
+                  const isTripStart = !!band && isSameDay(date, band.start);
+                  // 인접일이 같은 여행인지 — Date 생성자가 월 경계를 자동 롤오버하므로 전/다음달 날짜도 정확히 조회된다
+                  const prevSame = !!band && recordedRanges?.get(toDateKey(new Date(view.year, view.month, date.getDate() - 1)))?.recordId === band.recordId;
+                  const nextSame = !!band && recordedRanges?.get(toDateKey(new Date(view.year, view.month, date.getDate() + 1)))?.recordId === band.recordId;
+                  const isMonthFirst = date.getDate() === 1;
+                  const isMonthLast  = date.getDate() === daysInViewMonth;
+                  // 캡(반원)으로 닫는 지점: 옆날이 같은 여행이 아닐 때(시작/끝·다른 여행과 인접)·주 경계·월 경계
+                  const bandLeftRound  = !!band && (!prevSame || dow === 0 || isMonthFirst);
+                  const bandRightRound = !!band && (!nextSame || dow === 6 || isMonthLast);
+                  // 국가 칩: 여행 시작일, 또는 지난달부터 이어진 여행의 이번 달 첫 칸
+                  const showChip = !!band && !!band.countryLabel && (isTripStart || (isMonthFirst && prevSame));
+                  const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
+                  const a11yDate = t('calendar.a11yDay', { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate() });
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => handleDayPress(date)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={band || hasDot ? `${a11yDate}, ${t('calendar.a11yRecorded')}` : a11yDate}
+                      accessibilityState={{ selected: isEdge || inRange }}
+                      style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
+                        inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
+                        isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
+                        isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
+                      ]}
+                    >
+                      {band && (
+                        <View
+                          pointerEvents="none"
+                          style={[calS.bandSeg, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.55) },
+                            bandLeftRound && calS.bandSegLeft,
+                            bandRightRound && calS.bandSegRight,
+                          ]}
+                        />
+                      )}
+                      {band && showChip && (
+                        <View style={[calS.countryChip, { backgroundColor: skinAccent.accent, maxWidth: CELL_SIZE + 20 }]} pointerEvents="none">
+                          <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
+                        </View>
+                      )}
+                      <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
+                        <Text style={[calS.dayText,
+                          isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
+                          dow===0 && !isEdge && calS.sundayText,
+                          dow===6 && !isEdge && calS.saturdayText,
+                          isEdge && calS.edgeText,
+                        ]}>{date.getDate()}</Text>
+                        {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </Animated.View>
+          )}
+
+          {/* 범례는 연·월 패널이 열려도 계속 그린다 — 숨기면 그 높이만큼 시트가 줄었다 늘어난다
+              (패널 자체는 GRID_H로 그리드와 높이를 맞춰 놨는데 여기서 다시 깨진다) */}
           {!!recordedDates && recordedDates.size > 0 && (
             <View style={calS.legendRow}>
               <View style={[calS.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
               <Text style={calS.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
             </View>
           )}
-          <TouchableOpacity style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
+            onPress={handleConfirm}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
             <Text style={calS.confirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -318,7 +493,7 @@ const calS = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
     paddingHorizontal: 16,
-    marginBottom: 16,
+    marginBottom: 10,
   },
   selectedItem: {
     flex: 1,
@@ -332,6 +507,19 @@ const calS = StyleSheet.create({
   selectedDateActive: { color: '#BF85FC' },
   selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
 
+  // 기간 요약(좌) · 오늘(우)
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    minHeight: 26,
+  },
+  lengthChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  lengthTxt: { fontSize: 12, fontWeight: '700' },
+  todayChip: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  todayTxt: { fontSize: 12, fontWeight: '700' },
+
   monthNav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -341,7 +529,32 @@ const calS = StyleSheet.create({
   },
   navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
+  monthTitleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 4 },
   monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  monthCaret: { fontSize: 12, color: '#BF85FC' },
+  monthCaretOpen: { transform: [{ rotate: '180deg' }] },
+
+  // 연·월 점프 패널
+  yearNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    height: 40,
+  },
+  yearTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', minWidth: 90, textAlign: 'center' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  monthCell: {
+    width: '33.33%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  monthCellOn: { backgroundColor: '#BF85FC' },
+  monthCellTxt: { fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
+  monthCellTxtOn: { color: '#0A0A0F', fontWeight: '700' },
 
   weekRow: { flexDirection: 'row', marginBottom: 4 },
   weekDay: {

@@ -1,3 +1,4 @@
+import { success, warn } from '../utils/haptics';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -20,6 +21,7 @@ import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -31,7 +33,7 @@ import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { STAGE_MAX_W } from '../utils/stage';
 import {
-  CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
+  CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
   SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon,
   SunIcon, CloudyIcon, RainIcon, SnowIcon, WindIcon,
@@ -475,6 +477,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         );
       });
     }
+    success(); // 스트립 발행 완료
     navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀
     } catch (e) {
       savingRef.current = false;
@@ -504,6 +507,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       if (savingRef.current) return; // 저장 완료(Main 복귀)로 인한 정상 이탈은 통과
       if (!dirtyRef.current) return;
       e.preventDefault();
+      warn(); // 되돌릴 수 없는 동작을 묻는 중
       Alert.alert(t('newRecord.cancelWriteTitle'), t('newRecord.cancelWriteMsg'), [
         { text: t('newRecord.continueWrite'), style: 'cancel' },
         { text: t('newRecord.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
@@ -603,18 +607,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 날짜 */}
           <View style={st.fieldBlock}>
             <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.date')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
-            <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
-              <View style={st.dateCol}>
-                <Text style={st.dateColLabel}>{t('cutInfo.departDate')}</Text>
-                <Text style={st.dateColVal}>{fmtDate(startDate, t)}</Text>
-              </View>
-              <Text style={st.dateArrow}>→</Text>
-              <View style={st.dateCol}>
-                <Text style={st.dateColLabel}>{t('cutInfo.arriveDate')}</Text>
-                <Text style={st.dateColVal}>{fmtDate(endDate ?? startDate, t)}</Text>
-              </View>
-              <View style={{ marginLeft: 8 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
-            </TouchableOpacity>
+            <DateRangeField
+              startLabel={t('cutInfo.departDate')}
+              startValue={fmtDate(startDate, t)}
+              endLabel={t('cutInfo.arriveDate')}
+              endValue={fmtDate(endDate ?? startDate, t)}
+              onPress={() => setCalendarVisible(true)}
+            />
           </View>
 
           {/* 글 */}
@@ -843,7 +842,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       {/* 앱 메이트 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent navigationBarTranslucent>
         <View style={fp.overlay} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[fp.sheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 16 }]}>
             <View style={fp.handle} />
@@ -901,7 +900,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       {/* 기타 통화 선택 모달 */}
       <Modal visible={currencyModalVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) — iOS는 기존 외형 유지 */}
           <View style={[cur.sheet, Platform.OS === 'android' && { paddingBottom: insets.bottom + 16 }]}>
             <View style={cur.handle} />
@@ -951,7 +950,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       {/* 국가 선택 모달 */}
       <Modal visible={countryModalVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={closeCountryModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeCountryModal} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeCountryModal} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) — iOS는 기존 외형 유지 */}
           <View style={[ct.sheet, Platform.OS === 'android' && { paddingBottom: insets.bottom + 16 }]}>
             <View style={ct.handle} />
@@ -1057,11 +1056,7 @@ const st = StyleSheet.create({
   countryChipTxt: { color: C.white, fontSize: 14, fontWeight: '600' },
   countryChipPlaceholder: { color: C.textDim, fontSize: 14 },
 
-  dateBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  dateCol: { flex: 1 },
-  dateColLabel: { color: C.textDim, fontSize: 11, marginBottom: 3 },
-  dateColVal: { color: C.white, fontSize: 14, fontWeight: '600' },
-  dateArrow: { color: C.textDim, fontSize: 16, marginHorizontal: 8 },
+  // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
 
   memoInput: { backgroundColor: C.card, borderRadius: 12, padding: 14, color: C.white, fontSize: 14, minHeight: 96 },
 

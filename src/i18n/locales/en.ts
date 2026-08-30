@@ -13,6 +13,28 @@ const en = {
     requirementUnmet: 'not met yet',
     requirementChecking: 'checking',
     requirementFailed: 'unavailable',
+    loading: 'Loading',
+  },
+  // Shared calendar (components/record/CalendarBottomSheet) — used by record, strip, blog and album.
+  calendar: {
+    week0: 'Sun', week1: 'Mon', week2: 'Tue', week3: 'Wed', week4: 'Thu', week5: 'Fri', week6: 'Sat',
+    yearMonth: '{{m}}/{{y}}',
+    yearLabel: '{{y}}',
+    m1: 'Jan', m2: 'Feb', m3: 'Mar', m4: 'Apr', m5: 'May', m6: 'Jun',
+    m7: 'Jul', m8: 'Aug', m9: 'Sep', m10: 'Oct', m11: 'Nov', m12: 'Dec',
+    today: 'Today',
+    // "3N / 4D" — travel shorthand, avoids an English plural form for {{n}}
+    nights: '{{n}}N / {{d}}D',
+    sameDay: 'Day trip',
+    a11yDay: '{{m}}/{{d}}/{{y}}',
+    a11yPrevMonth: 'Previous month',
+    a11yNextMonth: 'Next month',
+    a11yPrevYear: 'Previous year',
+    a11yNextYear: 'Next year',
+    a11yPickMonth: 'Pick year and month',
+    a11yToday: 'Go to this month',
+    a11yRecorded: 'Has records',
+    a11yDateField: 'Select dates',
   },
   permission: {
     gallery: 'Gallery',
@@ -118,6 +140,7 @@ const en = {
     mateRecoNote: 'The names of countries and cities you visited are used to find what you have in common with other travellers. Photos, text and dates are never used. Turning this off removes your countries from other people\'s recommendation lists, and also makes the recommendations you see less accurate. Every other feature keeps working either way.',
     mateRecoSaveFail: 'Could not save the setting. Please try again in a moment.',
     showCounts: 'Show like & comment counts',
+    haptics: 'Haptic feedback',
     diaryInteraction: 'Show social card interactions',
     globeSkin: 'Globe skin',
     premiumBadge: 'Premium',
@@ -164,8 +187,7 @@ const en = {
     logoutConfirm: 'Are you sure you want to log out?',
     footer: 'eOrth · v1.0.0 · © 2025',
     countryModalTitle: 'Country of residence',
-    countryModalDesc: 'Enter a country code (e.g. KR, US, JP)',
-    countryInvalidMsg: 'That country code is not supported.\nEnter a two-letter code (e.g. KR, US, JP)',
+    countrySearchPlaceholder: 'Search countries',
   },
   premium: {
     // Paywall (PremiumScreen)
