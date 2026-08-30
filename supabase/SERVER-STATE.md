@@ -319,27 +319,29 @@ select status_code, content from net._http_response order by created desc limit 
 > 테스트 프로젝트(`bqwmxxhtsvfuyywfuswo`)에는 넣지 않았다. 행사 페이지는 운영 ref를
 > 하드코딩하고 있어 부스 동작에는 영향이 없다. 다음번 `schema.sql` 전체 재실행 때 따라 들어간다.
 
-> ⏳ **미반영 — `carry_next_day` 컬럼(다음 날 자동 참여, 2026-08-31 이틀 행사 조건부 이월).**
-> 참가자가 폼에서 직접 고르는 선호값이다(선택 · 기본 해제). 전날 최종 미매칭자 중 이 값이 `true`인
-> 사람만 다음 날 매칭 풀에 합류한다 — `scripts/event-match.mjs` 의 `--prev-from`/`--prev-boundary`.
+> ✅ **반영 완료 — `carry_next_day` 컬럼(다음 날 자동 참여, 2026-08-31 이틀 행사 조건부 이월,
+> 같은 날 실측 확인).** 참가자가 폼에서 직접 고르는 선호값이다(선택 · 기본 해제). 전날 최종
+> 미매칭자 중 이 값이 `true`인 사람만 다음 날 매칭 풀에 합류한다 — 이월 명단은
+> `scripts/event-match.mjs` 의 `--slot 2` 실행이 만드는 `event-carry-<날짜>.local.json` 을
+> 다음 날 `--carry-file` 로 읽는 구조다(재계산 아님).
 >
-> **운영 프로젝트(`blweolnunmsxgztmvzfd`)에서 실행할 SQL:**
+> 운영 프로젝트(`blweolnunmsxgztmvzfd`)에서 alter 한 줄을 실행했고 아래 결과를 확인했다:
 >
 > ```sql
-> alter table public.event_participants
->   add column if not exists carry_next_day boolean not null default false;
+> select column_name, data_type, is_nullable, column_default
+>   from information_schema.columns
+>  where table_name = 'event_participants' and column_name = 'carry_next_day';
+> -- boolean / NO / false  ← 실측값 (2026-08-31)
 > ```
 >
-> RLS 정책은 **재실행할 필요가 없다** — boolean 은 `not null` + `default` 로 값 범위가 이미 닫혀 있어
-> INSERT 정책의 with check 에 추가할 제약이 없다(`intro` 처럼 길이 제약이 필요한 타입이 아니다).
+> RLS 정책은 **재실행하지 않았다(불필요)** — boolean 은 `not null` + `default` 로 값 범위가 이미
+> 닫혀 있어 INSERT 정책의 with check 에 추가할 제약이 없다(`intro` 처럼 길이 제약이 필요한
+> 타입이 아니다).
 >
-> ✅ **`intro` 때와 달리 이 alter 는 먼저 해도 아무도 안 깨진다.** 아직 게시 안 된 옛 `event.html` 은
+> `intro` 때와 달리 이 alter 는 게시보다 먼저 해도 아무도 안 깨졌다 — 게시 전 옛 `event.html` 은
 > `carry_next_day` 키를 **안 보내고**, PostgREST 는 body 의 키 집합으로만 INSERT 컬럼을 만들므로
 > DB 의 default(`false`)가 들어간다. (intro 는 반대로 새 페이지가 없는 컬럼을 **보내서** 터졌다.)
->
-> ⚠️ **단, 새 `event.html` 게시 전에는 반드시 끝나 있어야 한다.** 새 페이지는 이 키를 항상 보내므로
-> 컬럼이 없으면 `intro` 때와 똑같이 **참가자 전원이 `400 PGRST204` 로 제출에 실패**한다.
-> 순서는 여전히 **SQL 먼저, 게시 나중**이다(`docs/event-operations.md` §1-1·§1-3).
+> 이로써 **새 event.html 게시의 서버 측 선행 조건(intro·carry_next_day 두 alter)은 모두 충족됐다.**
 >
 > 반영 확인:
 >
@@ -553,7 +555,7 @@ select status_code, content, created
 | `event_participants` 표 | 2026-08-09~ (일자 미상) | **✅ 실측 2026-08-13** | 표는 있으나 **INSERT 정책의 행사 코드가 자리표시자일 수 있음** — 1-1번 절 |
 | `event_participants.gender_pref` 에 `'opposite'`(이성만) 추가 | 2026-08-19 | **✅ 실측 2026-08-19** | 운영에 alter 실행·`pg_get_constraintdef` 로 확인. 테스트 프로젝트는 미반영(부스 영향 없음) — 1-1번 절 |
 | `event_participants.intro` (간단 자기소개, 선택·80자) | 2026-08-31 | **✅ 실측 2026-08-31** | 운영에 alter + 정책 재실행, `pg_policies.with_check` 로 확인. 테스트 프로젝트는 미반영(부스 영향 없음). **event.html 재게시는 별도 잔업** — 1-1번 절 |
-| `event_participants.carry_next_day` (다음 날 자동 참여, 선택·기본 false) | 2026-08-31 | **⏳ 미반영** | alter 한 줄만 실행하면 된다(정책 재실행 불필요). `default false` 라 옛 페이지는 안 깨지지만 **새 event.html 게시 전에는 필수** — 1-1번 절 |
+| `event_participants.carry_next_day` (다음 날 자동 참여, 선택·기본 false) | 2026-08-31 | **✅ 실측 2026-08-31** | 운영에 alter 실행, `information_schema.columns` 로 확인(정책 재실행 불필요). 테스트 프로젝트는 미반영(부스 영향 없음) — 1-1번 절 |
 | 매칭 프라이버시 하드닝 (`mate_reco_optin`·`rpc_probe_guard`·`k_anon_min`·`set_mate_reco_optin`) | 2026-08-12~13 | **✅ 실측 2026-08-13** | 인덱스 `idx_posts_country_shared`만 미실측 — 1번 절 |
 | 생일·성별 폐지 **1차**(`onboarded_at` 신설·백필) | 2026-08-13 | **✅ 실측 2026-08-13** | **2차(컬럼 drop)는 심사 통과 후** — 1번 절 |
 
