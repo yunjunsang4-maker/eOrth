@@ -153,6 +153,14 @@ function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) 
     carryOutIds = new Set() } = opts;
   // 사람별 카드 — 발송은 전부 수동이라 '누구까지 보냈는지'를 리포트가 기억해야 한다.
   // 참가자가 적은 값(이름)이 HTML에 들어가므로 전부 esc()를 거친다.
+  //
+  // 주 동선은 "복사하고 DM 열기" 한 버튼이다: 복사에 **성공했을 때만** ig.me DM 창을 연다.
+  // https://ig.me/m/<아이디> 는 인스타 공식 DM 딥링크로(완료 화면 docs/event.html 203행과 같은 형식),
+  // 웹에서는 로그인된 계정으로 그 사람과의 대화창이 바로 열린다 — 프로필을 거쳐 DM 버튼을
+  // 찾아 누르는 단계가 사라진다. 아이디는 `[a-z0-9._]` 만 허용되지만(docs/event-dna.js
+  // INSTAGRAM_RE) DB에서 곧장 오는 값이라 encodeURIComponent 를 한 번 더 거친다.
+  // 보조로 남기는 "문구 복사" 단독 버튼과 프로필 링크는 ig.me가 막힌 환경(회사망·앱 미설치 등)의
+  // 폴백이다 — 지우지 말 것.
   const cards = [];
   const push = (me, partners, score, shared) => {
     const msg = renderMessage({ me, partners, score, shared, eventName: EVENT_NAME, meetNow });
@@ -167,8 +175,9 @@ function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) 
         <div class="meta">매칭률 ${score}% · 상대 ${partners.map((p) => '@' + esc(p.instagram)).join(', ')}</div>
         <textarea readonly rows="9">${esc(msg)}</textarea>
         <div class="row">
+          <button class="send" data-dm="https://ig.me/m/${esc(encodeURIComponent(me.instagram))}">복사하고 DM 열기 ↗</button>
           <button class="copy">문구 복사</button>
-          <a class="dm" href="https://instagram.com/${esc(me.instagram)}" target="_blank" rel="noreferrer">DM 열기 ↗</a>
+          <a class="dm" href="https://instagram.com/${esc(encodeURIComponent(me.instagram))}" target="_blank" rel="noreferrer">프로필 ↗</a>
         </div>
       </div>`);
   };
@@ -217,16 +226,32 @@ function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(EVENT_NAME)} 매칭 리포트</title><style>
-body{background:#0A0A0F;color:#fff;font-family:system-ui,sans-serif;margin:0;padding:24px;line-height:1.6}
+/* 하단 여백은 플로팅 진행 바 높이(약 56px) + 여유 — 안 주면 마지막 카드의 버튼이 바에 가려 못 누른다 */
+body{background:#0A0A0F;color:#fff;font-family:system-ui,sans-serif;margin:0;padding:24px 24px 112px;line-height:1.6}
 h1{font-size:20px} .sum{color:#A1A1B0;margin-bottom:20px}
-.card{background:#2E2E3B;border:1px solid #1A1A26;border-radius:12px;padding:14px;margin-bottom:12px}
+.card{background:#2E2E3B;border:1px solid #1A1A26;border-radius:12px;padding:14px;margin-bottom:12px;scroll-margin-top:16px}
 .card.sent{opacity:.45}
+/* '다음 미발송 ↓'로 이동했을 때 어느 카드로 왔는지 눈으로 잡아주는 잠깐의 강조 */
+.card.flash{outline:2px solid #BF85FC;box-shadow:0 0 0 5px rgba(191,133,252,.22)}
 .who{font-weight:700} .label{color:#BF85FC;font-weight:400;font-size:13px}
 .meta{color:#A1A1B0;font-size:13px;margin-bottom:8px}
 textarea{width:100%;background:#0A0A0F;color:#fff;border:1px solid #1A1A26;border-radius:8px;padding:10px;font:13px/1.5 system-ui;resize:vertical}
-.row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.row{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
 button,.dm{background:#BF85FC;color:#0A0A0F;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;text-decoration:none;font-size:13px}
+.send{padding:10px 16px;font-size:14px}
+/* 보조 동선(ig.me가 안 열리는 환경용 폴백)은 눈에 덜 띄게 — 주 버튼 하나만 누르는 흐름을 흐리지 않는다 */
+.copy,.dm{background:transparent;color:#A1A1B0;border:1px solid #1A1A26;padding:6px 10px;font-size:12px;font-weight:600}
 .done{float:right;color:#A1A1B0;font-size:13px}
+/* 플로팅 진행 바 — 인스타 창을 오갈 때 "지금 붙여넣을 게 누구 것인지"를 항상 보이게 둔다 */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;gap:12px;align-items:center;
+  background:rgba(46,46,59,.97);border-top:1px solid #1A1A26;padding:10px 16px;font-size:13px;
+  box-shadow:0 -6px 20px rgba(0,0,0,.45)}
+.bar .prog{font-weight:700;white-space:nowrap}
+.bar .prog b{color:#BF85FC}
+.bar .last{color:#A1A1B0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .last b{color:#fff}
+.bar button{white-space:nowrap}
+.bar button:disabled{background:#1A1A26;color:#A1A1B0;cursor:default}
 .warn{background:#2E2E3B;border-left:4px solid #FF3B30;border-radius:8px;padding:12px;margin:20px 0}
 .carry{background:#6B21A8;color:#fff;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;margin-left:6px}
 .carry.prev{background:#BF85FC;color:#0A0A0F}
@@ -237,6 +262,11 @@ ${slotLine ? `<div class="slot">${esc(slotLine)}</div>` : ''}
 <div class="sum">참가 ${total}명 · 짝 ${pairs.length}쌍 · 3인조 ${trios.length}개 · 미매칭 ${unmatched.length}명</div>
 ${warn}
 ${cards.join('\n')}
+${cards.length ? `<div class="bar" id="bar">
+  <span class="prog">발송 <b id="barDone">0</b> / 전체 ${cards.length}</span>
+  <span class="last">마지막 복사 <b id="barLast">아직 없음</b></span>
+  <button id="barNext">다음 미발송 ↓</button>
+</div>` : ''}
 <script>
 // 발송 체크는 localStorage에 남긴다 — 수십 명을 손으로 보내다 보면 어디까지 했는지 반드시 헷갈린다.
 // 키를 행사별로 나눈다 — 안 나누면 다음 행사에서 같은 아이디가 다시 나왔을 때 체크가 미리 켜져
@@ -251,19 +281,94 @@ for(const box of document.querySelectorAll('[data-check]')){
     box.checked?sent.add(k):sent.delete(k);
     box.closest('.card').classList.toggle('sent',box.checked);
     localStorage.setItem(KEY,JSON.stringify([...sent]));
+    syncBar();
   });
 }
+
+// 복사는 한 경로로만 한다 — 주 버튼('복사하고 DM 열기')과 보조 버튼('문구 복사')이
+// 성공/실패 판정을 서로 다르게 하면 "복사는 실패했는데 DM은 열렸다"가 생긴다.
+// 성공했을 때만 resolve 하는 Promise를 돌려주고, 호출부는 then 안에서만 다음 동작을 한다.
+function copyCard(card){
+  const text=card.querySelector('textarea').value;
+  try{
+    // navigator.clipboard 자체가 없는 환경(구형 브라우저 등)에서는 여기서 동기 예외가 난다.
+    // 그대로 두면 .catch가 안 걸려 버튼이 아무 반응도 안 하고, 운영자는 복사된 줄 알고
+    // 직전 카드(다른 참가자)의 문구를 붙여넣는다 — 반드시 '실패'로 떨궈야 한다.
+    return navigator.clipboard.writeText(text).then(()=>card.dataset.key);
+  }catch(e){ return Promise.reject(e); }
+}
+/** 버튼 라벨을 잠깐 바꿨다가 원래대로 되돌린다(기존 '복사됨/복사 실패' 패턴을 그대로 씀) */
+function blip(b,label){
+  if(!b.dataset.label) b.dataset.label=b.textContent;
+  b.textContent=label;
+  setTimeout(()=>{b.textContent=b.dataset.label;},1200);
+}
+
 for(const b of document.querySelectorAll('.copy')){
   b.addEventListener('click',()=>{
-    const text=b.closest('.card').querySelector('textarea').value;
-    navigator.clipboard.writeText(text).then(()=>{
-      b.textContent='복사됨';setTimeout(()=>b.textContent='문구 복사',1200);
+    copyCard(b.closest('.card')).then((k)=>{
+      blip(b,'복사됨');markCopied(k);
     }).catch(()=>{
       // 실패를 무시하면 클립보드에 직전 카드(다른 참가자)의 문구가 남아
       // 운영자가 그걸 그대로 다른 사람에게 붙여넣게 된다.
-      b.textContent='복사 실패';setTimeout(()=>b.textContent='문구 복사',1200);
+      blip(b,'복사 실패');
     });
   });
+}
+
+// 주 동선: 복사 → **성공했을 때만** ig.me DM 창을 연다.
+// 실패했는데 창부터 열면 위 주석의 사고(직전 참가자 문구를 그대로 붙여넣기)가 그대로 재현된다.
+for(const b of document.querySelectorAll('.send')){
+  b.addEventListener('click',()=>{
+    copyCard(b.closest('.card')).then((k)=>{
+      markCopied(k);
+      // 세 번째 인자로 'noopener'를 주면 window.open 이 **항상 null**을 돌려줘 팝업 차단을
+      // 구분할 수 없다 — 창이 하나도 안 떴는데 버튼은 'DM 열림'이라고 거짓말을 하게 된다.
+      // 대신 창 핸들을 받아 opener 를 직접 끊는다(역 탭내빙 방어는 동일).
+      const w=window.open(b.dataset.dm,'_blank');
+      if(!w){ blip(b,'복사됨 · 팝업 차단'); return; }
+      try{ w.opener=null; }catch(e){}
+      blip(b,'복사됨 · DM 열림');
+    }).catch(()=>{
+      blip(b,'복사 실패 — DM 안 엶');
+    });
+  });
+}
+
+// ── 플로팅 진행 바 ──
+// 인스타 창을 오가다 보면 "지금 클립보드에 든 게 누구 것인지"를 반드시 잃어버린다.
+// 마지막으로 복사한 아이디를 항상 띄워 두는 게 이 바의 주목적이다(오발송 방지).
+const bar=document.getElementById('bar');
+function markCopied(k){
+  if(!bar||!k) return;
+  // textContent 로만 넣는다 — 아이디는 참가자가 적은 값이라 innerHTML 로 넣으면 안 된다.
+  document.getElementById('barLast').textContent='@'+k;
+}
+function syncBar(){
+  if(!bar) return;
+  // 발송 수는 DOM의 체크 상태로 센다 — localStorage의 sent 에는 같은 행사 다른 타임 리포트의
+  // 아이디도 들어 있어서, sent.size 를 쓰면 이 리포트에 없는 사람까지 세어 진행률이 부풀려진다.
+  const boxes=[...document.querySelectorAll('[data-check]')];
+  const done=boxes.filter((x)=>x.checked).length;
+  document.getElementById('barDone').textContent=done;
+  const btn=document.getElementById('barNext');
+  const all=done===boxes.length;
+  btn.disabled=all;
+  btn.textContent=all?'모두 발송 완료 🎉':'다음 미발송 ↓';
+}
+if(bar){
+  document.getElementById('barNext').addEventListener('click',()=>{
+    const rest=[...document.querySelectorAll('.card')].filter((c)=>!c.querySelector('[data-check]').checked);
+    if(!rest.length) return;
+    // 현재 위치보다 아래에 있는 첫 미발송으로 간다. 없으면 맨 위 미발송으로 되감는다 —
+    // 위쪽에 건너뛴 사람이 남아 있으면 끝까지 간 뒤 다시 훑어야 하기 때문이다.
+    const y=window.scrollY+80;
+    const card=rest.find((c)=>c.offsetTop>y)||rest[0];
+    card.scrollIntoView({behavior:'smooth',block:'center'});
+    card.classList.add('flash');
+    setTimeout(()=>card.classList.remove('flash'),1400);
+  });
+  syncBar();
 }
 </script></body></html>`;
 }
