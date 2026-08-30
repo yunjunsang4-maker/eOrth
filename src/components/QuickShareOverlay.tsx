@@ -1,4 +1,5 @@
 import React, { useRef, useEffect } from 'react';
+import FeedPhoto from './FeedPhoto';
 import { View, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
@@ -61,7 +62,7 @@ function TargetCircle({
       >
         {/* 사진 > 제작 아이콘 > 이모지 순. '기타'는 이모지 대신 자체 제작 SVG를 쓴다 */}
         {tg.photo ? (
-          <Image source={{ uri: tg.photo }} style={st.targetPhoto} />
+          <FeedPhoto uri={tg.photo} style={st.targetPhoto} />
         ) : tg.icon ? (
           <FriendIcon size={28} color={skinAccent.accent} />
         ) : (
@@ -207,7 +208,7 @@ export default function QuickShareOverlay({
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* 어두운 배경 (탭/취소) — 페이드 인 */}
       <Animated.View style={[StyleSheet.absoluteFill, st.dim, { opacity: dimAnim }]}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       </Animated.View>
 
       {/* 원형 타깃 — 카드 쪽에서 스태거로 튀어나옴 */}

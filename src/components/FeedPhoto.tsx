@@ -20,6 +20,7 @@ export default function FeedPhoto({
   style,
   contentFit = 'cover',
   transition = 120,
+  onError,
 }: {
   uri: string;
   /** 기록의 원본→축소본 맵(TravelRecord.thumbs). 없으면 원본을 그대로 쓴다 */
@@ -27,6 +28,8 @@ export default function FeedPhoto({
   style?: StyleProp<ImageStyle>;
   contentFit?: ImageContentFit;
   transition?: number;
+  /** 로드 실패 통지 — 깨진 이미지를 폴백으로 바꾸는 호출부용(광고 카드·초대 아바타) */
+  onError?: () => void;
 }) {
   return (
     <Image
@@ -35,6 +38,7 @@ export default function FeedPhoto({
       contentFit={contentFit}
       cachePolicy="memory-disk"
       transition={transition}
+      onError={onError}
     />
   );
 }

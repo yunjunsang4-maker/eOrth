@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import FeedSkeleton from '../components/FeedSkeleton';
 import AppRefreshControl from '../components/AppRefreshControl';
 import MateRecoConsentBanner from '../components/MateRecoConsentBanner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,7 +28,7 @@ import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, 
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
 import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
-import * as Haptics from 'expo-haptics';
+import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -145,7 +146,7 @@ function SheetShell({
     <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onRequestClose}>
       <View style={{ flex: 1 }} accessibilityViewIsModal>
         <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: Animated.multiply(anim, 0.4) }]}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onRequestClose} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onRequestClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         </Animated.View>
         <Animated.View
           style={{
@@ -534,6 +535,7 @@ function FeedCard({
 
   const handleDeletePress = () => {
     onOpenMenu(null);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('social.deleteConfirmTitle'),
       t('social.deleteConfirmMsg'),
@@ -727,7 +729,7 @@ function FeedCard({
       </TouchableOpacity>
       <View style={[s.cardBody, { paddingTop: 0 }]}>
         <View style={s.actions}>
-          <TouchableOpacity style={s.actionBtn} onPress={() => toggleLike(item.id)}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => { tap(); toggleLike(item.id); }}>
             <Text style={[s.actionIcon, item.liked && { color: '#FF6B9D' }]}>
               {item.liked ? '♥' : '♡'}
             </Text>
@@ -879,7 +881,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
 
         {/* 하단 */}
         <View style={sc.footer}>
-          <TouchableOpacity onPress={() => toggleLike(item.id)} style={sc.actionBtn}>
+          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={sc.actionBtn}>
             <Text style={[sc.actionIcon, item.liked && { color: '#FF6B9D' }]}>
               {item.liked ? '♥' : '♡'}
             </Text>
@@ -1048,6 +1050,7 @@ function BlogCard({
 
   const handleDeletePress = () => {
     onOpenMenu(null);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('social.deleteConfirmTitle'),
       t('social.deleteConfirmMsg'),
@@ -1216,7 +1219,7 @@ function BlogCard({
 
         {/* 하단 액션 */}
         <View style={bc.footer}>
-          <TouchableOpacity onPress={() => toggleLike(item.id)} style={bc.actionBtn}>
+          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={bc.actionBtn}>
             <Text style={[bc.actionIcon, item.liked && { color: '#FF6B9D' }]}>
               {item.liked ? '♥' : '♡'}
             </Text>
@@ -1350,6 +1353,7 @@ function AlbumCard({
 
   const handleDeletePress = () => {
     onOpenMenu(null);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(
       t('social.deleteConfirmTitle'),
       t('social.deleteConfirmMsg'),
@@ -1546,7 +1550,7 @@ function AlbumCard({
       {/* 하단 액션 */}
       <View style={ab.bottom}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <TouchableOpacity onPress={() => toggleLike(item.id)} style={ab.likeBtn}>
+          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={ab.likeBtn}>
             <Text style={[ab.actionIcon, item.liked && { color: '#FF6B9D' }]}>
               {item.liked ? '♥' : '♡'}
             </Text>
@@ -1707,7 +1711,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
           <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
         )}
       </TouchableOpacity>
-      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
         {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
@@ -1750,7 +1754,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
             <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
           <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
           {showCounts && item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
         </TouchableOpacity>
@@ -2182,7 +2186,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
               )}
             </TouchableOpacity>
             <View style={d.jourFooterRight}>
-              <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+              <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
                 <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
                 {showCounts && item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
               </TouchableOpacity>
@@ -2237,7 +2241,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             )}
           </TouchableOpacity>
           <View style={d.polaMetaRight}>
-            <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+            <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
               <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
               {showCounts && item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
             </TouchableOpacity>
@@ -2264,7 +2268,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             pointerEvents="none"
             style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
           />
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Animated.View
             // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
             // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
@@ -2594,7 +2598,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2730,13 +2734,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
     // 드래그 동안 하단 탭 바 잠시 숨김 — 드롭 영역·딤을 가리지 않게
     setTabBarHidden(true);
     // 카드가 '집힌' 순간의 촉각 피드백
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    grab();
   };
   const handleQuickMove = (px: number, py: number) => {
     const key = hitTestTarget(px, py, quickTargets.current, QUICK_HIT_MARGIN);
     if (key === quickHoverRef.current) return;
     quickHoverRef.current = key;
-    if (key) Haptics.selectionAsync().catch(() => {});
+    if (key) select();
     setQuickHover(key);
   };
   const handleQuickEnd = (px: number, py: number) => {
@@ -2749,14 +2753,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
     setTabBarHidden(false);
     if (!key || !item) return;
     if (key === 'other') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      tap();
       setOtherPickerItem(item);
       return;
     }
     const friend = top3.find((f) => f.handle === key);
     if (friend) {
       sendRecord(friend.handle, item);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      success();
       showQuickToast(t('comp2.toastSentTo', { name: friend.name }));
     }
   };
@@ -2940,7 +2944,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return out;
   }, [timelineWithAds, mateSuggestions.length]);
 
-  const isEmptyFeed = allVisible.length === 0;
+  // '비었다'는 첫 피드가 도착한 뒤에만 말할 수 있다. feedPosts는 세션마다 빈 배열로
+  // 시작하므로, 이 가드가 없으면 이웃 글이 많은 사용자에게도 예시 화면이 번쩍인다.
+  const isFeedLoading = feedInitialLoading && allVisible.length === 0;
+  const isEmptyFeed = !feedInitialLoading && allVisible.length === 0;
 
   // 예시 콘텐츠 글은 언어에 맞춰 번역(t 사용) — 원본 상수는 한글이라 여기서 오버라이드
   const exampleFeed = useMemo(() => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent') }), [t]);
@@ -3052,6 +3059,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
+          {isFeedLoading && <FeedSkeleton />}
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>

@@ -338,6 +338,8 @@ interface RecordContextType {
   loadMoreFeed: () => Promise<void>;
   feedHasMore: boolean;
   feedLoadingMore: boolean;
+  /** 첫 피드가 아직 안 왔다 — 이때 '피드가 비었어요' 화면을 그리면 거짓말이 된다 */
+  feedInitialLoading: boolean;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
@@ -417,6 +419,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const feedLoadingMoreRef = useRef(false); // 스크롤 연타가 같은 페이지를 두 번 받지 않게
   const [feedHasMore, setFeedHasMore] = useState(false);
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+  // 피드 '첫 로딩' — 캐시 복원이나 첫 refreshFeed 중 먼저 끝나는 쪽에서 내려간다.
+  // 이 플래그가 없던 동안에는 앱을 열 때마다 feedPosts가 빈 배열인 순간이 있어,
+  // 이웃 글이 많은 사용자에게도 "피드가 비었어요" 예시 화면이 번쩍인 뒤 진짜 피드로 바뀌었다.
+  const [feedInitialLoading, setFeedInitialLoading] = useState(true);
   // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
   const [stayPromptCountry, setStayPromptCountry] = useState<string | null>(null);
 
@@ -428,6 +434,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (!cached || !Array.isArray(cached) || cached.length === 0) return;
       if (feedFreshRef.current) return; // 서버 피드가 이미 도착 — 구본으로 덮지 않음
       setFeedPosts((prev) => (prev.length > 0 ? prev : cached));
+      // 보여줄 게 생겼으므로 '첫 로딩'을 내린다. 캐시가 비었을 때는 내리지 않는다 —
+      // 그래야 서버 응답 전까지 '피드가 비었어요' 예시 화면이 뜨지 않는다(refreshFeed가 내린다).
+      setFeedInitialLoading(false);
     })();
   }, []);
 
@@ -1717,7 +1726,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 섞어 받으면 20건 페이지 경계 밖의 스냅이 스토리에서 사라진다. 스냅은 사진 2장짜리라
   // 별도 조회 비용이 작다.
   const refreshFeed = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
+    // 서버가 없으면 기다릴 것도 없다 — 로컬 기록만 보여주면 되므로 첫 로딩을 즉시 내린다
+    if (!isSupabaseConfigured) { setFeedInitialLoading(false); return; }
     try {
       // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
       const [page, snaps] = await withTimeout(Promise.all([fetchFeed(null), fetchFeedSnaps()]), 12000);
@@ -1744,6 +1754,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
       emitToast(i18n.t('store.feedLoadFailed'));
+    } finally {
+      // 성공이든 실패든 첫 시도가 끝나면 내린다 — 실패했다고 스켈레톤에 갇히면 안 된다
+      setFeedInitialLoading(false);
     }
   }, []);
 
@@ -2153,7 +2166,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

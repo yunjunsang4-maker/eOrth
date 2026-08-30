@@ -1,7 +1,8 @@
 // 초대 귀속 넛지 모달 — 초대 딥링크로 가입한 사용자에게 첫 메인 진입 시
 // "초대자와 메이트 연결"을 제안한다. (Alert 대체 — 앱 다크 보라 톤, StayPromptModal 관례)
 import React, { useEffect, useState } from 'react';
-import { Modal, View, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import FeedPhoto from './FeedPhoto';
+import { Modal, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from './icons';
@@ -31,7 +32,7 @@ export function InviteNudgeModal({ target, onSend, onClose }: {
         <View style={s.card}>
           <View style={s.avatar}>
             {target?.photo && !imgError ? (
-              <Image source={{ uri: target.photo }} style={s.avatarImg} onError={() => setImgError(true)} />
+              <FeedPhoto uri={target.photo} style={s.avatarImg} onError={() => setImgError(true)} />
             ) : (
               <PersonIcon size={30} color="#A0A0B0" />
             )}

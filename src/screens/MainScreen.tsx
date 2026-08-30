@@ -43,7 +43,7 @@ import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop, ClipPath as SvgClipPath, Image as SvgImage } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
-import * as Haptics from 'expo-haptics';
+import { success, tap } from '../utils/haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon, GalleryIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
@@ -1573,14 +1573,14 @@ export default function MainScreen({ navigation, route }: Props) {
       const data = JSON.parse(e.nativeEvent.data);
       if (data.type === 'puzzleCompleted') {
         // 퍼즐 완성 — WebView 연출과 동시에 성공 햅틱, 연출이 끝난 뒤 공유 카드
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        success();
         if (puzzleShareTimer.current) clearTimeout(puzzleShareTimer.current);
         puzzleShareTimer.current = setTimeout(() => setPuzzleShareVisible(true), 2600);
         return;
       }
       if (data.type === 'piecePlaced') {
         // 조각 채움(중간 진행) — WebView 페이드와 동시에 가벼운 임팩트 햅틱
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        tap();
         return;
       }
       if (data.type === 'regionTapped') {
@@ -2129,7 +2129,7 @@ export default function MainScreen({ navigation, route }: Props) {
           style={[styles.overlay, { opacity: overlayAnim }]}
           pointerEvents={sheetOpen ? 'auto' : 'none'}
         >
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeSheet} activeOpacity={1} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeSheet} activeOpacity={1} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         </Animated.View>
       )}
 
@@ -2195,7 +2195,7 @@ export default function MainScreen({ navigation, route }: Props) {
           style={[styles.overlay, { opacity: countryOverlayAnim }]}
           pointerEvents="auto"
         >
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeCountrySheet} activeOpacity={1} />
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeCountrySheet} activeOpacity={1} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         </Animated.View>
 
         {/* 바텀시트 (Liquid Glass) */}

@@ -168,7 +168,7 @@ export default function MomentCaptureScreen() {
   return (
     <View style={st.root}>
       {/* 배경 탭으로 닫기 */}
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeOnce} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeOnce} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[st.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={st.grab} />

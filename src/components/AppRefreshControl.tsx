@@ -17,6 +17,7 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshControl, StyleProp, ViewStyle } from 'react-native';
 import { useSkinAccent } from '../constants/skinTheme';
+import { select } from '../utils/haptics';
 
 export default function AppRefreshControl({
   refreshing,
@@ -44,7 +45,8 @@ export default function AppRefreshControl({
   return (
     <RefreshControl
       refreshing={refreshing}
-      onRefresh={onRefresh}
+      // 임계를 넘겨 새로고침이 확정된 순간 한 번 — 이 한 곳이 DM·이웃·알림·프로필·소셜에 함께 적용된다
+      onRefresh={() => { select(); onRefresh(); }}
       tintColor={tint}
       colors={[skinAccent.accent]}
       progressBackgroundColor="#1F1F22"

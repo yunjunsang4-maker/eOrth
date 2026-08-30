@@ -53,7 +53,7 @@ export function FriendPickerModal({
       statusBarTranslucent navigationBarTranslucent
     >
       <View style={fp.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <View style={[fp.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }]}>
           <View style={fp.handle} />

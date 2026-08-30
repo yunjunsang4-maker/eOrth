@@ -35,6 +35,10 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
     disabled={disabled || loading}
     activeOpacity={0.8}
     style={[styles.primaryBtn, disabled && styles.primaryBtnDisabled, style]}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    // 로딩 중에는 라벨이 스피너로 바뀌어 화면에서 사라진다 — 상태로 알린다
+    accessibilityState={{ disabled: disabled || loading, busy: loading }}
   >
     <LinearGradient
       colors={disabled ? ['#3D3D55', '#2D2D45'] : skinAccent.btnGradient}
@@ -80,6 +84,9 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       activeOpacity={0.85}
       onLayout={(e) => setSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
       style={[styles.glassBtn, disabled && styles.glassBtnDisabled, style]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
     >
       {size.w > 0 && (
         // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
@@ -130,6 +137,8 @@ export const SocialButton: React.FC<SocialButtonProps> = ({
       onPress={onPress}
       activeOpacity={0.85}
       style={[styles.socialBtn, { backgroundColor: bgColor }]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
     >
       {icon && <View style={styles.socialBtnIcon}>{icon}</View>}
       {/* 아이콘과 가로 배치라 flexShrink가 있어야 안드로이드에서 자동 축소의 폭 기준이 생긴다 */}
@@ -150,6 +159,10 @@ export const PillTag: React.FC<PillTagProps> = ({ label, active = false, onPress
     onPress={onPress}
     activeOpacity={0.8}
     style={[styles.pill, active && styles.pillActive]}
+    // 선택 토글이라 role은 button이 아니라 선택 상태를 알리는 편이 맞다
+    accessibilityRole={onPress ? 'button' : 'text'}
+    accessibilityLabel={label}
+    accessibilityState={{ selected: active }}
   >
     <Text style={[styles.pillText, active && styles.pillTextActive]} {...andFitText}>{label}</Text>
   </TouchableOpacity>

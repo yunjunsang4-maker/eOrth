@@ -73,7 +73,7 @@ export function PrivacyModal({
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={pm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
         {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <Animated.View style={[pm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 14 }, { transform: [{ translateY }] }]}>
           <View style={pm.handle} />

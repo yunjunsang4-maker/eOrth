@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Image, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import FeedPhoto from '../FeedPhoto';
+import { View, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { AdCampaign } from '../../utils/adCampaignSelect';
@@ -60,10 +61,12 @@ export default function AffiliatePolaroidCard({ campaign, tilt = -3, onFallback 
       <View style={polaroidStyles.back} pointerEvents="none" />
       <View style={polaroidStyles.front}>
         <View style={polaroidStyles.media}>
-          <Image
-            source={{ uri: campaign.imageUrl }}
+          {/* 원격 광고 이미지 — 디스크 캐시가 있는 FeedPhoto로. 같은 배너가 피드에서
+              반복 노출되는데 RN Image는 앱을 다시 열 때마다 다시 받아왔다. */}
+          <FeedPhoto
+            uri={campaign.imageUrl}
             style={s.image}
-            resizeMode="cover"
+            contentFit="cover"
             onError={handleImageError}
           />
           <View style={polaroidStyles.badge}>

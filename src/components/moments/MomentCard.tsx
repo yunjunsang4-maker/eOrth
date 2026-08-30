@@ -1,6 +1,7 @@
 // 순간 카드 — 여행 기억 목록·작성 화면 서랍 공용. 탭하면 onPress(확대 보기 등).
 import React from 'react';
-import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import FeedPhoto from '../FeedPhoto';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '../../ui/Text';
 import type { TravelMoment } from '../../store/momentStore';
 
@@ -33,7 +34,7 @@ export default function MomentCard({
         {moment.mood ? <Text style={st.mood}>{moment.mood}</Text> : null}
         {/* 로컬 사진 우선, 없으면(재설치 복원 등) 서버 백업본(photoUrl)으로 폴백 */}
         {(moment.photoUri || moment.photoUrl) ? (
-          <Image source={{ uri: moment.photoUri || moment.photoUrl }} style={st.thumb} />
+          <FeedPhoto uri={(moment.photoUri || moment.photoUrl) as string} style={st.thumb} />
         ) : null}
       </View>
       {/* 무드만 있는 순간은 빈 텍스트 줄을 그리지 않는다 */}

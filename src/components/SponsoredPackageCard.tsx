@@ -1,11 +1,11 @@
 import React from 'react';
+import FeedPhoto from './FeedPhoto';
 import {
   View,
   StyleSheet,
   Modal,
   Pressable,
   TouchableOpacity,
-  Image,
   Linking,
 } from 'react-native';
 import { Text } from '../ui/Text';
@@ -48,7 +48,7 @@ export default function SponsoredPackageCard({ pkg, onClose }: Props) {
           {/* 이미지 + AD 배지 */}
           <View style={st.imageWrap}>
             {pkg.imageUrl ? (
-              <Image source={{ uri: pkg.imageUrl }} style={st.image} resizeMode="cover" />
+              <FeedPhoto uri={pkg.imageUrl} style={st.image} contentFit="cover" />
             ) : (
               <LinearGradient colors={['#6B21A8', '#BF85FC']} style={st.image} />
             )}

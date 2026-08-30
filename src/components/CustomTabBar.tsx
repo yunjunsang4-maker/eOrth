@@ -233,6 +233,9 @@ const TabItem: React.FC<{
       onLayout={onLayoutTab}
       activeOpacity={0.85}
       accessibilityRole="button"
+      // 라벨 Text는 비활성 탭에서 투명도 0으로 사라진다(labelStyle) — 화면에서 안 보이는
+      // 텍스트에 낭독을 맡기지 않고 여기서 명시한다.
+      accessibilityLabel={label}
       accessibilityState={isFocused ? { selected: true } : {}}
     >
       <Animated.View style={[isGlobe ? styles.pillGlobe : styles.pillH, pillStyle]}>
