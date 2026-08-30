@@ -11,13 +11,46 @@
  * 타임②는 타임① 미매칭자를 자동으로 합류시킨다. 타임①에서 이미 짝이 된 사람은 다시 나오지 않는다.
  * 산출 파일도 타임별로 갈린다(event-report-slot1/2.local.html) — 타임① 리포트가 덮이지 않는다.
  *
+ * ── 이틀 행사(2026-09-09·09-10, 각일 10:00–18:00 KST) 4개 명령 ──
+ * `--from`(KST, **포함** 하한)이 없으면 2일차에 1일차 참가자가 전원 다시 풀에 들어와
+ * 같은 사람에게 문구가 두 번 나간다. 이틀 행사에서는 --from을 절대 빼지 말 것.
+ *
+ *   # 9/9 14:00 실행 (1일차 타임①)
+ *   node scripts/event-match.mjs --event popup01 --slot 1 --boundary "2026-09-09 14:00" --from "2026-09-09 00:00"
+ *   # 9/9 18:05 실행 (1일차 타임②)
+ *   node scripts/event-match.mjs --event popup01 --slot 2 --boundary "2026-09-09 14:00" --from "2026-09-09 00:00"
+ *   # 9/10 14:00 실행 (2일차 타임①) — 1일차 이월 파일을 읽는다
+ *   node scripts/event-match.mjs --event popup01 --slot 1 --boundary "2026-09-10 14:00" --from "2026-09-10 00:00" \
+ *     --carry-file event-carry-2026-09-09.local.json
+ *   # 9/10 18:05 실행 (2일차 타임②) — 같은 파일을 똑같이 준다
+ *   node scripts/event-match.mjs --event popup01 --slot 2 --boundary "2026-09-10 14:00" --from "2026-09-10 00:00" \
+ *     --carry-file event-carry-2026-09-09.local.json
+ *
+ * **조건부 이월 — 상태 파일 방식**: 전날 최종 미매칭자 중 **폼에서 "다음 날 자동 참여"에
+ * 체크한 사람만**(`carry_next_day = true`) 다음 날 타임① 풀에 합류한다.
+ *   · `--slot 2` 실행이 그 순간의 명단을 `event-carry-<from날짜>.local.json` 으로 **확정**한다.
+ *   · 다음 날은 `--carry-file` 로 그 파일을 **그대로 읽는다**(다시 계산하지 않는다).
+ *
+ * 왜 재계산이 아니라 파일인가 — INSERT 정책은 행사 마지막 날 18시까지 열려 있어서 1일차
+ * 타임② 실행(18:05) 이후에도 자정까지 지각 제출이 들어온다. 전날을 다시 계산하면 그 한 건이
+ * 짝 구성을 바꿔 **이미 발송한 사람이 다음 날 다시 카드로 나오거나**(중복 발송) 진짜
+ * 미매칭 동의자가 **조용히 이월에서 빠진다.** 둘 다 실제로 재현된 결함이다.
+ * 파일은 "그때 실제로 보낸 결과"라 지각 제출도 `--exclude` 차이도 결과를 바꾸지 못한다.
+ * 같은 날 타임①→② 이월은 기존대로 재계산이다 — `before`는 `created_at < boundary`라
+ * 나중에 늘어날 수 없어 이 함정이 없다.
+ *
+ * --from이 있으면 산출 파일명에 날짜가 들어간다(event-report-2026-09-09-slot1.local.html) —
+ * 안 넣으면 2일차 리포트가 1일차 리포트를 덮어써 발송 근거가 사라진다.
+ *
  * service_role 키는 .env에서만 읽는다(웹에 절대 나가지 않는다).
  * 산출: event-report.local.html — 참가자 아이디가 들어 있으므로 커밋하지 않는다.
+ *       event-carry-<날짜>.local.json — 이월 명단(참가자 행 전체). 역시 커밋하지 않는다.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import {
   preparePeople, matchAll, renderMessage, pairScore, rarityOf,
-  kstToMs, splitByBoundary, slot2Pool,
+  kstToMs, splitByBoundary, slot2Pool, filterFrom,
+  selectCarryRows, buildCarryFile, carrySignature, mergeCarryRows,
 } from './event-match-core.mjs';
 
 const arg = (name, fallback = null) => {
@@ -25,6 +58,8 @@ const arg = (name, fallback = null) => {
   const next = process.argv[i + 1];
   return i >= 0 && next && !next.startsWith('--') ? next : fallback;
 };
+/** 값 없는 스위치. arg()는 뒤에 값이 와야 잡히므로 플래그는 따로 본다. */
+const flag = (name) => process.argv.includes(`--${name}`);
 
 const EVENT_NAME = 'eOrth 단대축제 부스';
 const OUT = 'event-report.local.html';
@@ -114,14 +149,17 @@ function loadFixture(path) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) {
-  const { slotLine = '', carried = new Set(), meetNow = false } = opts;
+  const { slotLine = '', carried = new Set(), carriedPrev = new Set(), meetNow = false,
+    carryOutIds = new Set() } = opts;
   // 사람별 카드 — 발송은 전부 수동이라 '누구까지 보냈는지'를 리포트가 기억해야 한다.
   // 참가자가 적은 값(이름)이 HTML에 들어가므로 전부 esc()를 거친다.
   const cards = [];
   const push = (me, partners, score, shared) => {
     const msg = renderMessage({ me, partners, score, shared, eventName: EVENT_NAME, meetNow });
-    // 이월된 사람은 타임①에서 이미 한 번 기다린 분들이다 — 발송 우선순위를 눈으로 알아보게 표시한다
-    const badge = carried.has(me.instagram) ? ' <span class="carry">타임① 이월</span>' : '';
+    // 이월된 사람은 이미 한 번 기다린 분들이다 — 발송 우선순위를 눈으로 알아보게 표시한다.
+    // 두 배지는 같이 붙을 수 있다: 전날 이월자가 당일 타임①에서도 못 맞아 타임②로 또 넘어간 경우다.
+    const badge = (carriedPrev.has(me.instagram) ? ' <span class="carry prev">전날 이월</span>' : '')
+      + (carried.has(me.instagram) ? ' <span class="carry">타임① 이월</span>' : '');
     cards.push(`
       <div class="card" data-key="${esc(me.instagram)}">
         <label class="done"><input type="checkbox" data-check="${esc(me.instagram)}"> 발송함</label>
@@ -155,12 +193,24 @@ function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) 
 
   // 타임①의 미매칭자는 타임②에서 자동으로 다시 시도된다 — 여기서 "따로 보내세요"라고 안내하면
   // 곧 짝이 생길 사람에게 미매칭 문구를 먼저 보내게 된다.
-  const warnTail = opts.willCarry
-    ? '<p><b>지금은 아무것도 보내지 마세요.</b> 이분들은 타임② 매칭에 자동으로 합류합니다. 거기서도 남으면 그때 따로 보냅니다.</p>'
-    : '<p>이분들께는 유형 결과만 따로 보내거나, 다음 행사 안내를 보내세요.</p>';
+  // 타임②(carryOutIds가 있는 실행)에서는 미매칭자가 **둘로 갈린다**: 다음 날 자동 참여에
+  // 동의한 사람은 내일 다시 시도되므로 지금 보내면 안 되고, 동의 안 한 사람만 오늘로 끝난다.
+  // 한 덩어리로 안내하면 둘 중 한쪽에게 반드시 틀린 안내가 나간다.
+  const carryCount = unmatched.filter((u) => carryOutIds.has(u.person.instagram)).length;
+  let warnTail;
+  if (opts.willCarry) {
+    warnTail = '<p><b>지금은 아무것도 보내지 마세요.</b> 이분들은 타임② 매칭에 자동으로 합류합니다. 거기서도 남으면 그때 따로 보냅니다.</p>';
+  } else if (carryCount) {
+    warnTail = `<p><b>「다음 날 이월」 표시가 붙은 ${carryCount}명에게는 지금 아무것도 보내지 마세요.</b>`
+      + ` 내일 매칭에 자동으로 합류합니다.<br>표시가 없는 ${unmatched.length - carryCount}명께만 유형 결과를 따로 보내세요.</p>`;
+  } else {
+    warnTail = '<p>이분들께는 유형 결과만 따로 보내거나, 다음 행사 안내를 보내세요.</p>';
+  }
   const warn = unmatched.length
     ? `<div class="warn"><b>미매칭 ${unmatched.length}명</b><ul>${unmatched
-        .map((u) => `<li>@${esc(u.person.instagram)} (${esc(u.person.name)}) — ${esc(u.reason)}</li>`).join('')}</ul>
+        .map((u) => `<li>@${esc(u.person.instagram)} (${esc(u.person.name)})`
+          + `${carryOutIds.has(u.person.instagram) ? ' <span class="carry prev">다음 날 이월</span>' : ''}`
+          + ` — ${esc(u.reason)}</li>`).join('')}</ul>
         ${warnTail}</div>`
     : '';
 
@@ -179,6 +229,7 @@ button,.dm{background:#BF85FC;color:#0A0A0F;border:0;border-radius:8px;padding:8
 .done{float:right;color:#A1A1B0;font-size:13px}
 .warn{background:#2E2E3B;border-left:4px solid #FF3B30;border-radius:8px;padding:12px;margin:20px 0}
 .carry{background:#6B21A8;color:#fff;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;margin-left:6px}
+.carry.prev{background:#BF85FC;color:#0A0A0F}
 .slot{color:#BF85FC;font-size:14px;margin:-12px 0 12px}
 </style></head><body>
 <h1>${esc(EVENT_NAME)} 매칭 리포트</h1>
@@ -244,16 +295,85 @@ function readSlot() {
   return { slot: Number(slotRaw), boundaryMs, boundaryText: boundaryRaw };
 }
 
+/**
+ * `--from` 을 해석한다. 반환 null = 하한 없음(기존 동작).
+ *
+ * `--slot` 과 짝지어 쓰라고 강제하지 않는다 — `--slot` 없는 일괄 매칭에서도
+ * "그날 참가자만"이 필요하기 때문이다(이틀 행사에서 하루치만 한 번에 돌리는 경우).
+ * 검증·에러 안내는 `--boundary` 와 같은 방식(kstToMs)으로 통일한다.
+ */
+function readFrom() {
+  const raw = arg('from');
+  if (!raw) return null;
+  const fromMs = kstToMs(raw);
+  if (fromMs === null) {
+    console.error(`❌ --from 형식이 올바르지 않습니다: ${raw}`);
+    console.error('   "YYYY-MM-DD HH:MM" 형식으로 KST 기준 하한을 적어주세요. 예: "2026-09-10 00:00"');
+    console.error('   (이 시각 정각은 포함됩니다. 그 이전 제출은 매칭 풀에서 제외됩니다.)');
+    process.exit(1);
+  }
+  // 파일명에 넣을 날짜. kstToMs를 이미 통과했으므로 이 정규식은 반드시 맞는다.
+  const day = String(raw).trim().slice(0, 10);
+  return { fromMs, fromText: raw, day };
+}
+
+/** 이월 파일 이름은 `--from`의 날짜 하나로만 정해진다 — 재실행해도 파일명이 갈리면 안 된다. */
+const carryPathFor = (day) => `event-carry-${day}.local.json`;
+
+/**
+ * 이월 파일을 읽는다. **없으면 조용히 "이월 0명"으로 넘어가지 않고 멈춘다** —
+ * 그냥 넘어가면 전날 기다린 분들이 통째로 사라지고 콘솔엔 아무 신호도 안 남는다.
+ */
+function loadCarryFile(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.error(`❌ 이월 파일이 없습니다: ${path}`);
+      console.error('   이 파일은 **전날 타임②(--slot 2) 실행이 만듭니다.** 그 실행을 건너뛰었거나 파일을 지운 것입니다.');
+      console.error('   전날 타임② 명령을 먼저 실행한 뒤 다시 시도하세요. 예:');
+      console.error('     node scripts/event-match.mjs --event popup01 --slot 2 --boundary "2026-09-09 14:00" --from "2026-09-09 00:00"');
+      console.error('   ⚠ 다만 지금 다시 만들면 그 사이 들어온 지각 제출이 섞여 전날과 다른 명단이 나올 수 있습니다.');
+      console.error('     docs/event-operations.md §2-1 "이월 파일을 잃어버렸을 때"를 먼저 읽으세요.');
+    } else {
+      console.error(`❌ 이월 파일을 읽을 수 없습니다: ${path}`);
+      console.error(`   ${err.message}`);
+    }
+    process.exit(1);
+  }
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch (err) {
+    console.error(`❌ 이월 파일이 올바른 JSON이 아닙니다: ${path}`);
+    console.error(`   ${err.message}`);
+    process.exit(1);
+  }
+  if (!payload || !Array.isArray(payload.rows)) {
+    console.error(`❌ 이월 파일에 rows 배열이 없습니다: ${path}`);
+    console.error('   손상됐을 수 있습니다. 파일을 열어 확인하세요.');
+    process.exit(1);
+  }
+  return payload;
+}
+
 async function main() {
   const fixture = arg('fixture');
   const eventCode = arg('event');
   if (!fixture && !eventCode) {
     console.error('사용법: node scripts/event-match.mjs --event <행사코드> [--exclude id1,id2] [--fixture <파일>]');
     console.error('  두 타임으로 끊으려면: --slot 1|2 --boundary "2026-09-10 14:00"   (KST, 경계 시각은 타임②에 포함)');
+    console.error('  이틀 행사라면 반드시: --from "2026-09-10 00:00"   (KST, 이 시각 이전 제출은 풀에서 제외 — 전날 참가자 재매칭 방지)');
+    console.error('  2일차에 전날 동의자를 이월하려면: --carry-file event-carry-2026-09-09.local.json');
+    console.error('    (그 파일은 1일차 타임②(--slot 2) 실행이 만든다. --overwrite-carry 는 명단을 덮어쓸 때만.)');
     process.exitCode = 1;
     return;
   }
   const slotOpt = readSlot();
+  const fromOpt = readFrom();
+  const carryFileIn = arg('carry-file');
+  const overwriteCarry = flag('overwrite-carry');
 
   let rows = fixture ? loadFixture(fixture) : await fetchRows(eventCode);
   if (!rows) return; // 조회 실패 — fetchRows가 이미 사유를 안내하고 exitCode를 세웠다
@@ -265,11 +385,53 @@ async function main() {
     console.log(`제외 ${before - rows.length}명`);
   }
 
+  // --from 은 --exclude 다음, slot 분리 앞이다. slot 앞이어야 하는 이유: 전날 행이 남아 있으면
+  // 타임① before 에 통째로 섞이고, 타임②는 그 사람들의 미매칭까지 이월해 버린다.
+  let fromLine = '';
+  if (fromOpt) {
+    const { kept, dropped, undated } = filterFrom(rows, fromOpt.fromMs);
+    if (undated.length) {
+      // slot의 undated와 같은 처리 — 판정 불가한 행을 조용히 버리면 그 사람만 어느 리포트에도 안 나온다
+      console.error(`❌ created_at 이 없거나 깨진 행 ${undated.length}건이 있어 --from 하한을 적용할 수 없습니다.`);
+      for (const r of undated) console.error(`   @${r.instagram} (${r.name})`);
+      console.error('   Supabase에서 해당 행의 created_at 을 확인하거나, 그 행을 --exclude 로 빼고 다시 돌리세요.');
+      process.exitCode = 1;
+      return;
+    }
+    rows = kept;
+    // 조용한 제외는 "전원 미매칭"류의 그럴싸한 오답을 낳는다 — 몇 명이 왜 빠졌는지 항상 찍는다
+    fromLine = `--from ${fromOpt.fromText}(KST) 이전 ${dropped.length}명 제외(전날 참가·테스트 행) → 남은 ${kept.length}명`;
+    console.log(fromLine);
+  }
+
+  // 전날 이월 — **다시 계산하지 않고 파일을 그대로 읽는다.**
+  // 재계산하면 1일차 타임② 실행 이후 자정까지 들어온 지각 제출이 섞여 짝 구성이 바뀌고,
+  // 이미 발송한 사람이 다시 카드로 나온다(중복 발송). 파일은 그때 실제로 보낸 결과다.
+  let carriedPrev = new Set();
+  let prevCarriedRows = [];
+  let prevLine = '';
+  if (carryFileIn) {
+    const payload = loadCarryFile(carryFileIn);
+    prevCarriedRows = payload.rows;
+    carriedPrev = new Set(prevCarriedRows.map((r) => r.instagram));
+    prevLine = `전날 이월 파일 ${carryFileIn} — ${payload.day ?? '?'}일자 명단 ${prevCarriedRows.length}명 합류`;
+    console.log(prevLine);
+    // 누가 넘어왔는지 항상 이름으로 찍는다 — 숫자만 보면 "0명"이 정상인지 사고인지 구분이 안 된다
+    for (const r of prevCarriedRows) console.log(`  ↪ @${r.instagram} (${r.name}) — 전날 이월`);
+  }
+
+  // 산출 파일명. --from 이 있으면(=이틀 이상 행사) 날짜를 끼워 넣는다 —
+  // 안 넣으면 2일차 event-report-slot1.local.html 이 1일차 것을 조용히 덮어써서
+  // "누구에게 무엇을 보냈는지"의 유일한 근거가 사라진다. .gitignore 의
+  // `event-report*.local.html` 와일드카드가 이 변형까지 이미 덮는다.
+  const stem = fromOpt ? `event-report-${fromOpt.day}` : 'event-report';
   let out = OUT;
   let slotLine = '';
   let carried = new Set();
   let willCarry = false;
   let meetNow = false;
+
+  if (fromOpt) out = `${stem}.local.html`;
 
   if (slotOpt) {
     const { before, after, undated } = splitByBoundary(rows, slotOpt.boundaryMs);
@@ -284,36 +446,120 @@ async function main() {
     // 두 타임 모두 행사 당일에 발송한다(타임①은 행사 중, 타임②는 18시 종료 직후) →
     // 양쪽 다 "지금 만나보세요"가 유효하다. 타임을 쓰지 않는 일괄 매칭만 이 문장이 빠진다.
     meetNow = true;
+    // 당일 타임① 풀 = 당일 경계 이전 참가자 + **전날 이월자**.
+    // slot 2 도 이 풀을 기반으로 재계산되므로(slot2Pool), 같은 --carry-file 을 주면
+    // slot 1·2 어느 쪽으로 돌려도 이월자가 일관되게 반영된다.
+    const { merged: slot1Pool, added: prevAdded, skipped: prevSkipped } = mergeCarryRows(before, prevCarriedRows);
+    if (prevSkipped.length) {
+      // 당일 풀에 이미 있는 사람을 또 넣으면 한 사람이 두 번 매칭된다 — 막았다는 사실을 알린다
+      console.log(`  ⚠ 이월 파일의 ${prevSkipped.length}명은 이미 당일 풀에 있어 건너뜁니다: `
+        + prevSkipped.map((r) => '@' + r.instagram).join(', '));
+    }
+    const prevIds = new Set(prevAdded.map((r) => r.id));
     if (slotOpt.slot === 1) {
-      rows = before;
+      rows = slot1Pool;
       willCarry = true;   // 타임①의 미매칭자는 타임②로 넘어간다 — 지금 따로 보내면 안 된다
-      slotLine = `타임① — ${slotOpt.boundaryText}(KST) 이전 참가자 ${before.length}명`;
-      out = 'event-report-slot1.local.html';
+      // 인원 = before + 이월자. 이 줄의 숫자 합이 아래 "참가 N명"과 반드시 같아야 한다.
+      const prevTail = prevAdded.length ? ` + 전날 이월 ${prevAdded.length}명` : '';
+      slotLine = `타임① — ${slotOpt.boundaryText}(KST) 이전 참가자 ${before.length}명${prevTail}`;
+      out = `${stem}-slot1.local.html`;
     } else {
-      const { pool, carried: carriedRows } = slot2Pool(before, after);
+      const { pool, carried: carriedRows } = slot2Pool(slot1Pool, after);
       rows = pool;
       carried = new Set(carriedRows.map((r) => r.instagram));
+      // 타임② 풀 = after + carriedRows. 이월자 중 타임①에서 짝이 된 사람은 여기 없고,
+      // 남은 사람은 이미 carriedRows 안에 들어 있다 — 그래서 전날 이월을 **따로 더하면 안 된다**
+      // (그러면 같은 사람을 두 번 세어 인원 합이 "참가 N명"과 어긋난다). 괄호로 내역만 밝힌다.
+      const prevInSlot2 = carriedRows.filter((r) => prevIds.has(r.id)).length;
+      const prevNote = prevInSlot2 ? `(전날 이월 ${prevInSlot2}명 포함)` : '';
       slotLine = `타임② — ${slotOpt.boundaryText}(KST) 이후 참가자 ${after.length}명`
-        + ` + 타임① 미매칭 ${carriedRows.length}명 이월`;
-      out = 'event-report-slot2.local.html';
+        + ` + 타임① 미매칭 ${carriedRows.length}명 이월${prevNote}`;
+      out = `${stem}-slot2.local.html`;
     }
     console.log(slotLine);
+  } else if (prevCarriedRows.length) {
+    // --slot 없이 일괄로 돌릴 때도 이월자를 넣는다 — 안 넣으면 --carry-file 을 준 의미가 없다
+    rows = mergeCarryRows(rows, prevCarriedRows).merged;
   }
 
   const people = preparePeople(rows);
   const result = matchAll(people);
   // 발송 체크 키를 행사별로 나누는 데 쓴다. --event가 없는 fixture 모드는 EVENT_NAME으로 대신한다.
-  // 타임별로 키를 나누지 않는 이유: 한 사람의 카드는 두 타임 중 한쪽에만 나오므로 섞일 일이 없고,
-  // 키를 나누면 리포트를 다시 뽑았을 때 발송 체크가 통째로 사라진다.
+  // 타임별·날짜별로 키를 나누지 않는 이유: 한 사람의 카드는 여러 리포트 중 한쪽에만 나오므로
+  // 섞일 일이 없고, 키를 나누면 리포트를 다시 뽑았을 때 발송 체크가 통째로 사라진다.
+  //
+  // 이틀 체제에서도 이 전제("한 사람의 카드는 한쪽에만 나온다")는 유지된다 —
+  // 한 사람의 제출은 한 행이고, 그 행의 created_at은 하루·한 타임에만 속한다.
+  // 2일차 실행은 --from 이 1일차 행을 아예 빼므로 카드가 겹칠 경로 자체가 없다.
+  // **조건부 이월(--carry-file)이 생긴 뒤에도 전제는 유지된다**: 이월되는 사람은 전날 최종
+  // '미매칭자'뿐이고, 미매칭자는 전날 리포트에서 카드가 아니라 경고 블록의 명단으로만 나온다.
+  // 즉 카드는 여전히 그 사람이 실제로 짝을 받은 날 하루치에만 생긴다.
+  //
+  // "같은 사람이 이틀 다 참가해 카드가 둘"은 **일어날 수 없다** —
+  // `create unique index event_participants_uniq on (event_code, instagram)` 때문에 같은 아이디로는
+  // 두 번째 행이 아예 안 들어간다(페이지도 409를 받아 "이미 참여하셨어요!"로 끝낸다).
+  // 그래서 아이디를 키로 쓰는 발송 체크가 두 리포트에서 충돌할 경로가 없다.
   const reportKey = eventCode || EVENT_NAME;
-  writeFileSync(out, renderReport(result, people.length, reportKey, { slotLine, carried, meetNow, willCarry }), 'utf8');
+
+  // ── 다음 날로 넘길 명단을 파일로 확정한다 (타임② 실행만) ──
+  // 리포트보다 **먼저** 검사한다. 명단이 달라졌는데 리포트만 새로 뽑아 두면
+  // 운영자가 그걸 보고 발송을 시작해 버린다 — 그 전에 멈춰야 한다.
+  let carryOutPath = null;
+  let carryRowsOut = [];
+  if (slotOpt?.slot === 2 && fromOpt) {
+    carryOutPath = carryPathFor(fromOpt.day);
+    carryRowsOut = selectCarryRows(result.unmatched, rows);
+    const payload = buildCarryFile({
+      event: eventCode, day: fromOpt.day, from: fromOpt.fromText,
+      boundary: slotOpt.boundaryText, exclude: arg('exclude') ?? '', rows: carryRowsOut,
+    });
+    if (existsSync(carryOutPath) && !overwriteCarry) {
+      let prev = null;
+      try { prev = JSON.parse(readFileSync(carryOutPath, 'utf8')); } catch { prev = null; }
+      if (prev && carrySignature(prev) !== carrySignature(payload)) {
+        // 리포트 재발급하려고 다시 돌렸는데 그 사이 지각 제출이 들어와 명단이 바뀐 경우다.
+        // 조용히 덮어쓰면 다음 날이 **전날 실제 발송과 다른 명단**을 읽는다(중복 발송의 잔여 경로).
+        console.error(`❌ 이월 명단이 기존 파일과 다릅니다: ${carryOutPath}`);
+        console.error(`   기존 ${prev.rows?.length ?? '?'}명 → 지금 ${carryRowsOut.length}명`);
+        const prevIds = new Set((prev.rows ?? []).map((r) => r.instagram));
+        const nowIds = new Set(carryRowsOut.map((r) => r.instagram));
+        const gone = [...prevIds].filter((h) => !nowIds.has(h));
+        const added = [...nowIds].filter((h) => !prevIds.has(h));
+        if (gone.length) console.error(`   빠짐: ${gone.map((h) => '@' + h).join(', ')}`);
+        if (added.length) console.error(`   추가: ${added.map((h) => '@' + h).join(', ')}`);
+        console.error('   이 실행 뒤에 들어온 지각 제출이 짝 구성을 바꾼 것입니다.');
+        console.error('   · 리포트를 다시 보려던 것뿐이라면 **기존 산출 파일을 그대로 여세요**(다시 돌리지 마세요).');
+        console.error('   · 명단을 정말 갱신하려면 --overwrite-carry 를 붙여 다시 실행하세요.');
+        console.error('     단, 이미 발송을 시작했다면 갱신하면 안 됩니다 — 이미 보낸 사람이 다음 날 다시 나옵니다.');
+        process.exitCode = 1;
+        return;
+      }
+    }
+    writeFileSync(carryOutPath, JSON.stringify(payload, null, 1), 'utf8');
+  }
+
+  // 리포트 상단 줄에 from 필터도 함께 적는다 — 인원이 적어 보이는 이유를 리포트만 보고 알아야 한다
+  const headLine = [slotLine, fromLine, prevLine].filter(Boolean).join('  ·  ');
+  const carryOutIds = new Set(carryRowsOut.map((r) => r.instagram));
+  writeFileSync(out, renderReport(result, people.length, reportKey,
+    { slotLine: headLine, carried, carriedPrev, meetNow, willCarry, carryOutIds }), 'utf8');
 
   console.log(`참가 ${people.length}명 → 짝 ${result.pairs.length}쌍, 3인조 ${result.trios.length}개, 미매칭 ${result.unmatched.length}명`);
   for (const u of result.unmatched) console.log(`  ⚠ @${u.person.instagram} — ${u.reason}`);
   if (willCarry && result.unmatched.length) {
     console.log('  → 이분들은 타임② 매칭에 자동 합류합니다. 지금은 보내지 마세요.');
   }
+  if (carryOutPath) {
+    console.log(`이월 명단: ${carryOutPath} — 다음 날 ${carryRowsOut.length}명 합류 예정`);
+    for (const r of carryRowsOut) console.log(`  ↪ @${r.instagram} (${r.name}) — 다음 날 자동 참여 동의함(지금 보내지 마세요)`);
+    const declined = result.unmatched.filter((u) => !carryOutIds.has(u.person.instagram));
+    for (const u of declined) console.log(`  · @${u.person.instagram} — 동의 안 함(오늘로 끝, 유형 결과만 따로 보내세요)`);
+  }
   console.log(`리포트: ${out} (브라우저로 여세요)`);
+  // 예약 실행 래퍼(scripts/event-day-run.ps1)가 이 줄을 정규식으로 파싱해 리포트를 브라우저로 연다.
+  // 일부러 ASCII만 쓴다 — 콘솔 인코딩이 어긋나도 이 줄만은 깨지지 않아야 파일을 못 찾는 사고가 없다.
+  // 형식을 바꾸면 event-day-run.ps1 의 정규식도 함께 고칠 것.
+  console.log(`REPORT_FILE=${out}`);
 }
 
 await main();

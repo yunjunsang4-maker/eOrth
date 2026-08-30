@@ -14,6 +14,7 @@ export function preparePeople(rows) {
   return rows
     .map((r) => {
       const scores = scoreAxes(r.answers ?? {});
+      // `...r`이라 서버 행의 컬럼(intro 등)이 그대로 person에 실린다 — 필드를 골라 담지 않는다
       return { ...r, scores, label: makeTypeLabel(scores) };
     })
     // 동점일 때 순서가 결과를 가르므로 정렬을 고정한다 — 두 번 돌려도 같은 짝이 나와야 한다
@@ -190,6 +191,35 @@ export function splitByBoundary(rows, boundaryMs) {
 }
 
 /**
+ * **하한(포함) 이전 행을 매칭 풀에서 통째로 뺀다.** 반환: `{ kept, dropped, undated }`.
+ *
+ * 왜 필요한가 — `splitByBoundary`만으로는 **이틀짜리 행사에서 반드시 사고가 난다.**
+ * `--slot 1 --boundary "2026-09-10 14:00"`은 "경계 이전 전부"를 타임①로 잡으므로,
+ * 2일차 오후에 돌리면 **1일차 참가자 전원이 다시 풀에 들어온다.** 그러면 이미 짝을 받아
+ * 발송까지 끝난 사람에게 문구가 두 번 나가고, 서로 다른 두 상대에게 같은 사람의 인스타
+ * 아이디가 각각 전달된다(이 프로젝트에서 가장 비싼 실패). 행사 전에 넣어 본 실기기 테스트
+ * 제출도 같은 경로로 당일 풀에 섞인다 — `--exclude`로 아이디를 하나씩 적는 것보다
+ * "이 시각 이후만"이 훨씬 안전하다.
+ *
+ * created_at 파싱은 `splitByBoundary`와 **동일한 방식**이다(`Date.parse`) — created_at은
+ * UTC ISO 문자열이라 그게 맞다. 하한 값 자체(fromMs)는 KST 벽시계 문자열을 `kstToMs`로
+ * 바꿔서 넘긴다. `new Date('2026-09-10 00:00')`을 쓰면 머신 시간대로 해석돼 9시간 어긋난다.
+ *
+ * created_at이 없거나 깨진 행은 버리지 않고 따로 돌려준다 — `splitByBoundary`의 undated와
+ * 같은 철학이다. 조용히 버리면 그 사람만 어느 리포트에도 안 나오고 아무도 눈치채지 못한다.
+ */
+export function filterFrom(rows, fromMs) {
+  const kept = [], dropped = [], undated = [];
+  for (const r of rows ?? []) {
+    const t = r.created_at ? Date.parse(r.created_at) : NaN;
+    if (Number.isNaN(t)) undated.push(r);
+    else if (t < fromMs) dropped.push(r);   // 하한 시각 정각은 포함이다(kept)
+    else kept.push(r);
+  }
+  return { kept, dropped, undated };
+}
+
+/**
  * 타임② 풀 = 타임② 참가자 + **타임① 미매칭자**.
  *
  * 타임①에서 이미 짝이 된 사람은 절대 다시 넣지 않는다 — 넣으면 그 사람에게 문구가 두 번 나가고,
@@ -204,13 +234,117 @@ export function slot2Pool(beforeRows, afterRows) {
   return { pool: [...(afterRows ?? []), ...carried], carried };
 }
 
+// ============================================================
+// 다음 날 조건부 이월 — **상태 파일 방식**.
+//
+// 이전 구현(prevDayCarry)은 전날 창의 행으로 전날 매칭을 다시 계산했다. 그 방식은
+// "전날 재계산 = 전날 실제 발송 결과"라는 전제 위에 서 있었는데, **그 전제가 거짓이었다.**
+// INSERT 정책은 행사 마지막 날 18시까지 열려 있고 부스 QR도 살아 있어서, 1일차 타임②를
+// 실행한 18:05 이후에도 자정까지 약 6시간 동안 지각 제출이 계속 들어온다. 그 한 건이
+// 전날 풀에 섞이면 짝 구성이 바뀌어,
+//   · 이미 짝을 받아 **발송까지 끝난 사람이 미매칭으로 뒤집혀 다음 날 다시 카드로 나오거나**
+//     (이 프로젝트가 "가장 비싼 실패"로 규정한 중복 발송 — QA fixture로 실제 재현됨)
+//   · 진짜 미매칭 동의자가 재계산에선 짝 성립으로 판정돼 **조용히 이월에서 누락**된다.
+// 같은 날 타임①→② 이월(slot2Pool)에는 이 함정이 없다 — `before`는 `created_at < boundary`라
+// 나중에 행이 늘어날 수 없다. **전날 창만 위쪽이 열려 있었다.**
+//
+// 그래서 재계산을 버리고, 타임② 실행이 **그 순간의 명단을 파일로 확정**해 다음 날이 그걸
+// 그대로 읽는다. 파일이 곧 "그때 실제로 보낸 결과"이므로 지각 제출도 exclude 차이도
+// 결과를 바꾸지 못한다.
+// ============================================================
+
+/**
+ * 그날 **최종 미매칭자 중 `carry_next_day === true`인 사람의 원본 행**을 고른다.
+ *
+ * `=== true`로 엄격히 본다 — 컬럼이 없던 시절의 옛 행은 `undefined`이고 그건 "동의 안 함"이다.
+ * 느슨하게 보면 값이 없는 사람이 전원 이월돼 정반대 결과가 된다.
+ *
+ * `unmatched`의 원소는 `preparePeople`을 거친 사람(scores·label이 붙어 있다)이라
+ * 그대로 저장하면 파일에 계산 결과가 섞인다. `poolRows`에서 **원본 행**을 되찾아 담는다.
+ */
+export function selectCarryRows(unmatched, poolRows) {
+  const byId = new Map((poolRows ?? []).map((r) => [r.id, r]));
+  const out = [];
+  for (const u of unmatched ?? []) {
+    const row = byId.get(u?.person?.id);
+    if (row && row.carry_next_day === true) out.push(row);
+  }
+  return out;
+}
+
+/**
+ * 이월 파일 내용을 만든다.
+ *
+ * **시각(Date.now)을 절대 넣지 않는다.** 같은 인자로 다시 돌리면 내용이 바이트까지 같아야
+ * "명단이 달라졌다"를 탐지할 수 있다. 생성 시각을 넣으면 매 실행이 달라져 그 탐지가 죽는다.
+ * 파일의 신원은 시각이 아니라 `day`(= `--from`의 날짜)다 — 재실행해도 파일명이 갈리지 않는다.
+ */
+export function buildCarryFile({ event, day, from, boundary, exclude, rows }) {
+  const list = rows ?? [];
+  return {
+    version: 1,
+    event: event ?? null,
+    day,
+    from,
+    boundary: boundary ?? null,
+    exclude: exclude ?? '',
+    count: list.length,
+    rows: list,
+  };
+}
+
+/**
+ * 두 이월 파일이 **같은 명단·같은 실행 창**인지 비교할 지문.
+ *
+ * 키 순서나 행 순서에 흔들리면 안 된다(정렬은 결정론이지만 지문까지 거기 기대지 않는다).
+ * 이 지문이 다르면 "리포트만 다시 뽑으려던 재실행이 실제로는 다른 명단을 덮어쓰려 한다"는
+ * 뜻이므로 호출부가 멈춘다.
+ */
+export function carrySignature(payload) {
+  const ids = (payload?.rows ?? []).map((r) => r?.id).sort();
+  return JSON.stringify({
+    day: payload?.day ?? null,
+    from: payload?.from ?? null,
+    boundary: payload?.boundary ?? null,
+    exclude: payload?.exclude ?? '',
+    ids,
+  });
+}
+
+/**
+ * 이월 파일의 행을 당일 풀에 합친다.
+ *
+ * 같은 id가 이미 당일 풀에 있으면 넣지 않는다 — 넣으면 한 사람이 두 번 매칭돼
+ * 자기 자신과 짝이 되거나 카드가 둘 나온다. (유니크 인덱스가 `(event_code, instagram)`이라
+ * 정상 경로에선 안 겹치지만, 파일을 잘못 준 실수까지 여기서 막는다.)
+ */
+export function mergeCarryRows(dayRows, carryRows) {
+  const seen = new Set((dayRows ?? []).map((r) => r.id));
+  const merged = [...(dayRows ?? [])];
+  const added = [];
+  const skipped = [];
+  for (const r of carryRows ?? []) {
+    if (seen.has(r.id)) { skipped.push(r); continue; }
+    seen.add(r.id);
+    merged.push(r);
+    added.push(r);
+  }
+  return { merged, added, skipped };
+}
+
 /**
  * 한 사람에게 보낼 DM 문구. partners는 1명(짝) 또는 2명(3인조).
  * meetNow=true는 **행사 당일에 보내는 경우**다(타임①=행사 중, 타임②=18시 종료 직후) —
  * 그때만 지금 만나라고 한다. 며칠 지난 뒤 이 문장이 나가면 없는 자리로 오라고 부르는 셈이 된다.
  */
 export function renderMessage({ me, partners, score, shared, eventName, meetNow = false }) {
-  const who = partners.map((p) => `@${p.instagram} (${p.name} · ${p.label.ko})`).join('\n');
+  // 자기소개는 선택 입력이라 안 쓴 사람이 많다(null·빈 문자열·공백만). 있을 때만 아랫줄에 붙인다 —
+  // 무조건 붙이면 빈 따옴표("")만 있는 줄이 상대에게 그대로 발송된다.
+  const who = partners.map((p) => {
+    const line = `@${p.instagram} (${p.name} · ${p.label.ko})`;
+    const intro = String(p.intro ?? '').trim();
+    return intro ? `${line}\n  "${intro}"` : line;
+  }).join('\n');
   const many = partners.length > 1;
   const lines = [
     `${me.name}님, ${eventName} 결과입니다 🌍`,

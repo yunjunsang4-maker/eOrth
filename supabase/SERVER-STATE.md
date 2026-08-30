@@ -297,6 +297,62 @@ select status_code, content from net._http_response order by created desc limit 
 > 테스트 프로젝트(`bqwmxxhtsvfuyywfuswo`)에는 아직 넣지 않았다. 행사 페이지는 운영 ref를
 > 하드코딩하고 있어 부스 동작에는 영향이 없다. 다음번 `schema.sql` 전체 재실행 때 따라 들어간다.
 
+> ✅ **반영 완료 — `intro` 컬럼(간단 자기소개, 2026-08-31 부스 피드백, 같은 날 실측 확인).**
+> 선택 입력(nullable), 최대 80자. 값이 있으면 매칭 상대의 DM 문구에 한 줄로 들어간다.
+>
+> **`gender_pref` 때와 같은 함정이었다.** 표가 이미 있어 `create table if not exists` 로는 컬럼이
+> 생기지 않으므로, `schema.sql` 의 alter 한 줄과 INSERT 정책 블록(길이 제약 포함)을 운영
+> 프로젝트에서 실행했고 아래 결과를 확인했다:
+>
+> ```sql
+> select policyname, cmd, with_check from pg_policies where tablename = 'event_participants';
+> -- with_check 에 ((intro IS NULL) OR ((char_length(intro) >= 1) AND (char_length(intro) <= 80)))
+> -- 포함 확인 ← 실측값. 정책이 intro 를 참조한 채 생성됐다 = 컬럼 추가도 성공했다는 뜻이다.
+> ```
+>
+> ⚠️ 이 alter **전에** `docs/event.html` 을 게시했다면 새 페이지가 없는 컬럼(`intro`)을 POST 하게
+> 되어 **자기소개 입력 여부와 무관하게 참가자 전원이 100% 제출에 실패**했을 것이다
+> (`400 PGRST204` — 2026-08-31 운영 실측. payload 가 값만 `null` 일 뿐 `intro` 키를 항상 포함하고
+> PostgREST 가 body 의 **키 집합**으로 INSERT 컬럼을 만들기 때문). 순서를 지켜 서버부터 반영했다.
+> **event.html 재게시(`npm run pages:publish`)는 아직 안 했다** — 이제 게시해도 안전하다.
+>
+> 테스트 프로젝트(`bqwmxxhtsvfuyywfuswo`)에는 넣지 않았다. 행사 페이지는 운영 ref를
+> 하드코딩하고 있어 부스 동작에는 영향이 없다. 다음번 `schema.sql` 전체 재실행 때 따라 들어간다.
+
+> ⏳ **미반영 — `carry_next_day` 컬럼(다음 날 자동 참여, 2026-08-31 이틀 행사 조건부 이월).**
+> 참가자가 폼에서 직접 고르는 선호값이다(선택 · 기본 해제). 전날 최종 미매칭자 중 이 값이 `true`인
+> 사람만 다음 날 매칭 풀에 합류한다 — `scripts/event-match.mjs` 의 `--prev-from`/`--prev-boundary`.
+>
+> **운영 프로젝트(`blweolnunmsxgztmvzfd`)에서 실행할 SQL:**
+>
+> ```sql
+> alter table public.event_participants
+>   add column if not exists carry_next_day boolean not null default false;
+> ```
+>
+> RLS 정책은 **재실행할 필요가 없다** — boolean 은 `not null` + `default` 로 값 범위가 이미 닫혀 있어
+> INSERT 정책의 with check 에 추가할 제약이 없다(`intro` 처럼 길이 제약이 필요한 타입이 아니다).
+>
+> ✅ **`intro` 때와 달리 이 alter 는 먼저 해도 아무도 안 깨진다.** 아직 게시 안 된 옛 `event.html` 은
+> `carry_next_day` 키를 **안 보내고**, PostgREST 는 body 의 키 집합으로만 INSERT 컬럼을 만들므로
+> DB 의 default(`false`)가 들어간다. (intro 는 반대로 새 페이지가 없는 컬럼을 **보내서** 터졌다.)
+>
+> ⚠️ **단, 새 `event.html` 게시 전에는 반드시 끝나 있어야 한다.** 새 페이지는 이 키를 항상 보내므로
+> 컬럼이 없으면 `intro` 때와 똑같이 **참가자 전원이 `400 PGRST204` 로 제출에 실패**한다.
+> 순서는 여전히 **SQL 먼저, 게시 나중**이다(`docs/event-operations.md` §1-1·§1-3).
+>
+> 반영 확인:
+>
+> ```sql
+> select column_name, data_type, column_default, is_nullable
+>   from information_schema.columns
+>  where table_name = 'event_participants' and column_name = 'carry_next_day';
+> -- 기대: boolean / false / NO   ← 행이 안 나오면 미반영
+> ```
+>
+> 테스트 프로젝트(`bqwmxxhtsvfuyywfuswo`)는 부스 영향이 없어 넣지 않는다.
+> 다음번 `schema.sql` 전체 재실행 때 따라 들어간다.
+
 ### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 
 2026-08-07 베타 계정 초기화 중 발견해 같은 날 고쳤다. **등록일(2026-08-05)부터 이틀간
@@ -496,6 +552,8 @@ select status_code, content, created
 | Vault `service_role_key` | 2026-08-05 → **2026-08-07 교체** | ✅ 확인 (200 실측) | 등록 당시 값이 함수 env 와 불일치해 잡 3종이 이틀간 전부 401. **넣을 값은 레거시 JWT 가 아니라 신형 `sb_secret_...`** — 1번 절 참조 |
 | `event_participants` 표 | 2026-08-09~ (일자 미상) | **✅ 실측 2026-08-13** | 표는 있으나 **INSERT 정책의 행사 코드가 자리표시자일 수 있음** — 1-1번 절 |
 | `event_participants.gender_pref` 에 `'opposite'`(이성만) 추가 | 2026-08-19 | **✅ 실측 2026-08-19** | 운영에 alter 실행·`pg_get_constraintdef` 로 확인. 테스트 프로젝트는 미반영(부스 영향 없음) — 1-1번 절 |
+| `event_participants.intro` (간단 자기소개, 선택·80자) | 2026-08-31 | **✅ 실측 2026-08-31** | 운영에 alter + 정책 재실행, `pg_policies.with_check` 로 확인. 테스트 프로젝트는 미반영(부스 영향 없음). **event.html 재게시는 별도 잔업** — 1-1번 절 |
+| `event_participants.carry_next_day` (다음 날 자동 참여, 선택·기본 false) | 2026-08-31 | **⏳ 미반영** | alter 한 줄만 실행하면 된다(정책 재실행 불필요). `default false` 라 옛 페이지는 안 깨지지만 **새 event.html 게시 전에는 필수** — 1-1번 절 |
 | 매칭 프라이버시 하드닝 (`mate_reco_optin`·`rpc_probe_guard`·`k_anon_min`·`set_mate_reco_optin`) | 2026-08-12~13 | **✅ 실측 2026-08-13** | 인덱스 `idx_posts_country_shared`만 미실측 — 1번 절 |
 | 생일·성별 폐지 **1차**(`onboarded_at` 신설·백필) | 2026-08-13 | **✅ 실측 2026-08-13** | **2차(컬럼 drop)는 심사 통과 후** — 1번 절 |
 

@@ -72,6 +72,14 @@
     <label>이름 (인사말에 쓰여요. 본명이 아니어도 괜찮아요)</label>
     <input type="text" id="name" maxlength="20" autocomplete="off">
 
+    <!-- 선택 입력. 비워도 제출된다 — 여기서 막으면 부스 회전율이 떨어진다.
+         상대에게 보여진다는 사실을 라벨에 먼저 적는다(제공 항목 고지와 어긋나면 안 된다).
+         ⚠️ id는 introText다. `intro`는 인트로 **섹션**(46행)이 이미 쓰고 있어,
+         그 이름을 쓰면 getElementById가 섹션을 먼저 돌려주고 `.value`가 undefined가 되어
+         제출 버튼이 TypeError로 죽는다. DB 컬럼명(intro)과 달라도 상관없다. -->
+    <label>간단 자기소개 (선택 · 최대 80자 — 매칭된 상대에게 함께 보여드려요)</label>
+    <input type="text" id="introText" maxlength="80" placeholder="사진 찍는 거 좋아해요" autocomplete="off">
+
     <label>성별</label>
     <div class="chips" id="gender">
       <div class="chip" data-v="f">여성</div><div class="chip" data-v="m">남성</div>
@@ -90,12 +98,31 @@
     <div class="chips" id="picked" style="margin-top:10px"></div>
     <div class="chips" id="clist" style="margin-top:10px"></div>
 
+    <!-- 참여 선호값(선택 · 기본 해제). 개인정보가 아니라 gender_pref 와 같은 매칭 조건이라
+         아래 수집 항목 고지에는 넣지 않는다 — 제3자에게 제공되지도 않는다.
+         마지막 날 참가자에게는 의미가 없으므로 그 사실을 소자로 함께 적는다(체크해도 손해는 없다).
+
+         ⚠️ **"체크 안 하면 오늘로 끝"을 반드시 적는다.** 유니크 인덱스가 (event_code, instagram)이라
+         같은 아이디로는 두 번째 제출이 아예 안 들어간다(409 → "이미 참여하셨어요!"). 즉 체크를 끄면
+         다음 날 부스에 다시 와도 **참여할 방법이 없다.** 그 사실을 안 적으면 참가자가 되돌릴 수 없는
+         선택을 모르고 하게 된다. -->
+    <label class="check" style="margin-top:18px">
+      <input type="checkbox" id="carryNext">
+      <span>오늘 매칭이 안 되면 다음 날 매칭에도 자동으로 참여할게요
+        <span style="color:var(--dim);font-size:12px">(선택 · 행사 마지막 날엔 해당 없어요)</span>
+        <span style="display:block;color:var(--dim);font-size:12px;margin-top:4px">
+          체크하지 않으면 오늘 매칭으로 끝나요. 같은 아이디로는 다시 신청할 수 없으니,
+          내일도 기회를 받고 싶다면 지금 체크해주세요.
+        </span>
+      </span>
+    </label>
+
     <div class="consent">
       <b>개인정보 수집·이용 및 제3자 제공 안내</b>
       <table>
-        <tr><td>수집 항목</td><td>이름, 성별, 인스타그램 아이디, 가고 싶은 나라, 설문 응답</td></tr>
+        <tr><td>수집 항목</td><td>이름, 간단 자기소개(선택), 성별, 인스타그램 아이디, 가고 싶은 나라, 설문 응답</td></tr>
         <tr><td>이용 목적</td><td>행사 참가자 간 여행 성향 매칭 및 결과 발송</td></tr>
-        <tr><td>제공 대상</td><td>매칭된 참가자 본인 (제공 항목: 이름·인스타그램 아이디·유형·겹친 희망 국가)</td></tr>
+        <tr><td>제공 대상</td><td>매칭된 참가자 본인 (제공 항목: 이름·간단 자기소개·인스타그램 아이디·유형·겹친 희망 국가)</td></tr>
         <tr><td>보관 기간</td><td>행사 종료 후 30일, 이후 파기</td></tr>
         <tr><td>거부 권리</td><td>동의하지 않으실 수 있으나, 매칭이 불가능해 참여할 수 없습니다</td></tr>
         <tr><td>국외 이전</td><td>미국 리전 서버에 저장됩니다</td></tr>
@@ -103,7 +130,7 @@
         <tr><td>삭제 요청</td><td>eorth26@gmail.com — 행사 후에도 언제든 삭제를 요청하실 수 있습니다</td></tr>
       </table>
       <label class="check"><input type="checkbox" id="c1"><span>(필수) 개인정보 수집·이용에 동의합니다</span></label>
-      <label class="check"><input type="checkbox" id="c2"><span>(필수) 매칭된 상대에게 내 이름과 인스타그램 아이디가 제공되는 것에 동의합니다</span></label>
+      <label class="check"><input type="checkbox" id="c2"><span>(필수) 매칭된 상대에게 내 이름과 간단 자기소개, 인스타그램 아이디가 제공되는 것에 동의합니다</span></label>
       <p style="color:var(--dim);font-size:12px;margin:10px 0 0">만 14세 미만은 참여하실 수 없습니다.</p>
     </div>
 
@@ -184,7 +211,7 @@ const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
 
 // 답변은 문항마다 저장한다 — 부스 네트워크가 끊겨도, 실수로 새로고침해도 처음부터 다시 하지 않는다
 const SAVE_KEY = 'eorth-event-' + EVENT_CODE;
-let state = { answers: {}, i: 0, countries: [], gender: null, pref: null, name: '', insta: '' };
+let state = { answers: {}, i: 0, countries: [], gender: null, pref: null, name: '', intro: '', insta: '', carry: false };
 try { Object.assign(state, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch {}
 const save = () => localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 
@@ -257,10 +284,17 @@ for (const [box, key] of [['gender', 'gender'], ['pref', 'pref']]) {
 // ── 이름·아이디 입력 저장 ──
 // 정규화는 제출 시점에만 한다(normalizeInstagram) — 여기는 사용자가 입력한 원문 그대로 저장한다
 $('name').oninput = (e) => { state.name = e.target.value; save(); };
+$('introText').oninput = (e) => { state.intro = e.target.value; save(); };
 $('insta').oninput = (e) => { state.insta = e.target.value; save(); };
+// 체크박스는 input 이 아니라 change 로 받는다(라벨 클릭으로도 토글되기 때문)
+$('carryNext').onchange = (e) => { state.carry = e.target.checked; save(); };
 // 새로고침 복귀 시 입력값을 다시 채운다
 if (state.name) $('name').value = state.name;
+if (state.intro) $('introText').value = state.intro;
 if (state.insta) $('insta').value = state.insta;
+// 필수 동의(c1·c2)와 달리 이건 복원한다 — 필수 동의는 매번 사람이 직접 누르게 두는 게 맞지만,
+// 이건 선호값이라 새로고침으로 조용히 꺼지면 본인이 고른 것과 다른 값이 제출된다.
+if (state.carry) $('carryNext').checked = true;
 
 // ── 검증 → 확인 화면 ──
 let pendingHandle = null;
@@ -297,6 +331,15 @@ $('confirmYes').onclick = async (e) => {
       },
       body: JSON.stringify({
         event_code: EVENT_CODE, name: $('name').value.trim(),
+        // 선택 입력 — 비었으면 ''이 아니라 null로 보낸다. RLS의 길이 제약이 1자 미만을 거부하므로
+        // ''을 그대로 보내면 자기소개를 안 쓴 사람의 제출이 통째로 401(42501, with check 위반)로 막힌다.
+        // 키 자체는 비워도 항상 보낸다 — 서버에 intro 컬럼이 없으면 이것만으로 전원이 400(PGRST204)이
+        // 되므로, 게시는 반드시 schema.sql의 alter 실행 뒤에 한다(docs/event-operations.md §1-1).
+        intro: $('introText').value.trim() || null,
+        // 다음 날 자동 참여(선택 · 기본 false). 컬럼이 `not null default false` 라서 이 키를
+        // 안 보내는 **옛 페이지**는 안전하지만, 이 페이지는 키를 항상 보내므로 게시 전에
+        // schema.sql 의 carry_next_day alter 가 끝나 있어야 한다(없으면 전원 400 PGRST204).
+        carry_next_day: $('carryNext').checked,
         gender: state.gender, gender_pref: state.pref, instagram: pendingHandle,
         wish_countries: state.countries, answers: state.answers,
         consent_pii: true, consent_share: true,
@@ -371,7 +414,10 @@ $('again').onclick = () => {
 // A가 이름·인스타까지 적고 자리를 뜨면, 이어받은 B가 새로고침했을 때 A의 정보가 그대로
 // 채워진 화면을 보게 된다. 자동 점프 대신 "이어서/새로 시작" 버튼으로 그 사고를 사람 손으로 끊는다.
 const hasProgress = Object.keys(state.answers).length > 0
-  || Boolean(state.gender) || Boolean(state.pref) || Boolean(state.name) || Boolean(state.insta)
+  || Boolean(state.gender) || Boolean(state.pref) || Boolean(state.name) || Boolean(state.intro) || Boolean(state.insta)
+  // carry 도 센다 — 개인정보는 아니지만, A가 켜 둔 값이 남아 있으면 이어받은 B가 고르지 않은
+  // 값으로 제출된다. "새로 시작"으로 끊어야 할 잔여 상태라는 점은 다른 필드와 같다.
+  || state.carry === true
   || (state.countries && state.countries.length > 0);
 $('start').classList.toggle('hide', hasProgress);
 $('resumeBox').classList.toggle('hide', !hasProgress);

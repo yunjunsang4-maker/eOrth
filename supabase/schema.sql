@@ -2785,6 +2785,7 @@ create table if not exists public.event_participants (
   id             uuid primary key default gen_random_uuid(),
   event_code     text not null,
   name           text not null,
+  intro          text,                    -- 간단 자기소개. **선택 입력이라 nullable**(비워도 제출된다), 최대 80자 — 매칭 상대의 DM 문구에 함께 나간다
   gender         text not null check (gender in ('m','f')),
   gender_pref    text not null check (gender_pref in ('same','any','opposite')),
   instagram      text not null,           -- @ 없이 소문자로 정규화해 저장
@@ -2792,6 +2793,9 @@ create table if not exists public.event_participants (
   answers        jsonb not null,          -- {"1":"A","5":"B", ...} 문항 id → 선택
   consent_pii    boolean not null,
   consent_share  boolean not null,
+  -- 오늘 끝내 매칭이 안 됐을 때 **다음 날 매칭 풀에 자동 합류할지**. 본인이 폼에서 직접 고른다(기본 false).
+  -- 개인정보가 아니라 참여 선호값이다(gender_pref 와 같은 성격) — 제3자에게 제공되지 않는다.
+  carry_next_day boolean not null default false,
   created_at     timestamptz default now()
 );
 
@@ -2805,6 +2809,36 @@ alter table public.event_participants
 alter table public.event_participants
   add constraint event_participants_gender_pref_check
   check (gender_pref in ('same','any','opposite'));
+
+-- ⚠️ 간단 자기소개 컬럼 추가 (2026-08-31: 부스 피드백 — 상대에게 한 줄 소개를 함께 보낸다).
+--    위의 create table 은 `if not exists` 라서 **이미 만들어진 표에 컬럼을 추가하지 않는다.**
+--    이 표는 이미 서버에 존재하므로(SERVER-STATE.md 1-1번 절), 아래 alter 없이 event.html을 게시하면
+--    **자기소개 입력 여부와 무관하게 참가자 전원이 100% 제출에 실패한다**
+--    (400 PGRST204 "Could not find the 'intro' column" — 2026-08-31 운영 실측).
+--    비운 사람도 막히는 이유: payload는 값만 null일 뿐 `intro` 키를 항상 포함하고,
+--    PostgREST는 body의 **키 집합**으로 INSERT 컬럼 목록을 만든다. **SQL이 먼저, 게시가 나중이다.**
+--    add column if not exists 라서 몇 번을 다시 실행해도 안전하다.
+alter table public.event_participants
+  add column if not exists intro text;
+
+-- ⚠️ 다음 날 자동 참여 컬럼 추가 (2026-08-31: 이틀 행사 조건부 이월).
+--    위의 create table 은 `if not exists` 라서 **이미 만들어진 표에 컬럼을 추가하지 않는다.**
+--    이 표는 이미 서버에 존재하므로(SERVER-STATE.md 1-1번 절) 이 alter 가 반드시 필요하다.
+--
+--    ✅ **intro 와 결정적으로 다른 점: `not null default false` 라서 옛 페이지는 안전하다.**
+--    intro 는 이미 게시된 페이지가 `intro` 키를 **보내서** 문제가 됐다(없는 컬럼 POST → 400 PGRST204).
+--    carry_next_day 는 반대로, 아직 게시 안 된 옛 페이지가 이 키를 **안 보낸다** — PostgREST 는
+--    body 의 키 집합으로만 INSERT 컬럼을 만들므로, 키가 없으면 DB 의 default(false)가 들어간다.
+--    즉 **alter 를 먼저 해도 옛 페이지가 깨지지 않는다.**
+--    다만 **새 `event.html` 을 게시하기 전에는 반드시 이 alter 가 끝나 있어야 한다** —
+--    새 페이지는 `carry_next_day` 키를 항상 보내므로, 컬럼이 없으면 intro 때와 똑같이
+--    **참가자 전원이 400 PGRST204 로 제출에 실패한다.** 순서는 여전히 SQL 먼저, 게시 나중이다.
+--
+--    RLS 정책은 손댈 필요가 없다. boolean 은 not null + default 로 값 범위가 이미 닫혀 있어
+--    with check 에 추가할 제약이 없다(intro 처럼 길이 제약이 필요한 타입이 아니다).
+--    add column if not exists 라서 몇 번을 다시 실행해도 안전하다.
+alter table public.event_participants
+  add column if not exists carry_next_day boolean not null default false;
 
 -- 중복 제출 차단. 두 행이 들어가면 그 사람이 두 명으로 매칭되고,
 -- 짝 중 한쪽은 이미 임자가 있는 사람을 받는다.
@@ -2828,6 +2862,9 @@ create policy event_participants_insert on public.event_participants
     event_code = 'popup01'                   -- eOrth 단대축제 부스(2026-09-10 종료) — event.html EVENT_CODE와 반드시 같아야 한다
     and consent_pii and consent_share
     and char_length(name) between 1 and 40
+    -- 자기소개는 선택 입력이라 null 을 반드시 허용한다. 빈 문자열은 event.html이 null로 바꿔 보내므로
+    -- (payload의 `$('introText').value.trim() || null`) 1자 미만을 거부해도 안 쓴 사람이 막히지 않는다.
+    and (intro is null or char_length(intro) between 1 and 80)
     and instagram ~ '^[a-z0-9._]{1,30}$'
     and array_length(wish_countries, 1) between 1 and 3
   );

@@ -93,9 +93,18 @@ supabase/test-schema.local.sql
 _workspace/
 
 # 행사 매칭 리포트 — 참가자 인스타 아이디가 들어 있는 로컬 산출물(커밋 금지)
-# 타임별 리포트(event-report-slot1.local.html 등)까지 덮도록 와일드카드로 둔다 —
-# 파일명 하나만 적어 두면 새 산출물이 조용히 추적 대상이 된다.
+# 타임별·날짜별 리포트(event-report-slot1.local.html, event-report-2026-09-09-slot1.local.html 등)까지
+# 덮도록 와일드카드로 둔다 — 파일명 하나만 적어 두면 새 산출물이 조용히 추적 대상이 된다.
 event-report*.local.html
+
+# 예약 실행(scripts/event-day-run.ps1)이 실패했을 때 만드는 사유 화면.
+# CLI의 stdout+stderr가 통째로 들어가므로 참가자 아이디·경로가 섞일 수 있다.
+event-error.local.html
+
+# 다음 날로 넘길 이월 명단(--slot 2 실행이 만든다). **참가자 행 전체**가 들어 있다 —
+# 이름·인스타 아이디·설문 응답까지 그대로다. 리포트와 같은 이유로 커밋 금지.
+# 날짜별로 갈리므로(event-carry-2026-09-09.local.json) 와일드카드로 둔다.
+event-carry-*.local.json
 
 # 부스 뽑기 실제 토큰(커밋 금지). 이 저장소는 공개라 토큰이 커밋되는 순간
 # 링크를 아는 누구나 소스에서 꺼내 재고를 뽑아갈 수 있다.
