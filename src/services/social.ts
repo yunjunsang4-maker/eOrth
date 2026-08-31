@@ -143,6 +143,20 @@ export async function fetchMyOutgoingNeighborRequests(): Promise<string[] | null
   } catch { return null; }
 }
 
+// 나에게 온 대기 신청의 신청자 id (버튼 '메이트 수락' 표시용). 오류 시 null(로컬 유지)
+// 목록 화면과 달리 프로필 조인이 필요 없어 id만 가져온다.
+export async function fetchMyIncomingNeighborRequestIds(): Promise<string[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase.from('neighbors')
+      .select('requester_id').eq('addressee_id', uid).eq('status', 'pending');
+    if (error) return null;
+    return (data ?? []).map((r: any) => r.requester_id as string);
+  } catch { return null; }
+}
+
 export interface IncomingNeighborRequest {
   requesterId: string;
   handle: string | null;

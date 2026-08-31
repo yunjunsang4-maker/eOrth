@@ -78,5 +78,10 @@ export const REGION_MAP_ENABLED = true;
  * - 앨범 저장 시 온디바이스 분석 → TripDetail 추천 카드.
  * - 네이티브 photo-vision 확장이 없는 빌드에선 어차피 섹션 미노출이므로 JS 킬스위치 용도.
  * - 끄면: 분석 트리거·추천 섹션·FAB 배지가 전부 비활성화된다.
+ *
+ * **2026-09-01 OFF로 내림.** 실기기 체크리스트(b62ccb1)가 아직 안 돌았고, 이 기능은
+ * 네이티브 photo-vision 확장에 의존하는데 네이티브는 OTA로 나가지 않는다 —
+ * JS만 먼저 정식에 도달하는 상태가 된다. EAS dev 빌드로 체크리스트를 통과시킨 뒤,
+ * 그 확장이 들어간 스토어 빌드가 배포된 다음에 true로 올릴 것.
  */
-export const FORMAT_RECO_ENABLED = true;
+export const FORMAT_RECO_ENABLED = false;

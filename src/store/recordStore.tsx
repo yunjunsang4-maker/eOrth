@@ -27,6 +27,7 @@ import {
   removeNeighbor as apiRemoveNeighbor,
   fetchNeighbors,
   fetchMyOutgoingNeighborRequests,
+  fetchMyIncomingNeighborRequestIds,
   blockUser as apiBlock,
   unblockUser as apiUnblock,
   reportPostToServer as apiReportPost,
@@ -283,8 +284,11 @@ interface RecordContextType {
   removeNeighbor: (idOrUsername: string) => void;
   // 내가 보낸 대기 중 메이트신청의 대상 id (서버 상태, 비영속)
   outgoingNeighborRequests: string[];
+  // 나에게 온 대기 중 메이트신청의 신청자 id (서버 상태, 비영속)
+  incomingNeighborRequests: string[];
   isNeighbor: (id: string) => boolean;
   isNeighborRequested: (targetId: string) => boolean;
+  isNeighborRequestReceived: (requesterId: string) => boolean;
   refreshNeighbors: () => Promise<void>;
   commentsByPost: Record<string, PostComment[]>;
   // remoteIdOverride: 스토어에 없는 글(타인 프로필 폴백)도 댓글이 서버에 저장되게 하는 보조 키
@@ -404,6 +408,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [neighbors, setNeighbors] = useState<FollowedFriend[]>(INITIAL_NEIGHBORS);
   // 내가 보낸 대기 중 메이트신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
   const [outgoingNeighborRequests, setOutgoingNeighborRequests] = useState<string[]>([]);
+  // 나에게 온 대기 중 메이트신청 신청자 id — 서버가 원본, 세션 내 공유용(비영속)
+  const [incomingNeighborRequests, setIncomingNeighborRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
   const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
@@ -1370,18 +1376,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   // 받은 신청 수락 → 메이트이 됨(refreshNeighbors로 목록 반영)
+  // '받은 신청' 목록에서도 낙관적으로 지운다 — 안 지우면 수락 후에도 프로필 버튼이
+  // 잠시 '메이트 수락'으로 남는다(refreshNeighbors 왕복 동안).
   const acceptNeighbor = (requesterId: string) => {
     if (!requesterId) return;
+    setIncomingNeighborRequests((prev) => prev.filter((id) => id !== requesterId));
     if (isSupabaseConfigured) {
       apiAcceptNeighbor(requesterId)
         .then(() => refreshNeighbors())
-        .catch(notifySyncError);
+        .catch((e) => {
+          setIncomingNeighborRequests((prev) => (prev.includes(requesterId) ? prev : [...prev, requesterId]));
+          notifySyncError(e);
+        });
     }
   };
 
   const declineNeighbor = (requesterId: string) => {
     if (!requesterId) return;
-    if (isSupabaseConfigured) apiDeclineNeighbor(requesterId).catch(notifySyncError);
+    setIncomingNeighborRequests((prev) => prev.filter((id) => id !== requesterId));
+    if (isSupabaseConfigured) {
+      apiDeclineNeighbor(requesterId).catch((e) => {
+        setIncomingNeighborRequests((prev) => (prev.includes(requesterId) ? prev : [...prev, requesterId]));
+        notifySyncError(e);
+      });
+    }
   };
 
   // 메이트 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
@@ -1402,6 +1420,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     (targetId: string) =>
       outgoingNeighborRequests.includes(targetId) && !neighbors.some((f) => f.id === targetId),
     [outgoingNeighborRequests, neighbors]
+  );
+
+  // '받은 신청' 판정 — 이미 메이트이면(수락됨) 대기 상태로 보지 않는다
+  const isNeighborRequestReceived = useCallback(
+    (requesterId: string) =>
+      incomingNeighborRequests.includes(requesterId) && !neighbors.some((f) => f.id === requesterId),
+    [incomingNeighborRequests, neighbors]
   );
 
   const addComment = (postId: string, text: string, replyToId?: string, remoteIdOverride?: string) => {
@@ -1803,9 +1828,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const emptyNeighborStreakRef = useRef(0);
   const refreshNeighbors = useCallback(async () => {
     if (!isSupabaseConfigured) return;
-    // 내가 보낸 대기 신청도 함께 갱신 (오류 시 null → 로컬 유지)
+    // 내가 보낸/받은 대기 신청도 함께 갱신 (오류 시 null → 로컬 유지)
     fetchMyOutgoingNeighborRequests().then((pending) => {
       if (pending) setOutgoingNeighborRequests(pending);
+    });
+    fetchMyIncomingNeighborRequestIds().then((pending) => {
+      if (pending) setIncomingNeighborRequests(pending);
     });
     const list = await fetchNeighbors();
     if (!list) return; // 오류 시 로컬 유지
@@ -2166,7 +2194,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

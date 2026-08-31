@@ -83,8 +83,9 @@ for (const c of COUNTRIES) {
 FLAG_BY_KO_NAME['한국'] = FLAG_BY_KO_NAME['대한민국'] ?? '🇰🇷'; // 구 표기 별칭
 
 // ─────────────────────────────────────────────
-// 메이트 신청 버튼 — 상태 3종을 시각적으로 구분한다.
+// 메이트 신청 버튼 — 상태 4종을 시각적으로 구분한다.
 //   신청 가능: 스킨 그라데이션 필(네온 글로우) — 지금 누를 것
+//   수락 대기: 그라데이션 필 — 상대가 나에게 신청해 둔 상태. 신청보다 더 확실한 CTA다
 //   신청됨   : 스킨색 아웃라인 고스트 — 되돌릴 수 있는 대기 상태
 //   메이트   : 무채색 고스트 — 완료돼 더 이상 유도하지 않음
 // 누를 때 살짝 눌리는 스프링(0.94)으로 촉감을 준다. 앱의 CTA 언어(둥근 필 + 그라데이션)를 따른다.
@@ -97,7 +98,7 @@ function MateButton({
   gradient,
   tint,
 }: {
-  state: 'idle' | 'requested' | 'mate';
+  state: 'idle' | 'incoming' | 'requested' | 'mate';
   label: string;
   onPress: (e: any) => void;
   accent: string;
@@ -109,7 +110,8 @@ function MateButton({
   const to = (v: number) =>
     Animated.spring(press, { toValue: v, friction: 7, tension: 220, useNativeDriver: true }).start();
 
-  const ghost = state !== 'idle';
+  // 수락 대기도 '지금 누를 버튼'이라 신청 가능과 같은 그라데이션 위계를 준다
+  const ghost = state !== 'idle' && state !== 'incoming';
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
       <TouchableOpacity
@@ -164,12 +166,14 @@ function FriendItem({
   item,
   following,
   requested,
+  incoming,
   onToggle,
   onPress,
 }: {
   item: ContactFriend;
   following: boolean; // 이미 메이트(서로메이트) 상태
   requested: boolean; // 메이트 신청을 보내고 수락 대기 중인 상태
+  incoming: boolean;  // 상대가 나에게 신청해 둔 상태 — 내 행동은 '신청'이 아니라 '수락'
   onToggle: () => void;
   onPress?: () => void;
 }) {
@@ -250,12 +254,14 @@ function FriendItem({
         )}
       </View>
       <MateButton
-        state={following ? 'mate' : requested ? 'requested' : 'idle'}
+        state={following ? 'mate' : incoming ? 'incoming' : requested ? 'requested' : 'idle'}
         label={following
           ? t('friends.neighborActive')
-          : requested
-            ? t('friends.neighborRequested')
-            : t('friends.neighborRequest')}
+          : incoming
+            ? t('friends.neighborAccept')
+            : requested
+              ? t('friends.neighborRequested')
+              : t('friends.neighborRequest')}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         accent={skinAccent.accent}
         gradient={skinAccent.btnGradient}
@@ -321,7 +327,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
-  const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
+  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, isBlocked, records, tripGroups } = useRecords();
   // 여행 DNA — 완료 전까지만 배너 노출(매칭 동기가 가장 큰 자리)
   const { isComplete: dnaComplete, isFull: dnaFull } = useTravelDna();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
@@ -376,6 +382,12 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       removeNeighbor(friend.id);
       bumpFollowerCount(friend.id, -1);
       showToast(t('comp2.toastNeighborRemoved', { name: friend.name }));
+    } else if (isNeighborRequestReceived(friend.id)) {
+      // 상대가 먼저 신청해 둔 경우 — 여기서 누르는 건 수락이다(신청을 또 보내는 게 아니라).
+      acceptNeighbor(friend.id);
+      bumpFollowerCount(friend.id, +1); // 메이트 성립 → 상대 메이트 수 +1 (끊기의 -1과 대칭)
+      setIncomingCount((n) => Math.max(0, n - 1)); // 상단 '받은 신청' 배너도 같이 줄인다
+      showToast(t('comp2.toastNeighborAccepted', { name: friend.name }));
     } else if (isNeighborRequested(friend.id)) {
       cancelNeighborRequest(friend.id);
       showToast(t('comp2.toastNeighborRequestCanceled', { name: friend.name }));
@@ -405,8 +417,11 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     fetchIncomingNeighborRequests()
       .then((rows) => { if (alive) setIncomingCount(rows.length); })
       .catch(() => {});
+    // 행 버튼의 '메이트 수락' 판정도 store의 받은/보낸 대기 신청을 본다 — 앱 시작 이후 도착한
+    // 신청은 여기서 갱신해야 반영된다(안 하면 신청받은 사람이 '메이트 신청'으로 보인다)
+    refreshNeighbors();
     return () => { alive = false; };
-  }, []);
+  }, [refreshNeighbors]);
 
   // 추천 메이트(여행 DNA) — 진입 시 1회 로드. 로컬 여행기록카드·미발행·나만보기 나라도
   // extra_countries로 보강(내 매칭 입력 전용 — 타인에게 비노출)
@@ -501,6 +516,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           item={item}
           following={isNeighbor(item.id)}
           requested={isNeighborRequested(item.id)}
+          incoming={isNeighborRequestReceived(item.id)}
           onToggle={() => onNeighborToggle(item)}
           onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
         />

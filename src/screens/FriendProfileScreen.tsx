@@ -233,14 +233,17 @@ export default function FriendProfileScreen({
   const friendDnaLabel = labelFromKey(profileRow?.dna_type_key);
 
   // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
-  const { neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, blockUser, toggleMute, isMuted } = useRecords();
+  const { neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, isNeighbor, isNeighborRequested, isNeighborRequestReceived, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
   const realId = userId ?? profileRow?.id ?? null;
   const neighborNow = !!realId && isNeighbor(realId);
   const requested = !!realId && isNeighborRequested(realId);
-  const neighborState: 'none' | 'requested' | 'neighbor' =
-    neighborNow ? 'neighbor' : requested ? 'requested' : 'none';
+  // 상대가 나에게 신청해 둔 상태 — 이땐 '신청'이 아니라 '수락'이 맞는 행동이다.
+  // (내 신청도 있으면 서버가 이미 서로메이트으로 수렴시키므로 requested보다 먼저 본다)
+  const incoming = !!realId && isNeighborRequestReceived(realId);
+  const neighborState: 'none' | 'requested' | 'incoming' | 'neighbor' =
+    neighborNow ? 'neighbor' : incoming ? 'incoming' : requested ? 'requested' : 'none';
   // 비메이트 잠금 — 여행기록은 메이트 전용. 카운트만 노출하고 아카이브는 잠금 안내로 대체.
   const locked = !isSelf && !neighborNow;
   // 여행수 스탯 — 타인은 서버 동기화값 우선(비메이트도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
@@ -265,6 +268,7 @@ export default function FriendProfileScreen({
   const onNeighborPress = () => {
     if (!realId) return;
     if (neighborState === 'none') requestNeighbor(realId);
+    else if (neighborState === 'incoming') acceptNeighbor(realId);
     else if (neighborState === 'requested') cancelNeighborRequest(realId);
     else Alert.alert(t('friends.removeNeighborTitle'), t('friends.removeNeighborMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -450,14 +454,16 @@ export default function FriendProfileScreen({
           <>
             <View style={s.actionRow}>
               {/* 메이트 상태에 따라 위계가 바뀐다 —
-                  아직 아님: 그라데이션(주요 CTA) / 신청중·메이트: 고스트(더 유도하지 않음) */}
+                  아직 아님·수락 대기: 그라데이션(주요 CTA) / 신청중·메이트: 고스트(더 유도하지 않음) */}
               <ProfileActionButton
-                variant={neighborState === 'none' ? 'primary' : 'ghost'}
+                variant={neighborState === 'none' || neighborState === 'incoming' ? 'primary' : 'ghost'}
                 label={neighborState === 'neighbor'
                   ? t('friends.neighborActive')
-                  : neighborState === 'requested'
-                    ? t('friends.neighborRequested')
-                    : t('friends.neighborRequest')}
+                  : neighborState === 'incoming'
+                    ? t('friends.neighborAccept')
+                    : neighborState === 'requested'
+                      ? t('friends.neighborRequested')
+                      : t('friends.neighborRequest')}
                 onPress={onNeighborPress}
                 accent={skinAccent.accent}
                 gradient={skinAccent.btnGradient}
