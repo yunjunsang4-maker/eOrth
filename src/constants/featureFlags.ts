@@ -72,3 +72,11 @@ export const LAUNCH_FREE_PREMIUM = true;
  * 한국 시/도 프리셋(koreaRegions)은 이 플래그와 무관하게 계속 동작한다.
  */
 export const REGION_MAP_ENABLED = true;
+
+/**
+ * 사진 AI 기록 형식 추천 (2026-08-31)
+ * - 앨범 저장 시 온디바이스 분석 → TripDetail 추천 카드.
+ * - 네이티브 photo-vision 확장이 없는 빌드에선 어차피 섹션 미노출이므로 JS 킬스위치 용도.
+ * - 끄면: 분석 트리거·추천 섹션·FAB 배지가 전부 비활성화된다.
+ */
+export const FORMAT_RECO_ENABLED = true;
