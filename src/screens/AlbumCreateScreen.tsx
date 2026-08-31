@@ -41,6 +41,7 @@ import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { runFormatReco } from '../services/photoAI/recoEngine';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -442,6 +443,15 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         };
         updateRecord(appendTarget.id, merged);
         success(); // 기존 사진첩에 이어 담기 완료 — 신규 생성과 같은 완료 신호를 준다
+        // AI 형식 추천 — 백그라운드 분석 시작 (await 금지: replace 지연 방지)
+        // 이어 담기는 medias가 바뀌므로 지문이 달라져 재분석된다(닫은 카드 기록은 엔진이 유지).
+        runFormatReco({
+          albumRecordId: appendTarget.id,
+          medias: merged.medias ?? [],
+          mediaTimes: merged.mediaTimes,
+          mediaAssetIds: merged.mediaAssetIds,
+          pastRecords: records.map((r) => ({ viewType: r.viewType })),
+        }).catch(() => {});
         if (failCount > 0) {
           Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
         }
@@ -476,6 +486,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
       }
       success(); // 사진첩 생성 완료
+      // AI 형식 추천 — 백그라운드 분석 시작 (await 금지: replace 지연 방지)
+      runFormatReco({
+        albumRecordId: newRec.id,
+        medias: newRec.medias ?? [],
+        mediaTimes: newRec.mediaTimes,
+        mediaAssetIds: newRec.mediaAssetIds,
+        pastRecords: records.map((r) => ({ viewType: r.viewType })),
+      }).catch(() => {});
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
