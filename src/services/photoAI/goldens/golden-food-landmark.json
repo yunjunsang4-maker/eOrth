@@ -1,0 +1,191 @@
+{
+  "name": "food-landmark",
+  "expected": { "topViewType": "blog", "topConcept": "info" },
+  "photos": [
+    {
+      "id": "c1", "uri": "file:///c1.jpg", "thumbnailUri": null,
+      "creationTime": 1756602000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.65, "blurScore": 0.75, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "landmark", "confidence": 0.4 }, { "label": "castle", "confidence": 0.35 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "1111111111111111"
+      }
+    },
+    {
+      "id": "c2", "uri": "file:///c2.jpg", "thumbnailUri": null,
+      "creationTime": 1756602600000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.55, "blurScore": 0.65, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "architecture", "confidence": 0.35 }, { "label": "building", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "2222222222222222"
+      }
+    },
+    {
+      "id": "c3", "uri": "file:///c3.jpg", "thumbnailUri": null,
+      "creationTime": 1756603200000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.68, "blurScore": 0.75, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "monument", "confidence": 0.35 }, { "label": "architecture", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "3333333333333333"
+      }
+    },
+    {
+      "id": "c4", "uri": "file:///c4.jpg", "thumbnailUri": null,
+      "creationTime": 1756603800000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.5, "blurScore": 0.6, "exposureScore": 0.48, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "building", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "4444444444444444"
+      }
+    },
+    {
+      "id": "c5", "uri": "file:///c5.jpg", "thumbnailUri": null,
+      "creationTime": 1756604400000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.62, "blurScore": 0.7, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "castle", "confidence": 0.4 }, { "label": "palace", "confidence": 0.35 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "5555555555555555"
+      }
+    },
+    {
+      "id": "f1", "uri": "file:///f1.jpg", "thumbnailUri": null,
+      "creationTime": 1756616400000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.6, "blurScore": 0.7, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "sign", "confidence": 0.35 }, { "label": "landmark", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.5, "warmth": 0.5, "contrast": 0.45, "darkness": 0.15 },
+        "dhash": "6666666666666666"
+      }
+    },
+    {
+      "id": "f2", "uri": "file:///f2.jpg", "thumbnailUri": null,
+      "creationTime": 1756617000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.58, "blurScore": 0.68, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false, "isFood": true },
+      "signal": {
+        "sceneLabels": [{ "label": "dish", "confidence": 0.2 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.55, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "7777777777777777"
+      }
+    },
+    {
+      "id": "f3", "uri": "file:///f3.jpg", "thumbnailUri": null,
+      "creationTime": 1756617600000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.5, "blurScore": 0.62, "exposureScore": 0.45, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "river", "confidence": 0.25 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.55, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "8888888888888888"
+      }
+    },
+    {
+      "id": "f4", "uri": "file:///f4.jpg", "thumbnailUri": null,
+      "creationTime": 1756618200000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.55, "blurScore": 0.65, "exposureScore": 0.48, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "building", "confidence": 0.25 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.45, "warmth": 0.5, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "9999999999999999"
+      }
+    },
+    {
+      "id": "cf1", "uri": "file:///cf1.jpg", "thumbnailUri": null,
+      "creationTime": 1756688400000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.55, "blurScore": 0.65, "exposureScore": 0.48, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false, "isFood": true },
+      "signal": {
+        "sceneLabels": [{ "label": "coffee", "confidence": 0.2 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "aaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "id": "cf2", "uri": "file:///cf2.jpg", "thumbnailUri": null,
+      "creationTime": 1756689300000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.58, "blurScore": 0.68, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "bbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "id": "cf3", "uri": "file:///cf3.jpg", "thumbnailUri": null,
+      "creationTime": 1756690200000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.65, "blurScore": 0.72, "exposureScore": 0.54, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "architecture", "confidence": 0.2 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.5, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "cccccccccccccccc"
+      }
+    },
+    {
+      "id": "cf4", "uri": "file:///cf4.jpg", "thumbnailUri": null,
+      "creationTime": 1756691100000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.65, "blurScore": 0.72, "exposureScore": 0.52, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "architecture", "confidence": 0.4 }, { "label": "building", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.4, "darkness": 0.1 },
+        "dhash": "dddddddddddddddd"
+      }
+    },
+    {
+      "id": "cf5", "uri": "file:///cf5.jpg", "thumbnailUri": null,
+      "creationTime": 1756692000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.56, "blurScore": 0.66, "exposureScore": 0.48, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false, "isFood": true },
+      "signal": {
+        "sceneLabels": [{ "label": "dessert", "confidence": 0.2 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "eeeeeeeeeeeeeeee"
+      }
+    }
+  ],
+  "groupsHint": [
+    {
+      "id": "spot-osaka-castle",
+      "photoIds": ["c1", "c2", "c3", "c4", "c5"],
+      "startTime": 1756602000000, "endTime": 1756604400000, "center": null
+    },
+    {
+      "id": "spot-dotonbori",
+      "photoIds": ["f1", "f2", "f3", "f4"],
+      "startTime": 1756616400000, "endTime": 1756618200000, "center": null
+    },
+    {
+      "id": "spot-cafe-day2",
+      "photoIds": ["cf1", "cf2", "cf3", "cf4", "cf5"],
+      "startTime": 1756688400000, "endTime": 1756692000000, "center": null
+    }
+  ]
+}

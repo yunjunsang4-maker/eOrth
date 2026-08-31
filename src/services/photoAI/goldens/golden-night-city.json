@@ -1,0 +1,157 @@
+{
+  "name": "night-city",
+  "expected": { "topViewType": "cut", "topConcept": "hip" },
+  "photos": [
+    {
+      "id": "d1", "uri": "file:///d1.jpg", "thumbnailUri": null,
+      "creationTime": 1756600200000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.55, "blurScore": 0.7, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": true, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "sky", "confidence": 0.5 }, { "label": "cloud", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.5, "contrast": 0.35, "darkness": 0.15 },
+        "dhash": "1a2b3c4d5e6f7081"
+      }
+    },
+    {
+      "id": "d2", "uri": "file:///d2.jpg", "thumbnailUri": null,
+      "creationTime": 1756602900000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.65, "blurScore": 0.75, "exposureScore": 0.6, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false, "isFood": true },
+      "signal": {
+        "sceneLabels": [{ "label": "food", "confidence": 0.5 }, { "label": "dish", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.55, "warmth": 0.6, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "2b3c4d5e6f708192"
+      }
+    },
+    {
+      "id": "d3", "uri": "file:///d3.jpg", "thumbnailUri": null,
+      "creationTime": 1756608000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.6, "blurScore": 0.7, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "monument", "confidence": 0.5 }, { "label": "sign", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": true,
+        "colorStats": { "saturation": 0.4, "warmth": 0.5, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "3c4d5e6f708192a3"
+      }
+    },
+    {
+      "id": "d4", "uri": "file:///d4.jpg", "thumbnailUri": null,
+      "creationTime": 1756614000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.6, "blurScore": 0.75, "exposureScore": 0.6, "passed": true },
+      "semantic": { "hasFace": true, "isSmiling": true, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "selfie", "confidence": 0.5 }, { "label": "smile", "confidence": 0.4 }],
+        "faceCount": 2, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.55, "contrast": 0.4, "darkness": 0.15 },
+        "dhash": "4d5e6f708192a3b4"
+      }
+    },
+    {
+      "id": "d5", "uri": "file:///d5.jpg", "thumbnailUri": null,
+      "creationTime": 1756619400000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.5, "blurScore": 0.65, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": true, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "field", "confidence": 0.4 }, { "label": "flower", "confidence": 0.3 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.45, "warmth": 0.5, "contrast": 0.35, "darkness": 0.15 },
+        "dhash": "5e6f708192a3b4c5"
+      }
+    },
+    {
+      "id": "d6", "uri": "file:///d6.jpg", "thumbnailUri": null,
+      "creationTime": 1756625400000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.55, "blurScore": 0.65, "exposureScore": 0.5, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "building", "confidence": 0.35 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.4, "warmth": 0.45, "contrast": 0.35, "darkness": 0.2 },
+        "dhash": "6f708192a3b4c5d6"
+      }
+    },
+    {
+      "id": "n1", "uri": "file:///n1.jpg", "thumbnailUri": null,
+      "creationTime": 1756638000000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.8, "blurScore": 0.85, "exposureScore": 0.65, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "night", "confidence": 0.6 }, { "label": "city", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.45, "contrast": 0.48, "darkness": 0.5 },
+        "dhash": "a0a0a0a0a0a0a0a0"
+      }
+    },
+    {
+      "id": "n2", "uri": "file:///n2.jpg", "thumbnailUri": null,
+      "creationTime": 1756638150000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.65, "blurScore": 0.7, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "night", "confidence": 0.55 }, { "label": "neon", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.52, "warmth": 0.4, "contrast": 0.5, "darkness": 0.48 },
+        "dhash": "a0a0a0a0a0a0a0a1"
+      }
+    },
+    {
+      "id": "n3", "uri": "file:///n3.jpg", "thumbnailUri": null,
+      "creationTime": 1756638300000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.75, "blurScore": 0.8, "exposureScore": 0.6, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "skyline", "confidence": 0.5 }, { "label": "city", "confidence": 0.35 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.45, "warmth": 0.45, "contrast": 0.46, "darkness": 0.47 },
+        "dhash": "b2c3d4e5f6a7b8c9"
+      }
+    },
+    {
+      "id": "n4", "uri": "file:///n4.jpg", "thumbnailUri": null,
+      "creationTime": 1756638450000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.78, "blurScore": 0.82, "exposureScore": 0.6, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "nightlife", "confidence": 0.45 }, { "label": "street", "confidence": 0.35 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.48, "warmth": 0.42, "contrast": 0.49, "darkness": 0.5 },
+        "dhash": "c3d4e5f6a7b8c9d0"
+      }
+    },
+    {
+      "id": "n5", "uri": "file:///n5.jpg", "thumbnailUri": null,
+      "creationTime": 1756638600000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.85, "blurScore": 0.8, "exposureScore": 0.65, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": true },
+      "signal": {
+        "sceneLabels": [{ "label": "city", "confidence": 0.5 }, { "label": "night", "confidence": 0.4 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.46, "warmth": 0.45, "contrast": 0.47, "darkness": 0.52 },
+        "dhash": "d4e5f6a7b8c9d0e1"
+      }
+    },
+    {
+      "id": "n6", "uri": "file:///n6.jpg", "thumbnailUri": null,
+      "creationTime": 1756638750000, "width": 4000, "height": 3000, "location": null,
+      "quality": { "aestheticsScore": 0.7, "blurScore": 0.75, "exposureScore": 0.55, "passed": true },
+      "semantic": { "hasFace": false, "isLandscape": false, "isLandmark": false },
+      "signal": {
+        "sceneLabels": [{ "label": "neon", "confidence": 0.4 }, { "label": "night", "confidence": 0.45 }],
+        "faceCount": 0, "hasText": false,
+        "colorStats": { "saturation": 0.5, "warmth": 0.4, "contrast": 0.48, "darkness": 0.5 },
+        "dhash": "e5f6a7b8c9d0e1f2"
+      }
+    }
+  ],
+  "groupsHint": [
+    {
+      "id": "spot-night-tokyo",
+      "photoIds": ["n1", "n2", "n3", "n4", "n5", "n6"],
+      "startTime": 1756638000000, "endTime": 1756638750000, "center": null
+    }
+  ]
+}
