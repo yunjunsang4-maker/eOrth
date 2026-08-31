@@ -31,6 +31,20 @@ export interface PhotoSemantic {
   weight?: number;           // 종합 가중치 (베스트컷 선정 점수)
 }
 
+// ─── 확장 신호 (형식 추천용, 네이티브 확장 필드 — 구 빌드에선 전부 undefined) ───
+export interface PhotoSignal {
+  sceneLabels?: { label: string; confidence: number }[]; // 플랫폼 원시 라벨 상위 10개
+  faceCount?: number;      // 얼굴 수 (0=없음)
+  hasText?: boolean;       // 메뉴판/표지판 등 문자 존재
+  colorStats?: {
+    saturation: number;    // 0~1 평균 채도
+    warmth: number;        // 0~1 (0.5=중립, 클수록 따뜻)
+    contrast: number;      // 0~1 명암 대비
+    darkness: number;      // 0~1 어두운 픽셀 비율
+  };
+  dhash?: string;          // 64bit 지각 해시 16진수 16자 (근접 중복 판정)
+}
+
 // ─── 사진 1장의 메타데이터 (Step 1 산출물) ───
 export interface PhotoMeta {
   id: string;                // MediaLibrary asset id
@@ -42,6 +56,7 @@ export interface PhotoMeta {
   location: GeoPoint | null; // GPS 없으면 null
   quality?: PhotoQuality;    // Step 2에서 채움
   semantic?: PhotoSemantic;  // Step 3에서 채움
+  signal?: PhotoSignal;      // Step 2에서 채움 (형식 추천용 확장 신호)
 }
 
 // ─── 시간/장소로 묶인 '여행 스팟 그룹' (Step 1 산출물) ───
