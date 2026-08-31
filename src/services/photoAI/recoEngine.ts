@@ -35,12 +35,16 @@ function basicSlotCounts(): number[] {
 }
 
 export async function runFormatReco(input: FormatRecoInput): Promise<void> {
+  // prev는 실패 경로(catch)에서도 읽어야 한다 — 닫음 기록은 재분석 실패에도 유지가 계약이다(설계 §8).
+  // try 블록 스코프에 두면 catch가 참조할 수 없어 dismissedIds를 빈 배열로 덮어쓰는 사고가 난다.
+  // 초기값 null + 아래 catch의 옵셔널 체이닝이 "getRecoState 자체가 실패한 경우"의 방어도 겸한다.
+  let prev: RecoState | null = null;
   try {
     if (!FORMAT_RECO_ENABLED || !isPhotoVisionAvailable) return;
     if (input.medias.length < MIN_PHOTOS) return;
 
     const fingerprint = mediasFingerprint(input.medias);
-    const prev = await getRecoState(input.albumRecordId);
+    prev = await getRecoState(input.albumRecordId);
     if (prev && prev.mediasFingerprint === fingerprint && prev.status === 'ready') return; // 이미 최신
 
     const pending: RecoState = {
@@ -82,6 +86,28 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
       }
     }
 
+    // 1-b) 시각을 끝내 못 구한 사진 처리 — 후보안 (b) "제외"를 택했다.
+    //   (a) 다른 사진의 평균/중앙값으로 채우기: 그룹핑 자체가 촬영시각 기준이라(photoGrouping.ts)
+    //       없는 시각을 지어내면 엉뚱한 스팟에 섞여 들어간다. 거짓 데이터를 만드는 쪽이라 기각.
+    //   (c) 하나라도 결손이면 앨범 전체 skip: 레거시 앨범에 사진 한 장만 시각이 없어도
+    //       추천이 통째로 죽는다. 과잉 차단이라 기각.
+    //   (b) 결손 사진만 빼고 나머지로 분석: 남은 사진 기준으로 일차가 정상 계산되고,
+    //       formatCandidates를 건드리지 않아도 되며 침습이 가장 적다. → 채택.
+    //
+    //   단, "전부 0"인 앨범(mediaTimes가 통째로 없는 옛 앨범)은 빼지 않는다.
+    //   기준일이 다 같아 dayIndex가 전부 1이 되므로 "20701일차" 결함이 아예 생기지 않고,
+    //   여기서 전부 빼면 멀쩡히 되던 스트립·피드 추천까지 사라진다.
+    //   깨지는 건 시각이 있는 사진과 없는 사진이 '섞인' 앨범뿐이다.
+    const timedCount = photos.filter((p) => p.creationTime > 0).length;
+    if (timedCount > 0 && timedCount < photos.length) {
+      photos = photos.filter((p) => p.creationTime > 0);
+      if (photos.length < MIN_PHOTOS) {
+        // 남은 사진이 너무 적으면 억지로 추천하지 않는다 (섹션 미노출)
+        await saveRecoState({ ...pending, status: 'unavailable', updatedAt: Date.now() });
+        return;
+      }
+    }
+
     // 2) 썸네일 + 네이티브 분석 (quality/semantic/signal 채움)
     const assessed = await assessPhotoQuality(photos);
     if (!assessed.ok || !assessed.data) throw new Error(assessed.errorMessage ?? 'ASSESS_FAILED');
@@ -115,7 +141,7 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
         mediasFingerprint: mediasFingerprint(input.medias),
         status: 'unavailable',
         cards: [],
-        dismissedIds: [],
+        dismissedIds: prev?.dismissedIds ?? [], // 실패해도 닫음 기록은 보존 (성공 경로와 같은 계약)
         updatedAt: Date.now(),
       });
     } catch { /* 저장까지 실패하면 포기 */ }
