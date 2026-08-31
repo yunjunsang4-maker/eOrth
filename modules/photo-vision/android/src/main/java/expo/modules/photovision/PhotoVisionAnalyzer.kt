@@ -74,6 +74,12 @@ object PhotoVisionAnalyzer {
             "isFood" to false,
             "isLandscape" to false,
             "isLandmark" to false,
+            // ─ 확장 신호 (형식 추천, 2026-08-31) ─
+            "sceneLabels" to emptyList<Map<String, Any>>(),
+            "faceCount" to 0,
+            "hasText" to false,
+            "colorStats" to emptyMap<String, Double>(),
+            "dhash" to "",
             "error" to null
         )
 
@@ -93,20 +99,26 @@ object PhotoVisionAnalyzer {
             val gray = toGray(bitmap, GRAY_EDGE)
             result["meanLuminance"] = meanLuminance(gray.lum)
             result["blurVariance"] = laplacianVariance(gray.lum, gray.width, gray.height)
+            result["dhash"] = differenceHash(bitmap)
+            result["colorStats"] = colorStatistics(bitmap)
 
             val image = InputImage.fromBitmap(bitmap, 0)
-            val isUtility = detectUtility(image)
+            val textLen = recognizedTextLength(image)
+            val isUtility = textLen >= UTILITY_TEXT_LEN
             result["isUtility"] = isUtility
 
             // 의미 분석은 문서가 아닐 때만 (영수증/지도엔 불필요)
             if (!isUtility) {
-                val face = detectFace(image)
-                result["hasFace"] = face.first
-                result["isSmiling"] = face.second
-                val cls = classifyImage(image)
+                result["hasText"] = textLen >= 20   // 메뉴판/표지판 수준
+                val faces = detectFaces(image)
+                result["faceCount"] = faces.first
+                result["hasFace"] = faces.first > 0
+                result["isSmiling"] = faces.second
+                val cls = classifyImageWithLabels(image)
                 result["isFood"] = cls.food
                 result["isLandscape"] = cls.landscape
                 result["isLandmark"] = cls.landmark
+                result["sceneLabels"] = cls.topLabels
             }
         } catch (e: Exception) {
             result["error"] = e.message ?: "ANALYZE_ERROR"
@@ -200,42 +212,103 @@ object PhotoVisionAnalyzer {
         return variance / n
     }
 
-    // ─── 문서/스크린샷 판정 (ML Kit Text Recognition) ───
-    private fun detectUtility(image: InputImage): Boolean {
+    // ─── 인식된 텍스트 길이(공백 제외) — isUtility·hasText 공용 ───
+    private fun recognizedTextLength(image: InputImage): Int {
         return try {
             // 백그라운드 스레드에서 호출되므로 Tasks.await 블로킹 사용 가능
             val visionText = Tasks.await(textRecognizer.process(image))
-            visionText.text.replace(Regex("\\s"), "").length >= UTILITY_TEXT_LEN
-        } catch (e: Exception) {
-            false // 인식 실패 시 문서 아님으로 보수적 처리
-        }
+            visionText.text.replace(Regex("\\s"), "").length
+        } catch (e: Exception) { 0 }
     }
 
-    // ─── 얼굴/웃음 (ML Kit Face Detection) → (hasFace, isSmiling) ───
-    private fun detectFace(image: InputImage): Pair<Boolean, Boolean> {
+    // ─── 얼굴 수 + 웃음 → (faceCount, isSmiling) ───
+    private fun detectFaces(image: InputImage): Pair<Int, Boolean> {
         return try {
             val faces = Tasks.await(faceDetector.process(image))
-            val hasFace = faces.isNotEmpty()
             val smiling = faces.any { (it.smilingProbability ?: 0f) >= SMILE_PROB }
-            Pair(hasFace, smiling)
+            Pair(faces.size, smiling)
+        } catch (e: Exception) { Pair(0, false) }
+    }
+
+    // ─── 분류 1회 → 카테고리 + 상위 10 라벨 ───
+    private data class ClassLabels(
+        val food: Boolean, val landscape: Boolean, val landmark: Boolean,
+        val topLabels: List<Map<String, Any>>
+    )
+
+    private fun classifyImageWithLabels(image: InputImage): ClassLabels {
+        return try {
+            val all = Tasks.await(imageLabeler.process(image))
+            val topLabels = all
+                .filter { it.confidence >= 0.3f }
+                .sortedByDescending { it.confidence }
+                .take(10)
+                .map { mapOf<String, Any>("label" to it.text.lowercase(), "confidence" to it.confidence.toDouble()) }
+
+            val strong = all.filter { it.confidence >= LABEL_CONFIDENCE }.map { it.text.lowercase() }
+            fun hit(keys: List<String>) = strong.any { label -> keys.any { label.contains(it) } }
+            ClassLabels(hit(FOOD_KEYWORDS), hit(LANDSCAPE_KEYWORDS), hit(LANDMARK_KEYWORDS), topLabels)
         } catch (e: Exception) {
-            Pair(false, false)
+            ClassLabels(false, false, false, emptyList())
         }
     }
 
-    // ─── 음식/풍경/랜드마크 (ML Kit Image Labeling) ───
-    private data class ClassResult(val food: Boolean, val landscape: Boolean, val landmark: Boolean)
+    // ─── 색감 통계 — 64px 축소본에서 채도/색온도/대비/어두움 ───
+    private fun colorStatistics(bitmap: Bitmap): Map<String, Double> {
+        val edge = 64
+        val ratio = min(1.0, edge.toDouble() / max(bitmap.width, bitmap.height))
+        val w = max(1, (bitmap.width * ratio).toInt())
+        val h = max(1, (bitmap.height * ratio).toInt())
+        val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+        val argb = IntArray(w * h)
+        scaled.getPixels(argb, 0, w, 0, 0, w, h)
+        if (scaled != bitmap) scaled.recycle()
 
-    private fun classifyImage(image: InputImage): ClassResult {
-        return try {
-            val labels = Tasks.await(imageLabeler.process(image))
-                .filter { it.confidence >= LABEL_CONFIDENCE }
-                .map { it.text.lowercase() }
-
-            fun hit(keys: List<String>) = labels.any { label -> keys.any { label.contains(it) } }
-            ClassResult(hit(FOOD_KEYWORDS), hit(LANDSCAPE_KEYWORDS), hit(LANDMARK_KEYWORDS))
-        } catch (e: Exception) {
-            ClassResult(false, false, false)
+        var satSum = 0.0; var warmSum = 0.0; var lumSum = 0.0; var lumSqSum = 0.0
+        var darkCount = 0
+        for (c in argb) {
+            val r = ((c shr 16) and 0xFF) / 255.0
+            val g = ((c shr 8) and 0xFF) / 255.0
+            val b = (c and 0xFF) / 255.0
+            val maxC = maxOf(r, g, b); val minC = minOf(r, g, b)
+            satSum += if (maxC == 0.0) 0.0 else (maxC - minC) / maxC
+            warmSum += (r - b + 1.0) / 2.0
+            val lum = 0.299 * r + 0.587 * g + 0.114 * b
+            lumSum += lum
+            lumSqSum += lum * lum
+            if (lum < 0.235) darkCount++
         }
+        val n = argb.size.toDouble()
+        val lumMean = lumSum / n
+        val variance = max(0.0, lumSqSum / n - lumMean * lumMean)
+        return mapOf(
+            "saturation" to satSum / n,
+            "warmth" to warmSum / n,
+            "contrast" to min(1.0, Math.sqrt(variance) * 4.0),
+            "darkness" to darkCount / n,
+        )
+    }
+
+    // ─── dHash — 9x8 그레이스케일 가로 인접 비교, 64bit 16진수 16자 (iOS와 동일 알고리즘) ───
+    private fun differenceHash(bitmap: Bitmap): String {
+        val w = 9; val h = 8
+        val scaled = Bitmap.createScaledBitmap(bitmap, w, h, true)
+        val argb = IntArray(w * h)
+        scaled.getPixels(argb, 0, w, 0, 0, w, h)
+        if (scaled != bitmap) scaled.recycle()
+
+        val lum = IntArray(w * h)
+        for (i in argb.indices) {
+            val c = argb[i]
+            lum[i] = (((c shr 16) and 0xFF) * 299 + ((c shr 8) and 0xFF) * 587 + (c and 0xFF) * 114) / 1000
+        }
+        var bits = 0L
+        for (y in 0 until h) {
+            for (x in 0 until w - 1) {
+                bits = bits shl 1
+                if (lum[y * w + x] > lum[y * w + x + 1]) bits = bits or 1L
+            }
+        }
+        return String.format("%016x", bits)
     }
 }
