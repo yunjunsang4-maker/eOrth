@@ -137,6 +137,7 @@ export function blogCandidates(
   concepts: Map<string, ConceptScores>
 ): RecoCandidate[] {
   const byId = new Map(usable(photos).map((p) => [p.id, p]));
+  const idByUri = new Map(usable(photos).map((p) => [p.uri, p.id])); // uri → id 역매핑 (O(1) 조회용)
   const validGroups = groups
     .map((g) => ({
       g,
@@ -147,13 +148,15 @@ export function blogCandidates(
   if (validGroups.length < 2) return [];
 
   const dayMs = 24 * 3600_000;
-  const firstDayStart = Math.floor(validGroups[0].g.startTime / dayMs);
+  /** 로컬 타임존 자정 기준 일 번호 (UTC 경계로 계산하면 KST 등에서 DAY가 09:00에 바뀌는 결함이 생긴다) */
+  const localDayNumber = (t: number) => Math.floor((t - new Date(t).getTimezoneOffset() * 60_000) / dayMs);
+  const firstDayNumber = localDayNumber(validGroups[0].g.startTime);
   const seeds: RecoBlogSeed[] = [];
   const allUris: string[] = [];
   let lastDayIndex = 0;
 
   for (const { g, members } of validGroups) {
-    const dayIndex = Math.floor(g.startTime / dayMs) - firstDayStart + 1;
+    const dayIndex = localDayNumber(g.startTime) - firstDayNumber + 1;
     if (dayIndex !== lastDayIndex) {
       seeds.push({ kind: 'heading', dayIndex });
       lastDayIndex = dayIndex;
@@ -175,11 +178,7 @@ export function blogCandidates(
   }
   if (allUris.length === 0) return [];
 
-  const tc = groupConcept(allUris.map((u) => {
-    // uri → id 역매핑 (usable 기준)
-    for (const [id, p] of byId) if (p.uri === u) return id;
-    return u;
-  }), concepts);
+  const tc = groupConcept(allUris.map((u) => idByUri.get(u) ?? u), concepts);
 
   return [{
     id: `blog_${tc.concept}`,
