@@ -26,6 +26,12 @@ struct PhotoAnalysis {
     var isFood: Bool = false      // 음식
     var isLandscape: Bool = false // 풍경/자연
     var isLandmark: Bool = false  // 건축물/랜드마크
+    // ─ 확장 신호 (형식 추천, 2026-08-31) ─
+    var sceneLabels: [[String: Any]] = []
+    var faceCount: Int = 0
+    var hasText: Bool = false
+    var colorStats: [String: Double] = [:]
+    var dhash: String = ""
     var error: String?
 
     func toDict() -> [String: Any] {
@@ -40,6 +46,11 @@ struct PhotoAnalysis {
             "isFood": isFood,
             "isLandscape": isLandscape,
             "isLandmark": isLandmark,
+            "sceneLabels": sceneLabels,
+            "faceCount": faceCount,
+            "hasText": hasText,
+            "colorStats": colorStats,
+            "dhash": dhash,
             "error": error as Any
         ]
     }
@@ -78,6 +89,7 @@ enum PhotoVisionAnalyzer {
         if let gray = grayscaleBuffer(from: cgImage, edge: grayEdge) {
             result.meanLuminance = meanLuminance(gray.pixels)
             result.blurVariance = laplacianVariance(gray.pixels, width: gray.width, height: gray.height)
+            result.dhash = differenceHash(from: cgImage)
         } else {
             result.error = "GRAYSCALE_FAILED"
         }
@@ -89,13 +101,17 @@ enum PhotoVisionAnalyzer {
             result.isUtility = aesthetics.isUtility
         }
 
-        // 4) 의미 분석 (Step 5) — 문서가 아닐 때만 (영수증/지도엔 불필요)
+        // 4) 의미 분석 + 확장 신호 — 문서가 아닐 때만 (영수증/지도엔 불필요)
+        result.colorStats = colorStatistics(from: cgImage)
         if !result.isUtility {
-            result.hasFace = detectFace(in: cgImage)
-            let cls = classify(image: cgImage)
+            result.faceCount = countFaces(in: cgImage)
+            result.hasFace = result.faceCount > 0
+            result.hasText = detectTextPresence(in: cgImage)
+            let cls = classifyWithLabels(image: cgImage)
             result.isFood = cls.food
             result.isLandscape = cls.landscape
             result.isLandmark = cls.landmark
+            result.sceneLabels = cls.topLabels
         }
 
         return result.toDict()
@@ -103,16 +119,24 @@ enum PhotoVisionAnalyzer {
 
     // MARK: - 의미 분석
 
-    /// 얼굴 포함 여부 (iOS 13+). 웃음 판정 API는 없어 hasFace만 반환.
-    private static func detectFace(in image: CGImage) -> Bool {
+    /// 얼굴 수 (iOS 13+)
+    private static func countFaces(in image: CGImage) -> Int {
         let request = VNDetectFaceRectanglesRequest()
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])
-            return (request.results?.isEmpty == false)
-        } catch {
-            return false
-        }
+            return request.results?.count ?? 0
+        } catch { return 0 }
+    }
+
+    /// 문자 존재 여부 — 텍스트 사각형 3개 이상이면 true (메뉴판/표지판)
+    private static func detectTextPresence(in image: CGImage) -> Bool {
+        let request = VNDetectTextRectanglesRequest()
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        do {
+            try handler.perform([request])
+            return (request.results?.count ?? 0) >= 3
+        } catch { return false }
     }
 
     // VNClassifyImageRequest 식별자(taxonomy)를 키워드로 매핑
@@ -125,24 +149,96 @@ enum PhotoVisionAnalyzer {
         "skyscraper", "monument", "castle", "temple", "church", "cathedral",
         "bridge", "statue", "palace", "landmark", "structure"]
 
-    /// 이미지 분류로 음식/풍경/랜드마크 추정 (iOS 13+).
-    private static func classify(image: CGImage) -> (food: Bool, landscape: Bool, landmark: Bool) {
+    /// 분류를 1회 수행해 카테고리 불리언 + 상위 10 라벨을 함께 반환
+    private static func classifyWithLabels(image: CGImage)
+        -> (food: Bool, landscape: Bool, landmark: Bool, topLabels: [[String: Any]]) {
         let request = VNClassifyImageRequest()
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])
-            guard let observations = request.results else { return (false, false, false) }
-            let labels = observations
+            guard let observations = request.results else { return (false, false, false, []) }
+
+            // 상위 10 라벨 (신뢰도 0.3 이상만 — JS labelTaxonomy가 추가 필터)
+            let top = observations
+                .filter { $0.confidence > 0.3 }
+                .sorted { $0.confidence > $1.confidence }
+                .prefix(10)
+                .map { ["label": $0.identifier.lowercased(), "confidence": Double($0.confidence)] as [String: Any] }
+
+            let strong = observations
                 .filter { $0.confidence > 0.6 }
                 .map { $0.identifier.lowercased() }
-
             let hit = { (keys: [String]) -> Bool in
-                labels.contains { id in keys.contains { id.contains($0) } }
+                strong.contains { id in keys.contains { id.contains($0) } }
             }
-            return (hit(foodKeywords), hit(landscapeKeywords), hit(landmarkKeywords))
+            return (hit(foodKeywords), hit(landscapeKeywords), hit(landmarkKeywords), Array(top))
         } catch {
-            return (false, false, false)
+            return (false, false, false, [])
         }
+    }
+
+    /// 색감 통계 — 64px RGBA 버퍼에서 채도/색온도/대비/어두움 계산
+    private static func colorStatistics(from image: CGImage) -> [String: Double] {
+        let edge = 64
+        let ratio = min(1.0, Double(edge) / Double(max(image.width, image.height)))
+        let w = max(1, Int(Double(image.width) * ratio))
+        let h = max(1, Int(Double(image.height) * ratio))
+
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(
+            data: &pixels, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: w * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return [:] }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        let n = w * h
+        var satSum = 0.0, warmSum = 0.0, lumSum = 0.0, lumSqSum = 0.0
+        var darkCount = 0
+        for i in 0..<n {
+            let r = Double(pixels[i * 4]) / 255.0
+            let g = Double(pixels[i * 4 + 1]) / 255.0
+            let b = Double(pixels[i * 4 + 2]) / 255.0
+            let maxC = max(r, g, b), minC = min(r, g, b)
+            satSum += maxC == 0 ? 0 : (maxC - minC) / maxC   // HSV 채도
+            warmSum += (r - b + 1.0) / 2.0                    // 0~1, 0.5 중립
+            let lum = 0.299 * r + 0.587 * g + 0.114 * b
+            lumSum += lum
+            lumSqSum += lum * lum
+            if lum < 0.235 { darkCount += 1 }                 // 60/255
+        }
+        let dn = Double(n)
+        let lumMean = lumSum / dn
+        let variance = max(0, lumSqSum / dn - lumMean * lumMean)
+        return [
+            "saturation": satSum / dn,
+            "warmth": warmSum / dn,
+            "contrast": min(1.0, variance.squareRoot() * 4.0), // stddev 0.25↑ = 대비 최고
+            "darkness": Double(darkCount) / dn,
+        ]
+    }
+
+    /// dHash — 9x8 그레이스케일에서 가로 인접 픽셀 비교, 64bit 16진수 16자
+    private static func differenceHash(from image: CGImage) -> String {
+        let w = 9, h = 8
+        var px = [UInt8](repeating: 0, count: w * h)
+        guard let ctx = CGContext(
+            data: &px, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: w,
+            space: CGColorSpaceCreateDeviceGray(),
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        ) else { return "" }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+
+        var bits: UInt64 = 0
+        for y in 0..<h {
+            for x in 0..<(w - 1) {
+                bits <<= 1
+                if px[y * w + x] > px[y * w + x + 1] { bits |= 1 }
+            }
+        }
+        return String(format: "%016llx", bits)
     }
 
     // MARK: - 파일 경로 처리
