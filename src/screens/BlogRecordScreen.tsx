@@ -403,6 +403,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const isEdit = !!editRecord;
   // 여행 카드에서 추가하면 그 여행의 정보(기간·동행자·별점·상세)를 받아 신규 작성 시 자동 적용한다
   const tripPrefill = route?.params?.tripPrefill;
+  // AI 형식 추천 카드 수락으로 들어오면 일차 헤딩 + 스팟별 이미지 블록을 미리 깔아 준다.
+  // 편집 모드(editRecord)가 우선 — 추천은 신규 작성 경로에서만 온다.
+  const recoPrefill = route?.params?.recoPrefill;
 
   // 국가 (복수 가능 — 첫 번째가 대표 국가)
   const MAX_COUNTRIES = 10;
@@ -454,9 +457,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [subtitle, setSubtitle] = useState(editRecord?.subtitle ?? ''); // 부제목(선택)
   const [subtitleModalVisible, setSubtitleModalVisible] = useState(false);
   const [subtitleDraft, setSubtitleDraft] = useState('');
-  const [blocks, setBlocks] = useState<BlogBlock[]>(
-    editRecord?.blogBlocks?.length ? editRecord.blogBlocks : [createTextBlock()]
-  );
+  // lazy init인 이유: 추천 프리필 변환이 블록 id를 새로 뽑기 때문에 매 렌더 돌면
+  // 블록 id가 계속 바뀌어 입력 포커스가 튄다(초기 1회만 계산돼야 한다).
+  const [blocks, setBlocks] = useState<BlogBlock[]>(() => {
+    if (editRecord?.blogBlocks?.length) return editRecord.blogBlocks;
+    if (recoPrefill?.seeds?.length) {
+      const built: BlogBlock[] = recoPrefill.seeds.map((seed) =>
+        seed.kind === 'heading'
+          ? createHeadingBlock(t('reco.blogDayHeading', { n: seed.dayIndex }), 2)
+          : createImagesBlock(seed.uris, seed.layout)
+      );
+      built.push(createTextBlock()); // 이어 쓸 빈 텍스트 블록
+      return built;
+    }
+    return [createTextBlock()];
+  });
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
   // 풀스크린 이미지 뷰어

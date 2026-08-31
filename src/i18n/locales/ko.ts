@@ -1190,6 +1190,34 @@ const ko = {
     monthDay: '{{m}}월 {{d}}일',
     recommendCount: '{{total}}장 중 {{best}}장 추천',
   },
+  // AI 기록 형식 추천 (TripDetail 추천 섹션).
+  // reason 하위 키는 formatCandidates가 `reco.reason.${viewType}_${concept}`로 조립해 참조하므로
+  // viewType(cut/feed/blog) × concept(emotional/hip/fun/food/info) 15조합이 전부 있어야 한다.
+  reco: {
+    sectionTitle: 'AI 추천',
+    analyzing: 'AI가 사진을 보고 있어요…',
+    make_feed: '피드로 남기기',
+    make_blog: '블로그로 기록하기',
+    make_cut: '스트립으로 만들기',
+    reason: {
+      cut_emotional: '감성적인 순간 {{n}}컷',
+      cut_hip: '힙한 무드 {{n}}컷',
+      cut_fun: '웃음 가득한 순간 {{n}}컷',
+      cut_food: '미식의 순간 {{n}}컷',
+      cut_info: '여행의 장면 {{n}}컷',
+      feed_emotional: '감성 하이라이트 {{n}}장',
+      feed_hip: '힙한 하이라이트 {{n}}장',
+      feed_fun: '유쾌한 순간들 {{n}}장',
+      feed_food: '미식 기록 {{n}}장',
+      feed_info: '여행 하이라이트 {{n}}장',
+      blog_emotional: '감성 여행기 · 스팟 {{spots}}곳 타임라인',
+      blog_hip: '힙한 여행기 · 스팟 {{spots}}곳 타임라인',
+      blog_fun: '즐거운 여행기 · 스팟 {{spots}}곳 타임라인',
+      blog_food: '미식 여행기 · 스팟 {{spots}}곳 타임라인',
+      blog_info: '여행 정보 기록 · 스팟 {{spots}}곳 타임라인',
+    },
+    blogDayHeading: 'DAY {{n}}',
+  },
   cutInfo: {
     saveFailTitle: '저장 실패',
     saveFailMsg: '기록을 저장하는 중 문제가 발생했어요.\n다시 시도해주세요.',

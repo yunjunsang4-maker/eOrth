@@ -29,6 +29,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
+import RecoSection from '../components/trip/RecoSection';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
@@ -379,6 +380,16 @@ export default function TripDetailScreen() {
           )
         : groupRecordObjs;
 
+  // 이 여행의 앨범 기록 (추천 발동 전제 — 설계 §1). 여러 개면 최신 것.
+  // matchedRecords는 매 렌더 새 배열이지만 find가 스토어의 같은 객체를 돌려주므로
+  // 결과 참조는 안정적이다 — RecoSection의 effect deps가 매 렌더 재발화하지 않는다.
+  const albumRecordForReco = useMemo(
+    () => [...matchedRecords].reverse().find((r) => r.viewType === 'album'),
+    [matchedRecords]
+  );
+  // RecoSection에 넘길 개인화 재료. 매 렌더 새 배열이 되지 않도록 records에만 묶는다.
+  const recoPastRecords = useMemo(() => records.map((r) => ({ viewType: r.viewType })), [records]);
+
   // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
   const tripPeriod = computeTripPeriod(matchedRecords);
   const tripDateRange = computeTripDateRange(matchedRecords) ?? trip.date;
@@ -696,6 +707,11 @@ export default function TripDetailScreen() {
             <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.length })}</Text>
           </View>
         </Animated.View>
+
+        {/* AI 형식 추천 — 게스트 모드(타인 여행)·앨범 없음이면 미노출 */}
+        {!isGuest && albumRecordForReco && (
+          <RecoSection albumRecord={albumRecordForReco} pastRecords={recoPastRecords} />
+        )}
 
         {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
         <View style={s.console}>
