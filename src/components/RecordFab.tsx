@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Text } from '../ui/Text';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +10,9 @@ import { SnapButton, SNAP_SIZE } from './SnapButton';
 import { useCoachOverlay } from './coachOverlayState';
 import { usePendingOpenRecordFab, consumeOpenRecordFab } from './recordFabState';
 import { useSkinAccent } from '../constants/skinTheme';
+import { DETECTOR_KEYS } from '../store/persist';
+import { FORMAT_RECO_ENABLED } from '../constants/featureFlags';
+import { shouldHighlightAlbum } from '../utils/fabHighlight';
 
 const FORMAT_LABEL_KEY: Record<string, string> = {
   feed: 'main.formatFeed', blog: 'main.formatBlog', cut: 'main.formatCut', album: 'main.formatAlbum',
@@ -153,6 +157,31 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingOpen]);
 
+  // 귀국 후 7일 이내이고 아직 사진첩을 안 만들었으면 사진첩 버튼에 점 배지를 띄운다.
+  // 의존성이 fabOpen인 이유: 이 컴포넌트는 탭 바 위 오버레이라 화면 전환에도 언마운트되지
+  // 않는다(마운트 시 1회만 읽으면 앨범을 만들고 돌아와도 배지가 계속 남는다). 메뉴를 여닫는
+  // 순간이 곧 배지를 보게 되는 순간이라, 그때 다시 읽으면 항상 최신이다.
+  const [highlightAlbum, setHighlightAlbum] = useState(false);
+  useEffect(() => {
+    if (!FORMAT_RECO_ENABLED) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [ret, created] = await Promise.all([
+          AsyncStorage.getItem(DETECTOR_KEYS.returnAt),
+          AsyncStorage.getItem(DETECTOR_KEYS.albumCreatedAt),
+        ]);
+        if (cancelled) return;
+        setHighlightAlbum(
+          shouldHighlightAlbum(ret ? Number(ret) : null, created ? Number(created) : null, Date.now())
+        );
+      } catch {
+        // 읽기 실패는 '강조 안 함'으로 둔다 — 부가 유도라 조용히 빠지는 쪽이 옳다
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fabOpen]);
+
   return (
     // zIndex/elevation 으로 탭 바(elevation 8)보다 위에 그려지게
     <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="box-none">
@@ -226,6 +255,16 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
               )}
               {fmt.icon}
             </TouchableOpacity>
+            {/* 귀국 유도 배지 — TouchableOpacity 안이 아니라 '형제'로 둔다.
+                fabFormatBtn은 overflow:'hidden'(안드로이드 매트의 사각 모서리를 자르려고)이라
+                버튼 안에 넣으면 원 밖으로 걸치는 부분이 통째로 잘린다.
+                좌표를 bottom·left:'50%' 기준으로 잡은 이유: 이 래퍼는 left:0/right:0 전폭이라
+                right로 잡으면 화면 오른쪽 끝에 붙고, top으로 잡으면 위에 있는 라벨 높이에
+                끌려다닌다(Noto Sans KR이 영문보다 높아 ko/en에서 위치가 달라진다).
+                래퍼 아래쪽 끝 = 버튼 아래쪽 끝이므로 bottom 46 = 버튼 상단(52) 언저리로 고정된다. */}
+            {fmt.type === 'album' && highlightAlbum && (
+              <View pointerEvents="none" style={styles.albumBadge} />
+            )}
           </Animated.View>
         ))}
 
@@ -327,5 +366,21 @@ const styles = StyleSheet.create({
   fabFormatMatte: {
     backgroundColor: 'rgba(22,18,32,0.6)',
     borderRadius: 26,
+  },
+  // 사진첩 유도 점 배지 — 버튼 우상단에 걸치게. 펄스 애니메이션은 넣지 않는다
+  // (안드로이드 elevation은 색을 못 주고, Animated 무한 반복은 FAB가 상주 오버레이라
+  //  화면 내내 돈다. 점만으로도 눈에 띄어 비용 대비 효과가 없다.)
+  albumBadge: {
+    position: 'absolute',
+    bottom: 46,      // 래퍼 하단(=버튼 하단) 기준. 버튼 높이 52 → 상단 언저리에 걸친다
+    left: '50%',
+    marginLeft: 18,  // 버튼 반폭 26 → 배지(10)가 오른쪽 테두리에 걸친다
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#BF85FC',
+    borderWidth: 1.5,
+    borderColor: '#0A0A0F', // 버튼 테두리와 겹쳐도 점이 뭉개지지 않게 배경색으로 분리
+    zIndex: 5,
   },
 });

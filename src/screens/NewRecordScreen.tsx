@@ -273,6 +273,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const isEdit = !!editRecord;
   // 여행 카드에서 추가하면 그 여행의 정보(기간·동행자·별점·상세)를 받아 신규 작성 시 자동 적용한다
   const tripPrefill = route.params?.tripPrefill;
+  // AI 형식 추천 카드 수락으로 들어오면 사진을 미리 담아 준다. 편집 모드가 우선이라
+  // editRecord가 있을 땐 무시된다(추천은 신규 작성 경로에서만 온다).
+  const recoPrefill = route.params?.recoPrefill;
   const parseDotDate = (s?: string): Date => {
     if (s) {
       // "2025.04.13" / "2025-4-5" 등 구분자(. - /)·비패딩 모두 직접 파싱.
@@ -416,13 +419,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   }, [countrySearch]);
 
   // Step 2 - 미디어 (다국가여도 사진은 여행 전체 공용 — 국가 구분 없이 한 번에 입력)
-  const [medias,            setMedias]           = useState<string[]>(editRecord?.medias ?? []);
+  const [medias,            setMedias]           = useState<string[]>(
+    editRecord?.medias ?? recoPrefill?.medias ?? []
+  );
 
   // 사진별 글 — medias와 index 짝. 편집 모드: 기존 photoTexts 복원.
   // 옛 기록(photoTexts 없음)이면 대표 사진 위치에 memo를 시드해 새 구조로 자연 전환.
-  // medias 초기값이 editRecord.medias 이므로 길이가 항상 일치한다.
+  // 불변식: photoTexts 길이 === medias 초기 길이. 위 medias 초기값과 '같은 소스'에서
+  // 파생시켜 유지한다(추천 프리필로 사진이 미리 담기면 빈 글도 같은 수만큼 채운다).
   const [photoTexts, setPhotoTexts] = useState<string[]>(() => {
-    if (!editRecord) return [];
+    if (!editRecord) return (recoPrefill?.medias ?? []).map(() => '');
     const base = (editRecord.medias ?? []).map((_, i) => editRecord.photoTexts?.[i] ?? '');
     if (!editRecord.photoTexts && editRecord.memo) {
       // representativePhotoSource는 medias의 압축본 uri와 일치 → indexOf 매칭 가능.

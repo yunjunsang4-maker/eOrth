@@ -81,12 +81,24 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
   const tabLabel = (cat: '기본' | '테마') => (cat === '기본' ? t('cut.tabBasic') : t('cut.tabTheme'));
   const firstBasic = CUT_FRAMES.find((f) => f.category === '기본')!;
-  const [frameId, setFrameId] = useState<string>(firstBasic.id);
-  const [photos, setPhotos] = useState<(string | null)[]>(
-    Array(cutSlotCount(firstBasic.layout)).fill(null)
-  );
+  // AI 형식 추천 카드 수락으로 들어오면 사진 장수에 맞는 기본 프레임을 골라 미리 채운다.
+  // 딱 맞는 슬롯 수가 없으면 기존 기본값으로 떨어져 프리필 없이 열린 것과 같아진다.
+  const recoPrefill = route.params?.recoPrefill;
+  const initialFrame = recoPrefill
+    ? CUT_FRAMES.find(
+        (f) => f.category === '기본' && cutSlotCount(f.layout) === recoPrefill.photos.length
+      ) ?? firstBasic
+    : firstBasic;
+  const initialSlots = cutSlotCount(initialFrame.layout);
+  const [frameId, setFrameId] = useState<string>(initialFrame.id);
+  const [photos, setPhotos] = useState<(string | null)[]>(() => {
+    const base: (string | null)[] = Array(initialSlots).fill(null);
+    // 슬롯보다 사진이 많을 수 있으므로(프레임 폴백) 슬롯 수로 잘라 담는다
+    recoPrefill?.photos.slice(0, initialSlots).forEach((uri, i) => { base[i] = uri; });
+    return base;
+  });
   const [transforms, setTransforms] = useState<(CutTransform | null)[]>(
-    Array(cutSlotCount(firstBasic.layout)).fill(null)
+    Array(initialSlots).fill(null)
   );
   const [adjustSlot, setAdjustSlot] = useState<number | null>(null);
   const [pickingPhoto, setPickingPhoto] = useState(false); // 사진 불러오는 중(특히 iCloud 다운로드)

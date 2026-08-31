@@ -158,6 +158,14 @@ export async function assessPhotoQuality(
           isLandscape: raw.isLandscape,
           isLandmark: raw.isLandmark,
         };
+        // 확장 신호 → PhotoMeta.signal (구 네이티브면 필드가 없어 undefined 그대로)
+        target.signal = {
+          sceneLabels: raw.sceneLabels,
+          faceCount: raw.faceCount,
+          hasText: raw.hasText,
+          colorStats: raw.colorStats,
+          dhash: raw.dhash,
+        };
       }
 
       // 썸네일 생성 실패분도 통과 처리

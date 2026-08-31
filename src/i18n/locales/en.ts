@@ -1175,6 +1175,32 @@ const en = {
     monthDay: '{{m}}/{{d}}',
     recommendCount: '{{best}} of {{total}} recommended',
   },
+  // AI 기록 형식 추천 — ko.ts의 reco와 키 구조가 완전히 같아야 한다(동적 키 조립이라 누락이 런타임에만 드러남)
+  reco: {
+    sectionTitle: 'AI Picks',
+    analyzing: 'AI is looking at your photos…',
+    make_feed: 'Make a feed post',
+    make_blog: 'Write a blog post',
+    make_cut: 'Make a photo strip',
+    reason: {
+      cut_emotional: '{{n}} heartfelt cuts',
+      cut_hip: '{{n}} stylish cuts',
+      cut_fun: '{{n}} joyful cuts',
+      cut_food: '{{n}} tasty cuts',
+      cut_info: '{{n}} travel cuts',
+      feed_emotional: '{{n}} heartfelt highlights',
+      feed_hip: '{{n}} stylish highlights',
+      feed_fun: '{{n}} fun moments',
+      feed_food: '{{n}} food moments',
+      feed_info: '{{n}} travel highlights',
+      blog_emotional: 'Heartfelt travelogue · timeline of {{spots}} spots',
+      blog_hip: 'Stylish travelogue · timeline of {{spots}} spots',
+      blog_fun: 'Joyful travelogue · timeline of {{spots}} spots',
+      blog_food: 'Food travelogue · timeline of {{spots}} spots',
+      blog_info: 'Travel notes · timeline of {{spots}} spots',
+    },
+    blogDayHeading: 'DAY {{n}}',
+  },
   cutInfo: {
     saveFailTitle: 'Save failed',
     saveFailMsg: 'Something went wrong while saving.\nPlease try again.',
@@ -2028,7 +2054,8 @@ const en = {
   },
   returnDetect: {
     notifTitle: 'Welcome home! 🏠',
-    notifBody: 'How was your trip? Capture it in eOrth',
+    // 탭하면 사진첩 만들기로 간다(AppNavigator의 returnDetect 분기) — 문구도 그 목적지에 맞춘다
+    notifBody: 'Your trip photos are piling up — save them as an album',
     nudgeTitle: 'Turn on return detection?',
     nudgeBody: "We'll remind you to journal when you get back home from a trip.",
     nudgeLater: 'Later',

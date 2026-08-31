@@ -29,6 +29,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
+import RecoSection from '../components/trip/RecoSection';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
@@ -379,6 +380,25 @@ export default function TripDetailScreen() {
           )
         : groupRecordObjs;
 
+  // 이 여행의 앨범 기록 (추천 발동 전제 — 설계 §1). 여러 개면 최신 것.
+  // matchedRecords의 정렬 관례는 경로마다 반대다 — groupRecordObjs(그룹 있음)는
+  // linkRecordToTrip이 append해 과거→최신(오름차순)이지만, 폴백 경로(records.filter)는
+  // addRecord가 [newRecord, ...prev]로 맨 앞에 넣어 최신→과거(내림차순)다.
+  // 배열 순서에 기대지 않고 timestamp로 직접 최신을 고른다.
+  // timestamp는 생성 시 Date.now() (updateRecord는 갱신하지 않음 — changes 타입이
+  // Omit<..., 'timestamp'>라 아예 넘길 수도 없다). 따라서 이건 '수정 시각'이 아니라
+  // '생성 시각 기준 최신' 판정이다 — buildTripPrefill의 "가장 최근 기록"과 동일 기준.
+  // reduce는 새 객체를 만들지 않고 배열 안의 참조를 그대로 반환하므로, matchedRecords가
+  // 매 렌더 새 배열이어도 find와 마찬가지로 결과 참조는 안정적이다 — RecoSection의 effect
+  // deps가 매 렌더 재발화하지 않는다.
+  const albumRecordForReco = useMemo(() => {
+    const albums = matchedRecords.filter((r) => r.viewType === 'album');
+    if (albums.length === 0) return undefined;
+    return albums.reduce((latest, r) => ((r.timestamp ?? 0) > (latest.timestamp ?? 0) ? r : latest));
+  }, [matchedRecords]);
+  // RecoSection에 넘길 개인화 재료. 매 렌더 새 배열이 되지 않도록 records에만 묶는다.
+  const recoPastRecords = useMemo(() => records.map((r) => ({ viewType: r.viewType })), [records]);
+
   // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
   const tripPeriod = computeTripPeriod(matchedRecords);
   const tripDateRange = computeTripDateRange(matchedRecords) ?? trip.date;
@@ -696,6 +716,11 @@ export default function TripDetailScreen() {
             <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.length })}</Text>
           </View>
         </Animated.View>
+
+        {/* AI 형식 추천 — 게스트 모드(타인 여행)·앨범 없음이면 미노출 */}
+        {!isGuest && albumRecordForReco && (
+          <RecoSection albumRecord={albumRecordForReco} pastRecords={recoPastRecords} />
+        )}
 
         {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
         <View style={s.console}>

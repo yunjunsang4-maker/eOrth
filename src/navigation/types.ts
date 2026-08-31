@@ -13,6 +13,7 @@ import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import type { TravelRecord, RecordViewType } from '../store/recordStore';
 import type { CutLayout } from '../constants/cutFrames';
 import type { ImportTrip } from '../screens/ImportPhotoSelectScreen';
+import type { RecoBlogSeed } from '../services/photoAI/recoTypes';
 
 // ─── 공용 파라미터 페이로드 ───
 
@@ -79,6 +80,15 @@ export interface TripPrefillParam {
   keywords?: string[];
 }
 
+/** AI 형식 추천 카드 수락 시 작성 화면으로 넘기는 프리필.
+ *  cardId: 사용 로그 연결용(v2 edit_after_accept 예약 — 현재 미소비).
+ *  즉 지금은 어떤 작성 화면도 이 값을 읽지 않는다. 형식별 페이로드가 달라도 항상 함께
+ *  넘겨 두는 이유는, 나중에 '수정 후 저장' 로그를 원 카드에 되짚을 때 화면 계약을 바꾸지
+ *  않기 위해서다. 미소비라고 지우면 그 확장이 파라미터 변경을 동반하게 된다. */
+export interface RecoPrefillFeedParam { cardId: string; medias: string[] }
+export interface RecoPrefillBlogParam { cardId: string; seeds: RecoBlogSeed[] }
+export interface RecoPrefillCutParam { cardId: string; photos: string[] }
+
 export type StatsDetailType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 // ─── 탭 ───
@@ -113,6 +123,7 @@ export type RootStackParamList = {
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
     tripPrefill?: TripPrefillParam;
+    recoPrefill?: RecoPrefillFeedParam;   // AI 추천 프리필 (편집 모드보다 우선순위 낮음)
   } | undefined;
   Settings: undefined;
   Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입
@@ -148,8 +159,13 @@ export type RootStackParamList = {
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
     tripPrefill?: TripPrefillParam;
+    recoPrefill?: RecoPrefillBlogParam;   // AI 추천 프리필 (편집 모드보다 우선순위 낮음)
   } | undefined;
-  CutRecord: { selectedCountry?: SelectedCountryParam; tripPrefill?: TripPrefillParam } | undefined;
+  CutRecord: {
+    selectedCountry?: SelectedCountryParam;
+    tripPrefill?: TripPrefillParam;
+    recoPrefill?: RecoPrefillCutParam;    // AI 추천 프리필
+  } | undefined;
   CutTravelInfo: { cutPhoto: CutPhotoParam; selectedCountry?: SelectedCountryParam; tripPrefill?: TripPrefillParam };
   NaverBlogImport: undefined;
   SnapRecord: {

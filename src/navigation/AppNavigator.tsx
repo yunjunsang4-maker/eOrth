@@ -207,7 +207,8 @@ export default function AppNavigator() {
   // 알림 탭 → 관련 화면으로 이동 — 앱 전체에서 이 리스너 하나만 라우팅한다.
   //   (App.tsx에도 같은 리스너가 있었는데 인증 게이트 없이 이중 라우팅해 로그인 화면 위로
   //    내부 화면이 열리는 문제가 있었다. 새 타입을 추가할 곳도 여기 한 곳이다.)
-  //   dm → 대화, snap/moment/arrival → 각 기록 화면, 메이트 신청·수락 → 알림 목록,
+  //   dm → 대화, snap/moment/arrival → 각 기록 화면, returnDetect → 사진첩 만들기,
+  //   메이트 신청·수락 → 알림 목록,
   //   like/comment/reply/friend_post → 게시물, 그 외 actor 알림 → 프로필.
   //   인증되어 Main에 진입한 뒤에만 이동(콜드 스타트는 최대 ~6.4초 재시도). 동일 알림 중복 처리 방지.
   useEffect(() => {
@@ -233,6 +234,9 @@ export default function AppNavigator() {
           navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
         } else if (d.type === 'arrival') {
           navigate('NewRecord'); // 해외 도착 알림 → 기록 작성
+        } else if (d.type === 'returnDetect') {
+          // 귀국 알림 → 사진첩 만들기. 지금까지 분기가 없어 이 알림만 탭해도 무동작이었다.
+          navigate('AlbumCreate');
         } else if (d.type === 'neighbor_request' || d.type === 'neighbor_accept') {
           // 메이트 신청/수락 → 알림 목록(신청은 목록에서 수락·거절 화면으로 이어진다)
           navigate('Notifications');
