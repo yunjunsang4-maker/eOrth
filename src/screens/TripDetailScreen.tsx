@@ -381,12 +381,19 @@ export default function TripDetailScreen() {
         : groupRecordObjs;
 
   // 이 여행의 앨범 기록 (추천 발동 전제 — 설계 §1). 여러 개면 최신 것.
-  // matchedRecords는 매 렌더 새 배열이지만 find가 스토어의 같은 객체를 돌려주므로
-  // 결과 참조는 안정적이다 — RecoSection의 effect deps가 매 렌더 재발화하지 않는다.
-  const albumRecordForReco = useMemo(
-    () => [...matchedRecords].reverse().find((r) => r.viewType === 'album'),
-    [matchedRecords]
-  );
+  // matchedRecords의 정렬 관례는 경로마다 반대다 — groupRecordObjs(그룹 있음)는
+  // linkRecordToTrip이 append해 과거→최신(오름차순)이지만, 폴백 경로(records.filter)는
+  // addRecord가 [newRecord, ...prev]로 맨 앞에 넣어 최신→과거(내림차순)다.
+  // 배열 순서에 기대지 않고 timestamp(TravelRecord, 생성·수정 시 Date.now()로 갱신 —
+  // buildTripPrefill의 "가장 최근 기록" 판정과 동일 기준)로 직접 최신을 고른다.
+  // reduce는 새 객체를 만들지 않고 배열 안의 참조를 그대로 반환하므로, matchedRecords가
+  // 매 렌더 새 배열이어도 find와 마찬가지로 결과 참조는 안정적이다 — RecoSection의 effect
+  // deps가 매 렌더 재발화하지 않는다.
+  const albumRecordForReco = useMemo(() => {
+    const albums = matchedRecords.filter((r) => r.viewType === 'album');
+    if (albums.length === 0) return undefined;
+    return albums.reduce((latest, r) => ((r.timestamp ?? 0) > (latest.timestamp ?? 0) ? r : latest));
+  }, [matchedRecords]);
   // RecoSection에 넘길 개인화 재료. 매 렌더 새 배열이 되지 않도록 records에만 묶는다.
   const recoPastRecords = useMemo(() => records.map((r) => ({ viewType: r.viewType })), [records]);
 
