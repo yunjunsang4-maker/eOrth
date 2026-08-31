@@ -2054,7 +2054,8 @@ const en = {
   },
   returnDetect: {
     notifTitle: 'Welcome home! 🏠',
-    notifBody: 'How was your trip? Capture it in eOrth',
+    // 탭하면 사진첩 만들기로 간다(AppNavigator의 returnDetect 분기) — 문구도 그 목적지에 맞춘다
+    notifBody: 'Your trip photos are piling up — save them as an album',
     nudgeTitle: 'Turn on return detection?',
     nudgeBody: "We'll remind you to journal when you get back home from a trip.",
     nudgeLater: 'Later',

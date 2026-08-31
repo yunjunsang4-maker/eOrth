@@ -74,6 +74,13 @@ export default function ReturnDetector() {
 
         // 해외→거주국 전환 감지
         if (abroadLast && !abroad) {
+          // FAB 사진첩 강조 창의 시작점 기록 (utils/fabHighlight.ts가 소비).
+          // 알림 발송 조건(권한)과 무관하게 남긴다 — 알림을 못 보내도 앱을 열면 배지로 유도된다.
+          // await 하지 않고 catch로 삼키는 이유: 여기서 throw하면 아래 발송과 '판정 저장'까지
+          // 통째로 건너뛴 채 바깥 catch로 빠진다. 그러면 abroadLast가 'true'로 남아 다음 체크가
+          // 같은 귀국을 다시 감지 → 알림 중복이 된다. 이 한 줄은 부가 기능이라 기존 흐름의
+          // 어떤 단계도 막아서는 안 된다(실패해도 잃는 것은 배지 하나뿐).
+          AsyncStorage.setItem(DETECTOR_KEYS.returnAt, String(Date.now())).catch(() => {});
           const hasPermission = await requestNotificationPermission();
           if (hasPermission) {
             await Notifications.scheduleNotificationAsync({

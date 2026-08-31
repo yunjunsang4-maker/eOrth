@@ -44,6 +44,13 @@ export const DETECTOR_KEYS = {
   snapSent: '@eorth/snapDetect/sent', // SnapDetector — 이번 해외 체류에서 스냅을 보냈는가('true')
   arrivalSentCountry: '@eorth/arrivalDetect/sentCountry', // ArrivalNotifier — 도착 알림을 낸 나라 ISO2
   returnAbroadLast: '@eorth/returnDetect/abroadLast', // ReturnDetector — 직전 판정이 해외였는가
+  // 아래 둘은 '보냈는가'가 아니라 FAB 사진첩 배지의 강조 창(utils/fabHighlight.ts)을 계산하는
+  // 시각 값이다. 성격이 조금 다르지만 여기 둔 이유는 지우는 근거가 같기 때문이다 —
+  // returnAt은 거주국 기준으로 찍힌 값이라 거주국이 초기화되면 무효고, albumCreatedAt은
+  // records와 짝인데 clearPersistedStores가 records를 지운다. 남기면 '앨범이 없는데
+  // 만들었다고 판단해 배지가 영영 안 뜨는' 고착이 된다.
+  returnAt: '@eorth/returnDetect/returnAt', // 마지막 귀국 판정 시각 (FAB 강조 창 시작점)
+  albumCreatedAt: '@eorth/album/lastCreatedAt', // 마지막 사진첩 생성 시각 (강조 해제 근거)
 } as const;
 
 /**

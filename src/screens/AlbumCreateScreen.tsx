@@ -42,6 +42,8 @@ import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 import { runFormatReco } from '../services/photoAI/recoEngine';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DETECTOR_KEYS } from '../store/persist';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -452,6 +454,10 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           mediaAssetIds: merged.mediaAssetIds,
           pastRecords: records.map((r) => ({ viewType: r.viewType })),
         }).catch(() => {});
+        // FAB 사진첩 배지 해제 근거 (utils/fabHighlight.ts). 이어 담기도 '사진첩을 만드는 행동'을
+        // 마친 것이므로 신규와 같이 기록한다 — 안 남기면 배지가 7일 내내 계속 뜬다.
+        // await 금지: 아래 replace를 지연시키지 않는다(runFormatReco와 같은 이유).
+        AsyncStorage.setItem(DETECTOR_KEYS.albumCreatedAt, String(Date.now())).catch(() => {});
         if (failCount > 0) {
           Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
         }
@@ -494,6 +500,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         mediaAssetIds: newRec.mediaAssetIds,
         pastRecords: records.map((r) => ({ viewType: r.viewType })),
       }).catch(() => {});
+      // FAB 사진첩 배지 해제 근거 (utils/fabHighlight.ts) — await 금지(위와 같은 이유)
+      AsyncStorage.setItem(DETECTOR_KEYS.albumCreatedAt, String(Date.now())).catch(() => {});
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
