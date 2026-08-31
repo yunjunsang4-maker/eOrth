@@ -1,12 +1,17 @@
 ﻿# 행사 당일 매칭 자동 실행 래퍼 (Windows 작업 스케줄러가 부른다)
 #
-#   # 1일차
+# 현재 프로세스는 **하루 1회 17:30(KST) 일괄 매칭**이다 — -Slot/-Boundary 는 주지 않는다.
+#
+#   # 1일차 (17:30) — 이 실행이 이월 명단 파일을 만든다
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\event-day-run.ps1 `
+#       -From "2026-09-09 00:00"
+#   # 2일차·최종일 (17:30) — 1일차 이월 명단 파일을 읽고, 다음 날이 없으므로 -LastDay
+#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\event-day-run.ps1 `
+#       -From "2026-09-10 00:00" -CarryFile "event-carry-2026-09-09.local.json" -LastDay
+#
+#   # 수동 폴백 — 하루를 두 타임으로 끊을 때만 -Slot·-Boundary 를 함께 준다(둘은 항상 짝이다)
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\event-day-run.ps1 `
 #       -Slot 1 -Boundary "2026-09-09 14:00" -From "2026-09-09 00:00"
-#   # 2일차 — 1일차 타임②가 만든 이월 명단 파일을 읽는다
-#   powershell -NoProfile -ExecutionPolicy Bypass -File scripts\event-day-run.ps1 `
-#       -Slot 1 -Boundary "2026-09-10 14:00" -From "2026-09-10 00:00" `
-#       -CarryFile "event-carry-2026-09-09.local.json"
 #
 # 왜 래퍼가 필요한가 — 자동화 범위는 "정시에 매칭 실행 → 리포트가 브라우저에 자동으로 열림"까지다.
 # 부스 현장에서 **콘솔은 아무도 안 본다.** 성공하면 리포트를, 실패하면 실패 사유를 담은 HTML을
@@ -18,12 +23,21 @@
 # 한글 주석·문자열이 전부 깨진다(파싱까지 어긋날 수 있다).
 
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('1', '2')][string]$Slot,
-  [Parameter(Mandatory = $true)][string]$Boundary,
+  # -Slot·-Boundary 는 **두 타임 폴백에서만** 준다. 하루 1회 일괄 매칭에서는 비워 둔다
+  # (비면 CLI 에 --slot/--boundary 를 아예 안 붙인다 — 빈 문자열을 넘기면 CLI 가 형식 오류로 멈춘다).
+  # 둘 중 하나만 주면 CLI 가 "--slot 과 --boundary 는 함께 써야 합니다"로 멈춘다.
+  # ValidateSet 은 그대로 둔다 — 인자를 **안 주면** 검사 자체가 돌지 않고($Slot 은 빈 문자열),
+  # 주면 1·2 만 통과한다(5.1 실측 확인). 그래서 '' 를 집합에 넣을 필요가 없다.
+  [ValidateSet('1', '2')][string]$Slot,
+  [string]$Boundary,
   [Parameter(Mandatory = $true)][string]$From,
-  # 전날 이월 명단 파일(2일차 실행에만 준다). 1일차 타임②(--slot 2) 실행이 만들어 둔 파일이다.
+  # 전날 이월 명단 파일(2일차 실행에만 준다). 전날 17:30 실행이 만들어 둔 파일이다.
   # 1일차 실행에서는 비워 둔다. 파일이 없으면 CLI 가 멈추고 실패 화면을 띄운다(조용히 넘어가지 않는다).
   [string]$CarryFile,
+  # 행사 **마지막 날** 실행에만 준다. CLI 에 --last-day 를 붙여 이월 파일 생성을 막고,
+  # 미매칭 안내를 "오늘로 끝"으로 바꾼다. 안 주면 최종일 리포트가 "내일 매칭에 자동 합류합니다"를
+  # 그대로 찍어 **그분이 아무것도 못 받는다**(다음 날이 없다).
+  [switch]$LastDay,
   # 스태프 시연 제출 등을 뺄 때. 쉼표로 구분한 인스타 아이디.
   # ⚠️ 1일차에 이걸 썼다면 **2일차에도 같은 값을 줘야** 한다 — 그날 풀이 달라지면 리포트가 어긋난다.
   [string]$Exclude,
@@ -43,8 +57,12 @@ $errorPage = Join-Path $repo 'event-error.local.html'
 
 # CLI 인자를 배열로 조립한다 — 선택 인자는 값이 있을 때만 붙인다.
 # 빈 문자열을 그대로 넘기면 CLI 가 "형식이 올바르지 않습니다"로 멈춘다(1일차 실행이 전부 실패한다).
-$cliArgs = @('--event', $EventCode, '--slot', $Slot, '--boundary', $Boundary, '--from', $From)
+$cliArgs = @('--event', $EventCode, '--from', $From)
+if ($Slot) { $cliArgs += @('--slot', $Slot) }
+if ($Boundary) { $cliArgs += @('--boundary', $Boundary) }
 if ($CarryFile) { $cliArgs += @('--carry-file', $CarryFile) }
+# 값 없는 스위치라 인자를 하나만 붙인다(CLI 의 flag() 는 뒤에 값이 없어도 잡는다)
+if ($LastDay) { $cliArgs += '--last-day' }
 if ($Exclude) { $cliArgs += @('--exclude', $Exclude) }
 
 # 실패 화면에 그대로 보여줄 명령 — 스태프가 이걸 복붙해 수동 폴백할 수 있어야 한다.
