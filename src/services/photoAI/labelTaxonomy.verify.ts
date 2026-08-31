@@ -1,3 +1,4 @@
+// src/services/photoAI/labelTaxonomy.verify.ts
 import { conceptAffinityFromLabels } from './labelTaxonomy';
 
 let failed = 0;
