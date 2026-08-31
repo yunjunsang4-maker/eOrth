@@ -21,6 +21,12 @@ export interface NativePhotoAnalysis {
   isFood: boolean;          // 음식
   isLandscape: boolean;     // 풍경/자연
   isLandmark: boolean;      // 건축물/랜드마크
+  // ─ 확장 신호 (형식 추천, 2026-08-31) — 구 네이티브 빌드에선 undefined ─
+  sceneLabels?: { label: string; confidence: number }[]; // 플랫폼 원시 라벨 상위 10
+  faceCount?: number;
+  hasText?: boolean;
+  colorStats?: { saturation: number; warmth: number; contrast: number; darkness: number };
+  dhash?: string;          // 16진수 16자
   error?: string | null;
 }
 
