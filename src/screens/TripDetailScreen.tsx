@@ -384,8 +384,10 @@ export default function TripDetailScreen() {
   // matchedRecords의 정렬 관례는 경로마다 반대다 — groupRecordObjs(그룹 있음)는
   // linkRecordToTrip이 append해 과거→최신(오름차순)이지만, 폴백 경로(records.filter)는
   // addRecord가 [newRecord, ...prev]로 맨 앞에 넣어 최신→과거(내림차순)다.
-  // 배열 순서에 기대지 않고 timestamp(TravelRecord, 생성·수정 시 Date.now()로 갱신 —
-  // buildTripPrefill의 "가장 최근 기록" 판정과 동일 기준)로 직접 최신을 고른다.
+  // 배열 순서에 기대지 않고 timestamp로 직접 최신을 고른다.
+  // timestamp는 생성 시 Date.now() (updateRecord는 갱신하지 않음 — changes 타입이
+  // Omit<..., 'timestamp'>라 아예 넘길 수도 없다). 따라서 이건 '수정 시각'이 아니라
+  // '생성 시각 기준 최신' 판정이다 — buildTripPrefill의 "가장 최근 기록"과 동일 기준.
   // reduce는 새 객체를 만들지 않고 배열 안의 참조를 그대로 반환하므로, matchedRecords가
   // 매 렌더 새 배열이어도 find와 마찬가지로 결과 참조는 안정적이다 — RecoSection의 effect
   // deps가 매 렌더 재발화하지 않는다.

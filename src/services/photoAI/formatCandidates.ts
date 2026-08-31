@@ -157,10 +157,9 @@ export function blogCandidates(
 
   for (const { g, members } of validGroups) {
     const dayIndex = localDayNumber(g.startTime) - firstDayNumber + 1;
-    if (dayIndex !== lastDayIndex) {
-      seeds.push({ kind: 'heading', dayIndex });
-      lastDayIndex = dayIndex;
-    }
+    // 대표 사진을 *먼저* 고른다. 헤딩을 먼저 push하면 그 스팟의 사진이 전부 걸러진 경우
+    // (dedupe 후 scorePhoto가 0 이하) 이미지 없는 "DAY N" 헤딩만 씨앗에 남아
+    // 프리필된 블로그에 빈 소제목이 생긴다. 헤딩은 이미지가 확정된 스팟에서만 push한다.
     const top = dedupeByDhash(members)
       .map((p) => ({ p, score: scorePhoto(p) }))
       .filter((x) => x.score > 0)
@@ -169,6 +168,12 @@ export function blogCandidates(
       .sort((a, b) => a.p.creationTime - b.p.creationTime)
       .map((x) => x.p.uri);
     if (top.length === 0) continue;
+    // lastDayIndex도 여기서만 갱신한다 — 사진 없는 스팟을 건너뛸 때 갱신해 버리면
+    // 같은 날의 다음(사진 있는) 스팟이 헤딩 없이 시작된다.
+    if (dayIndex !== lastDayIndex) {
+      seeds.push({ kind: 'heading', dayIndex });
+      lastDayIndex = dayIndex;
+    }
     seeds.push({
       kind: 'images',
       uris: top,

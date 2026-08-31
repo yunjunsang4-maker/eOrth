@@ -30,6 +30,20 @@ const COLORS = {
 const THUMB_MAX = 4;
 
 /**
+ * pending을 "죽은 상태"로 간주하는 한계 시간.
+ *
+ * 분석 도중 앱이 하드 킬되면 recoEngine이 'unavailable'로 전환할 기회를 잃는다.
+ * 엔진은 분석 시작 직후 status:'pending'을 *현재 지문과 함께* 저장하므로(recoEngine.ts),
+ * 죽은 뒤 다시 들어오면 "지문은 일치하는데 status는 pending"인 상태가 저장소에 영구히 남는다.
+ * load()는 지문 불일치일 때만 재분석을 트리거하기 때문에 그대로 두면
+ * "AI가 사진을 보고 있어요…"가 영원히 뜨고 사용자가 벗어날 방법이 없다.
+ *
+ * 3분으로 잡은 이유: 정상 분석은 수십 초 내 끝나고(폴링 간격 5초) 그 사이 화면을 떠났다
+ * 돌아와도 죽지 않은 분석을 중간에 끊지 않을 만큼의 여유값이다.
+ */
+const STALE_PENDING_MS = 3 * 60_000;
+
+/**
  * 후보 생성기가 `reco.reason.${viewType}_${concept}`로 조립하는 동적 i18n 키.
  * t()가 ko.ts 구조로 엄격히 타입되어 있어 RecoCard.reasonKey(string)를 그대로 넘기면
  * 컴파일되지 않는다. 실제 키 집합은 두 union의 곱이므로 여기서 한 번만 좁혀 쓴다.
@@ -47,7 +61,12 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const [state, setState] = useState<RecoState | null>(null);
-  const impressionLogged = useRef(false);
+  // 이미 impression을 남긴 cardId 집합.
+  // 단순 boolean 플래그로 막으면 최초 1회만 기록되고, 재분석으로 카드 셋이 통째로 바뀌어도
+  // 새 카드의 노출이 영영 로그에 남지 않는다. cardId 단위로 세야 "같은 카드 중복 방지"와
+  // "새 카드 기록"을 동시에 만족한다. (카드 id는 결정론적이라 같은 카드가 재분석 후
+  // 다시 나와도 재로그되지 않는 것이 의도된 동작이다 — formatCandidates 참고)
+  const impressionLoggedIds = useRef<Set<string>>(new Set());
 
   // pastRecords는 호출부에서 매 렌더 새 배열로 만들어질 수 있다. deps에 넣으면
   // load가 매 렌더 재생성 → setState → 재렌더 무한 루프가 된다. ref로 우회한다.
@@ -59,8 +78,15 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
     const s = await getRecoState(albumRecord.id);
     const medias = albumRecord.medias ?? [];
     const fp = mediasFingerprint(medias);
-    // 앨범이 바뀌었으면(지문 불일치) 재분석 트리거 + pending 표시
-    if (s && s.mediasFingerprint !== fp) {
+    // 재분석 트리거는 두 가지다.
+    //  (1) 앨범이 바뀌었다 = 지문 불일치.
+    //  (2) 지문은 같은데 pending이 STALE_PENDING_MS를 넘겼다 = 분석 도중 앱이 죽어 고착된 상태.
+    //      (2)를 넣지 않으면 하드 킬 이후 로딩 문구가 영구히 뜬다(STALE_PENDING_MS 주석 참고).
+    // 재호출이 안전한 근거: recoEngine의 조기 반환은 status === 'ready'일 때만 걸리므로
+    // pending 상태에서 다시 부르면 그냥 새 분석이 돈다(중복 분석이 아니라 죽은 분석의 대체).
+    const fingerprintChanged = !!s && s.mediasFingerprint !== fp;
+    const stalePending = !!s && s.status === 'pending' && Date.now() - s.updatedAt > STALE_PENDING_MS;
+    if (s && (fingerprintChanged || stalePending)) {
       setState({ ...s, status: 'pending', cards: [] });
       runFormatReco({
         albumRecordId: albumRecord.id,
@@ -106,9 +132,10 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
   // 노출 로그는 렌더 본문이 아니라 effect에서 쏜다 — 새 아키텍처의 동시성 렌더는
   // 커밋되지 않는 렌더를 버리므로 렌더 중 부수효과는 중복·유령 로그가 된다.
   useEffect(() => {
-    if (impressionLogged.current || visible.length === 0) return;
-    impressionLogged.current = true;
+    if (visible.length === 0) return;
     for (const c of visible) {
+      if (impressionLoggedIds.current.has(c.id)) continue;
+      impressionLoggedIds.current.add(c.id);
       appendRecoLog({
         event: 'impression', cardId: c.id, viewType: c.viewType, concept: c.concept,
         photoCountSuggested: c.photoUris.length, ts: Date.now(),

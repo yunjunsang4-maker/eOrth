@@ -85,6 +85,60 @@ eq((imageSeeds[0] as { uris: string[] }).uris.length, 3, '스팟 대표 최대 3
 // ── blogCandidates: 스팟 1개면 후보 없음 ──
 eq(blogCandidates(day1, [blogGroups[0]], blogMap), [], '스팟 1개는 블로그 후보 없음');
 
+// ── blogCandidates: 대표 사진이 0장인 스팟은 DAY 헤딩도 남기지 않는다 (F2 회귀) ──
+// scorePhoto()는 isDocument/passed===false 외에 "품질 가중합이 정확히 0"일 때도 0을 반환한다.
+// 그런 사진만 있는 스팟은 usable()은 통과하지만(passed:true) top이 비어 이미지 씨앗이 생기지
+// 않는다. 헤딩을 먼저 push하던 구조에서는 이때 이미지 없는 헤딩만 씨앗에 남아, 프리필된
+// 블로그에 빈 소제목이 생겼다.
+function zeroScorePhoto(id: string, t: number): PhotoMeta {
+  return photo(id, t, { quality: { aestheticsScore: 0, blurScore: 0, exposureScore: 0, passed: true } });
+}
+const tailEmptyPhotos = [
+  ...day1,
+  zeroScorePhoto('te1', T0 + 26 * HOUR),
+  zeroScorePhoto('te2', T0 + 26 * HOUR + 30_000),
+];
+const tailEmptyGroups: SpotGroup[] = [
+  blogGroups[0],
+  { id: 'tailEmpty', photoIds: ['te1', 'te2'], startTime: T0 + 26 * HOUR, endTime: T0 + 26 * HOUR + 30_000, center: null },
+];
+const tailEmptySeeds = blogCandidates(
+  tailEmptyPhotos, tailEmptyGroups, new Map(tailEmptyPhotos.map((p) => [p.id, scores({ info: 0.6 })]))
+)[0]?.blogSeeds ?? [];
+eq(
+  tailEmptySeeds.some((sd) => sd.kind === 'heading' && sd.dayIndex === 2),
+  false,
+  '대표 사진 0장인 스팟은 DAY 헤딩도 push하지 않는다'
+);
+// 꼬리 검사까지 두는 이유: 전멸 스팟이 마지막이면 결함이 "배열 끝에 헤딩만 매달림"으로
+// 나타난다. some() 검사와 형태가 달라 한쪽만으로는 회귀를 놓칠 수 있다.
+eq(
+  tailEmptySeeds[tailEmptySeeds.length - 1]?.kind,
+  'images',
+  '전멸 스팟이 마지막이면 씨앗 꼬리는 헤딩이 아니라 이미지다'
+);
+
+// ── blogCandidates: 같은 날 앞 스팟이 전멸해도 뒤 스팟은 그 날 헤딩을 잃지 않는다 (F2 회귀) ──
+// 위 케이스와 짝을 이루는 반대 방향 불변식이다. 헤딩 push만 continue 아래로 내리고
+// lastDayIndex 갱신을 continue 위에 남겨두면, 사진 없는 앞 스팟이 lastDayIndex를 선점해
+// 같은 날 다음 스팟이 헤딩 없이 시작된다. 위 케이스는 그 실수를 그대로 통과시키므로
+// (빈 헤딩이 안 생기는 건 매한가지라) 이 케이스가 있어야 잡힌다.
+const sameDayPhotos = [
+  zeroScorePhoto('sde1', T0),
+  zeroScorePhoto('sde2', T0 + 60_000),
+  ...['sg1', 'sg2', 'sg3'].map((id, i) => photo(id, T0 + 2 * HOUR + i * 60_000)),
+];
+const sameDayGroups: SpotGroup[] = [
+  { id: 'sdEmpty', photoIds: ['sde1', 'sde2'], startTime: T0, endTime: T0 + 60_000, center: null },
+  { id: 'sdGood', photoIds: ['sg1', 'sg2', 'sg3'], startTime: T0 + 2 * HOUR, endTime: T0 + 2 * HOUR + 120_000, center: null },
+];
+const sameDaySeeds = blogCandidates(
+  sameDayPhotos, sameDayGroups, new Map(sameDayPhotos.map((p) => [p.id, scores({ info: 0.6 })]))
+)[0]?.blogSeeds ?? [];
+eq(sameDaySeeds[0], { kind: 'heading', dayIndex: 1 }, '같은 날 앞 스팟이 전멸해도 뒤 스팟이 DAY 1 헤딩을 획득');
+// seeds[0]만 보면 "헤딩이 있다"까지만 확인되고 그 헤딩이 고아인지는 못 본다
+eq(sameDaySeeds[1]?.kind, 'images', '그 DAY 헤딩 바로 뒤에 이미지 씨앗이 온다');
+
 // ── 문서 사진 제외 ──
 const doc = photo('doc', T0, { semantic: { isDocument: true } });
 const docFeeds = feedCandidates([doc, ...many], new Map([[doc.id, scores({ emotional: 0.9 })], ...cmapMany]));
