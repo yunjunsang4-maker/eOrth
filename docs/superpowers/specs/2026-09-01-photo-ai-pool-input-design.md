@@ -44,8 +44,9 @@ v1은 `runFormatReco`를 `AlbumCreateScreen`의 두 지점(신규 생성 `:527`,
 
 - 저장 위치: `${documentDirectory}photoAI/pools/<tripGroupId>.json` (여행 하나당 파일 하나)
 - 인덱스: `${documentDirectory}photoAI/pools/index.json` — `tripGroupId → {savedAt, photoCount}`만 담는다
-- `MAX_POOL_PHOTOS`·`MAX_POOLS` 제거
-- 순수 함수 6개(`samplePoolPhotos`, `pickCoverCandidates`, `prunePools`, `capPools`, `mergePool`, `parsePools`)와 `tripPhotoPool.verify.ts`의 56케이스는 **변경하지 않는다**. 바뀌는 것은 영속화 구역뿐이다.
+- **`MAX_POOL_PHOTOS`는 제거한다** — 여행당 장수 제한이 사라진다(이번 변경의 목적).
+- **`MAX_POOLS`는 500으로 올려 유지한다.** 파일이 흩어지면 6MB 제약은 사라지지만 인덱스 크기와 청소 비용은 여행 수에 비례해 계속 커진다. 실사용에서 도달할 수 없는 값을 폭주 방지 백스톱으로 남긴다. `capPools`가 죽은 코드가 되지 않는다는 이점도 있다.
+- 순수 함수 6개(`samplePoolPhotos`, `pickCoverCandidates`, `prunePools`, `capPools`, `mergePool`, `parsePools`)와 `tripPhotoPool.verify.ts`의 56케이스는 **변경하지 않는다**. 바뀌는 것은 영속화 구역과 상수 두 개뿐이다.
 - 1회 마이그레이션: 옛 단일 키를 읽어 파일로 분산한 뒤 키를 삭제한다. 실패해도 앨범 폴백이 있으므로 치명적이지 않다.
 
 ### 함정 — `poolAssetIds`
@@ -64,6 +65,13 @@ recoEngine.ts    runFormatReco({ tripGroupId, photos, pastRecords })   ← 소�
 recoStorage.ts   키를 albumRecordId → tripGroupId, 스키마 버전 1 → 2
 RecoSection.tsx  tripGroupId를 주고 상태를 받는다                       ← 얇아진다
 ```
+
+세부 계약:
+
+- **`RECO_ANALYZE_MAX`는 `recoSource.ts`에 둔다**(기본 250). 분석 상한은 소스 해석의 일부이지 엔진의 관심사가 아니다. 실기기 측정 후 이 상수만 조정한다.
+- **`sourceFingerprint(photos)`** = 각 사진의 `id ?? uri`를 **솎기 후 순서 그대로** 이어 붙인 것의 해시 + 장수. 균등 솎기가 결정론적이므로 같은 pool은 같은 지문을 낸다. 사진이 추가·삭제되면 솎기 결과가 달라져 지문이 바뀐다.
+- **앨범 write-through**: 앨범 저장 시 `PoolPhoto`는 `{ id: mediaAssetIds[uri], uri, creationTime: mediaTimes[uri] }`로 만든다. 자산 id가 없는 복사본은 `id`를 비우고 `uri`(로컬 `file://`)만 넣는다 — `poolAssetIds`가 `id` 있는 항목만 모으므로 재스캔 제외 집합을 오염시키지 않는다.
+- **진행 하트비트**는 `RecoState`에 `progress?: { done: number; total: number }`로 둔다. 엔진이 배치마다 갱신하고, `RecoSection`은 `progress`가 움직이는 동안에는 고착으로 보지 않는다.
 
 | 파일 | 변경 |
 |---|---|
@@ -120,7 +128,9 @@ pool의 사진은 갤러리 참조(`ph://`·`content://`)라 네이티브에 바
 
 `RecoSection.tsx:44`의 `STALE_PENDING_MS = 3분`은 "정상 분석은 수십 초 내 끝난다"는 전제로 잡힌 값이다. 분석 상한이 250장이 되면 정상 분석이 3분을 넘길 수 있고, 그러면 **살아 있는 분석을 죽은 것으로 오판해 재시작 → 다시 3분 초과 → 무한 재분석 루프**가 된다.
 
-→ pending 상태에 **진행 하트비트**(처리한 장수 + `updatedAt` 갱신)를 둔다. 고착 판정을 "시작 후 경과 시간"이 아니라 **"마지막 진행 이후 무변화 시간"**으로 바꾼다. 분석이 오래 걸려도 진행 중이면 죽이지 않고, 앱이 하드 킬돼 진행이 멈추면 기존과 같은 시간 안에 복구된다.
+→ pending 상태에 **진행 하트비트**(`RecoState.progress = { done, total }` + `updatedAt` 갱신)를 둔다. 엔진이 배치(8장)마다 갱신한다. 고착 판정을 "시작 후 경과 시간"이 아니라 **"마지막 진행 이후 무변화 시간"**으로 바꾼다. 분석이 오래 걸려도 진행 중이면 죽이지 않고, 앱이 하드 킬돼 진행이 멈추면 기존과 같은 시간 안에 복구된다.
+
+부수 효과로 `RecoSection`의 "AI가 사진을 보고 있어요…" 자리표시에 진행률을 표시할 수 있게 된다. 250장 분석이 길어질 때 사용자가 멈춘 것으로 오해하지 않는다.
 
 ### 나머지
 
