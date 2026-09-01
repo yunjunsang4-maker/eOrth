@@ -375,8 +375,11 @@ export default function DMScreen({ navigation, route }: Props) {
   const flatListRef = useRef<FlatList>(null);
   const sharedRef = useRef(false);
 
-  // 내 기록만 필터
-  const myRecords = records.filter(r => r.isMyPost !== false);
+  // 내 기록만 필터.
+  // 과거 여행 불러오기가 카드만 세우려고 만든 '표지 전용' 기록은 뺀다 — viewType이 'album'이라
+  // 공유 목록에 "사진첩"으로 뜨는데, 실제로는 썸네일 1장뿐이라 받는 쪽에서 볼 게 없다.
+  // (TravelRecord.isImportCover 주석 참조)
+  const myRecords = records.filter(r => r.isMyPost !== false && !r.isImportCover);
 
   // 공유로 진입한 경우 자동 전송 — 타인 게시물은 feedPosts에 있으므로 둘 다 검색
   useEffect(() => {

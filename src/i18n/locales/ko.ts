@@ -846,6 +846,8 @@ const ko = {
     period: '기간',
     loadPhotos: '사진 불러오기',
     loadPhotosAppend: '추가할 사진 불러오기',
+    // 과거 여행 불러오기가 이 여행 카드에 남겨 둔 분석 결과로 국가·기간이 채워진 상태
+    seededFromImport: '불러온 여행의 국가·기간을 채워 뒀어요. 바로 사진을 불러올 수 있어요.',
     dupTitle: '이 사진첩에 추가돼요',
     dupPhotoCount: '사진 {{count}}장',
     dupAppendHint: '사진첩은 여행 카드당 하나예요. 고른 사진은 이 사진첩 뒤에 담기고, 이미 담긴 사진은 목록에서 빠져요.',
@@ -1548,7 +1550,13 @@ const ko = {
     icPhotoPrefix: '사진 ',
     icPhotoCountN: '{{count}}장',
     icPhotoSuffix: '을 추가했어요',
+    // 즉시 생성 경로 — 사진은 앱으로 복사되지 않고 카드에 연결만 돼 있다
+    icReadyPrefix: '이 여행의 사진 ',
+    icReadySuffix: '을 바로 쓸 수 있게 준비해 뒀어요',
+    icReadyHint: '여행 카드에서 사진첩·기록을 만들 때\n다시 찾지 않고 바로 불러올 수 있어요.',
     icStart: '이어스 시작하기',
+    // 프로필에서 들어온 기존 회원용 — 온보딩이 아니라 프로필로 돌아가는 버튼이다
+    icStartFromProfile: '기록 시작하기',
     periodSince: '지난 불러오기 이후',
     periodSinceRange: '{{date}} 이후',
     period1y: '최근 1년',
@@ -1605,6 +1613,10 @@ const ko = {
     mergeSelect2: '여행을 2개 이상 선택하세요',
     mergeN: '{{count}}개 여행 합치기',
     importSelectedN: '선택한 여행 {{count}}개 가져오기',
+    // 결과 목록 하단 보조 버튼 — 예전 기본 흐름(여행마다 사진을 직접 고르고 사진첩까지 생성)
+    pickPhotosManually: '사진 직접 고르기',
+    creatingCards: '여행 기록 카드를 만들고 있어요…',
+    creatingCardsN: '여행 기록 카드를 만들고 있어요… ({{done}}/{{total}})',
     // 가져온 여행 카드의 기본 제목·본문. 저장되는 값이라 가져오는 시점의 언어로 만든다.
     // ({{country}}는 표시용으로 변환된 국가명 — 조사가 붙지 않는 자리에만 둔다)
     tripTitle: '{{country}} 여행',
@@ -1884,6 +1896,11 @@ const ko = {
     groupNamePlaceholder: '여행 묶음 이름을 입력해주세요',
     saveLarge: '저장하기',
     noPhotoToChange: '변경할 수 있는 사진이 없어요.',
+    // 과거 여행 불러오기로 만든 카드 — 보관해 둔 분석 사진에서 썸네일을 다시 뽑는다
+    rerollThumb: '썸네일 다시 뽑기',
+    rerollThumbBusy: '뽑는 중…',
+    noPoolPhotos: '이 여행에 보관된 사진이 없어요. 사진첩을 만들어 사진을 담아 주세요.',
+    thumbRerollFailed: '사진을 불러오지 못했어요. 갤러리에서 사진이 지워졌거나 iCloud에서 내려받지 못했을 수 있어요.',
     sampleNoArchive: '샘플 여행 카드는 보관할 수 없어요.',
     archiveCardTitle: '기록카드 보관',
     archiveCardMsg: '이 여행의 모든 기록이 보관함으로 이동하고, 프로필에서 카드가 숨겨져요.',

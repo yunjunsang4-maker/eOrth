@@ -25,6 +25,7 @@ import { useSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
+import { getTripPool } from '../utils/tripPhotoPool';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -190,6 +191,33 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const locCacheRef = useRef<Map<string, boolean | null>>(new Map()); // assetId → 국가 안 여부(null=GPS 없음)
   const geoScanToken = useRef(0);
   useEffect(() => () => { geoScanToken.current++; }, []); // 언마운트 시 진행 중 스캔 중단
+
+  // ── 과거 여행 불러오기가 보관해 둔 사진 후보 ──
+  // 불러오기는 카드를 만들 때 썸네일 1장만 복사하고, '이 여행의 사진이 갤러리의 어느 장인가'는
+  // tripPhotoPool에 참조로 남긴다. 그 카드에서 여기로 들어왔다면 국가·기간을 다시 고를 이유가
+  // 없고, GPS 판정도 이미 끝나 있다(스캔이 국가 구간으로 확정한 사진들이다).
+  const [seeded, setSeeded] = useState(false); // 보관분으로 채워졌음 — 안내 한 줄 노출용
+  useEffect(() => {
+    if (!tripGroupId) return;
+    let alive = true;
+    (async () => {
+      const pool = await getTripPool(tripGroupId);
+      if (!alive || !pool) return;
+      // 판정 캐시 선주입 — 이게 없으면 GPS 필터를 켤 때마다 사진마다 getAssetInfoAsync를
+      // 다시 돌려(장당 파일 I/O) 수백 장에서 수십 초가 걸린다.
+      for (const p of pool.photos) {
+        if (p.id) locCacheRef.current.set(p.id, true);
+      }
+      const matched = COUNTRIES.find((c) => c.name === pool.countryName);
+      if (matched) setSelectedCountry(matched);
+      const s = parseAlbumDate(pool.startDate);
+      const e = parseAlbumDate(pool.endDate);
+      if (s) setStartDate(s);
+      if (e) setEndDate(e);
+      setSeeded(true);
+    })();
+    return () => { alive = false; };
+  }, [tripGroupId]);
 
   // 미리보기(제목 + 썸네일)
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -442,6 +470,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           // 담은 사진의 촬영일이 기존 기간 밖일 수 있어 기간을 합집합으로 넓힌다
           startDate: mergedStart ? fmtDate(mergedStart) : appendTarget.startDate,
           endDate: mergedEnd ? fmtDate(mergedEnd) : appendTarget.endDate,
+          // 불러오기가 만든 '표지 전용' 기록이었다면 여기서 진짜 사진첩이 된다 —
+          // 표시를 풀어 여행 상세의 형식 목록·프로필 배지에 사진첩으로 나타나게 한다.
+          ...(appendTarget.isImportCover ? { isImportCover: false } : {}),
         };
         updateRecord(appendTarget.id, merged);
         success(); // 기존 사진첩에 이어 담기 완료 — 신규 생성과 같은 완료 신호를 준다
@@ -644,6 +675,16 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 {t('album.dupPhotoCount', { count: overlappingAlbum.medias?.length ?? 0 })}
               </Text>
               <Text style={st.dupHint}>{t('album.dupAppendHint')}</Text>
+            </View>
+          )}
+
+          {/* 과거 여행 불러오기가 이 카드에 남겨 둔 사진이 있으면 국가·기간이 이미 채워져 있다 */}
+          {seeded && (
+            <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2), marginTop: 20 }]}>
+              <GalleryIcon size={14} color={skinAccent.accent} />
+              <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
+                {t('album.seededFromImport')}
+              </Text>
             </View>
           )}
 

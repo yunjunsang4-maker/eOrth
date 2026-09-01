@@ -11,6 +11,7 @@ import {
   Modal,
   Easing,
   Alert,
+  ActivityIndicator,
   PermissionsAndroid,
 } from 'react-native';
 import { Text } from '../ui/Text';
@@ -33,6 +34,7 @@ import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
+import { COUNTRIES } from '../constants/countries';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
@@ -66,6 +68,14 @@ import {
 } from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
 import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
+import { copyTripCover } from '../utils/importPhotoStore';
+import { classifyImportTarget } from '../utils/importRouting';
+import {
+  pickCoverCandidates,
+  poolAssetIds,
+  saveTripPool,
+  syncTripPools,
+} from '../utils/tripPhotoPool';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -95,6 +105,10 @@ const makeSincePeriod = (lastImportAt: number): ScanPeriodOption => ({
   sinceTs: Math.max(0, lastImportAt - RESCAN_OVERLAP_MS),
 });
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
+// 썸네일 후보 수. 무작위로 뽑은 사진은 iCloud 오프로드·content:// 자산 등으로 확보에
+// 실패할 수 있어 넉넉히 받아 두고 순서대로 시도한다(전부 실패해도 카드는 만든다).
+// 3장이었을 땐 그 여행 사진이 대부분 오프로드된 사용자에게서 전부 실패해 목업 카드가 됐다.
+const COVER_COPY_TRIES = 8;
 // 분석 기간 칩 슬라이드의 양끝 흐림 폭. 이 거리만큼 스크롤되면 흐림이 완전히 켜진다.
 const PERIOD_FADE_W = 28;
 
@@ -402,11 +416,14 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   useBlockHardwareBack();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { homeCountryCode, lastImportAt } = useSettings();
+  const { homeCountryCode, lastImportAt, setLastImportAt } = useSettings();
   // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
-  const { records } = useRecords();
+  const { records, tripGroups, addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
   const recordsRef = useRef(records);
   recordsRef.current = records;
+  // 스캔 루프 안에서 최신 카드 목록이 필요하다(보관된 사진 후보 정리 기준)
+  const tripGroupsRef = useRef(tripGroups);
+  tripGroupsRef.current = tripGroups;
 
   // 여행 카드의 기본 제목·본문을 현재 언어로 만든다. 제목은 addImportedAlbum으로 저장되는
   // 값이라, 영어 사용자에게 '독일 여행'이 그대로 남지 않도록 생성 시점에 번역해 둔다.
@@ -446,7 +463,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const [progress, setProgress] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [scannedTrips, setScannedTrips] = useState<ScannedTrip[]>([]);
-  const [isImporting] = useState(false);
+  // 카드 즉시 생성 진행 상태 — 예전엔 이 화면이 저장을 하지 않고 사진 선택 화면으로
+  // 넘기기만 해서 상수 false였다. 지금은 여기서 썸네일 복사·카드 생성까지 끝낸다.
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  // setState는 다음 렌더에야 반영돼 같은 프레임의 이중 탭을 못 막는다(카드가 두 벌 생긴다)
+  const importingRef = useRef(false);
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
   // 분석 기간 목록 — 이전에 가져온 적이 있으면 '지난 불러오기 이후' 옵션을 맨 앞에 추가한다.
   // 재스캔은 그 이후 사진만 보면 충분해 버킷 수(=좌표 조회 횟수)가 크게 줄어든다.
@@ -645,7 +667,14 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
       // 이미 가져온 사진은 스캔 대상에서 제외 — 앱 내 재실행 시 같은 여행이 중복 카드로
       // 또 만들어지는 것을 막고, 조회 대상이 줄어 재스캔도 빨라진다.
+      // 기록에 실제로 담긴 사진 + 여행 카드에 '바로 쓸 수 있게' 보관해 둔 사진 후보.
+      // 후자를 빼먹으면 안 된다 — 지금은 카드를 만들 때 썸네일 1장만 복사하므로
+      // mediaAssetIds만으로는 여행당 1장밖에 못 걸러 같은 여행이 매번 다시 올라온다.
+      // (없어진 카드의 보관분은 syncTripPools가 먼저 정리한다 — 카드를 지웠는데 사진이
+      //  영영 스캔에서 빠지는 일을 막는다)
       const importedIds = collectImportedAssetIds(recordsRef.current);
+      const pools = await syncTripPools(tripGroupsRef.current.map((g) => g.id));
+      for (const id of poolAssetIds(pools)) importedIds.add(id);
       const scanTargets = excludeImported(assets, importedIds);
       const skippedImported = assets.length - scanTargets.length;
       // 참조만 바꿔 끼운다. 이전 코드는 assets.push(...scanTargets)로 내용을 복사했는데,
@@ -1009,10 +1038,18 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     setMergeVisible(false);
   };
 
-  const handleImport = () => {
-    const chosen = scannedTrips
+  // 선택된 여행을 출발일 순으로 — 두 가져오기 경로가 같은 순서를 쓴다
+  const chosenTrips = () =>
+    scannedTrips
       .filter((t) => selectedIds.includes(t.id))
       .sort((a, b) => new Date(a.startDate.replace(/\./g, '-')).getTime() - new Date(b.startDate.replace(/\./g, '-')).getTime());
+
+  // ── 보조 경로: 사진 직접 고르기 ──
+  // 예전의 기본 흐름(여행마다 사진 그리드에서 고르고 썸네일을 확정)이다. 여행·사진이 많으면
+  // 단계가 길어 피로하다는 피드백이 있어 기본에서 내렸지만, 처음부터 사진첩까지 만들고 싶은
+  // 사용자를 위해 남겨 둔다.
+  const handlePickPhotos = () => {
+    const chosen = chosenTrips();
     if (chosen.length === 0) return;
     const trips = chosen.map((t) => ({
       id: t.id,
@@ -1021,6 +1058,121 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       photos: t.photos, // {id?, uri, localUri?, creationTime?}[] — localUri는 저장 단계 재조회 생략용
     }));
     navigation.navigate('ImportPhotoSelect', { trips, from: route.params?.from });
+  };
+
+  // ── 기본 경로: 여행 기록 카드 즉시 생성 ──
+  // 사진첩을 만들지 않는다. 여행당 썸네일 1장만 복사해 카드를 세우고, 스캔이 판정한
+  // '이 여행의 사진들'은 갤러리 참조로만 보관한다(tripPhotoPool). 나중에 그 카드에서
+  // 사진첩·다른 기록 형식을 만들 때 다시 스캔하지 않고 바로 꺼내 쓴다.
+  const handleImport = async () => {
+    if (importingRef.current) return; // 이중 탭 방지 — state는 다음 렌더에야 반영된다
+    const chosen = chosenTrips();
+    if (chosen.length === 0) return;
+    importingRef.current = true;
+    setIsImporting(true);
+    setImportProgress({ done: 0, total: chosen.length });
+    try {
+      let tripCount = 0;
+      let photoCount = 0; // 카드에 연결해 둔(=바로 꺼내 쓸 수 있는) 분석 사진 총 장수
+      const countries: { flag: string; name: string }[] = [];
+      // 썸네일 확보 실패 사유 모음 — 개발 빌드에서만 화면에 띄운다.
+      // 이 실패는 조용히 지나가면 "카드는 생겼는데 목업 사진"으로만 보여서 원인을 못 찾는다.
+      const coverErrors: string[] = [];
+      const homeCountryName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
+      const stayCountryName = activeStayGroup?.stay?.status !== 'ended' ? (activeStayGroup?.countryName ?? null) : null;
+
+      for (let i = 0; i < chosen.length; i++) {
+        const trip = chosen[i];
+        setImportProgress({ done: i, total: chosen.length });
+
+        // 갈 곳을 먼저 정한다 — 거주국(skip)이면 기록을 만들지 않는다.
+        // (기록부터 만들고 나중에 건너뛰면 어느 카드에도 안 붙은 기록이 남는다)
+        const target = classifyImportTarget(trip.countryName, homeCountryName, stayCountryName);
+        if (target === 'skip') continue; // clusterForeignTrips가 이미 제외 — 방어적으로 무시
+
+        // 썸네일 — 분석된 사진 중 무작위 1장. (AI 판정이 들어오면 이 선택만 교체하면 된다)
+        // 후보 순서도 무작위다. 실패해서 다음 후보로 넘어갈 때 옆 인덱스를 쓰면 방금 실패한
+        // 사진과 거의 같은 장면이 나와, 같은 이유로 또 실패한다.
+        const cover = await copyTripCover(
+          trip.id,
+          pickCoverCandidates(trip.photos, COVER_COPY_TRIES).map((c) => ({ id: c.id, uri: c.uri, localUri: c.localUri })),
+        );
+        const coverUri = cover.uri ?? undefined;
+        // 후보를 전부 실패해도 카드는 만든다 — 썸네일 없는 카드가, 여행이 통째로 안 들어오는 것보다 낫다
+        // (그 경우 프로필 카드는 이모지+그라데이션 기본 배경으로 떨어진다)
+        if (!coverUri && cover.error) coverErrors.push(`${trip.countryName}: ${cover.error}`);
+        const coverSrc = cover.source
+          ? trip.photos.find((p) => p.uri === cover.source!.uri)
+          : undefined;
+
+        const mediaAssetIds: Record<string, string> = {};
+        const mediaTimes: Record<string, number> = {};
+        if (coverUri && coverSrc?.id) mediaAssetIds[coverUri] = coverSrc.id;
+        if (coverUri && coverSrc?.creationTime) mediaTimes[coverUri] = coverSrc.creationTime;
+
+        const rec = addImportedAlbum({
+          country: trip.country, countryName: trip.countryName, countryFlag: trip.countryFlag,
+          date: trip.date, startDate: trip.startDate, endDate: trip.endDate,
+          title: trip.title,
+          medias: coverUri ? [coverUri] : [],
+          representativePhoto: coverUri,
+          mediaAssetIds,
+          mediaTimes,
+          // 사진첩이 아니라 카드 표지다 — 여행 상세의 형식 목록·프로필 카드 배지에서 빠진다.
+          // (사용자가 만들지 않은 '사진 1장짜리 사진첩'이 생긴 것처럼 보이던 문제)
+          isImportCover: true,
+        });
+
+        // 진행 중 체류국 사진이면 체류 카드로 흡수(백데이팅), 제3국이면 별도 여행 카드
+        let groupId: string | null = null;
+        if (target === 'stay') {
+          absorbIntoStay(rec.id, trip.startDate);
+          groupId = activeStayGroup?.id ?? null;
+        } else {
+          // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
+          groupId = addTripGroup({ title: trip.title, records: [rec.id], coverRecordId: rec.id }).id;
+          tripCount += 1;
+          countries.push({ flag: trip.countryFlag, name: trip.countryName });
+        }
+
+        // 분석된 사진을 카드에 연결해 보관 — 원본은 복사하지 않고 갤러리 참조만 남긴다
+        if (groupId) {
+          await saveTripPool({
+            tripGroupId: groupId,
+            recordId: rec.id,
+            country: trip.country, countryName: trip.countryName, countryFlag: trip.countryFlag,
+            title: trip.title, startDate: trip.startDate, endDate: trip.endDate,
+            photos: trip.photos.map((p) => ({ id: p.id, uri: p.uri, creationTime: p.creationTime })),
+          });
+          photoCount += trip.photos.length;
+        }
+      }
+
+      setImportProgress({ done: chosen.length, total: chosen.length });
+      // 다음 재스캔의 기본 기간 기준점 — 실제로 카드가 만들어진 경우에만 갱신한다.
+      // (0건이면 기준을 옮기면 안 된다. 이번에 안 담은 사진들이 다음 스캔에서 기간 밖으로
+      //  밀려나 영영 못 찾게 되기 때문)
+      if (photoCount > 0) setLastImportAt(Date.now());
+      // 개발 빌드 한정 진단 — 콘솔을 못 보는 상황에서도 왜 썸네일이 비었는지 읽을 수 있게.
+      // 릴리스에서는 뜨지 않는다(사용자가 할 수 있는 일이 없는 내부 사유다).
+      if (__DEV__ && coverErrors.length > 0) {
+        Alert.alert('[DEV] 썸네일 확보 실패', coverErrors.slice(0, 3).join('\n\n'));
+      }
+      success();
+      navigation.reset({
+        index: 1,
+        routes: [
+          { name: 'Main' },
+          { name: 'ImportComplete', params: { tripCount, photoCount, countries, from: route.params?.from, mode: 'quick' } },
+        ],
+      });
+    } catch (err) {
+      console.error('Quick import failed:', err);
+      importingRef.current = false;
+      setIsImporting(false);
+      setImportProgress(null);
+      Alert.alert(t('imports.saveFailTitle'), t('imports.saveFailMsg'));
+    }
   };
 
   // ── 결과 없음 화면 ──
@@ -1414,6 +1566,17 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                 : t('imports.selectTripsToImport')
             }
           />
+          {/* 보조 경로 — 사진첩까지 직접 만들고 싶은 사용자용(예전 기본 흐름).
+              기본 CTA는 사진 선택 없이 카드만 즉시 만든다. */}
+          {selectedIds.length > 0 && !isImporting && (
+            <TouchableOpacity
+              style={styles.pickPhotosBtn}
+              onPress={handlePickPhotos}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.pickPhotosTxt}>{t('imports.pickPhotosManually')}</Text>
+            </TouchableOpacity>
+          )}
           {/* 결과 화면 이탈 수단 — 여기에만 없었다.
               권한 요청 화면과 '결과 없음' 화면에는 스킵 링크가 있는데, 정작 여행을 찾아낸
               결과 목록에는 나가는 길이 없어서 가져오기를 끝내야만 화면을 벗어날 수 있었다.
@@ -1429,6 +1592,22 @@ export default function TravelImportScreen({ navigation, route }: Props) {
               {t(fromProfile ? 'imports.backToProfile' : 'imports.skip')}
             </Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* 카드 생성 진행 오버레이.
+          Modal이 아니라 절대위치 View다 — 짧은 수명의 로딩 모달은 iOS에서 껍데기가 남아
+          이후 터치가 통째로 먹통이 되는 사고가 있었다(사진 피커 뒤 Modal 터치 먹통).
+          여행당 썸네일 1장만 복사하므로 대개 순식간에 지나가지만, iCloud 오프로드 원본은
+          내려받아야 해서 몇 초가 걸릴 수 있다. */}
+      {isImporting && (
+        <View style={styles.importOverlay}>
+          <ActivityIndicator color="#EC34F7" size="large" />
+          <Text style={styles.importOverlayTxt}>
+            {importProgress && importProgress.total > 0
+              ? t('imports.creatingCardsN', { done: importProgress.done, total: importProgress.total })
+              : t('imports.creatingCards')}
+          </Text>
         </View>
       )}
     </View>
@@ -1973,5 +2152,38 @@ const styles = StyleSheet.create({
   // 합치기 모달 확인 버튼의 비활성 상태에서만 사용
   importBtnDisabled: {
     opacity: 0.5,
+  },
+
+  /* 보조 경로 — '사진 직접 고르기'. 기본 CTA(카드 즉시 생성)보다 한 단계 약하게 보여
+     어느 쪽이 기본인지 헷갈리지 않게 한다(테두리만 있는 버튼). */
+  pickPhotosBtn: {
+    marginTop: 10,
+    height: 46,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickPhotosTxt: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+  },
+
+  /* 카드 생성 진행 오버레이 */
+  importOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,11,15,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  importOverlayTxt: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    textAlign: 'center',
+    paddingHorizontal: 32,
   },
 });

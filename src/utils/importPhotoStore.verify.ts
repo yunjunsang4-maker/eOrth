@@ -1,5 +1,5 @@
 // 실행: npx tsx src/utils/importPhotoStore.verify.ts
-import { tripDir, tripPhotoPath, runWithConcurrency, compactCopyResults } from './importPhotoStore';
+import { tripDir, tripPhotoPath, tripCoverPath, runWithConcurrency, compactCopyResults } from './importPhotoStore';
 
 let failures = 0;
 function assert(c: boolean, m: string) { if (c) console.log('  ✓ ' + m); else { failures++; console.error('  ✗ ' + m); } }
@@ -10,6 +10,15 @@ function assert(c: boolean, m: string) { if (c) console.log('  ✓ ' + m); else 
   assert(tripDir(base, 'trip-x') === 'file:///app/docs/trips/trip-x/', 'tripDir 경로');
   assert(tripPhotoPath(base, 'trip-x', 0) === 'file:///app/docs/trips/trip-x/0.jpg', '사진 경로 0');
   assert(tripPhotoPath(base, 'trip-x', 12) === 'file:///app/docs/trips/trip-x/12.jpg', '사진 경로 12');
+  // 썸네일 후보 경로 — 시도마다 달라야 한다. 같으면 앞선 시도가 반쯤 쓰고 실패한 파일이
+  // 남아 다음 시도의 copyAsync가 '대상이 이미 있음'으로 연쇄 실패한다.
+  assert(tripCoverPath(base, 'trip-x', 0) === 'file:///app/docs/trips/trip-x/cover-src-0.jpg', '썸네일 후보 경로 0');
+  assert(
+    new Set([0, 1, 2, 3].map((k) => tripCoverPath(base, 'trip-x', k))).size === 4,
+    '썸네일 후보 경로는 시도마다 다름'
+  );
+  // 사진 복사본 경로와 겹치면 안 된다(같은 폴더를 쓴다)
+  assert(tripCoverPath(base, 'trip-x', 0) !== tripPhotoPath(base, 'trip-x', 0), '썸네일 후보 경로 ≠ 사진 경로');
 }
 
 // ── compactCopyResults: 병렬 복사 결과의 순서 보존 ──

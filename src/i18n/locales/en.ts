@@ -833,6 +833,8 @@ const en = {
     period: 'Period',
     loadPhotos: 'Load photos',
     loadPhotosAppend: 'Load photos to add',
+    // Country and date range were prefilled from the imported trip's saved scan result
+    seededFromImport: 'Country and dates are prefilled from your imported trip — just load the photos.',
     dupTitle: 'Photos will be added to this album',
     dupPhotoCount: '{{count}} photos',
     dupAppendHint: 'Each trip card has one album. Selected photos go to the end of this album, and photos already in it are hidden from the list.',
@@ -1531,7 +1533,13 @@ const en = {
     icPhotoPrefix: 'Added ',
     icPhotoCountN: '{{count}} photos',
     icPhotoSuffix: '',
+    // Quick path — photos stay in the gallery and are only linked to the card
+    icReadyPrefix: '',
+    icReadySuffix: ' from these trips are ready to use',
+    icReadyHint: 'When you build an album or a record from a trip card,\nthey load instantly — no rescan needed.',
     icStart: 'Start eOrth',
+    // For existing members who came from the profile — this returns to the profile, not onboarding
+    icStartFromProfile: 'Start recording',
     periodSince: 'Since last import',
     periodSinceRange: 'Since {{date}}',
     period1y: 'Last 1 year',
@@ -1587,6 +1595,10 @@ const en = {
     mergeSelect2: 'Select at least 2 trips',
     mergeN: 'Merge {{count}} trips',
     importSelectedN: 'Import {{count}} selected trips',
+    // Secondary action on the results list — the previous default flow (pick photos, build albums)
+    pickPhotosManually: 'Pick photos myself',
+    creatingCards: 'Creating trip cards…',
+    creatingCardsN: 'Creating trip cards… ({{done}}/{{total}})',
     // Default title/body of an imported trip card. Stored, so it's built in the language at import time.
     tripTitle: '{{country}} Trip',
     tripContent: 'Precious memories from {{country}}. {{count}} photos will be saved to your timeline.',
@@ -1865,6 +1877,11 @@ const en = {
     groupNamePlaceholder: 'Enter a name for the travel group',
     saveLarge: 'Save',
     noPhotoToChange: 'There are no photos to change.',
+    // For cards created by the past-trip import — reroll the cover from the saved scan result
+    rerollThumb: 'Pick another cover',
+    rerollThumbBusy: 'Picking…',
+    noPoolPhotos: 'No photos are saved for this trip. Create an album to add photos.',
+    thumbRerollFailed: 'Could not load the photo. It may have been deleted from your gallery or failed to download from iCloud.',
     sampleNoArchive: 'Sample travel cards cannot be archived.',
     archiveCardTitle: 'Archive card',
     archiveCardMsg: 'All records of this trip move to the archive, and the card is hidden from your profile.',

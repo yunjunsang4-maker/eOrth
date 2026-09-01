@@ -49,12 +49,20 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
   const archivedRecords = records.filter((r) => archivedIds.includes(r.id));
 
+  // 과거 여행 불러오기가 카드만 세우려고 만든 '표지 전용' 기록 판정.
+  // viewType은 'album'이지만 사용자가 만든 사진첩이 아니라, 사진첩 탭·개수에서 뺀다.
+  //
+  // ⚠️ '전체' 탭에서까지 빼면 안 된다 — 여행 카드를 보관하면 그 안의 기록이 전부 보관되는데
+  //    (TripDetail의 카드 보관), 표지가 목록에 안 뜨면 보관 해제할 방법이 없어져
+  //    카드가 프로필에서 영영 사라진다(기록 0개인 카드는 프로필 목록에서 빠진다).
+  const isCover = (r: TravelRecord) => !!r.isImportCover;
+
   // 개수 계산
   const counts = {
     all: archivedRecords.length,
     feed: archivedRecords.filter((r) => r.viewType === 'feed' || !r.viewType).length,
     blog: archivedRecords.filter((r) => r.viewType === 'blog').length,
-    album: archivedRecords.filter((r) => r.viewType === 'album').length,
+    album: archivedRecords.filter((r) => r.viewType === 'album' && !isCover(r)).length,
     snap: archivedRecords.filter((r) => r.viewType === 'snap').length,
     cut: archivedRecords.filter((r) => r.viewType === 'cut').length,
   };
@@ -63,6 +71,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   const filteredRecords = archivedRecords.filter((r) => {
     if (activeTab === 'all') return true;
     if (activeTab === 'feed') return r.viewType === 'feed' || !r.viewType;
+    if (activeTab === 'album') return r.viewType === 'album' && !isCover(r);
     return r.viewType === activeTab;
   });
 

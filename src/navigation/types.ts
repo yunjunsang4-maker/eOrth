@@ -112,7 +112,9 @@ export type RootStackParamList = {
   TravelImport: { from?: 'profile' } | undefined;
   MateRecoConsent: undefined;
   ImportPhotoSelect: { trips: ImportTrip[]; from?: 'profile' };
-  ImportComplete: { tripCount: number; photoCount: number; countries: { flag: string; name: string }[]; from?: 'profile' };
+  // mode: 'quick' = 사진첩 없이 카드만 즉시 만든 경로. 이때 photoCount는 '복사한 장수'가
+  // 아니라 '카드에 연결해 둔(바로 꺼내 쓸 수 있는) 분석 사진 장수'라 완료 문구가 다르다.
+  ImportComplete: { tripCount: number; photoCount: number; countries: { flag: string; name: string }[]; from?: 'profile'; mode?: 'quick' };
   Main: NavigatorScreenParams<TabParamList> | undefined;
   Country: { name: string; flag: string } | undefined;
   AccountSettings: undefined;

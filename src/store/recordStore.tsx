@@ -126,6 +126,13 @@ export interface TravelRecord {
   startDate?: string;
   endDate?: string;
   viewType?: RecordViewType;  // 뷰 형식 (기본값 'feed')
+  // 과거 여행 불러오기가 카드만 세우려고 만든 '표지 전용' 기록.
+  // viewType은 'album'을 그대로 쓴다 — 피드 타임라인 제외(services/posts TIMELINE_VIEW_TYPES),
+  // 중복 가져오기 판정, '지난 불러오기 이후' 기본값 판정이 전부 그 값에 걸려 있어서다.
+  // 다만 사용자에게는 사진첩이 아니다(썸네일 1장뿐). 그래서 여행 상세의 형식 목록과
+  // 프로필 카드의 형식 배지에서 이 기록만 빼, 만들지도 않은 사진첩이 생긴 것처럼 보이지 않게 한다.
+  // 나중에 이 카드로 진짜 사진첩을 만들면 그 기록에 사진이 이어 담기며 이 표시가 해제된다.
+  isImportCover?: boolean;
   tripGroupId?: string | null;    // 묶음 여행 ID
   tripGroupOrder?: number | null; // 묶음 안에서 순서
   // v3 블로그 확장 필드
@@ -298,7 +305,9 @@ interface RecordContextType {
   tripGroups: TripGroup[];
   // session: 다국가 분할 저장 카드용 — 기록 기간(실시간 여부 판단)을 넘기면 해외 카드를
   // 여행 세션에 등록해, 이후 그 국가의 실시간 기록(스냅 등)이 이 카드에 합류한다
-  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>, opts?: { session?: { startDate?: string; endDate?: string; date?: string } }) => void;
+  // 반환: 생성된 카드 — 만든 직후 그 카드에 무언가를 매달아야 하는 호출부(과거 여행
+  // 불러오기가 여행별 사진 후보를 카드 id로 보관한다)를 위해 돌려준다. 무시해도 무방.
+  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>, opts?: { session?: { startDate?: string; endDate?: string; date?: string } }) => TripGroup;
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   mergeTripGroups: (targetId: string, sourceIds: string[]) => void;
@@ -326,6 +335,7 @@ interface RecordContextType {
     albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
     mediaAssetIds?: Record<string, string>;
     mediaTimes?: Record<string, number>;
+    isImportCover?: boolean; // 표지 전용(사진첩으로 보이지 않게) — TravelRecord 주석 참조
   }) => TravelRecord; // 생성된 record 반환 (저장 직후 상세 이동용)
   countryCovers: Record<string, CountryCover>;
   getCountryPhoto: (countryName: string) => string | null;
@@ -1590,6 +1600,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
     mediaAssetIds?: Record<string, string>;
     mediaTimes?: Record<string, number>;
+    isImportCover?: boolean;
   }): TravelRecord => {
     const id = `rec-import-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const rec: TravelRecord = {
@@ -1614,6 +1625,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       albumSections: data.albumSections,
       mediaAssetIds: data.mediaAssetIds,
       mediaTimes: data.mediaTimes,
+      isImportCover: data.isImportCover,
     };
     setRecords((prev) => [rec, ...prev]);
     publishToBackend(rec); // 가져온 앨범도 백엔드 발행 (기본 friends — 팔로워에게 보임)
@@ -1623,7 +1635,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const addTripGroup = (
     data: Omit<TripGroup, 'id' | 'createdAt'>,
     opts?: { session?: { startDate?: string; endDate?: string; date?: string } }
-  ) => {
+  ): TripGroup => {
     const newGroup: TripGroup = {
       ...data,
       // 다국가 분할처럼 같은 ms에 연속 생성돼도 충돌하지 않도록 난수 접미사
@@ -1646,6 +1658,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         lastActiveAt: Date.now(),
       }));
     }
+    return newGroup;
   };
 
   const deleteTripGroup = (id: string) => {

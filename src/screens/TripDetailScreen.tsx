@@ -1,4 +1,4 @@
-import { warn } from '../utils/haptics';
+import { warn, success } from '../utils/haptics';
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,7 +21,8 @@ import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon 
 import { useRecords, TravelRecord } from '../store/recordStore';
 import type { TripPrefillParam } from '../navigation/types';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
-import { bakeCoverCrop } from '../utils/importPhotoStore';
+import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
+import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -296,6 +297,52 @@ export default function TripDetailScreen() {
     setThumbPickerVisible(true);
   };
 
+  // ── 썸네일 다시 뽑기 (과거 여행 불러오기로 만든 카드 전용) ──
+  // 불러오기는 카드를 만들 때 무작위 1장만 확보한다. 그 한 장이 실패하면(iCloud 오프로드,
+  // 읽을 수 없는 원본 등) 카드가 기본 이모지로 남는데, medias가 비어 있어 '썸네일 변경'
+  // 메뉴로는 고칠 수 없다 — 고를 사진이 없기 때문이다. 다시 불러오기를 해도 그 여행 사진은
+  // 이미 스캔 제외 대상이라 되돌아오지 않는다. 그래서 보관해 둔 후보에서 다시 뽑는 길을 둔다.
+  const [poolPhotoCount, setPoolPhotoCount] = useState(0);
+  const [rerolling, setRerolling] = useState(false);
+  useEffect(() => {
+    const gid = currentGroup?.id;
+    if (!gid) { setPoolPhotoCount(0); return; }
+    let alive = true;
+    getTripPool(gid).then((p) => { if (alive) setPoolPhotoCount(p?.photos.length ?? 0); });
+    return () => { alive = false; };
+  }, [currentGroup?.id]);
+
+  const handleRerollThumb = async () => {
+    setMenuVisible(false);
+    if (!currentGroup || rerolling) return;
+    const pool = await getTripPool(currentGroup.id);
+    if (!pool || pool.photos.length === 0) {
+      Alert.alert(t('trip.noticeTitle'), t('trip.noPoolPhotos'));
+      return;
+    }
+    const owner = groupRecordObjs.find((r) => r.id === currentGroup.coverRecordId) ?? groupRecordObjs[0];
+    if (!owner) return;
+    setRerolling(true);
+    const res = await copyTripCover(
+      currentGroup.id,
+      pickCoverCandidates(pool.photos, 8).map((p) => ({ id: p.id, uri: p.uri })),
+    );
+    setRerolling(false);
+    if (!res.uri) {
+      // 개발 빌드에서는 실제 사유를 그대로 보여준다 — 콘솔 없이도 원인을 읽을 수 있게
+      Alert.alert(t('trip.noticeTitle'), __DEV__ && res.error ? res.error : t('trip.thumbRerollFailed'));
+      return;
+    }
+    // medias가 비어 있으면 이 사진을 채워 둔다 — 이후 '썸네일 변경'에서도 고를 수 있게 된다
+    updateRecord(owner.id, {
+      representativePhoto: res.uri,
+      representativePhotoSource: res.uri,
+      ...((owner.medias?.length ?? 0) === 0 ? { medias: [res.uri] } : {}),
+    });
+    updateTripGroup(currentGroup.id, { coverRecordId: owner.id, coverUri: undefined });
+    success();
+  };
+
   // 사진을 고르면 바로 적용하지 않고 노출 영역 조정 단계를 거친다
   const handlePickThumb = (uri: string) => {
     if (!currentGroup) return;
@@ -412,8 +459,13 @@ export default function TripDetailScreen() {
       : undefined) ?? matchedRecords.map(pickPhoto).find(Boolean);
 
   // viewType별 그룹
+  //
+  // 불러오기가 만든 '표지 전용' 기록은 뺀다. 그 기록의 viewType은 'album'이지만(피드 제외·
+  // 중복 판정이 그 값에 걸려 있어 바꾸지 않는다) 사용자가 만든 사진첩이 아니다 —
+  // 그대로 두면 만들지도 않은 사진 1장짜리 사진첩이 형식 목록에 뜨고, 게다가
+  // '여행 카드당 사진첩 1개' 규칙에 걸려 진짜 사진첩을 만들 수도 없게 된다.
   const getRecordsByType = (viewType: string): TravelRecord[] => {
-    return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType);
+    return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType && !r.isImportCover);
   };
 
   // ── 포맷 콘솔: 기록이 있는 형식만 모듈 목록으로 표시, 탭하면 펼쳐짐 ──
@@ -596,6 +648,16 @@ export default function TripDetailScreen() {
               <GalleryIcon size={16} color={COLORS.white} />
               <Text style={s.menuItemText}>{t('comp2.tdChangeThumb')}</Text>
             </TouchableOpacity>
+            {/* 불러오기로 만든 카드에만 — 보관해 둔 분석 사진이 있을 때 노출 */}
+            {poolPhotoCount > 0 && (
+              <>
+                <View style={s.menuDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleRerollThumb} accessibilityRole="button" accessibilityLabel={t('trip.rerollThumb')}>
+                  <GalleryIcon size={16} color={COLORS.white} />
+                  <Text style={s.menuItemText}>{rerolling ? t('trip.rerollThumbBusy') : t('trip.rerollThumb')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel={t('trip.archiveCardA11y')}>
               <ArchiveIcon size={16} color={COLORS.white} />

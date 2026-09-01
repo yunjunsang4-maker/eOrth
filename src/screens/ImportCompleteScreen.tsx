@@ -35,7 +35,7 @@ function FlagChip({ flag, name, delay }: { flag: string; name: string; delay: nu
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { tripCount, photoCount, countries, from } = route.params;
+  const { tripCount, photoCount, countries, from, mode } = route.params;
 
   // 완료 화면은 뒤로가기로 빠져나가면 안 된다 — 온보딩 경로에서는 이 화면의 CTA가
   // 알림 권한 요청·설문·동의 화면으로 이어지고, 되돌아갈 이전 단계도 이미 스택에서 정리됐다
@@ -127,9 +127,20 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
         <Animated.View style={{ opacity: bodyOpacity, alignItems: 'center', width: '100%' }}>
           <Text style={st.title}>{t('imports.icTitle')}</Text>
           <Text style={st.tripLine}>{tripLine}</Text>
+          {/* 즉시 생성 경로에서는 사진을 '가져온' 게 아니라 카드에 '연결해 둔' 것이다.
+              같은 문구를 쓰면 앱 안에 사진이 다 들어온 줄 알고 갤러리를 지우는 사고가 난다. */}
           <Text style={st.photoLine}>
-            {t('imports.icPhotoPrefix')}<Text style={st.accent}>{t('imports.icPhotoCountN', { count: photoCount })}</Text>{t('imports.icPhotoSuffix')}
+            {mode === 'quick' ? (
+              <>
+                {t('imports.icReadyPrefix')}<Text style={st.accent}>{t('imports.icPhotoCountN', { count: photoCount })}</Text>{t('imports.icReadySuffix')}
+              </>
+            ) : (
+              <>
+                {t('imports.icPhotoPrefix')}<Text style={st.accent}>{t('imports.icPhotoCountN', { count: photoCount })}</Text>{t('imports.icPhotoSuffix')}
+              </>
+            )}
           </Text>
+          {mode === 'quick' && <Text style={st.readyHint}>{t('imports.icReadyHint')}</Text>}
 
           {countries.length > 0 && (
             <View style={st.flagWrap}>
@@ -142,7 +153,13 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       </View>
 
       <Animated.View style={[st.bottom, { opacity: bodyOpacity, paddingBottom: insets.bottom + 24 }]}>
-        <ImportCtaButton gid="importDoneCta" label={t('imports.icStart')} onPress={startEorth} />
+        {/* 온보딩 마지막 단계에서만 '이어스 시작하기'가 맞다 — 프로필에서 들어온 기존 회원은
+            이미 앱을 쓰고 있어서 그 문구가 어색하다(하는 일도 프로필 복귀뿐이다). */}
+        <ImportCtaButton
+          gid="importDoneCta"
+          label={t(from === 'profile' ? 'imports.icStartFromProfile' : 'imports.icStart')}
+          onPress={startEorth}
+        />
       </Animated.View>
     </View>
   );
@@ -193,6 +210,8 @@ const st = StyleSheet.create({
   title: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginBottom: 16 },
   tripLine: { color: '#EC34F7', fontSize: 17, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
   photoLine: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '500', textAlign: 'center' },
+  // 즉시 생성 경로 안내 — 본문보다 한 단계 약하게(설명이지 결과가 아니다)
+  readyHint: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '500', textAlign: 'center', marginTop: 10, lineHeight: 19 },
   accent: { color: '#FFFFFF', fontWeight: '700' },
 
   // 가져온 나라 국기 칩

@@ -207,6 +207,9 @@ interface TripThumbnail {
   color: string;
   records: { id: string; viewType: string }[];
   coverUri?: string; // 대표 기록의 첫 사진 — 있으면 카드 썸네일 배경으로 사용
+  // 카드에 표시할 형식 배지 목록. records에서 그대로 뽑지 않는 이유는 '표지 전용' 기록을
+  // 빼야 하기 때문이다(records 자체에서 빼면 카드가 기록 0개로 판정돼 목록에서 사라진다).
+  uniqueViewTypes?: string[];
   // 체류 카드 표시용 (stay 메타가 있는 TripGroup에서 파생)
   stayLabel?: string;   // 예: "체류 · 교환학생"
   stayPeriod?: string;  // 예: "2026.03 ~ 진행 중" / "2026.03 ~ 2026.08"
@@ -1711,7 +1714,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
       const firstRec = groupRecords[0];
       const coverRec = groupRecords.find(r => r.id === group.coverRecordId) ?? firstRec;
-      const uniqueViewTypes = Array.from(new Set(groupRecords.map(r => r.viewType || 'feed')));
+      // 형식 배지 — 불러오기가 만든 '표지 전용' 기록은 뺀다(사진첩 배지가 잘못 붙는다).
+      // viewType은 'album' 그대로 두되 표시에서만 제외한다 — TravelRecord.isImportCover 주석 참조.
+      const uniqueViewTypes = Array.from(
+        new Set(groupRecords.filter(r => !r.isImportCover).map(r => r.viewType || 'feed'))
+      );
 
       // 카드가 `${countryFlag} ${title}`로 그리므로, 제목에 이미 국기가 박혀 있으면 떼어낸다
       // (과거에 "🇺🇸 미국 여행" 형식으로 저장된 그룹 대비 방어)
@@ -2209,7 +2216,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 <Text style={thumbSt.mainDate}>{displayTrips[0].stayPeriod ?? displayTrips[0].date}</Text>
               </View>
               <View style={thumbSt.mainBadges}>
-                {Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                {(displayTrips[0].uniqueViewTypes
+                  ?? Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed')))
+                ).map((vt) => (
                   <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
                     {VIEW_TYPE_BADGE[vt] || null}
                   </LiquidPressable>
@@ -2286,7 +2295,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
                   <Text style={thumbSt.gridDate}>{trip.stayPeriod ?? trip.date}</Text>
                   <View style={thumbSt.gridBadges}>
-                    {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                    {(trip.uniqueViewTypes
+                      ?? Array.from(new Set(trip.records.map((r) => r.viewType || 'feed')))
+                    ).map((vt) => (
                       <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
                         {VIEW_TYPE_BADGE[vt] || null}
                       </LiquidPressable>
