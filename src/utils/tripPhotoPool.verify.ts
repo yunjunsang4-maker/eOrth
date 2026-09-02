@@ -8,6 +8,9 @@ import {
   parsePools,
   mergePool,
   collectAssetIds,
+  poolFileName,
+  parsePoolIndex,
+  MAX_POOLS,
   type TripPhotoPool,
   type TripPhotoPoolMap,
 } from './tripPhotoPool';
@@ -189,6 +192,40 @@ eq(mergePool(undefined, mk('g', 1, ['a'])).photos.length, 1, '이전 보관분�
     { ...mk('g', 2, []), photos: [noId('file://x.jpg', 1), noId('file://y.jpg', 2)] },
   );
   eqJson(m.photos.map((p) => p.uri), ['file://x.jpg', 'file://y.jpg'], 'id 없으면 uri로 중복 판정');
+}
+
+// ── poolFileName ──
+eq(poolFileName('abc123'), 'abc123.json', '평범한 id는 그대로 파일명');
+eq(poolFileName('a/b'), 'a%2Fb.json', '경로 구분자는 인코딩되어 디렉터리 탈출을 막는다');
+eq(poolFileName('a b'), 'a%20b.json', '공백도 인코딩');
+
+// ── parsePoolIndex ──
+eqJson(parsePoolIndex(null), {}, 'null이면 빈 인덱스');
+eqJson(parsePoolIndex('not json'), {}, '깨진 JSON이면 빈 인덱스');
+eqJson(parsePoolIndex('[]'), {}, '배열이면 빈 인덱스');
+eqJson(
+  parsePoolIndex('{"g1":{"savedAt":5,"photoCount":3}}'),
+  { g1: { savedAt: 5, photoCount: 3 } },
+  '정상 항목은 그대로',
+);
+eqJson(
+  parsePoolIndex('{"g1":{"savedAt":"x","photoCount":3},"g2":{"savedAt":1,"photoCount":2}}'),
+  { g2: { savedAt: 1, photoCount: 2 } },
+  '형태가 어긋난 항목은 버리고 나머지는 살린다',
+);
+
+// ── MAX_POOLS 백스톱은 남아 있어야 한다 (capPools가 죽은 코드가 되지 않는다) ──
+eq(MAX_POOLS, 500, 'MAX_POOLS는 폭주 방지 백스톱으로 500');
+
+// ── capPools는 인덱스에도 그대로 쓰인다 (savedAt만 있으면 되는 시그니처) ──
+{
+  const index = {
+    old: { savedAt: 1, photoCount: 3 },
+    mid: { savedAt: 5, photoCount: 3 },
+    recent: { savedAt: 9, photoCount: 3 },
+  };
+  eqJson(Object.keys(capPools(index, 2)).sort(), ['mid', 'recent'], '인덱스도 최근 저장 순으로 자른다');
+  eqJson(capPools(index, 5), index, '상한 이하면 그대로');
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

@@ -27,7 +27,9 @@ export interface TripPhotoPool {
   title: string;
   startDate: string;    // 'YYYY.MM.DD'
   endDate: string;
-  photos: PoolPhoto[];  // 후보 목록 — 상한(MAX_POOL_PHOTOS)까지 균등 간격으로 솎은 것
+  // 후보 목록. 2026-09-01부터 여행당 장수 상한(구 MAX_POOL_PHOTOS)이 없어 saveTripPool은
+  // 더 이상 솎지 않는다 — 파일 저장으로 바뀌며 6MB 제약이 사라져 보관은 싸졌기 때문이다.
+  photos: PoolPhoto[];
   /**
    * 이 여행에서 분석된 **모든** 사진의 갤러리 자산 id. 솎지 않는다.
    *
@@ -43,13 +45,12 @@ export interface TripPhotoPool {
 
 export type TripPhotoPoolMap = Record<string, TripPhotoPool>;
 
-// 여행 하나당 보관할 썸네일 후보 수.
-// 재스캔 제외는 assetIds가 전량 담당하므로 이 목록은 '다시 뽑기'에 쓸 만큼만 있으면 된다.
-// 400 → 200으로 줄였다: 항목당 uri까지 들어 150바이트쯤이라, assetIds가 늘어난 만큼을
-// 여기서 상쇄해야 AsyncStorage 한 키가 지나치게 커지지 않는다(안드로이드 기본 DB 6MB).
-export const MAX_POOL_PHOTOS = 200;
-// 보관할 여행 수 상한(최근 저장 순). 넘치면 오래된 것부터 버린다.
-export const MAX_POOLS = 30;
+// 여행당 보관 장수 상한은 없앴다(2026-09-01). 참조 1장이 약 125바이트라 보관은 싸고,
+// 비싼 것은 분석이다 — 분석 상한은 recoSource.ts의 RECO_ANALYZE_MAX가 따로 맡는다.
+//
+// 여행 수 상한만 폭주 방지용으로 남긴다. 파일로 흩어지면 6MB 제약은 사라지지만
+// 인덱스 크기와 청소 비용은 여행 수에 비례해 계속 커진다. 실사용에서 도달할 수 없는 값이다.
+export const MAX_POOLS = 500;
 
 export const TRIP_PHOTO_POOL_KEY = 'eorth-trip-photo-pool';
 
@@ -110,12 +111,15 @@ export function prunePools(pools: TripPhotoPoolMap, aliveTripGroupIds: string[])
   return out;
 }
 
-/** 최근 저장 순으로 max개만 남긴다. */
-export function capPools(pools: TripPhotoPoolMap, max: number): TripPhotoPoolMap {
+/** 최근 저장 순으로 max개만 남긴다. savedAt만 있으면 어떤 맵에든 쓸 수 있다. */
+export function capPools<T extends { savedAt?: number }>(
+  pools: Record<string, T>,
+  max: number,
+): Record<string, T> {
   const entries = Object.entries(pools);
   if (entries.length <= max) return { ...pools };
   entries.sort((a, b) => (b[1].savedAt ?? 0) - (a[1].savedAt ?? 0));
-  const out: TripPhotoPoolMap = {};
+  const out: Record<string, T> = {};
   for (const [id, pool] of entries.slice(0, max)) out[id] = pool;
   return out;
 }
@@ -228,9 +232,52 @@ export function parsePools(raw: string | null): TripPhotoPoolMap {
   }
 }
 
+export interface PoolIndexEntry { savedAt: number; photoCount: number }
+export type PoolIndex = Record<string, PoolIndexEntry>;
+
+/** 여행 보관 파일이 놓이는 하위 디렉터리 (documentDirectory 기준 상대 경로) */
+export const POOL_DIR_NAME = 'photoAI/pools/';
+
+/**
+ * tripGroupId → 파일명. id에 '/'가 들어오면 디렉터리를 탈출하므로 반드시 인코딩한다.
+ * (여행 id는 앱이 만들지만, 저장 경로를 만드는 곳에서 막아 두는 편이 안전하다)
+ */
+export function poolFileName(tripGroupId: string): string {
+  return `${encodeURIComponent(tripGroupId)}.json`;
+}
+
+/** 인덱스 JSON을 검증하며 읽는다. 형태가 어긋난 항목은 버린다(parsePools와 같은 방침). */
+export function parsePoolIndex(raw: string | null): PoolIndex {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: PoolIndex = {};
+    for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const v = value as Partial<PoolIndexEntry> | null;
+      if (!v || typeof v !== 'object') continue;
+      if (typeof v.savedAt !== 'number' || typeof v.photoCount !== 'number') continue;
+      out[id] = { savedAt: v.savedAt, photoCount: v.photoCount };
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 // ─────────────────────────────────────────────
-// 영속화 (AsyncStorage 지연 require — verify는 여기까지 오지 않는다)
+// 영속화 (expo-file-system/legacy 지연 require — verify는 여기까지 오지 않는다)
+//
+// 2026-09-01: AsyncStorage 단일 키 → 여행별 파일로 전환.
+// 옛 방식은 모든 여행의 pool이 키 하나에 통째로 들어가 저장할 때마다 전체를 읽고 썼다.
+// 안드로이드 AsyncStorage는 기본 6MB 상한이고 초과하면 writeTripPools가 조용히
+// 실패했다. 파일로 나누면 그 천장이 사라지고 저장 시 해당 여행 파일만 만진다.
 // ─────────────────────────────────────────────
+
+function fs() {
+
+  return require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+}
 
 function storage() {
 
@@ -239,64 +286,175 @@ function storage() {
   }).default;
 }
 
-export async function loadTripPools(): Promise<TripPhotoPoolMap> {
+function poolDir(): string | null {
+  const base = fs().documentDirectory;
+  return base ? `${base}${POOL_DIR_NAME}` : null;
+}
+
+async function ensureDir(): Promise<string | null> {
+  const dir = poolDir();
+  if (!dir) return null;
   try {
-    return parsePools(await storage().getItem(TRIP_PHOTO_POOL_KEY));
+    await fs().makeDirectoryAsync(dir, { intermediates: true });
   } catch {
-    return {};
+    // 이미 있으면 무시
+  }
+  return dir;
+}
+
+async function readIndex(): Promise<PoolIndex> {
+  const dir = poolDir();
+  if (!dir) return {};
+  try {
+    return parsePoolIndex(await fs().readAsStringAsync(`${dir}index.json`));
+  } catch {
+    return {}; // 파일 없음도 여기로 온다
   }
 }
 
-async function writeTripPools(pools: TripPhotoPoolMap): Promise<void> {
+async function writeIndex(index: PoolIndex): Promise<void> {
+  const dir = await ensureDir();
+  if (!dir) return;
   try {
-    await storage().setItem(TRIP_PHOTO_POOL_KEY, JSON.stringify(pools));
+    await fs().writeAsStringAsync(`${dir}index.json`, JSON.stringify(index));
   } catch {
     // 보관 실패는 조용히 무시 — 카드 생성 자체를 막을 이유가 없다
   }
 }
 
 /**
- * 여행 하나의 보관 목록을 저장한다. 같은 카드에 이미 보관분이 있으면 합친다(mergePool).
+ * 여행 하나의 보관 목록을 읽는다.
  *
- * 솎기는 반드시 합친 뒤에 한다 — 먼저 솎으면 합집합이 상한을 넘어 버린다.
+ * ⚠️ "읽기 실패"와 "없음"을 구분하지 않고 둘 다 null을 돌려준다. 호출부(recoSource)는
+ *    null이면 앨범 medias로 폴백하므로, 일시적 읽기 실패가 추천을 죽이지 않고
+ *    앨범이 있으면 그쪽으로 자연히 넘어간다.
+ */
+export async function getTripPool(tripGroupId: string): Promise<TripPhotoPool | null> {
+  if (!tripGroupId) return null;
+  await ensureMigrated();
+  const dir = poolDir();
+  if (!dir) return null;
+  try {
+    const raw = await fs().readAsStringAsync(`${dir}${poolFileName(tripGroupId)}`);
+    const parsed = parsePools(`{"${tripGroupId}":${raw}}`);
+    return parsed[tripGroupId] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 인덱스에 올라 있는 모든 여행의 보관 목록. 스캔 제외 집합 재구성 등 전수 조회용. */
+export async function loadTripPools(): Promise<TripPhotoPoolMap> {
+  const index = await readIndex();
+  const out: TripPhotoPoolMap = {};
+  for (const id of Object.keys(index)) {
+    const pool = await getTripPool(id);
+    if (pool) out[id] = pool;
+  }
+  return out;
+}
+
+/**
+ * 여행 하나의 보관 목록을 저장한다. 같은 카드에 이미 보관분이 있으면 합친다(mergePool).
+ * 장수 솎기는 하지 않는다 — 2026-09-01부터 여행당 상한이 없다.
+ *
+ * ⚠️ 시그니처는 옛 AsyncStorage 버전과 동일하게 유지한다 — assetIds는 인자로 받지 않고
+ *    photos(솎지 않으므로 사실상 전체)에서 내부적으로 뽑는다. 그래야 TravelImportScreen 등
+ *    기존 호출부를 하나도 고치지 않아도 된다.
  */
 export async function saveTripPool(
   pool: Omit<TripPhotoPool, 'savedAt' | 'totalCount' | 'assetIds'> & { totalCount?: number },
   now: number = Date.now(),
 ): Promise<void> {
-  const current = await loadTripPools();
-  // 자산 id는 넘겨받은 '전체' 목록에서 뽑는다 — 아래 솎기보다 반드시 먼저다.
-  // 솎인 뒤에 뽑으면 빠진 사진이 재스캔 제외에서 새어 나가 같은 여행이 다시 뜬다.
+  await ensureMigrated();
+  const dir = await ensureDir();
+  if (!dir) return;
+  const prev = await getTripPool(pool.tripGroupId);
   const assetIds = collectAssetIds(pool.photos);
-  const merged = mergePool(current[pool.tripGroupId], {
+  const merged = mergePool(prev ?? undefined, {
     ...pool,
     assetIds,
     // id가 하나도 없는(자산 id를 못 얻은) 여행이면 장수라도 남긴다 — 0으로 떨어지지 않게
     totalCount: pool.totalCount ?? (assetIds.length || pool.photos.length),
     savedAt: now,
   });
-  const entry: TripPhotoPool = {
-    ...merged,
-    photos: samplePoolPhotos(merged.photos, MAX_POOL_PHOTOS),
-    savedAt: now,
-  };
-  await writeTripPools(capPools({ ...current, [entry.tripGroupId]: entry }, MAX_POOLS));
-}
-
-/** 여행 카드 하나의 보관 목록. 없으면 null. */
-export async function getTripPool(tripGroupId: string): Promise<TripPhotoPool | null> {
-  if (!tripGroupId) return null;
-  const pools = await loadTripPools();
-  return pools[tripGroupId] ?? null;
+  const entry: TripPhotoPool = { ...merged, savedAt: now };
+  try {
+    await fs().writeAsStringAsync(`${dir}${poolFileName(entry.tripGroupId)}`, JSON.stringify(entry));
+  } catch {
+    return; // 본문 저장이 실패하면 인덱스도 올리지 않는다(유령 항목 방지)
+  }
+  const index = await readIndex();
+  index[entry.tripGroupId] = { savedAt: now, photoCount: entry.photos.length };
+  await writeIndex(capPools(index, MAX_POOLS));
 }
 
 /**
  * 살아 있는 카드 것만 남기고 저장까지 한 뒤, 정리된 목록을 돌려준다.
  * 삭제된 카드의 사진이 재스캔에서 영영 제외되는 것을 막는 청소 지점이다.
+ *
+ * 스캔 시작 시 이 함수가 도는 것을 전제로, 스캔 제외 id 집합은 여기서 나온 결과로
+ * 한 번만 재구성한다(파일이 흩어져 전수 조회가 비싸므로 매번 하지 않는다).
  */
 export async function syncTripPools(aliveTripGroupIds: string[]): Promise<TripPhotoPoolMap> {
-  const current = await loadTripPools();
-  const pruned = prunePools(current, aliveTripGroupIds);
-  if (Object.keys(pruned).length !== Object.keys(current).length) await writeTripPools(pruned);
-  return pruned;
+  await ensureMigrated();
+  const dir = poolDir();
+  if (!dir) return {};
+  const index = await readIndex();
+  const alive = new Set(aliveTripGroupIds);
+  const nextIndex: PoolIndex = {};
+  for (const [id, meta] of Object.entries(index)) {
+    if (alive.has(id)) { nextIndex[id] = meta; continue; }
+    try {
+      await fs().deleteAsync(`${dir}${poolFileName(id)}`, { idempotent: true });
+    } catch {
+      // 삭제 실패는 무시 — 인덱스에서 빠지므로 더 이상 조회되지 않는다
+    }
+  }
+  if (Object.keys(nextIndex).length !== Object.keys(index).length) await writeIndex(nextIndex);
+  const out: TripPhotoPoolMap = {};
+  for (const id of Object.keys(nextIndex)) {
+    const pool = await getTripPool(id);
+    if (pool) out[id] = pool;
+  }
+  return out;
+}
+
+/**
+ * 옛 AsyncStorage 단일 키를 파일로 1회 이관한다.
+ *
+ * 부팅 훅을 따로 두지 않고 이 모듈의 모든 진입점(getTripPool·saveTripPool·syncTripPools)
+ * 앞에서 부른다. 앱 부팅 순서에 의존하지 않고 자가 치유되며, 모듈 수준 프로미스 하나로
+ * 세션당 정확히 한 번만 돈다(동시 호출이 겹쳐도 이관이 두 번 돌지 않는다).
+ *
+ * 실패해도 치명적이지 않다 — 앨범 폴백이 있고, 최악의 경우 재스캔에서 여행이 다시 뜬다.
+ * 실패 시 옛 키를 남겨 두므로 다음 앱 실행에서 다시 시도된다.
+ */
+let migrationPromise: Promise<void> | null = null;
+
+async function runMigration(): Promise<void> {
+  try {
+    const raw = await storage().getItem(TRIP_PHOTO_POOL_KEY);
+    if (!raw) return;
+    const pools = parsePools(raw);
+    const dir = await ensureDir();
+    if (!dir) return;
+    const index: PoolIndex = {};
+    for (const pool of Object.values(pools)) {
+      const savedAt = pool.savedAt || Date.now();
+      const entry: TripPhotoPool = { ...pool, savedAt };
+      // saveTripPool을 부르지 않는다 — 그쪽이 ensureMigrated를 다시 불러 교착이 된다.
+      await fs().writeAsStringAsync(`${dir}${poolFileName(entry.tripGroupId)}`, JSON.stringify(entry));
+      index[entry.tripGroupId] = { savedAt, photoCount: entry.photos.length };
+    }
+    await writeIndex(index);
+    await storage().removeItem(TRIP_PHOTO_POOL_KEY);
+  } catch {
+    // 옛 키를 남겨 둔다 — 다음 실행에서 다시 시도된다
+  }
+}
+
+function ensureMigrated(): Promise<void> {
+  if (!migrationPromise) migrationPromise = runMigration();
+  return migrationPromise;
 }
