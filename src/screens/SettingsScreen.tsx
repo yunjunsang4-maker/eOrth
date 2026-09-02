@@ -373,7 +373,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               // 계정은 그대로 쓰는 '데이터' 초기화 — 아이디·가입수단·언어는 유지한다.
               // (지우면 ProfileSync가 랜덤 아이디로 서버를 덮고 소셜 가입자가 탈퇴 불가가 된다)
               resetSettings({ keepIdentity: true });
-              resetConversations();
+              // 같은 이유로 DM도 '나에게만 삭제' 기록(hiddenIds)과 읽음 워터마크(readMarks)는
+              // 남긴다 — 계정이 그대로라 서버 메시지는 살아 있는데, 삭제 기록을 비우면 다음
+              // 따라잡기·loadHistory가 내가 지운 메시지를 되살리고 옛 대화가 전부 안읽음으로 켜진다.
+              // (위에서 clearPersistedStores로 디스크를 먼저 비웠지만, 이 리셋이 만드는 상태 변경이
+              //  usePersistence의 디바운스 저장을 다시 유발해 보존한 두 값이 디스크에 다시 실린다.)
+              resetConversations({ keepHidden: true });
               Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
             })();
           },

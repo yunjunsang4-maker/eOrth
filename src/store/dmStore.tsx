@@ -12,6 +12,7 @@ import { getMyUserId, getProfileById, getProfileByHandle } from '../services/pro
 import { uploadImage } from '../services/media';
 import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers, fetchInboxSince } from '../services/dm';
 import { inboxCatchUpSince, advanceServerSeen } from '../utils/dmCatchUp';
+import { normalizePeerMap, invertPeerMap, prunePeerMap } from '../utils/dmPeerMap';
 
 // 업로드 실패 감지 — uploadImage는 실패 시 '원본 로컬 URI'를 그대로 돌려주므로 falsy 검사로는
 // 잡히지 않는다. file:// 경로가 서버에 저장되면 상대 기기에서 그 사진이 영구히 깨져 보이므로,
@@ -86,7 +87,10 @@ interface DMContextType {
   topFriends: (n: number) => Friend[];
   unreadCount: (handle: string) => number; // 대화별 안읽음 메시지 수
   markRead: (handle: string) => void;       // 대화를 읽음 처리
-  resetConversations: () => void; // 대화 내역을 첫 실행 상태(시드)로 되돌림
+  // 대화 내역을 첫 실행 상태(시드)로 되돌림.
+  // keepHidden: '나에게만 삭제' 기록(hiddenIds)과 읽음 워터마크(readMarks)를 남긴다 —
+  // 계정은 그대로 쓰는 '데이터 초기화'용. 계정 경계(전환·파기)에서는 옵션 없이 부른다.
+  resetConversations: (opts?: { keepHidden?: boolean }) => void;
   // 백엔드 DM: 대화 상대(profile uuid) 등록 + 서버 히스토리 로드. 미설정 시 무동작.
   registerPeer: (handle: string, userId?: string) => void;
   loadHistory: (handle: string, userId?: string) => Promise<void>;
@@ -124,18 +128,30 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
   // handle ↔ 상대 profile uuid 매핑(백엔드 전송용) / profile uuid → handle 캐시(실시간 수신용)
+  // ⚠️ 이 둘은 영속화 대상이다(아래 usePersistence의 peers). ref로만 두면 콜드 스타트에 비어 있는데
+  //    conversations는 handle 키로 복원돼 있어, 따라잡기 중 프로필 조회가 실패하면 같은 사람의
+  //    메시지가 <uuid> 키로 들어가 메이트 목록에 행이 2개 뜬다(utils/dmPeerMap.ts 주석 참조).
   const peerByHandle = useRef<Record<string, string>>({});
   const handleByPeer = useRef<Record<string, string>>({});
+  // 매핑이 '실제로 바뀐' 횟수 — usePersistence의 deps에 넣어 디바운스 저장을 유발하는 용도다.
+  // ref는 값이 바뀌어도 렌더도 저장도 트리거하지 않으므로 저장 트리거만 이 카운터가 담당한다.
+  // 매핑의 authoritative 사본은 계속 ref다 — pushToBackend·loadHistory·따라잡기·실시간 핸들러가
+  // 전부 동기적으로 `.current`를 읽으므로 state로 바꾸면 그 자리에서 최신 값을 놓친다.
+  const [peersVersion, setPeersVersion] = useState(0);
 
   // 대화 상대의 profile uuid 등록 (대화 열 때 호출)
   const registerPeer = useCallback((handle: string, userId?: string) => {
     if (!handle || !userId) return;
+    // 값이 이미 같으면 카운터를 올리지 않는다 — registerPeer는 대화를 열 때마다 불리므로
+    // 무조건 올리면 헛 저장(디스크 쓰기)과 헛 렌더가 매번 따라온다.
+    const changed = peerByHandle.current[handle] !== userId || handleByPeer.current[userId] !== handle;
     peerByHandle.current[handle] = userId;
     handleByPeer.current[userId] = handle;
+    if (changed) setPeersVersion((v) => v + 1);
   }, []);
 
-  // friends는 시드 고정이므로 대화 내역과 읽음 상태만 영속화한다
-  const hydrated = usePersistence<{ conversations: Record<string, Message[]>; readMarks?: Record<string, number>; hiddenIds?: Record<string, true> }>(
+  // friends는 시드 고정이므로 대화 내역·읽음 상태·숨김 기록·상대 매핑만 영속화한다
+  const hydrated = usePersistence<{ conversations: Record<string, Message[]>; readMarks?: Record<string, number>; hiddenIds?: Record<string, true>; peers?: Record<string, string> }>(
     STORE_KEYS.dm,
     (p) => {
       // payload 필드 가드 — 손상/구버전 payload로 throw하면 부분 복원 상태가 저장으로 덮어써진다.
@@ -159,9 +175,29 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         setReadMarks(marks);
       }
       if (p.hiddenIds) { setHiddenIds(p.hiddenIds); hiddenIdsRef.current = p.hiddenIds; }
+      // handle ↔ peer uuid 매핑 복원. 여기 없으면 콜드 스타트 직후의 따라잡기가 프로필 조회에
+      // 실패했을 때 이미 handle 키로 있는 대화 옆에 <uuid> 키 대화가 하나 더 생긴다.
+      // ⚠️ 역방향(handleByPeer)까지 반드시 채운다 — 따라잡기·실시간이 조회하는 쪽이 그쪽이라
+      //    정방향만 채우면 매핑을 영속화하고도 증상이 그대로다.
+      // 손상 값과 폴백 항목(handle === uuid)은 normalizePeerMap이 조용히 버린다
+      // (위 '필드 가드' 관례 — throw 금지 / 폴백을 되살리면 재조회가 영영 막힌다).
+      // ⚠️ 통째 교체가 아니라 **병합**한다. AsyncStorage 읽기는 비동기라, 복원이 끝나기 전에
+      //    실시간 구독이 붙어 registerPeer가 매핑을 만드는 창이 있다(구독 effect는 hydrated를
+      //    기다리지 않는다 — 기다리는 것은 시드·따라잡기뿐이다). 교체하면 그 창에서 등록된
+      //    가장 최신 매핑이 더 오래된 저장본에 덮여 사라진다. 충돌 시 인메모리(=최신)가 이긴다.
+      const peers = normalizePeerMap(p.peers);
+      if (Object.keys(peers).length) {
+        const merged = { ...peers, ...peerByHandle.current };
+        peerByHandle.current = merged;
+        // 역방향은 병합 결과에서 다시 유도한다 — 두 맵을 따로 병합하면 인메모리의 폴백 항목이
+        // 복원된 진짜 handle을 덮을 수 있다. invertPeerMap이 '진짜 handle 우선' 규칙을 갖고 있다.
+        handleByPeer.current = invertPeerMap(merged);
+      }
     },
-    () => ({ conversations, readMarks, hiddenIds }),
-    [conversations, readMarks, hiddenIds],
+    // 저장 시 가지치기 — 대화가 없는 handle의 매핑까지 쌓으면 상한 없이 자란다(근거는 prunePeerMap).
+    () => ({ conversations, readMarks, hiddenIds, peers: prunePeerMap(peerByHandle.current, conversations) }),
+    // peersVersion이 deps에 있어야 매핑 변경이 디바운스 저장으로 이어진다(ref는 렌더를 안 만든다).
+    [conversations, readMarks, hiddenIds, peersVersion],
   );
 
   // 전송이 진행 중인 로컬 메시지 id — 같은 메시지의 중복 전송(서버 2행) 방지.
@@ -439,11 +475,28 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     });
   }, [conversations]);
 
-  const resetConversations = useCallback(() => {
+  // keepHidden: 계정은 그대로 쓰는 '데이터 초기화'(SettingsScreen)용. 같은 화면 바로 위 줄의
+  // resetSettings({ keepIdentity: true })와 같은 관례다 — 계정 경계가 아닌 초기화는 계정에
+  // 귀속된 사용자 의사를 남긴다.
+  //  · hiddenIds — 내가 '나에게만 삭제'한 서버 메시지의 **유일한 기록**이다. 비우면 다음
+  //    loadHistory·따라잡기가 그 메시지를 되살린다(사용자 의사에 정면으로 반한다).
+  //  · readMarks — 함께 남긴다. 지우면 재동기화된 옛 대화가 전부 안읽음으로 켜져 배지 폭풍이
+  //    난다. 워터마크는 시각 기준이라 대화가 비워졌다 다시 차도 그대로 유효하다.
+  // 계정 경계(전환·파기 3곳)는 옵션 없이 불러 지금까지와 똑같이 전부 비운다 — 남기면 이전
+  // 계정의 삭제 의사·읽음 상태가 다음 계정에 샌다.
+  const resetConversations = useCallback((opts?: { keepHidden?: boolean }) => {
     setConversations(INITIAL_CONVERSATIONS);
-    setReadMarks({});
-    setHiddenIds({});
-    hiddenIdsRef.current = {};
+    if (!opts?.keepHidden) {
+      setReadMarks({});
+      setHiddenIds({});
+      hiddenIdsRef.current = {}; // state와 반드시 함께 — 어긋나면 ingestRemoteMessage의 차단이 헛돈다
+    }
+    // handle ↔ uuid 매핑은 어느 경우든 비운다. 계정 경계에서는 이전 계정의 매핑이 새 계정에
+    // 새는 것을 막아야 하고, 데이터 초기화에서는 대화가 통째로 사라져 어차피 가지치기 대상이다
+    // (필요해지면 getProfileByHandle 재조회로 다시 채워진다).
+    peerByHandle.current = {};
+    handleByPeer.current = {};
+    setPeersVersion((v) => v + 1); // 비운 매핑이 디스크에도 반영되도록 저장을 유발
     // 따라잡기 바닥값도 리셋 — 남겨두면 초기화 직후의 따라잡기가 '이미 본 구간'으로 착각해
     // 그 이전 메시지를 통째로 건너뛴다(데이터 초기화·계정 전환 경로).
     lastServerSeenRef.current = 0;
@@ -485,8 +538,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         if (!handle) {
           const prof = await getProfileById(row.sender_id);
           handle = prof?.handle || row.sender_id;
-          handleByPeer.current[row.sender_id] = handle;
-          peerByHandle.current[handle] = row.sender_id;
+          // 두 ref를 직접 쓰지 않고 registerPeer를 경유한다 — 여기서만 직접 쓰면 그 매핑은
+          // peersVersion을 올리지 못해 영속화되지 않고, 다음 콜드 스타트에 다시 비어 있게 된다.
+          registerPeer(handle, row.sender_id);
         }
         ingestRemoteMessage(handle, mapRowToMessage(row, uid));
       });
@@ -507,7 +561,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       cleanup = null;
       sub?.data.subscription.unsubscribe();
     };
-  }, [ingestRemoteMessage]);
+  }, [ingestRemoteMessage, registerPeer]); // registerPeer는 deps [] 라 재구독을 유발하지 않는다
 
   // 서버 스레드 시드 — 재설치/기기 변경으로 로컬 대화가 빈 스레드를 복원한다.
   // 이게 없으면 서버엔 대화가 있는데 목록(메이트 목록·대화 행)에 뜨지 않아, 특히 비메이트
