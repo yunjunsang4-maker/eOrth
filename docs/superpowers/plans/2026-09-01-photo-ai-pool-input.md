@@ -21,9 +21,11 @@
 - 각 Task 끝에서 `npx tsc --noEmit`이 0으로 끝나야 한다.
 - 커밋은 **파일 단위로 스테이징**한다. 작업 트리에 사용자 WIP(`src/utils/feedWindow.ts`, `src/screens/SocialScreen.tsx`, `src/constants/featureFlags.ts`)가 있으므로 `git add -A`를 쓰지 않는다.
 
-## 선행 조건 (구현 시작 전 확인)
+## 선행 조건 (해소됨)
 
-`src/utils/tripPhotoPool.ts`와 `tripPhotoPool.verify.ts`가 **아직 미추적(untracked)** 상태다. 과거 여행 불러오기 작업 전체가 미커밋이다. 이 계획은 그 코드 위에 서 있으므로, 시작 전에 그 작업이 커밋돼 있어야 한다. 커밋되지 않았다면 사용자에게 확인을 받고 진행한다.
+이 계획은 과거 여행 불러오기 작업(`src/utils/tripPhotoPool.ts`) 위에 서 있다. 그 작업은 `e497afe`로 커밋됐다(2026-09-03 확인).
+
+**작업 트리에 사용자 WIP가 있다** — 피드 윈도잉(`src/utils/feedWindow.ts`, `src/utils/feedWindow.verify.ts`, `src/screens/SocialScreen.tsx`, `src/constants/featureFlags.ts`)이 미커밋 상태로 남아 있고 이 계획과 무관하다. **절대 `git add -A`·`git add .`·`git commit -a`를 쓰지 말고**, 각 태스크가 명시한 경로만 스테이징한다.
 
 ---
 
@@ -70,6 +72,17 @@ eqJson(
 
 // ── MAX_POOLS 백스톱은 남아 있어야 한다 (capPools가 죽은 코드가 되지 않는다) ──
 eq(MAX_POOLS, 500, 'MAX_POOLS는 폭주 방지 백스톱으로 500');
+
+// ── capPools는 인덱스에도 그대로 쓰인다 (savedAt만 있으면 되는 시그니처) ──
+{
+  const index = {
+    old: { savedAt: 1, photoCount: 3 },
+    mid: { savedAt: 5, photoCount: 3 },
+    recent: { savedAt: 9, photoCount: 3 },
+  };
+  eqJson(Object.keys(capPools(index, 2)).sort(), ['mid', 'recent'], '인덱스도 최근 저장 순으로 자른다');
+  eqJson(capPools(index, 5), index, '상한 이하면 그대로');
+}
 ```
 
 import 문도 함께 고친다(파일 최상단):
@@ -111,9 +124,28 @@ export const MAX_POOLS = 500;
 
 `MAX_POOL_PHOTOS`는 삭제한다.
 
-- [ ] **Step 4: 순수 헬퍼를 추가한다**
+- [ ] **Step 4: 순수 헬퍼를 추가하고 `capPools`를 일반화한다**
 
-`parsePools` 함수 **바로 뒤**(순수 로직 구역 끝)에 추가한다:
+먼저 기존 `capPools`의 시그니처를 넓힌다. 지금은 `TripPhotoPoolMap`만 받는데 인덱스에도
+같은 규칙(최근 저장 순으로 자르기)을 써야 한다. 본문은 `savedAt`만 읽으므로 로직은 그대로 두고
+타입만 넓힌다 — 그래야 호출부에서 캐스트를 하지 않는다.
+
+```ts
+/** 최근 저장 순으로 max개만 남긴다. savedAt만 있으면 어떤 맵에든 쓸 수 있다. */
+export function capPools<T extends { savedAt?: number }>(
+  pools: Record<string, T>,
+  max: number,
+): Record<string, T> {
+  const entries = Object.entries(pools);
+  if (entries.length <= max) return { ...pools };
+  entries.sort((a, b) => (b[1].savedAt ?? 0) - (a[1].savedAt ?? 0));
+  const out: Record<string, T> = {};
+  for (const [id, pool] of entries.slice(0, max)) out[id] = pool;
+  return out;
+}
+```
+
+그다음 `parsePools` 함수 **바로 뒤**(순수 로직 구역 끝)에 추가한다:
 
 ```ts
 export interface PoolIndexEntry { savedAt: number; photoCount: number }
@@ -274,7 +306,7 @@ export async function saveTripPool(
   }
   const index = await readIndex();
   index[entry.tripGroupId] = { savedAt: now, photoCount: entry.photos.length };
-  await writeIndex(capPools(index as unknown as TripPhotoPoolMap, MAX_POOLS) as unknown as PoolIndex);
+  await writeIndex(capPools(index, MAX_POOLS));
 }
 
 /**
