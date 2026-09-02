@@ -1967,12 +1967,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 앱 시작/복원 후 피드·메이트 1회 로드
+  // 내 글 카운터도 여기서 함께 맞춘다 — 지금까지 refreshMyPostCounts 호출부는 소셜·프로필의
+  // '당겨서 새로고침' 둘뿐이라, 남이 내 글에 누른 좋아요는 사용자가 당겨야만 보였다.
+  // 남의 글(피드)은 시작 시 자동 갱신되는데 내 글만 빠져 있던 비대칭을 없앤다.
+  // (안정 useCallback이라 deps에 넣어도 재실행을 유발하지 않는다.)
   useEffect(() => {
     if (hydrated) {
       refreshFeed();
       refreshNeighbors();
+      refreshMyPostCounts();
     }
-  }, [hydrated, refreshFeed, refreshNeighbors]);
+  }, [hydrated, refreshFeed, refreshNeighbors, refreshMyPostCounts]);
 
   // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
   // 서버 blocks에도 반영한다(RLS 차단 필터 동작).
@@ -2067,6 +2072,25 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
     return () => { offReconnect(); sub.remove(); };
   }, [resyncUnpublished]);
+
+  // ─── 포그라운드 복귀 시 내 글 카운터 동기화 ───
+  // 모바일 앱은 대개 메모리에 남아 콜드 스타트가 드물다 — 위 '앱 시작' effect만으로는 실제로
+  // 거의 발동하지 않으므로 복귀 시점에도 맞춘다. 위 resyncUnpublished의 AppState effect에
+  // 얹지 않고 분리한 이유: 미발행 재전송과 카운트 조회는 실패 조건도 비용도 다르다
+  // (재전송은 오프라인 판정·발행 시도 상태에 얽히고, 이쪽은 단순 조회 1회다).
+  const lastCountSyncAtRef = useRef(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      // 60초 throttle — 앱 전환을 반복할 때마다 200건 조회가 나가면 이그레스를 태운다.
+      const now = Date.now();
+      if (now - lastCountSyncAtRef.current < 60000) return;
+      lastCountSyncAtRef.current = now;
+      refreshMyPostCounts();
+    });
+    return () => { sub.remove(); };
+  }, [refreshMyPostCounts]);
 
   // ─── 기존 기록 사진 소급 영속화 (앱 시작 후 1회) ───
   // persistRecordPhotos가 blogBlocks를 처리하지 않던 시절 발행된 블로그 글은 사진·영상이

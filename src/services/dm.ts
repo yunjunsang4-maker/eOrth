@@ -110,6 +110,44 @@ export async function sendMessage(
   }
 }
 
+/**
+ * 따라잡기: since 이후에 도착한 '받은' 메시지 전부 — 앱이 꺼져 있던 사이의 공백을 메운다.
+ *
+ * 실시간 구독은 앱이 켜져 돌아가는 동안에만 살아 있어서, 백그라운드에서 소켓이 끊긴 사이 온
+ * 메시지는 그 대화방에 직접 들어가기 전까지 목록에 뜨지 않았다(안읽음 배지·마지막 메시지 없음).
+ *
+ * ⚠️ 스레드를 지정하지 않고 dm_messages 전체를 조회하는 것이 맞다 — RLS
+ *    messages_select_participant가 "내가 참여한 스레드"만 통과시키고 차단 관계도 걸러낸다.
+ *    앱에서 스레드 목록을 먼저 받아 스레드별로 조회하면 요청이 대화 수만큼 늘어날 뿐이다.
+ * ⚠️ sender_id != 내 uid — 실시간 핸들러의 `if (row.sender_id === uid) return;`과 같은 규칙.
+ *    내 발신 echo를 받아 합치면 이미 로컬에 있는 메시지가 두 벌이 된다.
+ * ⚠️ 실패는 반드시 null 로 구분한다(빈 배열 아님). 빈 배열은 "새 메시지 없음"이라는 다른
+ *    뜻이고, 호출부는 null일 때 로컬 상태를 그대로 둔다(fetchPostStatsFor와 같은 규칙).
+ */
+export async function fetchInboxSince(
+  sinceMs: number
+): Promise<{ senderId: string; message: Message }[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase
+      .from('dm_messages')
+      .select('*')
+      .gt('created_at', new Date(sinceMs).toISOString())
+      .neq('sender_id', uid)
+      .order('created_at', { ascending: true })
+      .limit(200); // 한 번에 200건 — 공백이 더 크면 대화 진입 시 loadHistory가 나머지를 채운다
+    if (error) return null;
+    return (data ?? []).map((r: any) => ({
+      senderId: r.sender_id as string,
+      message: mapRowToMessage(r, uid),
+    }));
+  } catch {
+    return null;
+  }
+}
+
 // 실시간 수신: 내가 참여한 스레드의 새 메시지 INSERT 구독 (RLS가 내 것만 전달)
 // onInsert에는 dm_messages 행이 그대로 전달된다. 해제 함수 반환.
 export function subscribeInbox(onInsert: (row: any) => void): () => void {

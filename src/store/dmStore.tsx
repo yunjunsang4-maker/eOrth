@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import type { TravelRecord } from './recordStore';
 import type { Friend, Message, MsgType, SharedRecord, ReplyInfo } from './dmTypes';
 import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic';
@@ -10,7 +10,8 @@ import { onReconnect } from '../utils/connectivity';
 import { remapDocUri } from '../utils/remapDocumentUris';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage } from '../services/media';
-import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers } from '../services/dm';
+import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers, fetchInboxSince } from '../services/dm';
+import { inboxCatchUpSince, advanceServerSeen } from '../utils/dmCatchUp';
 
 // 업로드 실패 감지 — uploadImage는 실패 시 '원본 로컬 URI'를 그대로 돌려주므로 falsy 검사로는
 // 잡히지 않는다. file:// 경로가 서버에 저장되면 상대 기기에서 그 사진이 영구히 깨져 보이므로,
@@ -297,6 +298,60 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  // ─── 인박스 따라잡기 ───
+  // 앱이 꺼져 있던(또는 백그라운드에서 소켓이 끊긴) 사이 온 DM은 지금까지 어떤 경로로도
+  // 목록에 오지 않았다 — 실시간은 앱이 켜져 있을 때만, 스레드 시드는 로컬 대화가 빈 경우만,
+  // loadHistory는 그 대화방에 직접 들어갔을 때만 돈다. 그래서 푸시를 무시하고 앱을 열면
+  // 메이트 목록에 안읽음 배지도 새 마지막 메시지도 뜨지 않았다.
+  // (알림 배지는 MainScreen이 '화면 포커스 재조회 + 실시간' 이중화로 이미 이렇게 처리한다.)
+  const lastCatchUpAtRef = useRef(0);
+  // 서버가 실제로 돌려준 행의 최대 createdAt — '이미 본 구간'의 바닥값.
+  // conversations에서 유도한 워터마크만 쓰면, 받은 대화를 전부 비운(clearConversation) 인박스는
+  // 워터마크가 0에 고착돼 포그라운드마다 같은 200건을 다시 끌어온다(전부 hiddenIds에 막혀
+  // 합류하지 못하니 다음 회차도 동일). 바닥값이 그 반복을 끊는다.
+  // ⚠️ 계정이 바뀌면 반드시 0으로 되돌린다 — 아래 applyUid·resetConversations 참조.
+  const lastServerSeenRef = useRef(0);
+  // 계정 경계 세대 카운터 — 바닥값을 리셋할 때 함께 올린다. 계정이 바뀌는 순간 이미 날아가 있던
+  // 따라잡기 응답이 뒤늦게 도착해 옛 계정의 메시지를 합류시키거나 옛 시각으로 바닥값을 되살리는
+  // 것을 막는다(await 뒤에 세대가 달라졌으면 결과를 통째로 버린다).
+  const catchUpEpochRef = useRef(0);
+  const catchUpInbox = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    // 앱 전환을 빠르게 반복하면 요청이 쌓이므로 10초 throttle
+    const now = Date.now();
+    if (now - lastCatchUpAtRef.current < 10000) return;
+    lastCatchUpAtRef.current = now;
+    const epoch = catchUpEpochRef.current;
+    const since = Math.max(inboxCatchUpSince(conversationsRef.current, now), lastServerSeenRef.current);
+    const items = await fetchInboxSince(since);
+    if (!items) return; // 조회 실패 — 로컬 유지(빈 배열과 구분된다). 바닥값도 전진시키지 않는다
+    if (catchUpEpochRef.current !== epoch) return; // 응답 도착 전에 계정이 바뀜 — 결과 폐기
+    // 합류 여부와 무관하게 전진 — 돌려받은 행은 이미 '본' 것이고, 합류하지 않은 것은 내가
+    // 숨겼거나(hiddenIds) 중복이라 다시 받을 이유가 없다(advanceServerSeen 주석 참조).
+    lastServerSeenRef.current = advanceServerSeen(
+      lastServerSeenRef.current,
+      items.map((it) => it.message),
+    );
+    for (const { senderId, message } of items) {
+      let handle = handleByPeer.current[senderId];
+      if (!handle) {
+        const prof = await getProfileById(senderId).catch(() => null);
+        // 이 await도 계정 경계다 — 조회 중 계정이 바뀌면 남은 항목은 옛 계정 것이므로 버린다.
+        // (상태는 await 지점에서만 바뀔 수 있으니 이 검사 하나면 루프 전체가 덮인다.)
+        if (catchUpEpochRef.current !== epoch) return;
+        // 프로필 조회 실패 시 senderId를 handle로 폴백 — 실시간 핸들러와 같은 규칙이다.
+        // 여기서 메시지를 버리면 안 된다: 같은 배치의 다른 메시지가 합류하는 순간 워터마크가
+        // 전진해 버려진 메시지는 다시 조회되지 않는다(탈퇴와 네트워크 일시 실패를 구분할 수
+        // 없으므로, 이름이 uuid로 보이는 쪽이 영구 유실보다 낫다).
+        handle = prof?.handle || senderId;
+        registerPeer(handle, senderId);
+      }
+      // 합류는 반드시 ingestRemoteMessage 경유 — 내가 숨긴 메시지 재유입 차단(hiddenIds)과
+      // remoteId 중복 방지를 그 함수가 담당한다. 실시간 수신과 같은 문을 써야 두 벌이 안 생긴다.
+      ingestRemoteMessage(handle, message);
+    }
+  }, [ingestRemoteMessage, registerPeer]);
+
   // 서버 히스토리 로드 (대화 열 때). 비어있으면 로컬 유지.
   // ⚠️ 서버 목록으로 '통째 교체'하면 아직 서버에 없는 로컬 메시지 — 전송 실패(재시도 대기),
   //    전송 진행 중(remoteId 미부착), 상대 uuid 미등록으로 로컬에만 남은 메시지 — 가 증발한다.
@@ -389,6 +444,10 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     setReadMarks({});
     setHiddenIds({});
     hiddenIdsRef.current = {};
+    // 따라잡기 바닥값도 리셋 — 남겨두면 초기화 직후의 따라잡기가 '이미 본 구간'으로 착각해
+    // 그 이전 메시지를 통째로 건너뛴다(데이터 초기화·계정 전환 경로).
+    lastServerSeenRef.current = 0;
+    catchUpEpochRef.current += 1; // 이미 날아간 따라잡기 응답이 초기화를 되돌리지 못하게
   }, []);
 
   // 실시간 수신: 내 스레드의 새 메시지를 받아 대화에 합친다 (내 메시지 echo는 무시)
@@ -412,6 +471,12 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       cleanup?.();                    // 이전 계정 구독 해제 (계정 전환·로그아웃)
       cleanup = null;
       currentUid = uid;
+      // 따라잡기 바닥값은 계정 경계에서 반드시 0으로 — 이전 계정의 바닥값이 남으면 새 계정의
+      // 첫 따라잡기가 그 시각 이전을 '이미 본 구간'으로 착각해 초기 메시지를 통째로 건너뛴다.
+      // ⚠️ setAuthUid 앞에서 지운다: 트리거 1 effect는 authUid 반영 '이후의 렌더 뒤'에 돌므로
+      //    여기서 동기적으로 0을 넣으면 새 계정의 첫 catchUpInbox는 옛 바닥값을 볼 수 없다.
+      lastServerSeenRef.current = 0;
+      catchUpEpochRef.current += 1;   // 이전 계정으로 날아간 따라잡기 응답은 도착해도 폐기된다
       setAuthUid(uid);                // 스레드 시드 effect가 로그인·계정 전환을 따라가게
       if (!uid) return;               // 로그아웃 상태 — 구독 없음
       cleanup = subscribeInbox(async (row) => {
@@ -473,6 +538,28 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     })();
     return () => { cancelled = true; };
   }, [hydrated, authUid, loadHistory, registerPeer]);
+
+  // 따라잡기 트리거 1: 로그인·콜드 스타트 (복원 이후에만 — 복원 전 conversations는 비어 있어
+  // 워터마크가 폴백으로 떨어진다). 위 스레드 시드 effect와 일부러 분리했다 — 시드는
+  // seededForRef로 uid당 1회 잠기지만 따라잡기는 그 잠금과 수명이 달라야 하기 때문이다.
+  // 시드와 동시에 돌아도 ingestRemoteMessage의 remoteId 중복 가드가 처리한다.
+  useEffect(() => {
+    if (!isSupabaseConfigured || !hydrated || !authUid) return;
+    catchUpInbox();
+  }, [hydrated, authUid, catchUpInbox]);
+
+  // 따라잡기 트리거 2·3: 백그라운드 → 포그라운드 복귀(실시간 소켓이 끊겨 있던 구간을 메움) ·
+  // 오프라인 → 온라인 복귀(오프라인 콜드 스타트라 트리거 1이 헛돈 경우의 재시도).
+  // hydrated 가드 필수 — 복원 전에 합류하면 hydrate가 통째로 덮어써 합류분이 사라지고
+  // 10초 throttle만 소모한다(시드 effect 주석이 경계하는 그 경합과 같은 것이다).
+  useEffect(() => {
+    if (!isSupabaseConfigured || !hydrated) return;
+    const offReconnect = onReconnect(() => { catchUpInbox(); });
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') catchUpInbox();
+    });
+    return () => { offReconnect(); sub.remove(); };
+  }, [hydrated, catchUpInbox]);
 
   // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
