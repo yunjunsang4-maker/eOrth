@@ -7,7 +7,8 @@ import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persis
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import i18n from '../i18n';
-import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMyPosts, type PublishMediaOptions, type FeedCursor } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMyPosts, fetchPostStatsFor, type PublishMediaOptions, type FeedCursor } from '../services/posts';
+import { mergeServerPostCounts } from '../utils/postCountSync';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
@@ -355,6 +356,10 @@ interface RecordContextType {
   /** 첫 피드가 아직 안 왔다 — 이때 '피드가 비었어요' 화면을 그리면 거짓말이 된다 */
   feedInitialLoading: boolean;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
+  // 내 글의 좋아요·댓글 수를 서버 기준으로 갱신(남이 남긴 반응 반영). 실패 시 로컬 값 유지.
+  refreshMyPostCounts: () => Promise<void>;
+  // 게시물 1건만 갱신 — 상세 진입용(내 글·피드 글 모두).
+  refreshPostCounts: (postId: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
   // 로그인 완료 직후 여행카드 복원 재무장 — 로그인 전 마운트 때 스킵된 복원을 재시도시킨다.
@@ -1189,6 +1194,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const likeStateRef = useRef<Record<string, boolean>>({});
   // 댓글 좋아요 진행 중 상태 — toggleCommentLike 연타 드리프트 방지용
   const commentLikeStateRef = useRef<Record<string, boolean>>({});
+  // 좋아요 서버 반영이 '진행 중'인 글의 로컬 id → 미착신 요청 수.
+  // likeStateRef(최종 의도 상태)와 달리 요청이 끝나면 0으로 돌아온다 — 서버 카운트 병합
+  // (refreshMyPostCounts)이 아직 서버에 닿지 않은 내 탭을 되돌려 하트가 깜빡이는 것을 막는 용도라
+  // '지금 날아가는 중'만 표시해야 한다.
+  const likePendingRef = useRef<Record<string, number>>({});
+  // 그 글을 마지막으로 탭한 시각. pending만으로는 '조회가 나간 뒤 → 좋아요 요청이 끝난' 창을
+  // 막지 못한다(그 순간 pending은 0이지만 서버 조회 결과는 탭 이전 값이라 카운트가 되돌아간다).
+  const likeTapAtRef = useRef<Record<string, number>>({});
   const toggleLike = (id: string) => {
     const inRecords = records.find((r) => r.id === id);
     const inFeed = inRecords ? undefined : feedPosts.find((r) => r.id === id);
@@ -1196,6 +1209,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!target) return;
     const nowLiked = !(likeStateRef.current[id] ?? target.liked);
     likeStateRef.current[id] = nowLiked;
+    likeTapAtRef.current[id] = Date.now(); // 진행 중인 서버 카운트 조회가 이 탭을 되돌리지 않게
     // 이미 원하는 상태면 no-op — 같은 방향으로 두 번 적용돼 카운트가 어긋나는 것 방지
     const flip = (r: TravelRecord): TravelRecord =>
       r.id !== id || r.liked === nowLiked
@@ -1206,17 +1220,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 백엔드 동기화 (feed 글은 id가 곧 remoteId)
     const remoteId = target.remoteId ?? (inFeed ? target.id : undefined);
     if (isSupabaseConfigured && remoteId) {
-      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch((e) => {
-        // 서버 반영 실패 → 낙관 반영을 되돌린다 (안 되돌리면 다음 새로고침까지 서버와 어긋남)
-        notifySyncError(e);
-        likeStateRef.current[id] = !nowLiked;
-        const revert = (r: TravelRecord): TravelRecord =>
-          r.id !== id || r.liked !== nowLiked
-            ? r
-            : { ...r, liked: !nowLiked, likes: !nowLiked ? r.likes + 1 : Math.max(0, r.likes - 1) };
-        if (inRecords) setRecords((prev) => prev.map(revert));
-        else setFeedPosts((prev) => prev.map(revert));
-      });
+      likePendingRef.current[id] = (likePendingRef.current[id] ?? 0) + 1;
+      (nowLiked ? likePost(remoteId) : unlikePost(remoteId))
+        .catch((e) => {
+          // 서버 반영 실패 → 낙관 반영을 되돌린다 (안 되돌리면 다음 새로고침까지 서버와 어긋남)
+          notifySyncError(e);
+          likeStateRef.current[id] = !nowLiked;
+          const revert = (r: TravelRecord): TravelRecord =>
+            r.id !== id || r.liked !== nowLiked
+              ? r
+              : { ...r, liked: !nowLiked, likes: !nowLiked ? r.likes + 1 : Math.max(0, r.likes - 1) };
+          if (inRecords) setRecords((prev) => prev.map(revert));
+          else setFeedPosts((prev) => prev.map(revert));
+        })
+        .finally(() => {
+          const n = (likePendingRef.current[id] ?? 1) - 1;
+          if (n > 0) likePendingRef.current[id] = n;
+          else delete likePendingRef.current[id];
+        });
     }
   };
 
@@ -1836,6 +1857,74 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // ─── 게시물 카운터(좋아요·댓글 수) 서버 동기화 ───
+  // 내 글의 likes/comments는 '내가' 움직일 때만 바뀌고, 남이 누른 좋아요·남이 단 댓글은 서버
+  // likes_count/comments_count 에만 쌓였다(fetchFeed는 내 글을 제외하고, hydrateMyRecords는
+  // 계정 전환 때만 돈다) → 작성자 화면에서 좋아요가 영원히 0이었다.
+  // 아래 두 콜백이 서버 값을 다시 끌어오는 경로다.
+  // 안정 콜백(deps [])을 유지해야 화면의 onRefresh/useEffect가 매 렌더 재생성되지 않으므로
+  // 목록은 state가 아니라 미러 ref로 읽는다.
+  const countSyncRecordsRef = useRef(records);
+  countSyncRecordsRef.current = records;
+  const countSyncFeedRef = useRef(feedPosts);
+  countSyncFeedRef.current = feedPosts;
+  const countSyncCommentsRef = useRef(commentsByPost);
+  countSyncCommentsRef.current = commentsByPost;
+  // 조회를 시작한 시각(since) 기준의 '건드리면 안 되는 글' 판정.
+  //   · 좋아요: 서버 반영이 날아가는 중(pending)이거나 조회가 나간 뒤 탭한 글(tapAt >= since)
+  //            — 서버 값이 사용자의 최신 의도보다 옛것이다.
+  //   · 댓글:  이미 목록이 로드된 글 — 그 글의 comments는 commentsByPost가 단일 출처이고
+  //            아래 동기화 effect가 계속 덮으므로, 서버 카운트가 끼어들면 숫자가 깜빡인다.
+  const makeCountGuards = useCallback(
+    (since: number) => ({
+      isLikePending: (localId: string) =>
+        (likePendingRef.current[localId] ?? 0) > 0 || (likeTapAtRef.current[localId] ?? 0) >= since,
+      isCommentsLoaded: (localId: string) => countSyncCommentsRef.current[localId] !== undefined,
+    }),
+    []
+  );
+
+  /**
+   * 내 글의 좋아요·댓글 수를 서버 기준으로 맞춘다 — 소셜·프로필 당겨서 새로고침용.
+   *
+   * 최신 COUNT_SYNC_MAX개만 본다. 글이 수백 건 쌓인 사용자에게 새로고침마다 전량을 조회시키면
+   * 200개 청크가 여러 번 나가 이그레스를 태운다. 그 밖의 오래된 글은 상세 진입 시
+   * refreshPostCounts가 단건으로 맞추므로 카운트가 틀린 채 남지 않는다.
+   */
+  const refreshMyPostCounts = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    const COUNT_SYNC_MAX = 200; // = fetchPostStatsFor 청크 1개 = 요청 1회
+    const ids = countSyncRecordsRef.current
+      .filter((r) => !!r.remoteId && !r.isExample)
+      // records 배열 순서는 보장되지 않으므로 최신순으로 직접 정렬한 뒤 자른다
+      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      .slice(0, COUNT_SYNC_MAX)
+      .map((r) => r.remoteId as string);
+    if (ids.length === 0) return;
+    const since = Date.now();
+    const counts = await fetchPostStatsFor(ids);
+    if (!counts) return; // 조회 실패 — 로컬 값 유지(0으로 덮지 않는다)
+    setRecords((prev) => mergeServerPostCounts(prev, counts, makeCountGuards(since)));
+  }, [makeCountGuards]);
+
+  /** 게시물 1건의 카운터만 맞춘다 — 상세 진입용. 내 글(records)·피드 글(feedPosts) 모두 대상 */
+  const refreshPostCounts = useCallback(async (postId: string) => {
+    if (!isSupabaseConfigured || !postId) return;
+    const inRecords = countSyncRecordsRef.current.find((r) => r.id === postId);
+    const inFeed = inRecords ? undefined : countSyncFeedRef.current.find((r) => r.id === postId);
+    const target = inRecords ?? inFeed;
+    if (!target || target.isExample) return;
+    // 피드 글은 id가 곧 remoteId (toggleLike와 같은 규칙)
+    const remoteId = target.remoteId ?? (inFeed ? target.id : undefined);
+    if (!remoteId) return;
+    const since = Date.now();
+    const counts = await fetchPostStatsFor([remoteId]);
+    if (!counts) return;
+    const guards = makeCountGuards(since);
+    if (inRecords) setRecords((prev) => mergeServerPostCounts(prev, counts, guards));
+    else setFeedPosts((prev) => mergeServerPostCounts(prev, counts, guards));
+  }, [makeCountGuards]);
+
   // 메이트 목록을 백엔드 기준으로 동기화
   // 서버가 연속으로 빈 메이트 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
   const emptyNeighborStreakRef = useRef(0);
@@ -2207,7 +2296,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, refreshMyPostCounts, refreshPostCounts, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

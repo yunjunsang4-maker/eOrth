@@ -12,6 +12,7 @@ import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
 import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageCompress';
 import type { TravelRecord } from '../store/recordStore';
+import type { ServerPostCounts } from '../utils/postCountSync';
 
 // 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
 const ALBUM_EDGE = 2048;
@@ -425,6 +426,52 @@ export async function fetchPostById(postId: string): Promise<TravelRecord | null
     const { fetchMyLikesFor } = await import('./social');
     const likedSet = rec.remoteId ? await fetchMyLikesFor([rec.remoteId]) : new Set<string>();
     return rec.remoteId && likedSet.has(rec.remoteId) ? { ...rec, liked: true } : rec;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 주어진 게시물들의 서버 카운터만 조회 — remoteId → { likes, comments }.
+ *
+ * 내 글의 카운터는 남이 좋아요·댓글을 남기면 서버(posts.likes_count/comments_count)에만
+ * 쌓이고 앱으로 돌아오지 않았다(fetchFeed는 내 글을 제외하고, hydrateMyRecords는 계정 전환
+ * 때만 돈다). 이 함수가 그 경로다 — data(JSONB 본문·사진)를 빼고 숫자 컬럼만 받아
+ * 이그레스가 거의 없다.
+ *
+ * ⚠️ 이름이 비슷한 `post_counts` RPC(services/social.ts)와는 다른 것이다.
+ *    그쪽은 '사용자별 글 개수', 이쪽은 '게시물별 반응 수'다.
+ *
+ * ⚠️ 실패는 반드시 null 로 구분한다(빈 Map 아님). 빈 Map을 돌려주면 호출부가
+ *    "서버에 좋아요·댓글이 0개"로 오해할 여지가 생긴다.
+ */
+export async function fetchPostStatsFor(postIds: string[]): Promise<Map<string, ServerPostCounts> | null> {
+  if (!supabase || postIds.length === 0) return new Map();
+  try {
+    // 200개 단위 청크 — 대량 id를 .in() 하나로 보내면 URL 길이 한도에 걸린다(fetchMyLikesFor와 동일).
+    const CHUNK = 200;
+    const out = new Map<string, ServerPostCounts>();
+    for (let i = 0; i < postIds.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('id, likes_count, comments_count')
+        .in('id', postIds.slice(i, i + CHUNK));
+      if (error) {
+        // 첫 청크부터 실패 = 조회 자체 실패 → null(로컬 유지). 중간 실패는 받은 만큼만 반영한다
+        // (부분 Map은 호출부가 '없는 id는 건드리지 않는' 규칙으로 안전하게 처리한다).
+        if (out.size === 0) return null;
+        break;
+      }
+      for (const r of (data ?? []) as any[]) {
+        if (typeof r?.id !== 'string') continue;
+        out.set(r.id, {
+          // 옛 행·이상 응답이면 undefined로 둔다 — 병합 쪽이 그 축의 로컬 값을 지킨다
+          likes: typeof r.likes_count === 'number' ? r.likes_count : undefined,
+          comments: typeof r.comments_count === 'number' ? r.comments_count : undefined,
+        });
+      }
+    }
+    return out;
   } catch {
     return null;
   }

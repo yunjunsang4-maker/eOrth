@@ -1653,7 +1653,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
+  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, refreshMyPostCounts, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
   // 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사)
   const { label: dnaLabel, isComplete: dnaComplete } = useTravelDna();
 
@@ -1676,13 +1676,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   }, []);
   useEffect(() => { loadNeighborCount(); }, [loadNeighborCount]);
 
-  // 당겨서 새로고침 — 메이트 수 + 메이트 목록을 서버 기준으로 재조회
+  // 당겨서 새로고침 — 메이트 수 + 메이트 목록 + 내 글 좋아요·댓글 수를 서버 기준으로 재조회
+  // (남이 남긴 반응은 로컬에 안 들어오므로 여기서 끌어와야 카드 카운트가 맞는다)
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try { await Promise.all([loadNeighborCount(), refreshNeighbors()]); }
+    try { await Promise.all([loadNeighborCount(), refreshNeighbors(), refreshMyPostCounts()]); }
     finally { if (followerAliveRef.current) setRefreshing(false); }
-  }, [loadNeighborCount, refreshNeighbors]);
+  }, [loadNeighborCount, refreshNeighbors, refreshMyPostCounts]);
 
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
   //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽는다(중복 계산 제거).

@@ -2598,7 +2598,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, refreshMyPostCounts, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2627,11 +2627,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
     })();
     return () => { alive = false; };
   }, []);
-  // 당겨서 새로고침 → 백엔드 피드 갱신
+  // 당겨서 새로고침 → 백엔드 피드 갱신 + 내 글 좋아요·댓글 수 동기화
+  // (피드 조회는 내 글을 제외하므로 내 글 카운트는 별도 조회로만 최신화된다 —
+  //  안 하면 남이 내 글에 남긴 반응이 작성자에게 영영 0으로 보인다)
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
-    try { await refreshFeed(); } finally { setRefreshing(false); }
+    try { await Promise.all([refreshFeed(), refreshMyPostCounts()]); } finally { setRefreshing(false); }
   };
   const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium, handleFont: myHandleFont } = useSettings();
 

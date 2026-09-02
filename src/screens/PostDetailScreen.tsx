@@ -1411,7 +1411,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, refreshPostCounts, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1517,7 +1517,12 @@ export default function PostDetailScreen() {
     if (!rawRecord?.remoteId || rawRecord?.isExample) return;
     setCommentsLoading(true);
     refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
-    // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
+    // 좋아요 수도 함께 서버 기준으로 — 남이 누른 좋아요가 작성자 화면에서 0으로 남고
+    // '좋아요한 사람' 시트도 (canShowLikers가 likes>0 조건이라) 열리지 않았다.
+    // 댓글 수는 위 refreshComments가 목록으로 맞추므로 이쪽 가드가 건너뛴다(단일 출처 유지).
+    // 스토어에 없는 폴백 글은 대상 아님(그 글은 fetchPostById가 이미 서버 카운트를 실어 왔다).
+    if (storeRecord) refreshPostCounts(postId).catch(() => {});
+    // postId/remoteId가 바뀔 때만 재조회 (refreshComments·refreshPostCounts는 안정 스토어 액션)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, rawRecord?.remoteId]);
   // 뷰어 시점에서 비공개 사진을 제거한 사본 — 내 글은 미리보기 뷰어, 타인 글은 나
