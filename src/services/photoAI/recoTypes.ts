@@ -25,6 +25,13 @@ export interface RecoCandidate {
   viewType: RecoViewType;
   concept: RecoConcept;
   photoUris: string[];        // 앨범 medias 부분집합, 프리필 순서
+  /**
+   * photoUris와 같은 순서·같은 길이의 자산 id. 없는 장은 빈 문자열.
+   *
+   * 왜 필요한가: pool 사진은 갤러리 참조라 iOS ph:// uri가 세션이 지나면 만료된다.
+   * 카드가 저장된 뒤 앱을 다시 켜고 수락하면 uri만으로는 복사가 전부 실패한다.
+   */
+  photoAssetIds?: string[];
   blogSeeds?: RecoBlogSeed[]; // viewType==='blog' 전용
   score: number;              // 0~1+, 재순위 입력
   reasonKey: string;          // i18n 키: `reco.reason.${viewType}_${concept}`
@@ -36,12 +43,35 @@ export interface RecoCard extends RecoCandidate {
 }
 
 export interface RecoState {
-  albumRecordId: string;
-  mediasFingerprint: string;
+  tripGroupId: string;
+  /** recoSource.sourceFingerprint의 결과. 이 값이 그대로면 재분석하지 않는다 */
+  sourceFingerprint: string;
   status: 'pending' | 'ready' | 'unavailable';
   cards: RecoCard[];
   dismissedIds: string[];
+  /** 분석 진행 하트비트. 엔진이 배치마다 갱신한다(설계 §6) */
+  progress?: { done: number; total: number };
   updatedAt: number;
+}
+
+/**
+ * 마지막 진행 이후 이만큼 지나면 죽은 분석으로 본다.
+ *
+ * 예전에는 "분석 시작 후 3분"이었다. 분석 상한이 250장이 되면서 정상 분석이 3분을
+ * 넘길 수 있게 됐고, 그러면 살아 있는 분석을 죽이고 재시작 → 다시 초과 →
+ * 무한 재분석 루프가 된다. 엔진이 배치마다 updatedAt을 갱신하므로 판정 기준을
+ * "마지막 진행 이후 무변화 시간"으로 바꿨다.
+ */
+export const STALE_PENDING_MS = 3 * 60_000;
+
+/**
+ * pending이 죽었는지 판정한다.
+ * now < updatedAt(기기 시계가 뒤로 갔거나 저장 직후)은 고착이 아니다 — 음수 경과를
+ * 고착으로 보면 시계 변경만으로 재분석이 돈다.
+ */
+export function isPendingStale(state: RecoState, now: number): boolean {
+  if (state.status !== 'pending') return false;
+  return now - state.updatedAt > STALE_PENDING_MS;
 }
 
 export interface RecoLogEvent {

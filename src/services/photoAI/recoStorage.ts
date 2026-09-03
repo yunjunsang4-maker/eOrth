@@ -5,8 +5,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { RecoLogEvent, RecoState } from './recoTypes';
 
-export const RECO_SCHEMA_VERSION = 1;
-const stateKey = (albumRecordId: string) => `@photoAI/reco/${albumRecordId}`;
+/**
+ * 스키마 버전 2 (2026-09-01) — 키가 albumRecordId에서 tripGroupId로 바뀌었고
+ * mediasFingerprint가 sourceFingerprint로 바뀌었다. v1 항목은 읽히지 않고 버려진다.
+ * FORMAT_RECO_ENABLED가 false인 채로만 배포됐으므로 실제 사용자 데이터는 없다.
+ */
+export const RECO_SCHEMA_VERSION = 2;
+const stateKey = (tripGroupId: string) => `@photoAI/reco/${tripGroupId}`;
 const LOG_KEY = '@photoAI/recoLog';
 const LOG_MAX = 500;
 
@@ -26,16 +31,23 @@ async function writeEnvelope<T>(key: string, payload: T): Promise<void> {
   await AsyncStorage.setItem(key, JSON.stringify(env));
 }
 
-export function getRecoState(albumRecordId: string): Promise<RecoState | null> {
-  return readEnvelope<RecoState>(stateKey(albumRecordId));
+export function getRecoState(tripGroupId: string): Promise<RecoState | null> {
+  return readEnvelope<RecoState>(stateKey(tripGroupId));
 }
 export function saveRecoState(state: RecoState): Promise<void> {
-  return writeEnvelope(stateKey(state.albumRecordId), state);
+  return writeEnvelope(stateKey(state.tripGroupId), state);
+}
+
+/** 여행 카드가 삭제될 때 추천 상태도 지운다(설계 §6 — 청소는 pool과 짝이다) */
+export async function deleteRecoState(tripGroupId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(stateKey(tripGroupId));
+  } catch { /* 무시 */ }
 }
 
 /** 카드 닫기 — dismissedIds에 추가 (재노출 방지) */
-export async function dismissRecoCard(albumRecordId: string, cardId: string): Promise<void> {
-  const state = await getRecoState(albumRecordId);
+export async function dismissRecoCard(tripGroupId: string, cardId: string): Promise<void> {
+  const state = await getRecoState(tripGroupId);
   if (!state || state.dismissedIds.includes(cardId)) return;
   await saveRecoState({ ...state, dismissedIds: [...state.dismissedIds, cardId] });
 }
