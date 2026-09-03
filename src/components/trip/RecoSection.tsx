@@ -6,7 +6,7 @@
  * 즉 "추천할 게 없으면 자리도 차지하지 않는다"가 이 컴포넌트의 계약이다.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../../ui/Text';
@@ -17,6 +17,7 @@ import { appendRecoLog, dismissRecoCard, getRecoState } from '../../services/pho
 import type { RecoCard, RecoConcept, RecoState, RecoViewType } from '../../services/photoAI/recoTypes';
 import { isPendingStale } from '../../services/photoAI/recoTypes';
 import { resolveRecoPhotos, sourceFingerprint } from '../../services/photoAI/recoSource';
+import { copyTripOriginals } from '../../utils/importPhotoStore';
 import type { TravelRecord } from '../../store/recordStore';
 
 const COLORS = {
@@ -50,6 +51,8 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   const { t } = useTranslation();
   const navigation = useNavigation();
   const [state, setState] = useState<RecoState | null>(null);
+  // 수락 시 원본 복사 진행 상태. null이면 오버레이 미표시.
+  const [copying, setCopying] = useState<{ done: number; total: number } | null>(null);
   // 이미 impression을 남긴 cardId 집합.
   // 단순 boolean 플래그로 막으면 최초 1회만 기록되고, 재분석으로 카드 셋이 통째로 바뀌어도
   // 새 카드의 노출이 영영 로그에 남지 않는다. cardId 단위로 세야 "같은 카드 중복 방지"와
@@ -68,6 +71,15 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   // 늦게 도착한 결과가 새로 들어온 여행의 상태를 덮어쓴다.
   const tripGroupIdRef = useRef(tripGroupId);
   tripGroupIdRef.current = tripGroupId;
+
+  // 수락 복사도 같은 종류의 경합에 노출된다: 복사가 도는 동안 뒤로 가면(언마운트)
+  // 늦게 도착한 결과가 사용자가 이미 떠난 맥락 위에 작성 화면을 불쑥 연다. 그걸 막는다.
+  // StrictMode의 mount→cleanup→mount에서 false로 박제되지 않도록 effect 본문에서 되살린다.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const load = useCallback(async () => {
     if (!FORMAT_RECO_ENABLED || !isPhotoVisionAvailable) return; // 꺼져 있으면 저장소도 읽지 않는다
@@ -146,19 +158,89 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
     }).catch(() => {});
   }, [tripGroupId]);
 
-  const onAccept = useCallback((card: RecoCard) => {
+  const onAccept = useCallback(async (card: RecoCard) => {
+    if (copying) return; // 중복 탭 방지 — 복사가 겹치면 같은 폴더에 이중으로 쓴다
     appendRecoLog({
       event: 'accept', cardId: card.id, viewType: card.viewType, concept: card.concept,
       photoCountSuggested: card.photoUris.length, ts: Date.now(),
     }).catch(() => {});
-    if (card.viewType === 'feed') {
-      navigation.navigate('NewRecord', { recoPrefill: { cardId: card.id, medias: card.photoUris } });
-    } else if (card.viewType === 'blog') {
-      navigation.navigate('BlogRecord', { recoPrefill: { cardId: card.id, seeds: card.blogSeeds ?? [] } });
-    } else {
-      navigation.navigate('CutRecord', { recoPrefill: { cardId: card.id, photos: card.photoUris } });
+
+    // pool 사진은 갤러리 참조(ph://·content://)라 작성 화면에 그대로 넘길 수 없다.
+    // 여기서 앱 저장소로 복사해 로컬 file:// 배열로 만들어 넘긴다 — 덕분에 작성 화면
+    // 3종(피드·블로그·스트립)은 기존 계약(로컬 uri 배열) 그대로다.
+    const gid = tripGroupIdRef.current; // 복사 도중 다른 여행으로 넘어갔는지 판별용
+    setCopying({ done: 0, total: card.photoUris.length });
+    let uris: string[] = [];
+    let srcIndexes: number[] = [];
+    try {
+      // 자산 id 우선: iOS ph:// uri는 카드가 저장된 뒤 세션이 지나면 만료된다.
+      // photoAssetIds의 빈 문자열은 "id 없음"이므로 undefined로 바꿔 넘긴다.
+      const items = card.photoUris.map((uri, i) => ({
+        id: card.photoAssetIds?.[i] || undefined,
+        uri,
+      }));
+      const res = await copyTripOriginals(
+        `reco-${card.id}`,
+        items,
+        (done, total) => setCopying({ done, total }),
+      );
+      uris = res.uris;
+      srcIndexes = res.srcIndexes;
+    } catch {
+      // uris가 빈 채로 남아 아래 전량 실패 처리로 떨어진다
     }
-  }, [navigation]);
+    setCopying(null);
+
+    // 늦게 도착한 결과: 뒤로 갔거나(언마운트) 다른 여행으로 넘어갔으면 아무것도 하지
+    // 않는다 — 떠난 맥락 위에 작성 화면이 불쑥 열리거나, 다른 여행 상세에서 옛 여행의
+    // 프리필이 열리는 사고를 막는다. (복사본 파일은 남지만 무해한 잔존물이다)
+    if (!mountedRef.current || tripGroupIdRef.current !== gid) return;
+
+    if (uris.length === 0) {
+      // 전량 실패 — 빈 프리필로 화면을 열어봐야 혼란만 준다
+      Alert.alert(t('trip.noticeTitle'), t('reco.partialCopy', { count: card.photoUris.length }));
+      return;
+    }
+    const skipped = card.photoUris.length - uris.length;
+    if (skipped > 0) Alert.alert(t('trip.noticeTitle'), t('reco.partialCopy', { count: skipped }));
+
+    if (card.viewType === 'feed') {
+      navigation.navigate('NewRecord', { recoPrefill: { cardId: card.id, medias: uris } });
+    } else if (card.viewType === 'blog') {
+      // 블로그 씨앗의 images.uris는 원본 uri 기준이라 복사본 uri로 갈아끼운다.
+      // srcIndexes[i] = uris[i]가 card.photoUris에서 원래 몇 번째였는지(원본 인덱스).
+      // 실패 장이 빠지면 위치가 어긋나므로 배열 위치가 아니라 원본 uri로 매핑한다.
+      const byOriginal = new Map<string, string>();
+      srcIndexes.forEach((srcIdx, i) => byOriginal.set(card.photoUris[srcIdx], uris[i]));
+      const remapped = (card.blogSeeds ?? [])
+        .map((seed) =>
+          seed.kind === 'images'
+            ? { ...seed, uris: seed.uris.map((u) => byOriginal.get(u)).filter((u): u is string => !!u) }
+            : seed,
+        )
+        // 전 장이 실패한 images 블록은 떨군다(빈 블록을 화면에 깔 이유가 없다)
+        .filter((seed) => seed.kind !== 'images' || seed.uris.length > 0)
+        // 실패로 장수가 줄면 레이아웃도 장수에 맞춘다 — 1장짜리 grid3 같은 어색한 배치 방지.
+        // (네이버 가져오기의 장수→레이아웃 규칙과 동일: 1장=single, 2장=grid2, 그 외 유지)
+        .map((seed) =>
+          seed.kind === 'images' && seed.uris.length <= 2
+            ? { ...seed, layout: seed.uris.length === 1 ? ('single' as const) : ('grid2' as const) }
+            : seed,
+        );
+      // 어느 날의 사진이 전부 실패하면 빈 DAY 헤딩만 남는다 — 다음 헤딩 전까지 images가
+      // 하나도 없는 헤딩은 떨군다(엔진의 '빈 DAY 헤딩 제거'와 같은 규칙을 여기서도 지킨다).
+      const seeds = remapped.filter((seed, idx) => {
+        if (seed.kind !== 'heading') return true;
+        for (let j = idx + 1; j < remapped.length && remapped[j].kind !== 'heading'; j++) {
+          if (remapped[j].kind === 'images') return true;
+        }
+        return false;
+      });
+      navigation.navigate('BlogRecord', { recoPrefill: { cardId: card.id, seeds } });
+    } else {
+      navigation.navigate('CutRecord', { recoPrefill: { cardId: card.id, photos: uris } });
+    }
+  }, [navigation, copying, t]);
 
   // ── 미노출 게이트 (모든 훅 뒤에 둔다 — 훅 순서가 조건에 따라 달라지면 안 된다) ──
   if (!FORMAT_RECO_ENABLED || !isPhotoVisionAvailable) return null;
@@ -216,6 +298,18 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
           </View>
         ))
       )}
+      {/* 복사 진행 오버레이.
+          ⚠️ Modal을 쓰지 않는다 — 짧은 수명 로딩 오버레이를 Modal로 만들면 껍데기가
+             남아 화면 전체 터치가 먹통이 되고 앱 재시작으로만 복구된다(이 저장소 실사고).
+          절대위치 View라 섹션 영역만 덮는다: 카드·✕는 막히고(중복 탭 방지의 이중 방어),
+          섹션 밖(뒤로 가기 등)은 자유 — 그래서 onAccept에 언마운트 가드가 있다. */}
+      {copying && (
+        <View style={st.copyOverlay} pointerEvents="auto">
+          <Text style={st.copyText}>
+            {t('reco.preparing')} {copying.total > 0 ? `${copying.done}/${copying.total}` : ''}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -241,4 +335,12 @@ const st = StyleSheet.create({
   cta: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '600' },
   close: { position: 'absolute', top: 8, right: 10 },
   closeText: { color: COLORS.dim, fontSize: 14 },
+  copyOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,10,15,0.82)', // 배경 #0A0A0F의 반투명 베일
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+  copyText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
 });
