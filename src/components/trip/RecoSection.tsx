@@ -39,12 +39,7 @@ const THUMB_MAX = 4;
 type ReasonKey = `reco.reason.${RecoViewType}_${RecoConcept}`;
 
 interface Props {
-  /**
-   * 여행 그룹 id. 원래는 필수지만, TripDetail 배선(Task 7)이 아직 albumRecord만
-   * 넘기는 과도기라 optional로 둔다 — albumRecordId 폴백(아래 resolvedTripGroupId)이
-   * 없으면 이 파일만으로는 TripDetailScreen.tsx의 기존 호출부가 깨진다(파일 수정 범위 밖).
-   */
-  tripGroupId?: string;
+  tripGroupId: string;
   /** pool이 없을 때 폴백 소스로 쓸 앨범 기록 (있으면 전달) */
   albumRecord?: TravelRecord;
   /** 개인화 prior 재료 — 내 과거 기록의 viewType 목록 */
@@ -67,22 +62,16 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   const pastRecordsRef = useRef(pastRecords);
   pastRecordsRef.current = pastRecords;
 
-  // tripGroupId가 아직 안 넘어오는 과도기용 폴백. albumRecord.id는 기존에도 저장소 키로
-  // 썼던 값이라(v1 스키마) 동작이 바뀌지 않는다 — Task 7이 tripGroupId를 배선하면
-  // 이 폴백은 자연히 안 쓰이게 된다(지우지 않아도 무해).
-  const resolvedTripGroupId = tripGroupId ?? albumRecord?.id;
-
   // resolveRecoPhotos·runFormatReco는 비동기다. await 도중 화면이 다른 여행으로 넘어가면
-  // (resolvedTripGroupId가 바뀌면) 이 load 호출은 낡은 요청이 된다. ref에 항상 최신 값을
+  // (tripGroupId가 바뀌면) 이 load 호출은 낡은 요청이 된다. ref에 항상 최신 값을
   // 담아두고, await 뒤에 "여전히 최신 요청인지" 확인한 뒤에만 setState한다 — 그러지 않으면
   // 늦게 도착한 결과가 새로 들어온 여행의 상태를 덮어쓴다.
-  const tripGroupIdRef = useRef(resolvedTripGroupId);
-  tripGroupIdRef.current = resolvedTripGroupId;
+  const tripGroupIdRef = useRef(tripGroupId);
+  tripGroupIdRef.current = tripGroupId;
 
   const load = useCallback(async () => {
     if (!FORMAT_RECO_ENABLED || !isPhotoVisionAvailable) return; // 꺼져 있으면 저장소도 읽지 않는다
-    const id = resolvedTripGroupId;
-    if (!id) return; // 여행 id도 앨범도 없으면 분석할 대상이 없다
+    const id = tripGroupId;
 
     const s = await getRecoState(id);
     const photos = await resolveRecoPhotos(id, albumRecord);
@@ -118,17 +107,16 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
       return;
     }
     setState(s);
-  }, [resolvedTripGroupId, albumRecord]);
+  }, [tripGroupId, albumRecord]);
 
   useEffect(() => { load(); }, [load]);
 
   // pending이면 5초 간격 폴링 (분석은 수십 초 내 완료)
   useEffect(() => {
-    if (state?.status !== 'pending' || !resolvedTripGroupId) return;
-    const id = resolvedTripGroupId;
-    const timer = setInterval(() => { getRecoState(id).then((s) => s && setState(s)); }, 5000);
+    if (state?.status !== 'pending') return;
+    const timer = setInterval(() => { getRecoState(tripGroupId).then((s) => s && setState(s)); }, 5000);
     return () => clearInterval(timer);
-  }, [state?.status, resolvedTripGroupId]);
+  }, [state?.status, tripGroupId]);
 
   const visible = useMemo(
     () => (state ? state.cards.filter((c) => !state.dismissedIds.includes(c.id)) : []),
@@ -150,13 +138,13 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   }, [visible]);
 
   const onDismiss = useCallback((card: RecoCard) => {
-    if (resolvedTripGroupId) dismissRecoCard(resolvedTripGroupId, card.id).catch(() => {});
+    dismissRecoCard(tripGroupId, card.id).catch(() => {});
     setState((s) => (s ? { ...s, dismissedIds: [...s.dismissedIds, card.id] } : s));
     appendRecoLog({
       event: 'dismiss', cardId: card.id, viewType: card.viewType, concept: card.concept,
       photoCountSuggested: card.photoUris.length, ts: Date.now(),
     }).catch(() => {});
-  }, [resolvedTripGroupId]);
+  }, [tripGroupId]);
 
   const onAccept = useCallback((card: RecoCard) => {
     appendRecoLog({
