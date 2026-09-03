@@ -25,7 +25,7 @@ import { useSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
-import { getTripPool } from '../utils/tripPhotoPool';
+import { getTripPool, saveTripPool } from '../utils/tripPhotoPool';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -42,7 +42,7 @@ import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
-import { runFormatReco } from '../services/photoAI/recoEngine';
+import { adaptAlbumToPool } from '../services/photoAI/recoSource';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DETECTOR_KEYS } from '../store/persist';
 
@@ -476,15 +476,30 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         };
         updateRecord(appendTarget.id, merged);
         success(); // 기존 사진첩에 이어 담기 완료 — 신규 생성과 같은 완료 신호를 준다
-        // AI 형식 추천 — 백그라운드 분석 시작 (await 금지: replace 지연 방지)
-        // 이어 담기는 medias가 바뀌므로 지문이 달라져 재분석된다(닫은 카드 기록은 엔진이 유지).
-        runFormatReco({
-          albumRecordId: appendTarget.id,
-          medias: merged.medias ?? [],
-          mediaTimes: merged.mediaTimes,
-          mediaAssetIds: merged.mediaAssetIds,
-          pastRecords: records.map((r) => ({ viewType: r.viewType })),
-        }).catch(() => {});
+        // 앨범 사진을 pool에 기록한다 — 추천 입력이 pool로 단일화됐다(2026-09-01).
+        // 분석은 여행 상세 진입 시 lazy로 돈다. 여기서 돌리지 않는다.
+        // await 금지: 아래 replace를 붙잡지 않는다. 보관 실패가 앨범 생성을 막을 이유도 없다.
+        // 여행 카드 id: route 파라미터가 없으면(FAB 등 카드 밖 진입) appendTarget이 이미
+        // 속한 그룹을 찾는다 — 기존 기록이라 tripGroups 상태에 반영돼 있어 find가 안전하다.
+        {
+          const gid = tripGroupId ?? tripGroups.find((g) => g.records.includes(appendTarget.id))?.id;
+          if (gid) {
+            saveTripPool({
+              tripGroupId: gid,
+              recordId: appendTarget.id,
+              // 앨범 기록은 지구본·통계 제외를 위해 country/countryName을 의도적으로 비워 둔다.
+              // 그 빈 값을 pool에 그대로 쓰면 mergePool(...next 우선)이 불러오기가 남긴
+              // 국가 정보를 지워버리므로, 사용자가 고른 국가에서 채운다(여기선 선택이 필수다).
+              country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
+              countryName: selectedCountry?.name ?? '',
+              countryFlag: selectedCountry?.flag ?? '',
+              title: albumTitle,
+              startDate: merged.startDate ?? '',
+              endDate: merged.endDate ?? '',
+              photos: adaptAlbumToPool(merged),
+            }).catch(() => {});
+          }
+        }
         // FAB 사진첩 배지 해제 근거 (utils/fabHighlight.ts). 이어 담기도 '사진첩을 만드는 행동'을
         // 마친 것이므로 신규와 같이 기록한다 — 안 남기면 배지가 7일 내내 계속 뜬다.
         // await 금지: 아래 replace를 지연시키지 않는다(runFormatReco와 같은 이유).
@@ -511,26 +526,37 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         mediaAssetIds,
         mediaTimes,
       });
+      // 아래 pool 기록에 쓸 여행 카드 id. 새로 만든 그룹은 addTripGroup의 반환값에서 얻는다 —
+      // 생성 직후 tripGroups.find로 찾으면 상태 갱신이 아직 반영되지 않아 못 찾는다.
+      let recoGroupId: string | undefined = tripGroupId;
       if (tripGroupId) {
         // 여행 상세에서 진입 — 그 여행 카드에 사진첩을 연결(카드당 앨범 1개 정책)
         const g = tripGroups.find((x) => x.id === tripGroupId);
         if (g && !g.records.includes(newRec.id)) updateTripGroup(tripGroupId, { records: [...g.records, newRec.id] });
-        else if (!g) addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
+        else if (!g) recoGroupId = addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id }).id;
       } else {
-        addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
+        recoGroupId = addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id }).id;
       }
       if (failCount > 0) {
         Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
       }
       success(); // 사진첩 생성 완료
-      // AI 형식 추천 — 백그라운드 분석 시작 (await 금지: replace 지연 방지)
-      runFormatReco({
-        albumRecordId: newRec.id,
-        medias: newRec.medias ?? [],
-        mediaTimes: newRec.mediaTimes,
-        mediaAssetIds: newRec.mediaAssetIds,
-        pastRecords: records.map((r) => ({ viewType: r.viewType })),
-      }).catch(() => {});
+      // 앨범 사진을 pool에 기록한다 (이어 담기와 같은 이유). 분석은 여행 상세 진입 시.
+      // await 금지: 아래 replace를 붙잡지 않는다. 실패는 삼킨다(보관은 부가 기능).
+      if (recoGroupId) {
+        saveTripPool({
+          tripGroupId: recoGroupId,
+          recordId: newRec.id,
+          // newRec.country/countryName은 의도적으로 ''라 그대로 쓰면 안 된다(이어 담기 주석 참조)
+          country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
+          countryName: selectedCountry?.name ?? '',
+          countryFlag: selectedCountry?.flag ?? '',
+          title: albumTitle,
+          startDate: newRec.startDate ?? '',
+          endDate: newRec.endDate ?? '',
+          photos: adaptAlbumToPool(newRec),
+        }).catch(() => {});
+      }
       // FAB 사진첩 배지 해제 근거 (utils/fabHighlight.ts) — await 금지(위와 같은 이유)
       AsyncStorage.setItem(DETECTOR_KEYS.albumCreatedAt, String(Date.now())).catch(() => {});
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거

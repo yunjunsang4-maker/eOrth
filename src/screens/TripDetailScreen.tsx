@@ -427,7 +427,7 @@ export default function TripDetailScreen() {
           )
         : groupRecordObjs;
 
-  // 이 여행의 앨범 기록 (추천 발동 전제 — 설계 §1). 여러 개면 최신 것.
+  // 이 여행의 앨범 기록. 여러 개면 최신 것. pool이 비었을 때 추천의 폴백 소스로 쓴다.
   // matchedRecords의 정렬 관례는 경로마다 반대다 — groupRecordObjs(그룹 있음)는
   // linkRecordToTrip이 append해 과거→최신(오름차순)이지만, 폴백 경로(records.filter)는
   // addRecord가 [newRecord, ...prev]로 맨 앞에 넣어 최신→과거(내림차순)다.
@@ -779,9 +779,15 @@ export default function TripDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* AI 형식 추천 — 게스트 모드(타인 여행)·앨범 없음이면 미노출 */}
-        {!isGuest && albumRecordForReco && (
-          <RecoSection albumRecord={albumRecordForReco} pastRecords={recoPastRecords} />
+        {/* AI 형식 추천 — 게스트 모드(타인 여행)면 미노출.
+            앨범이 없어도 뜬다(2026-09-01) — 불러오기로 만든 카드는 사진첩이 없기 때문이다.
+            앨범이 있으면 pool이 비었을 때의 폴백 소스로 넘긴다. */}
+        {!isGuest && currentGroup && (
+          <RecoSection
+            tripGroupId={currentGroup.id}
+            albumRecord={albumRecordForReco}
+            pastRecords={recoPastRecords}
+          />
         )}
 
         {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
