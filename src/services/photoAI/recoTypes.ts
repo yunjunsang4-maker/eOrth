@@ -74,6 +74,39 @@ export function isPendingStale(state: RecoState, now: number): boolean {
   return now - state.updatedAt > STALE_PENDING_MS;
 }
 
+/**
+ * 지문이 같은 채로 'unavailable'이 된 여행을 재시도하지 않는 최소 간격.
+ *
+ * unavailable(권한 철회·전량 iCloud 오프로드)은 이 쿨다운이 없으면 TripDetail을
+ * 여닫을 때마다 GPS 250회 + 자산 재조회 250회를 처음부터 다시 돈다 — 해외 로밍 중
+ * 오프로드 사용자가 카드를 열 때마다 그 비용을 낸다(실제 리뷰 지적 사항).
+ *
+ * 30분으로 잡은 이유: "권한을 다시 허용한 사용자가 너무 오래 기다리지 않을 것"과
+ * "여닫을 때마다 수백 회 네이티브 호출을 하지 않을 것" 사이의 절충이다. 사진을
+ * 추가/삭제해 지문이 바뀌면 이 쿨다운과 무관하게 즉시 재분석된다.
+ *
+ * 원래 recoEngine에만 있었는데 여기로 옮겼다 — RecoSection(호출할지 결정)과
+ * recoEngine(호출돼도 돌지 결정)이 같은 값을 봐야 하기 때문이다. 이 파일은 순수
+ * 구역이라 verify로도 덮을 수 있다.
+ */
+export const UNAVAILABLE_RETRY_MS = 30 * 60_000;
+
+/**
+ * 지문이 같은 unavailable 상태를 지금 재시도해도 되는지 판정한다.
+ *
+ * ⚠️ RecoSection(재분석 트리거)과 recoEngine(조기 반환)이 **반드시 이 한 함수를 함께**
+ *    써야 한다. 판정이 두 벌로 갈라지면 "섹션은 엔진을 부르는데 엔진이 막아 아무 일도
+ *    안 일어나는" 조합이 생긴다 — 실제로 엔진에만 쿨다운이 있고 섹션이 unavailable에서
+ *    엔진을 아예 안 불러, 권한을 다시 허용해도 추천이 영영 안 뜨던 결함이 있었다(2026-09).
+ *
+ * isPendingStale과 같은 이유로 음수 경과(now < updatedAt, 시계 변경)는 "아직 아님"으로
+ * 본다 — 시계가 뒤로 갔다고 수백 회 네이티브 호출을 다시 돌 이유가 없다.
+ */
+export function isUnavailableRetryDue(state: RecoState, now: number): boolean {
+  if (state.status !== 'unavailable') return false;
+  return now - state.updatedAt >= UNAVAILABLE_RETRY_MS;
+}
+
 export interface RecoLogEvent {
   event: 'impression' | 'accept' | 'dismiss' | 'edit_after_accept';
   cardId: string;

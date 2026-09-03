@@ -76,8 +76,8 @@ import {
   saveTripPool,
   syncTripPools,
 } from '../utils/tripPhotoPool';
-import { deleteRecoState } from '../services/photoAI/recoStorage';
-import { deleteSignalCache } from '../services/photoAI/signalCache';
+import { sweepRecoStates } from '../services/photoAI/recoStorage';
+import { sweepSignalCaches } from '../services/photoAI/signalCache';
 import { sweepRecoOrphans } from '../utils/recoOrphanSweep';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -680,13 +680,18 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const importedIds = collectImportedAssetIds(recordsRef.current);
       const pools = await syncTripPools(tripGroupsRef.current.map((g) => g.id));
       for (const id of poolAssetIds(pools)) importedIds.add(id);
-      // pool이 사라진 여행은 추천 상태와 신호 캐시도 의미가 없다 — 같은 자리에서 청소한다.
+      // 삭제된 여행 카드(죽은 그룹)의 추천 상태·신호 캐시도 같은 자리에서 청소한다.
       // (이 저장소의 불변식 "예약을 취소하는 곳에서 발송 기록도 지운다"와 같은 형태다)
-      for (const g of tripGroupsRef.current) {
-        if (pools[g.id]) continue;
-        deleteRecoState(g.id).catch(() => {});
-        deleteSignalCache(g.id).catch(() => {});
-      }
+      //
+      // ⚠️ 기준은 "죽은 그룹"이지 "pool 없는 그룹"이 아니다. 예전엔 살아 있는 그룹을
+      //    돌며 pool 없는 것을 지웠는데, 앨범 폴백 여행(pool write-through 이전에 만든
+      //    앨범)은 pool 없이도 추천 상태가 정당하게 존재해 재스캔 때마다 수 분짜리
+      //    분석 결과와 닫음 기록을 오삭제했다. 죽은 그룹 판정(전체 열거 + alive 대조,
+      //    빈 alive 방어 포함)은 각 저장소 모듈이 한다 — 키 스킴은 그쪽 사정이다.
+      //    스캔을 늦출 이유가 없어 기다리지 않는다(실패도 조용히 무시).
+      const aliveGroupIds = tripGroupsRef.current.map((g) => g.id);
+      void sweepRecoStates(aliveGroupIds);
+      void sweepSignalCaches(aliveGroupIds);
       // 카드 수락 후 저장하지 않고 떠난 작성의 복사 폴더(trips/reco-*)도 여기서 청소한다.
       // 판정(참조 전무 + 24h 경과)은 recoOrphanSweep이 맡는다 — 저장된 글이 가리키는
       // 폴더를 지우면 사진이 통째로 사라지므로, 참조 소스 4종을 전부 넘겨야 한다.

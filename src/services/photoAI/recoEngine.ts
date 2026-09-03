@@ -18,6 +18,7 @@ import { blogCandidates, feedCandidates, stripCandidates } from './formatCandida
 import { buildStylePrior, rankCandidates } from './personalRanker';
 import { getRecoState, saveRecoState } from './recoStorage';
 import type { ConceptScores, RecoState } from './recoTypes';
+import { isUnavailableRetryDue } from './recoTypes';
 import { groupPhotosBySpot } from './photoGrouping';
 import { assessPhotoQuality, makeThumbnail } from './qualityAssessment';
 import { applyCached, collectSignals, loadSignalCache, saveSignalCache } from './signalCache';
@@ -68,21 +69,6 @@ const MIN_PHOTOS = 4;      // 이보다 적으면 추천할 게 없다
 const GPS_BATCH = 8;       // getAssetInfoAsync 동시 호출 상한 (OOM 방지 — photoGrouping과 동일 규칙)
 const ANALYZE_BATCH = 8;   // 썸네일+네이티브 분석 배치. 하트비트 갱신 주기이기도 하다
 
-/**
- * 지문이 같은 채로 'unavailable'이 된 여행을 재시도하지 않는 최소 간격.
- *
- * unavailable(권한 철회·전량 iCloud 오프로드)은 이 쿨다운이 없으면 TripDetail을
- * 여닫을 때마다 GPS 250회 + 자산 재조회 250회를 처음부터 다시 돈다 — 해외 로밍 중
- * 오프로드 사용자가 카드를 열 때마다 그 비용을 낸다(실제 리뷰 지적 사항).
- *
- * 30분으로 잡은 이유: "권한을 다시 허용한 사용자가 너무 오래 기다리지 않을 것"과
- * "여닫을 때마다 수백 회 네이티브 호출을 하지 않을 것" 사이의 절충이다. 사용자가
- * 설정에서 권한을 막 허용하고 돌아온 세션 안에서는 못 볼 수 있지만, 앱을 다시 켜거나
- * 잠깐 있다 돌아오면 재시도된다 — 무한정 막아두는 것보다는 훨씬 낫다. 사진을
- * 추가/삭제해 지문이 바뀌면 이 쿨다운과 무관하게 즉시 재분석된다(아래 조기 반환 참고).
- */
-const UNAVAILABLE_RETRY_MS = 30 * 60_000;
-
 /** 기본 카테고리 프레임의 슬롯 수 목록 (스트립 후보 생성기 입력) */
 function basicSlotCounts(): number[] {
   return CUT_FRAMES.filter((f) => f.category === '기본').map((f) => cutSlotCount(f.layout));
@@ -101,10 +87,16 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
     prev = await getRecoState(input.tripGroupId);
     if (prev && prev.sourceFingerprint === fingerprint) {
       if (prev.status === 'ready') return; // 이미 최신
-      // 지문이 그대로인데 unavailable이면 쿨다운 안에서는 재시도하지 않는다.
-      // 지문이 바뀌면(사진 추가/삭제) 이 분기 자체를 안 타므로 즉시 재분석된다 —
-      // 사용자가 방금 사진을 넣었는데 30분을 기다리게 하는 일은 없다.
-      if (prev.status === 'unavailable' && Date.now() - prev.updatedAt < UNAVAILABLE_RETRY_MS) return;
+      // 지문이 그대로인데 unavailable이면 쿨다운(UNAVAILABLE_RETRY_MS) 안에서는
+      // 재시도하지 않는다. 지문이 바뀌면(사진 추가/삭제) 이 분기 자체를 안 타므로
+      // 즉시 재분석된다 — 방금 사진을 넣었는데 30분을 기다리게 하는 일은 없다.
+      //
+      // RecoSection도 같은 술어(isUnavailableRetryDue)로 "엔진을 부를지"를 먼저 거른다.
+      // 이중 게이트지만 둘 다 이 한 함수를 쓰고 시간은 앞으로만 가므로, 섹션이 통과시킨
+      // 요청을 엔진이 막는 조합은 없다. 그래도 이 게이트를 지우면 안 된다 — 섹션 게이트는
+      // "부를지"의 최적화일 뿐이고, 상태를 안 읽고 부르는 미래의 호출부나 동시 호출
+      // (여닫기 연타)에서 수백 회 네이티브 호출을 막는 최종 판단은 여기다.
+      if (prev.status === 'unavailable' && !isUnavailableRetryDue(prev, Date.now())) return;
     }
 
     const pending: RecoState = {

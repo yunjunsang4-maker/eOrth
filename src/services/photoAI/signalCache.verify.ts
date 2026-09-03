@@ -4,6 +4,8 @@ import {
   parseSignalMap,
   applyCached,
   collectSignals,
+  signalFileToTripGroupId,
+  selectDeadSignalFiles,
   SIGNAL_CACHE_VERSION,
   type SignalMap,
 } from './signalCache';
@@ -81,6 +83,28 @@ eqJson(
   const map = collectSignals(analyzed);
   eqJson(Object.keys(map), ['a'], '신호가 있는 사진만 캐시에 담는다');
   eq(map.a.signal?.faceCount, 2, '신호가 그대로 담긴다');
+}
+
+// ── signalFileToTripGroupId: 캐시 파일명 → tripGroupId 복원 ──
+eq(signalFileToTripGroupId('trip-a.json'), 'trip-a', '일반 파일명 복원');
+eq(signalFileToTripGroupId(`${encodeURIComponent('여행/한글 id')}.json`), '여행/한글 id',
+  'encodeURIComponent 왕복 — 한글·구분자 섞인 id도 원형 복원');
+eq(signalFileToTripGroupId('trip-a.txt'), null, '확장자가 다르면 캐시 파일이 아니다');
+eq(signalFileToTripGroupId('.json'), null, '이름이 빈 파일은 캐시 파일이 아니다');
+eq(signalFileToTripGroupId('%zz.json'), null, '깨진 인코딩은 null — 모르는 파일은 지우지 않는다');
+
+// ── selectDeadSignalFiles: 죽은 그룹 것만 고른다 ──
+// 불변식: 살아 있는 여행 것은 절대 고르지 않는다(오삭제 = 재분석 수 분 손실).
+{
+  const files = ['trip-a.json', 'trip-b.json', 'trip-ab.json', 'readme.txt'];
+  eqJson(selectDeadSignalFiles(files, ['trip-a']), ['trip-b.json', 'trip-ab.json'],
+    '살아 있는 것은 남기고 죽은 것만 — trip-a가 살아 있어도 trip-ab는 별개(접두 오판 없음)');
+  eqJson(selectDeadSignalFiles(files, ['trip-a', 'trip-b', 'trip-ab']), [],
+    '전부 살아 있으면 고르는 것이 없다');
+  eqJson(selectDeadSignalFiles(files, []), [],
+    'alive가 비면 아무것도 고르지 않는다 — hydrate 실패가 빈 목록으로 위장할 수 있다');
+  eqJson(selectDeadSignalFiles(['readme.txt', '%zz.json'], ['trip-a']), [],
+    '캐시 파일이 아닌 것(다른 확장자·깨진 이름)은 죽었어도 건드리지 않는다');
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

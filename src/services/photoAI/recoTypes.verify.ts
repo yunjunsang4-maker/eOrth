@@ -1,5 +1,13 @@
 // src/services/photoAI/recoTypes.verify.ts
-import { mediasFingerprint, dhashHamming, isPendingStale, STALE_PENDING_MS, type RecoState } from './recoTypes';
+import {
+  mediasFingerprint,
+  dhashHamming,
+  isPendingStale,
+  isUnavailableRetryDue,
+  STALE_PENDING_MS,
+  UNAVAILABLE_RETRY_MS,
+  type RecoState,
+} from './recoTypes';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -55,6 +63,22 @@ eq(
 );
 eq(isPendingStale(baseState({ updatedAt: 1_000 }), 500), false,
   '미래 시각이 저장돼 있어도 고착으로 보지 않는다(시계 변경 방어)');
+
+// ── isUnavailableRetryDue: unavailable 재시도 쿨다운 판정 ──
+// RecoSection(호출할지)과 recoEngine(호출돼도 돌지)이 같은 함수를 쓴다.
+// 판정이 갈라지면 "섹션은 부르는데 엔진이 막는" 죽은 조합이 생긴다(2026-09 실제 결함).
+eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 0 }), UNAVAILABLE_RETRY_MS - 1), false,
+  '쿨다운 이내면 아직 재시도하지 않는다');
+eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 0 }), UNAVAILABLE_RETRY_MS), true,
+  '쿨다운 경계(정확히 30분)부터 재시도한다 — >= 라서 엔진 게이트(< 차단)와 정확히 상보');
+eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 0 }), UNAVAILABLE_RETRY_MS + 1), true,
+  '쿨다운을 넘기면 재시도한다');
+eq(isUnavailableRetryDue(baseState({ status: 'ready', updatedAt: 0 }), UNAVAILABLE_RETRY_MS + 1), false,
+  'ready 상태는 재시도 대상이 아니다');
+eq(isUnavailableRetryDue(baseState({ status: 'pending', updatedAt: 0 }), UNAVAILABLE_RETRY_MS + 1), false,
+  'pending 상태는 재시도 대상이 아니다(고착 판정은 isPendingStale 몫)');
+eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 1_000 }), 500), false,
+  '미래 시각이 저장돼 있어도 재시도하지 않는다(시계 변경 방어 — isPendingStale과 동일)');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

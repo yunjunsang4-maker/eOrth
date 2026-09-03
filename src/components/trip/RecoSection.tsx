@@ -15,7 +15,7 @@ import { FORMAT_RECO_ENABLED } from '../../constants/featureFlags';
 import { runFormatReco } from '../../services/photoAI/recoEngine';
 import { appendRecoLog, dismissRecoCard, getRecoState } from '../../services/photoAI/recoStorage';
 import type { RecoCard, RecoConcept, RecoState, RecoViewType } from '../../services/photoAI/recoTypes';
-import { isPendingStale } from '../../services/photoAI/recoTypes';
+import { isPendingStale, isUnavailableRetryDue } from '../../services/photoAI/recoTypes';
 import { resolveRecoPhotos, sourceFingerprint } from '../../services/photoAI/recoSource';
 import { copyTripOriginals } from '../../utils/importPhotoStore';
 import type { TravelRecord } from '../../store/recordStore';
@@ -90,15 +90,23 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
     if (tripGroupIdRef.current !== id) return; // 그 사이 다른 여행으로 넘어갔다 — 낡은 결과는 버린다
     const fp = sourceFingerprint(photos);
 
-    // 재분석 트리거는 세 가지다.
+    // 재분석 트리거는 네 가지다.
     //  (1) 저장된 상태가 아예 없다 = 첫 진입. lazy 분석이라 상태 없음이 정상이고,
     //      여기서 걸지 않으면 추천이 영영 뜨지 않는다.
     //  (2) 소스가 바뀌었다 = 지문 불일치.
     //  (3) 지문은 같은데 마지막 진행 이후 STALE_PENDING_MS가 지났다 = 죽은 분석.
     //      진행 하트비트 덕분에 250장 분석이 오래 걸려도 살아 있으면 죽이지 않는다.
+    //  (4) 지문은 같은데 unavailable이고 쿨다운(UNAVAILABLE_RETRY_MS)이 지났다.
+    //      엔진에도 같은 쿨다운 게이트가 있는데 왜 여기에도 필요한가: 이 컴포넌트가
+    //      엔진을 아예 부르지 않으면 엔진 게이트는 도달 자체가 안 된다. 이 트리거가
+    //      없으면 권한 철회로 unavailable이 된 여행은 권한을 다시 허용해도 지문이
+    //      바뀌기 전까지 추천이 영영 안 뜬다(2026-09 실제 결함). 양쪽이 같은 순수 함수
+    //      isUnavailableRetryDue를 쓰므로 "여기는 통과시켰는데 엔진이 막는" 모순은 없고,
+    //      최종 판단은 엔진 쪽 게이트다 — 둘 중 하나를 지우지 말 것(recoEngine.ts 참고).
     const fingerprintChanged = !!s && s.sourceFingerprint !== fp;
     const stalePending = !!s && isPendingStale(s, Date.now());
-    if (!s || fingerprintChanged || stalePending) {
+    const unavailableRetry = !!s && !fingerprintChanged && isUnavailableRetryDue(s, Date.now());
+    if (!s || fingerprintChanged || stalePending || unavailableRetry) {
       setState(s ? { ...s, status: 'pending', cards: [] } : null);
       runFormatReco({ tripGroupId: id, photos, pastRecords: pastRecordsRef.current })
         .then(() => getRecoState(id))

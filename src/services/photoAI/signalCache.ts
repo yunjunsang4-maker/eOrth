@@ -80,6 +80,42 @@ export function applyCached(
   return { hydrated, missing };
 }
 
+/**
+ * 캐시 파일명(`${encodeURIComponent(gid)}.json`)에서 tripGroupId를 복원한다.
+ * 캐시 파일이 아니거나(확장자 불일치·빈 이름) 디코드가 불가능하면 null —
+ * null은 "모르는 파일"이고, 모르는 파일은 청소 대상이 아니다(오삭제 방지).
+ */
+export function signalFileToTripGroupId(fileName: string): string | null {
+  if (!fileName.endsWith('.json')) return null;
+  const encoded = fileName.slice(0, -'.json'.length);
+  if (encoded.length === 0) return null;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null; // '%zz' 등 깨진 인코딩 — 우리가 만든 파일이 아니다
+  }
+}
+
+/**
+ * 캐시 디렉터리의 파일 목록에서 "죽은 그룹" 것만 고른다.
+ *
+ * 불변식은 recoStorage.selectDeadRecoKeys와 같다: 살아 있는 여행 것은 절대 고르지
+ * 않고, aliveTripGroupIds가 비어 있으면 아무것도 고르지 않는다(hydrate 실패가
+ * 빈 목록으로 위장하면 전부 죽은 것으로 보이기 때문 — 누수가 오삭제보다 싸다).
+ * gid 비교는 Set 멤버십 정확 일치라 'trip-a'/'trip-ab' 접두 오판이 없다.
+ */
+export function selectDeadSignalFiles(
+  fileNames: readonly string[],
+  aliveTripGroupIds: readonly string[],
+): string[] {
+  if (aliveTripGroupIds.length === 0) return [];
+  const alive = new Set(aliveTripGroupIds);
+  return fileNames.filter((name) => {
+    const gid = signalFileToTripGroupId(name);
+    return gid !== null && !alive.has(gid);
+  });
+}
+
 /** 분석을 마친 사진들에서 캐시에 넣을 항목만 추린다(신호가 하나도 없으면 넣지 않는다). */
 export function collectSignals(photos: PhotoMeta[]): SignalMap {
   const out: SignalMap = {};
@@ -142,5 +178,32 @@ export async function deleteSignalCache(tripGroupId: string): Promise<void> {
     await fs().deleteAsync(path, { idempotent: true });
   } catch {
     // 무시
+  }
+}
+
+/**
+ * 죽은 그룹(더 이상 존재하지 않는 여행 카드)의 신호 캐시를 일괄 청소한다(설계 §6).
+ *
+ * 캐시는 여행당 수십 KB라 카드를 지울 때마다 남으면 무한히 쌓인다. 디렉터리 구조와
+ * 파일명 인코딩은 이 파일의 비공개 사정이므로 청소도 이 파일이 한다
+ * (recoStorage.sweepRecoStates와 같은 배치 원칙).
+ *
+ * 열거 실패(디렉터리 없음 포함)는 조용히 포기 — 청소 실패는 누수일 뿐이고,
+ * 장당 삭제 실패도 나머지 삭제를 막지 않는다.
+ */
+export async function sweepSignalCaches(aliveTripGroupIds: string[]): Promise<void> {
+  const base = fs().documentDirectory;
+  if (!base) return;
+  let names: string[];
+  try {
+    names = await fs().readDirectoryAsync(`${base}${CACHE_DIR_NAME}`);
+  } catch {
+    return; // 디렉터리가 아직 없다(분석을 한 번도 안 함) — 치울 것도 없다
+  }
+  const dead = selectDeadSignalFiles(names, aliveTripGroupIds); // 빈 alive 방어는 이 안에 있다
+  for (const name of dead) {
+    try {
+      await fs().deleteAsync(`${base}${CACHE_DIR_NAME}${name}`, { idempotent: true });
+    } catch { /* 무시 — 다음 스캔에서 다시 본다 */ }
   }
 }
