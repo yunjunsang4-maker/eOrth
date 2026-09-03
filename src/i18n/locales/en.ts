@@ -1181,6 +1181,9 @@ const en = {
   reco: {
     sectionTitle: 'AI Picks',
     analyzing: 'AI is looking at your photos…',
+    analyzingProgress: 'Looking through your photos… {{done}}/{{total}}',
+    preparing: 'Getting your photos ready…',
+    partialCopy: '{{count}} photo(s) skipped — still in iCloud.',
     make_feed: 'Make a feed post',
     make_blog: 'Write a blog post',
     make_cut: 'Make a photo strip',

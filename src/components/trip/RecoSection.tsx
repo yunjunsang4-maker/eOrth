@@ -15,7 +15,8 @@ import { FORMAT_RECO_ENABLED } from '../../constants/featureFlags';
 import { runFormatReco } from '../../services/photoAI/recoEngine';
 import { appendRecoLog, dismissRecoCard, getRecoState } from '../../services/photoAI/recoStorage';
 import type { RecoCard, RecoConcept, RecoState, RecoViewType } from '../../services/photoAI/recoTypes';
-import { mediasFingerprint } from '../../services/photoAI/recoTypes';
+import { isPendingStale } from '../../services/photoAI/recoTypes';
+import { resolveRecoPhotos, sourceFingerprint } from '../../services/photoAI/recoSource';
 import type { TravelRecord } from '../../store/recordStore';
 
 const COLORS = {
@@ -30,20 +31,6 @@ const COLORS = {
 const THUMB_MAX = 4;
 
 /**
- * pending을 "죽은 상태"로 간주하는 한계 시간.
- *
- * 분석 도중 앱이 하드 킬되면 recoEngine이 'unavailable'로 전환할 기회를 잃는다.
- * 엔진은 분석 시작 직후 status:'pending'을 *현재 지문과 함께* 저장하므로(recoEngine.ts),
- * 죽은 뒤 다시 들어오면 "지문은 일치하는데 status는 pending"인 상태가 저장소에 영구히 남는다.
- * load()는 지문 불일치일 때만 재분석을 트리거하기 때문에 그대로 두면
- * "AI가 사진을 보고 있어요…"가 영원히 뜨고 사용자가 벗어날 방법이 없다.
- *
- * 3분으로 잡은 이유: 정상 분석은 수십 초 내 끝나고(폴링 간격 5초) 그 사이 화면을 떠났다
- * 돌아와도 죽지 않은 분석을 중간에 끊지 않을 만큼의 여유값이다.
- */
-const STALE_PENDING_MS = 3 * 60_000;
-
-/**
  * 후보 생성기가 `reco.reason.${viewType}_${concept}`로 조립하는 동적 i18n 키.
  * t()가 ko.ts 구조로 엄격히 타입되어 있어 RecoCard.reasonKey(string)를 그대로 넘기면
  * 컴파일되지 않는다. 실제 키 집합은 두 union의 곱이므로 여기서 한 번만 좁혀 쓴다.
@@ -52,12 +39,19 @@ const STALE_PENDING_MS = 3 * 60_000;
 type ReasonKey = `reco.reason.${RecoViewType}_${RecoConcept}`;
 
 interface Props {
-  albumRecord: TravelRecord;
+  /**
+   * 여행 그룹 id. 원래는 필수지만, TripDetail 배선(Task 7)이 아직 albumRecord만
+   * 넘기는 과도기라 optional로 둔다 — albumRecordId 폴백(아래 resolvedTripGroupId)이
+   * 없으면 이 파일만으로는 TripDetailScreen.tsx의 기존 호출부가 깨진다(파일 수정 범위 밖).
+   */
+  tripGroupId?: string;
+  /** pool이 없을 때 폴백 소스로 쓸 앨범 기록 (있으면 전달) */
+  albumRecord?: TravelRecord;
   /** 개인화 prior 재료 — 내 과거 기록의 viewType 목록 */
   pastRecords: { viewType?: string }[];
 }
 
-export default function RecoSection({ albumRecord, pastRecords }: Props) {
+export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: Props) {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const [state, setState] = useState<RecoState | null>(null);
@@ -73,38 +67,49 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
   const pastRecordsRef = useRef(pastRecords);
   pastRecordsRef.current = pastRecords;
 
+  // tripGroupId가 아직 안 넘어오는 과도기용 폴백. albumRecord.id는 기존에도 저장소 키로
+  // 썼던 값이라(v1 스키마) 동작이 바뀌지 않는다 — Task 7이 tripGroupId를 배선하면
+  // 이 폴백은 자연히 안 쓰이게 된다(지우지 않아도 무해).
+  const resolvedTripGroupId = tripGroupId ?? albumRecord?.id;
+
+  // resolveRecoPhotos·runFormatReco는 비동기다. await 도중 화면이 다른 여행으로 넘어가면
+  // (resolvedTripGroupId가 바뀌면) 이 load 호출은 낡은 요청이 된다. ref에 항상 최신 값을
+  // 담아두고, await 뒤에 "여전히 최신 요청인지" 확인한 뒤에만 setState한다 — 그러지 않으면
+  // 늦게 도착한 결과가 새로 들어온 여행의 상태를 덮어쓴다.
+  const tripGroupIdRef = useRef(resolvedTripGroupId);
+  tripGroupIdRef.current = resolvedTripGroupId;
+
   const load = useCallback(async () => {
     if (!FORMAT_RECO_ENABLED || !isPhotoVisionAvailable) return; // 꺼져 있으면 저장소도 읽지 않는다
-    const s = await getRecoState(albumRecord.id);
-    const medias = albumRecord.medias ?? [];
-    const fp = mediasFingerprint(medias);
-    // 재분석 트리거는 두 가지다.
-    //  (1) 앨범이 바뀌었다 = 지문 불일치.
-    //  (2) 지문은 같은데 pending이 STALE_PENDING_MS를 넘겼다 = 분석 도중 앱이 죽어 고착된 상태.
-    //      (2)를 넣지 않으면 하드 킬 이후 로딩 문구가 영구히 뜬다(STALE_PENDING_MS 주석 참고).
-    // 재호출이 안전한 근거: recoEngine의 조기 반환은 status === 'ready'일 때만 걸리므로
-    // pending 상태에서 다시 부르면 그냥 새 분석이 돈다(중복 분석이 아니라 죽은 분석의 대체).
-    const fingerprintChanged = !!s && s.mediasFingerprint !== fp;
-    const stalePending = !!s && s.status === 'pending' && Date.now() - s.updatedAt > STALE_PENDING_MS;
-    if (s && (fingerprintChanged || stalePending)) {
-      setState({ ...s, status: 'pending', cards: [] });
-      runFormatReco({
-        albumRecordId: albumRecord.id,
-        medias,
-        mediaTimes: albumRecord.mediaTimes,
-        mediaAssetIds: albumRecord.mediaAssetIds,
-        pastRecords: pastRecordsRef.current,
-      })
-        .then(() => getRecoState(albumRecord.id))
+    const id = resolvedTripGroupId;
+    if (!id) return; // 여행 id도 앨범도 없으면 분석할 대상이 없다
+
+    const s = await getRecoState(id);
+    const photos = await resolveRecoPhotos(id, albumRecord);
+    if (tripGroupIdRef.current !== id) return; // 그 사이 다른 여행으로 넘어갔다 — 낡은 결과는 버린다
+    const fp = sourceFingerprint(photos);
+
+    // 재분석 트리거는 세 가지다.
+    //  (1) 저장된 상태가 아예 없다 = 첫 진입. lazy 분석이라 상태 없음이 정상이고,
+    //      여기서 걸지 않으면 추천이 영영 뜨지 않는다.
+    //  (2) 소스가 바뀌었다 = 지문 불일치.
+    //  (3) 지문은 같은데 마지막 진행 이후 STALE_PENDING_MS가 지났다 = 죽은 분석.
+    //      진행 하트비트 덕분에 250장 분석이 오래 걸려도 살아 있으면 죽이지 않는다.
+    const fingerprintChanged = !!s && s.sourceFingerprint !== fp;
+    const stalePending = !!s && isPendingStale(s, Date.now());
+    if (!s || fingerprintChanged || stalePending) {
+      setState(s ? { ...s, status: 'pending', cards: [] } : null);
+      runFormatReco({ tripGroupId: id, photos, pastRecords: pastRecordsRef.current })
+        .then(() => getRecoState(id))
         .then((next) => {
+          if (tripGroupIdRef.current !== id) return; // 낡은 요청 — 버린다
           // 엔진에는 "이번 지문에 대해 아무것도 저장하지 않고" 끝나는 경로가 있다
-          // (recoEngine의 medias.length < MIN_PHOTOS 조기 return). 그 경우 여기서 다시 읽은
-          // state는 갱신되지 않은 '옛 지문 + 옛 cards'라, 그대로 setState하면 이미 지워진
-          // 사진의 카드가 되살아나고 수락 시 존재하지 않는 uri가 프리필된다.
-          // → 지문이 이번 것과 다르면 엔진 결과가 아니므로 카드를 신뢰하지 않는다.
+          // (photos.length < MIN_PHOTOS 조기 return, unavailable 재시도 쿨다운 조기 return).
+          // 그 경우 다시 읽은 state는 갱신되지 않은 옛 것이라, 그대로 setState하면
+          // 이미 지워진 사진의 카드가 되살아나고 수락 시 존재하지 않는 uri가 프리필된다.
           if (!next) { setState(null); return; }
-          if (next.mediasFingerprint !== fp) {
-            setState({ ...next, mediasFingerprint: fp, status: 'unavailable', cards: [] });
+          if (next.sourceFingerprint !== fp) {
+            setState({ ...next, sourceFingerprint: fp, status: 'unavailable', cards: [] });
             return;
           }
           setState(next);
@@ -113,16 +118,17 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
       return;
     }
     setState(s);
-  }, [albumRecord.id, albumRecord.medias, albumRecord.mediaTimes, albumRecord.mediaAssetIds]);
+  }, [resolvedTripGroupId, albumRecord]);
 
   useEffect(() => { load(); }, [load]);
 
   // pending이면 5초 간격 폴링 (분석은 수십 초 내 완료)
   useEffect(() => {
-    if (state?.status !== 'pending') return;
-    const timer = setInterval(() => { getRecoState(albumRecord.id).then((s) => s && setState(s)); }, 5000);
+    if (state?.status !== 'pending' || !resolvedTripGroupId) return;
+    const id = resolvedTripGroupId;
+    const timer = setInterval(() => { getRecoState(id).then((s) => s && setState(s)); }, 5000);
     return () => clearInterval(timer);
-  }, [state?.status, albumRecord.id]);
+  }, [state?.status, resolvedTripGroupId]);
 
   const visible = useMemo(
     () => (state ? state.cards.filter((c) => !state.dismissedIds.includes(c.id)) : []),
@@ -144,13 +150,13 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
   }, [visible]);
 
   const onDismiss = useCallback((card: RecoCard) => {
-    dismissRecoCard(albumRecord.id, card.id).catch(() => {});
+    if (resolvedTripGroupId) dismissRecoCard(resolvedTripGroupId, card.id).catch(() => {});
     setState((s) => (s ? { ...s, dismissedIds: [...s.dismissedIds, card.id] } : s));
     appendRecoLog({
       event: 'dismiss', cardId: card.id, viewType: card.viewType, concept: card.concept,
       photoCountSuggested: card.photoUris.length, ts: Date.now(),
     }).catch(() => {});
-  }, [albumRecord.id]);
+  }, [resolvedTripGroupId]);
 
   const onAccept = useCallback((card: RecoCard) => {
     appendRecoLog({
@@ -175,7 +181,11 @@ export default function RecoSection({ albumRecord, pastRecords }: Props) {
     <View style={st.wrap}>
       <Text style={st.title}>✨ {t('reco.sectionTitle')}</Text>
       {state.status === 'pending' ? (
-        <Text style={st.analyzing}>{t('reco.analyzing')}</Text>
+        <Text style={st.analyzing}>
+          {state.progress && state.progress.total > 0
+            ? t('reco.analyzingProgress', { done: state.progress.done, total: state.progress.total })
+            : t('reco.analyzing')}
+        </Text>
       ) : (
         visible.map((card) => (
           <View key={card.id} style={st.card}>

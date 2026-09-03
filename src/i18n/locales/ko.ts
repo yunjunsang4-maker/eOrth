@@ -1198,6 +1198,9 @@ const ko = {
   reco: {
     sectionTitle: 'AI 추천',
     analyzing: 'AI가 사진을 보고 있어요…',
+    analyzingProgress: 'AI가 사진을 보고 있어요… {{done}}/{{total}}',
+    preparing: '사진을 준비하고 있어요…',
+    partialCopy: '{{count}}장은 iCloud에 있어 제외했어요.',
     make_feed: '피드로 남기기',
     make_blog: '블로그로 기록하기',
     make_cut: '스트립으로 만들기',
