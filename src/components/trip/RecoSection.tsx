@@ -179,8 +179,16 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
         id: card.photoAssetIds?.[i] || undefined,
         uri,
       }));
+      // 폴더명에 수락 시각을 붙여 수락 한 번마다 고유 폴더를 쓴다. 카드 id는
+      // 결정론적이라(formatCandidates가 `${viewType}_${concept}` 형태로 짓는다)
+      // 재분석 후에도 같은 id가 다시 나오는데, 폴더를 재사용하면 예전 수락으로
+      // 이미 저장된 글이 가리키는 복사본을 새 사진으로 덮어써 글 내용이 바뀐다.
+      // "지저분한 폴더명"이 아니라 덮어쓰기 방어다 — Date.now()를 떼지 말 것.
+      // (card.id는 영문·숫자·언더스코어, 시각은 숫자뿐이라 경로에 안전하다.
+      //  동시 수락은 위 copying 가드가 막으므로 같은 ms 충돌은 실제로 없다.
+      //  대가로 작성 중단 시 고아 폴더가 남는데, 그 청소는 Task 9가 다룬다.)
       const res = await copyTripOriginals(
-        `reco-${card.id}`,
+        `reco-${card.id}-${Date.now()}`,
         items,
         (done, total) => setCopying({ done, total }),
       );
