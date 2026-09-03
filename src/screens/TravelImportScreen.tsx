@@ -76,6 +76,9 @@ import {
   saveTripPool,
   syncTripPools,
 } from '../utils/tripPhotoPool';
+import { deleteRecoState } from '../services/photoAI/recoStorage';
+import { deleteSignalCache } from '../services/photoAI/signalCache';
+import { sweepRecoOrphans } from '../utils/recoOrphanSweep';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -418,7 +421,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { homeCountryCode, lastImportAt, setLastImportAt } = useSettings();
   // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
-  const { records, tripGroups, addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
+  // drafts·countryCovers는 고아 복사본 청소(sweepRecoOrphans)의 참조 판정용 —
+  // 임시저장 글과 나라 대표핀도 복사본 uri를 품을 수 있어, 빼먹으면 그 폴더를 지워버린다.
+  const { records, tripGroups, drafts, countryCovers, addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
   const recordsRef = useRef(records);
   recordsRef.current = records;
   // 스캔 루프 안에서 최신 카드 목록이 필요하다(보관된 사진 후보 정리 기준)
@@ -675,6 +680,18 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const importedIds = collectImportedAssetIds(recordsRef.current);
       const pools = await syncTripPools(tripGroupsRef.current.map((g) => g.id));
       for (const id of poolAssetIds(pools)) importedIds.add(id);
+      // pool이 사라진 여행은 추천 상태와 신호 캐시도 의미가 없다 — 같은 자리에서 청소한다.
+      // (이 저장소의 불변식 "예약을 취소하는 곳에서 발송 기록도 지운다"와 같은 형태다)
+      for (const g of tripGroupsRef.current) {
+        if (pools[g.id]) continue;
+        deleteRecoState(g.id).catch(() => {});
+        deleteSignalCache(g.id).catch(() => {});
+      }
+      // 카드 수락 후 저장하지 않고 떠난 작성의 복사 폴더(trips/reco-*)도 여기서 청소한다.
+      // 판정(참조 전무 + 24h 경과)은 recoOrphanSweep이 맡는다 — 저장된 글이 가리키는
+      // 폴더를 지우면 사진이 통째로 사라지므로, 참조 소스 4종을 전부 넘겨야 한다.
+      // 스캔을 늦출 이유가 없어 기다리지 않는다(실패도 조용히 무시 — 다음 스캔에 다시 본다).
+      void sweepRecoOrphans([recordsRef.current, drafts, tripGroupsRef.current, countryCovers]);
       const scanTargets = excludeImported(assets, importedIds);
       const skippedImported = assets.length - scanTargets.length;
       // 참조만 바꿔 끼운다. 이전 코드는 assets.push(...scanTargets)로 내용을 복사했는데,
