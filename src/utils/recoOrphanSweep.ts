@@ -20,6 +20,8 @@
 //    보면 수락 시각(-{ts})이 안 보이므로, 나이 판정은 하위 디렉터리까지 걷는다.
 //
 // 삭제 조건(전부 충족해야 지운다 — 하나라도 못 지키면 남긴다):
+//   0) 참조 소스를 믿을 수 있음 — 전 소스가 비어 있으면 hydrate 실패(persist.ts가
+//      읽기 실패를 빈 시드 상태로 렌더하는 실제 시나리오)의 위장일 수 있어 통째로 포기
 //   1) 이름이 reco- 접두
 //   2) 기록·임시저장·여행 카드·나라 대표핀 어디에도 trips/{이름}/ 참조가 없음
 //   3) 수락 시각을 알 수 있고(-13자리 ms 접미), 그 시각이 최소 나이(24h)보다 오래됨
@@ -48,19 +50,66 @@ export const RECO_SWEEP_MAX_DEPTH = 6;
 
 /**
  * 참조 판정의 원문 — 기록 등 참조 후보들을 통째로 직렬화해 잇는다.
- * 하나라도 직렬화에 실패하면 null: 참조를 전수로 못 본 것이므로 호출부는
- * 청소 전체를 포기해야 한다(빠진 소스의 글이 가리키는 폴더를 지울 수 있다).
+ * 하나라도 직렬화에 실패하거나 undefined로 사라지면 null: 참조를 전수로 못 본 것이므로
+ * 호출부는 청소 전체를 포기해야 한다(빠진 소스의 글이 가리키는 폴더를 지울 수 있다).
+ * JSON.stringify(undefined)는 예외가 아니라 undefined를 돌려준다 — ?? ''로 삼키면
+ * "소스 누락"이 "참조 0건"으로 위장되므로 반드시 null로 승격한다.
  */
 export function buildReferenceText(sources: unknown[]): string | null {
   const parts: string[] = [];
   for (const s of sources) {
     try {
-      parts.push(JSON.stringify(s) ?? '');
+      const part = JSON.stringify(s);
+      if (typeof part !== 'string') return null; // undefined/함수 소스 — 전수 판정 불가
+      parts.push(part);
     } catch {
       return null; // 순환 참조 등 — 전수 판정 불가
     }
   }
   return parts.join('\n');
+}
+
+/**
+ * 참조 소스들이 "믿을 수 있는 상태"인가 — 하나라도 내용(원소 있는 배열 또는 키 있는
+ * 객체)이 있어야 true다.
+ *
+ * 🔴 "빈 배열이면 전부 고아 아닌가?"라고 생각하고 이 게이트를 지우지 마라.
+ * persist.ts(:100-145)는 AsyncStorage 읽기가 실패해도(Android CursorWindow 초과로
+ * 큰 records 키가 안 읽히는 실제 시나리오 — 기록 많은 사용자일수록 걸린다)
+ * hydrated=true로 빈 시드 상태를 렌더한다. 대신 저장을 꺼서 원본은 지켜 두므로
+ * 다음 세션에 records는 되살아나는데, 그 세션에서 이 sweep이 빈 records·drafts를
+ * "참조 0건"으로 믿고 돌면 되살아날 글이 가리키는 사진 폴더를 먼저 지워버린다 —
+ * persist 계층이 지켜낸 데이터를 여기서 파괴하는 셈이다.
+ *
+ * 즉 "전부 비어 있음"은 (a) 진짜 신규 사용자거나 (b) hydrate 실패의 위장이며,
+ * 이 함수로는 둘을 구분할 수 없다(실패 신호 saveDisabledRef는 persist 훅 내부 ref라
+ * 밖에서 못 본다). 그래서 구분 불가면 포기한다 — (a)는 지울 reco- 폴더 자체가 없어
+ * 잃는 것이 없고, (b)는 복구 불가 파손을 막는다.
+ *
+ * "모든 소스"를 보는 것으로 충분한 근거: records·drafts·tripGroups·countryCovers는
+ * 전부 STORE_KEYS.records 봉투 하나에서 hydrate된다(recordStore hydrate 참조).
+ * 읽기 실패는 넷을 동시에 비우므로 "전부 비면 포기"가 곧 "records·drafts가 비면
+ * 포기"이고, 위장 상태에서 일부만 비는 조합은 생기지 않는다.
+ */
+export function hasAnyReferenceContent(sources: unknown[]): boolean {
+  for (const s of sources) {
+    if (Array.isArray(s)) {
+      if (s.length > 0) return true;
+    } else if (s && typeof s === 'object') {
+      if (Object.keys(s).length > 0) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * sweep이 쓰는 단일 관문 — 소스가 위장 빈 상태(hasAnyReferenceContent 참조)거나
+ * 직렬화가 불완전하면 null을 돌려 청소 전체를 포기시킨다.
+ * null이면 아무것도 지우지 않는다는 불변식은 sweepRecoOrphans가 지킨다.
+ */
+export function buildTrustedReferenceText(sources: unknown[]): string | null {
+  if (!hasAnyReferenceContent(sources)) return null;
+  return buildReferenceText(sources);
 }
 
 /**
@@ -160,8 +209,10 @@ export async function sweepRecoOrphans(
   const fs = require('expo-file-system/legacy') as LegacyFs;
   const base = fs.documentDirectory;
   if (!base) return;
-  const refText = buildReferenceText(referenceSources);
-  if (refText == null) return; // 참조 전수를 못 봤다 — 아무것도 지우지 않는다
+  // 참조 원문이 null이면 무조건 전체 포기 — hydrate 실패 위장(전 소스 빈 상태)과
+  // 직렬화 불완전(undefined 소스·순환)이 모두 여기로 모인다. 각 근거는 함수 주석에.
+  const refText = buildTrustedReferenceText(referenceSources);
+  if (refText == null) return;
   const tripsDir = `${base}trips/`;
   let entries: string[] = [];
   try {

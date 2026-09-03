@@ -4,6 +4,8 @@
 // 그래서 "지운다" 판정보다 "남긴다" 판정의 경계를 훨씬 촘촘히 본다.
 import {
   buildReferenceText,
+  buildTrustedReferenceText,
+  hasAnyReferenceContent,
   isRecoFolderReferenced,
   parseAcceptTs,
   maxAcceptTs,
@@ -32,8 +34,38 @@ function eq(actual: unknown, expected: unknown, msg: string) {
   eq(buildReferenceText([a]), null, '직렬화 실패 소스가 있으면 null');
   eq(buildReferenceText([[{ ok: 1 }], a]), null, '하나만 실패해도 전체가 null');
 }
-eq(buildReferenceText([]), '', '소스가 없으면 빈 문자열(참조 0건으로 취급)');
-eq(buildReferenceText([undefined]), '', 'undefined 소스는 빈 조각(stringify가 undefined를 돌려줘도 죽지 않는다)');
+eq(buildReferenceText([]), '', '소스 목록 자체가 비면 빈 문자열(신뢰 게이트는 buildTrustedReferenceText가 맡는다)');
+// JSON.stringify(undefined)는 예외 없이 undefined를 돌려준다 — "소스 누락"을 빈 조각('')으로
+// 삼키면 참조 0건으로 위장되므로, 불변식("확신 없으면 남긴다")대로 null(청소 포기)이어야 한다.
+eq(buildReferenceText([undefined]), null, 'undefined 소스는 전수를 못 본 것 — 청소 포기(null)');
+eq(buildReferenceText([[{ ok: 1 }], undefined]), null, '정상 소스가 섞여 있어도 undefined가 하나라도 있으면 포기');
+
+// ── hasAnyReferenceContent / buildTrustedReferenceText — hydrate 실패 위장 방어 ──
+// persist.ts는 AsyncStorage 읽기 실패 시에도 hydrated=true로 빈 시드 상태를 렌더한다
+// (원본은 저장 비활성으로 보존). 그 세션에서 sweep이 빈 records·drafts를 "참조 0건"으로
+// 믿으면, 다음 세션에 되살아날 글이 가리키는 폴더를 먼저 지운다. 그래서 전 소스가 비면
+// (신규 사용자와 구분 불가) 무조건 포기해야 한다 — 신규 사용자는 지울 폴더도 없어 손해가 없다.
+{
+  // hydrate 실패가 위장하는 정확한 모양: [records=[], drafts=[], tripGroups=[], countryCovers={}]
+  const disguised = [[], [], [], {}];
+  eq(hasAnyReferenceContent(disguised), false, '전 소스 빈 상태(hydrate 실패 위장)는 신뢰 불가');
+  eq(
+    buildTrustedReferenceText(disguised),
+    null,
+    'records·drafts 둘 다 비면 삭제 후보가 있어도 아무것도 지우지 않는다(sweep은 null이면 전체 포기)',
+  );
+  eq(hasAnyReferenceContent([]), false, '소스 목록이 비어도 신뢰 불가');
+  eq(hasAnyReferenceContent([null, undefined]), false, 'null·undefined 소스는 내용이 아니다');
+  eq(hasAnyReferenceContent([[{ id: 'r1' }], [], [], {}]), true, 'records에 글이 하나라도 있으면 신뢰');
+  eq(hasAnyReferenceContent([[], [{ id: 'd1' }], [], {}]), true, 'drafts만 있어도 신뢰(임시저장만 있는 사용자)');
+  eq(hasAnyReferenceContent([[], [], [], { KR: { recordId: 'r', uri: 'u' } }]), true, '키 있는 객체 소스도 내용으로 친다');
+  eq(
+    buildTrustedReferenceText([[{ medias: ['file:///d/trips/reco-x-1700000000000/0.jpg'] }], [], [], {}]) != null,
+    true,
+    '정상 상태에서는 참조 원문을 돌려준다',
+  );
+  eq(buildTrustedReferenceText([[{ ok: 1 }], undefined]), null, '신뢰 게이트를 지나도 undefined 소스면 포기(이중 방어)');
+}
 
 // ── isRecoFolderReferenced ──
 // 참조는 TravelRecord 어느 필드에 있어도 잡혀야 한다 — 필드별 대표 사례로 확인
