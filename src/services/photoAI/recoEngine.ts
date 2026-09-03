@@ -68,6 +68,21 @@ const MIN_PHOTOS = 4;      // 이보다 적으면 추천할 게 없다
 const GPS_BATCH = 8;       // getAssetInfoAsync 동시 호출 상한 (OOM 방지 — photoGrouping과 동일 규칙)
 const ANALYZE_BATCH = 8;   // 썸네일+네이티브 분석 배치. 하트비트 갱신 주기이기도 하다
 
+/**
+ * 지문이 같은 채로 'unavailable'이 된 여행을 재시도하지 않는 최소 간격.
+ *
+ * unavailable(권한 철회·전량 iCloud 오프로드)은 이 쿨다운이 없으면 TripDetail을
+ * 여닫을 때마다 GPS 250회 + 자산 재조회 250회를 처음부터 다시 돈다 — 해외 로밍 중
+ * 오프로드 사용자가 카드를 열 때마다 그 비용을 낸다(실제 리뷰 지적 사항).
+ *
+ * 30분으로 잡은 이유: "권한을 다시 허용한 사용자가 너무 오래 기다리지 않을 것"과
+ * "여닫을 때마다 수백 회 네이티브 호출을 하지 않을 것" 사이의 절충이다. 사용자가
+ * 설정에서 권한을 막 허용하고 돌아온 세션 안에서는 못 볼 수 있지만, 앱을 다시 켜거나
+ * 잠깐 있다 돌아오면 재시도된다 — 무한정 막아두는 것보다는 훨씬 낫다. 사진을
+ * 추가/삭제해 지문이 바뀌면 이 쿨다운과 무관하게 즉시 재분석된다(아래 조기 반환 참고).
+ */
+const UNAVAILABLE_RETRY_MS = 30 * 60_000;
+
 /** 기본 카테고리 프레임의 슬롯 수 목록 (스트립 후보 생성기 입력) */
 function basicSlotCounts(): number[] {
   return CUT_FRAMES.filter((f) => f.category === '기본').map((f) => cutSlotCount(f.layout));
@@ -84,7 +99,13 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
     if (input.photos.length < MIN_PHOTOS) return;
 
     prev = await getRecoState(input.tripGroupId);
-    if (prev && prev.sourceFingerprint === fingerprint && prev.status === 'ready') return; // 이미 최신
+    if (prev && prev.sourceFingerprint === fingerprint) {
+      if (prev.status === 'ready') return; // 이미 최신
+      // 지문이 그대로인데 unavailable이면 쿨다운 안에서는 재시도하지 않는다.
+      // 지문이 바뀌면(사진 추가/삭제) 이 분기 자체를 안 타므로 즉시 재분석된다 —
+      // 사용자가 방금 사진을 넣었는데 30분을 기다리게 하는 일은 없다.
+      if (prev.status === 'unavailable' && Date.now() - prev.updatedAt < UNAVAILABLE_RETRY_MS) return;
+    }
 
     const pending: RecoState = {
       tripGroupId: input.tripGroupId,
@@ -120,6 +141,11 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
           if (!p.creationTime && info.creationTime) p.creationTime = info.creationTime;
         } catch { /* GPS 없음 — 시간 그룹핑으로 진행 */ }
       }));
+      // 하트비트 — GPS 조회도 250장이면 배치가 30번 넘게 돈다. 다음 하트비트(분석 배치)까지
+      // 여기서 갱신하지 않으면 STALE_PENDING_MS(3분)를 넘겨 고착으로 오판될 수 있다
+      // (조건 5의 무한 재분석 루프가 이 구간에서 그대로 재현된다). 분석 전 단계라
+      // 진행률은 아직 의미가 없으므로 done은 그대로 두고 갱신 시각만 찍는다.
+      await saveRecoState({ ...pending, updatedAt: Date.now() });
     }
 
     // 3) 시각을 끝내 못 구한 사진 처리 — 후보안 (b) "제외"를 택했다.
@@ -192,8 +218,19 @@ export async function runFormatReco(input: FormatRecoInput): Promise<void> {
       return;
     }
 
-    // 이번에 새로 분석된 신호만 캐시에 얹는다(기존 캐시와 병합) — 다음 재분석에서 재사용
-    await saveSignalCache(input.tripGroupId, { ...cache, ...collectSignals(photos) });
+    // 이번에 새로 분석된 신호만 캐시에 얹는다(기존 캐시와 병합) — 다음 재분석에서 재사용.
+    //
+    // ⚠️ quality만 채워진 장(품질 폴백)은 걸러낸다. 썸네일 확보 실패(:194 근처)나
+    //    네이티브 분석 실패(qualityAssessment.ts의 raw.error 경로)는 둘 다
+    //    signal·semantic 없이 quality={passed:true}만 남긴다 — 이건 "분석에 실패했다"는
+    //    뜻이지 "분석해보니 신호가 없더라"가 아니다. collectSignals는 quality만 있어도
+    //    캐시에 담으므로, 그대로 넘기면 다음 재분석에서 applyCached가 이 장을 "캐시 적중"
+    //    으로 오판해 missing에서 빼버린다. signal·semantic이 영원히 채워지지 않아
+    //    컨셉 점수가 0에 수렴하고, 사진이 (Wi-Fi에서 다시 받는 등으로) 나중에 정상
+    //    분석 가능해져도 캐시가 막아 영구 배제된다(실제 리뷰 지적 사항).
+    //    signal 또는 semantic이 있는(=실제로 분석에 성공한) 장만 캐시에 올린다.
+    const analyzedOnly = photos.filter((p) => p.signal || p.semantic);
+    await saveSignalCache(input.tripGroupId, { ...cache, ...collectSignals(analyzedOnly) });
 
     // 6) 스팟 그룹핑 + 컨셉 판정
     const groups = groupPhotosBySpot(photos);
