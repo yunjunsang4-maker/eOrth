@@ -2,6 +2,7 @@
 
 **작성일:** 2026-09-04
 **관련 문서:** `2026-07-16-long-stay-mode-design.md`(체류 모드), `2026-06-08-past-trip-import-foreign-photos-design.md`(과거여행 스캔), `2026-09-01` 과거여행 불러오기 즉시 카드 생성(메모 `eorth-past-import-instant-card`)
+**구현:** 2026-09-04 `feat/stay-trip-suggest` — 계획 `docs/superpowers/plans/2026-09-04-stay-trip-suggest.md`, 실기기 체크리스트 `docs/superpowers/plans/2026-09-04-stay-trip-suggest-device-checklist.md`. 실기기 검증 전까지 OTA 금지.
 
 ## 배경 · 목표
 
@@ -88,7 +89,7 @@ await importTrips(trips: ScannedTrip[], opts?: { onProgress?(done, total) }): Pr
 - **게이트(알림 발송만):** 알림 설정 `master` && `stayTripSuggest`.
 - **트리거:** 포그라운드 복귀(`AppState` active). `DETECTOR_KEYS.stayTripSuggestCheckedAt`로 12시간 스로틀.
 - **절차:** `detectCurrentCountry()`(팝업 없음) → `scanRecentPhotoCountries({ createdAfter: now - 14d })` → `suggestStayTrips(...)` → 새 키만 골라 `pending`에 추가하고 로컬 알림 발송.
-- **알림:** `scheduleNotificationAsync({ identifier: \`stayTripSuggest:${key}\`, content: { title, body, data: { type: 'stayTripSuggest' } }, trigger: null })`. 제안 키당 1회. 알림 설정에 `NotifPrefKey` **`stayTripSuggest`**(기본 `true`, 위치 권한 불필요) 추가, `NotificationSettingsScreen`에 토글 노출.
+- **알림:** `scheduleNotificationAsync({ identifier: STAY_TRIP_SUGGEST_NOTIF_ID, content: { title, body, data: { type: 'stayTripSuggest' } }, trigger: null })`. identifier는 **고정값 `'stay-trip-suggest'` 하나**이고(제안 키별로 만들지 않는다) 새 제안이 생길 때마다 **앞 알림을 교체**한다 — 키마다 다른 identifier를 쓰면 주말마다 트레이에 알림이 쌓인다. 발송은 **새로 생긴 키가 있을 때만**. 알림 설정에 `NotifPrefKey` **`stayTripSuggest`**(기본 `true`, 위치 권한 불필요) 추가, `NotificationSettingsScreen`에 토글 노출.
 - **라우팅:** `AppNavigator.routeFromData`에 `stayTripSuggest → Main(홈 탭)` 분기 추가.
 - **영속 키(`persist.ts` `DETECTOR_KEYS`에 등록):**
   - `stayTripSuggestCheckedAt: '@eorth/stayTripSuggest/checkedAt'` (ms)
