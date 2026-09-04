@@ -51,6 +51,13 @@ export const DETECTOR_KEYS = {
   // 만들었다고 판단해 배지가 영영 안 뜨는' 고착이 된다.
   returnAt: '@eorth/returnDetect/returnAt', // 마지막 귀국 판정 시각 (FAB 강조 창 시작점)
   albumCreatedAt: '@eorth/album/lastCreatedAt', // 마지막 사진첩 생성 시각 (강조 해제 근거)
+  // 체류 중 주변국 여행 카드 제안(components/StayTripSuggester · utils/stayTripSuggestStore).
+  // 발송 기록은 아니지만 여기 두는 이유는 위 둘(returnAt·albumCreatedAt)과 같다 — records·
+  // tripGroups와 짝인 값이라 clearPersistedStores가 records를 지울 때 같이 지워져야 한다.
+  // 남으면 '카드는 없는데 제안은 이미 만들었다고 판단'하는 고착이 된다.
+  stayTripSuggestCheckedAt: '@eorth/stayTripSuggest/checkedAt', // 마지막 검사 시각(ms) — 12시간 스로틀
+  stayTripSuggestPending: '@eorth/stayTripSuggest/pending', // 대기 중 제안 JSON(TripSuggestion[])
+  stayTripSuggestDismissed: '@eorth/stayTripSuggest/dismissed', // 거절한 제안 키 JSON(string[])
 } as const;
 
 /**
