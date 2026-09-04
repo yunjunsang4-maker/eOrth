@@ -97,8 +97,9 @@ await importTrips(trips: ScannedTrip[], opts?: { onProgress?(done, total) }): Pr
   - 등록만 하면 `clearPersistedStores`와 `snap-detect-guard.verify.mjs`에 자동 포함된다. 문자열 복붙 금지.
 - **소멸:** 로드 시 `detectedAt + 7d < now`인 제안 제거. 체류가 `ended`가 되면 `pending` 전부 제거.
 
-### 5. 홈 제안 카드 — `src/components/StayTripSuggestBanner.tsx` (MainScreen 피드 헤더 최상단)
+### 5. 홈 제안 카드 — `src/components/StayTripSuggestBanner.tsx` (MainScreen 헤더 바로 아래)
 
+- 홈(MainScreen)은 피드가 아니라 전체화면 지구본이다. 배너는 헤더(로고·종) 바로 아래, 지구본 영역 위에 오버레이 카드로 놓는다. 제안이 없으면 자리도 차지하지 않는다.
 - 한 건: 국기 + "체코 여행 · 9.5 ~ 9.7 · 사진 37장", 버튼 **[카드 만들기] [나중에]**, 우상단 작은 ×(안 만들기).
 - 여러 건: 같은 카드 안에 행으로 쌓이고 [카드 만들기]는 전부 생성.
 - **카드 만들기:** `useImportTripsIntoCards`로 생성 → `pending`에서 제거 → 한 건이면 생성된 카드(`TripRecord`)로 이동, 여러 건이면 토스트 "카드 N장 만들었어요".
