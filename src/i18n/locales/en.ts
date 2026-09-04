@@ -498,6 +498,8 @@ const en = {
     arrivalDesc: 'When you arrive abroad, we ask if you want to start a travel record',
     returnLabel: 'Return detection',
     returnDesc: 'When you return home, we ask if you want to wrap up your trip',
+    stayTripLabel: 'Nearby trip card suggestions',
+    stayTripDesc: 'While staying abroad, we find nearby trips in your photos and offer to make a card',
     sectionSnap: 'Snap notifications',
     snapLabel: 'Live snap notifications',
     snapDesc: 'While traveling abroad, we remind you to capture a photo at random moments',
@@ -2087,6 +2089,20 @@ const en = {
     notifTitle: 'Traveling in {{country}} ✈️',
     notifBody: 'Capture this trip in eOrth',
     abroad: 'abroad',
+  },
+  // Nearby trip card suggestions while staying abroad — StayTripSuggester / StayTripSuggestBanner
+  stayTripSuggest: {
+    notifTitle: 'Make a card for your {{country}} trip?',
+    notifTitleMany: 'Make {{count}} trip cards?',
+    notifBody: 'Found {{count}} photos. One tap creates the card',
+    bannerTitle: 'Looks like you took a trip',
+    row: '{{country}} · {{start}} ~ {{end}} · {{count}} photos',
+    create: 'Make card',
+    createMany: 'Make {{count}} cards',
+    later: 'Later',
+    dismissA11y: 'Hide this suggestion',
+    createdToast: 'Created {{count}} trip cards',
+    createFail: "Couldn't create the card. Please try again later",
   },
   // Shared store strings (recordStore etc.) — used outside screens (toasts, generated data)
   store: {

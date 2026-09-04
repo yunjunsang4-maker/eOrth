@@ -42,10 +42,14 @@ export function genHandle(): string {
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
   | 'master' | 'friendTrip' | 'likes' | 'messages' | 'newFollower'
-  | 'returnDetect' | 'memoryRemind' | 'marketing' | 'travelMoment';
+  | 'returnDetect' | 'memoryRemind' | 'marketing' | 'travelMoment'
+  | 'stayTripSuggest'; // 체류 중 주변국 여행 카드 제안 알림(위치 권한 불필요 — 사진 기반)
 const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
   master: true, friendTrip: true, likes: true, messages: true, newFollower: true,
   returnDetect: false, memoryRemind: true, marketing: false, travelMoment: true,
+  // 기본 켬 — 하이드레이트·백업 복원이 모두 `{ ...DEFAULT_NOTIF_PREFS, ...saved }`라
+  // 이 키가 없던 기존 설치·옛 서버 백업도 자동으로 true가 된다.
+  stayTripSuggest: true,
 };
 
 // 소급 태깅한 방문 지역 항목 (대륙 지도 NAME_1 기준)

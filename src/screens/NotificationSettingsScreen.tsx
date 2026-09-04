@@ -121,6 +121,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   const returnDetect = notifPrefs.returnDetect;
   const memoryRemind = notifPrefs.memoryRemind;
   const travelMoment = notifPrefs.travelMoment;
+  const stayTripSuggest = notifPrefs.stayTripSuggest;
   const marketing = notifPrefs.marketing;
 
   // 기기 알림 권한 상태
@@ -356,6 +357,15 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description={t('notifSettings.returnDesc')}
             value={returnDetect}
             onValueChange={(v) => setNotifPref('returnDetect', v)}
+            disabled={!masterEnabled}
+          />
+          {/* 이 줄만 위치 권한이 필요 없다 — 최근 사진에서 체류국 밖 여행을 찾는다 */}
+          <ToggleRow
+            icon={<Text style={{ fontSize: 18 }}>🧳</Text>}
+            label={t('notifSettings.stayTripLabel')}
+            description={t('notifSettings.stayTripDesc')}
+            value={stayTripSuggest}
+            onValueChange={(v) => setNotifPref('stayTripSuggest', v)}
             disabled={!masterEnabled}
             isLast
           />

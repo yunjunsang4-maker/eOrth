@@ -511,6 +511,8 @@ const ko = {
     arrivalDesc: '해외에 도착하면 여행 기록을 시작할지 알려줘요',
     returnLabel: '귀국 감지',
     returnDesc: '귀국하면 여행을 마무리할지 알려줘요',
+    stayTripLabel: '주변국 여행 카드 제안',
+    stayTripDesc: '체류 중 다녀온 주변국 여행을 사진에서 찾아 카드로 만들지 알려줘요',
     sectionSnap: '스냅 알림',
     snapLabel: '실시간 스냅 알림',
     snapDesc: '해외 여행 중 무작위 시점에 사진을 기록하라고 알려줘요',
@@ -2106,6 +2108,20 @@ const ko = {
     notifTitle: '{{country}} 여행 중 ✈️',
     notifBody: '이번 여행을 이어스로 남겨보세요',
     abroad: '해외',
+  },
+  // 체류 중 주변국 여행 카드 제안 — 감지기(StayTripSuggester)·홈 배너(StayTripSuggestBanner)
+  stayTripSuggest: {
+    notifTitle: '{{country}} 여행 카드 만들까요?',
+    notifTitleMany: '여행 카드 {{count}}건 만들까요?',
+    notifBody: '사진 {{count}}장을 찾았어요. 탭 한 번이면 카드가 생겨요',
+    bannerTitle: '다녀온 여행이 있네요',
+    row: '{{country}} · {{start}} ~ {{end}} · 사진 {{count}}장',
+    create: '카드 만들기',
+    createMany: '카드 {{count}}장 만들기',
+    later: '나중에',
+    dismissA11y: '이 제안 안 보기',
+    createdToast: '여행 카드 {{count}}장을 만들었어요',
+    createFail: '카드를 만들지 못했어요. 잠시 후 다시 시도해 주세요',
   },
   // 스토어 공용(recordStore 등) — 화면 밖(토스트·자동 생성 데이터)에서 쓰는 문구
   store: {
