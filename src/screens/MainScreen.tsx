@@ -78,6 +78,7 @@ import type { TabScreenProps } from '../navigation/types';
 import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
 import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
+import StayTripSuggestBanner from '../components/StayTripSuggestBanner';
 import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
@@ -1681,6 +1682,11 @@ export default function MainScreen({ navigation, route }: Props) {
           <NotificationBadge count={unreadAlerts} />
         </TouchableOpacity>
       </View>
+
+      {/* ── 체류 중 주변국 여행 카드 제안 — 제안이 없으면 렌더되지 않는다 ── */}
+      <StayTripSuggestBanner
+        onCreated={(recs) => { if (recs.length === 1) navigation.navigate('TripRecord', { record: recs[0] }); }}
+      />
 
       {/* ── 지구본 / 국가 지도 영역 ── */}
       {/* box-none: 빈 영역 터치는 뒤의 전체화면 글로브로 통과(토글·설정 등 자식만 터치 수신) */}
