@@ -208,6 +208,7 @@ export default function AppNavigator() {
   //   (App.tsx에도 같은 리스너가 있었는데 인증 게이트 없이 이중 라우팅해 로그인 화면 위로
   //    내부 화면이 열리는 문제가 있었다. 새 타입을 추가할 곳도 여기 한 곳이다.)
   //   dm → 대화, snap/moment/arrival → 각 기록 화면, returnDetect → 사진첩 만들기,
+  //   stayTripSuggest → 홈(제안 배너가 헤더 아래에 떠 있다),
   //   메이트 신청·수락 → 알림 목록,
   //   like/comment/reply/friend_post → 게시물, 그 외 actor 알림 → 프로필.
   //   인증되어 Main에 진입한 뒤에만 이동(콜드 스타트는 최대 ~6.4초 재시도). 동일 알림 중복 처리 방지.
@@ -237,6 +238,9 @@ export default function AppNavigator() {
         } else if (d.type === 'returnDetect') {
           // 귀국 알림 → 사진첩 만들기. 지금까지 분기가 없어 이 알림만 탭해도 무동작이었다.
           navigate('AlbumCreate');
+        } else if (d.type === 'stayTripSuggest') {
+          // 주변국 여행 카드 제안 → 홈(지구본). 배너가 헤더 아래에 떠 있다
+          navigate('Main');
         } else if (d.type === 'neighbor_request' || d.type === 'neighbor_accept') {
           // 메이트 신청/수락 → 알림 목록(신청은 목록에서 수락·거절 화면으로 이어진다)
           navigate('Notifications');

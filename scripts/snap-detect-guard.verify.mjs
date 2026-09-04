@@ -389,6 +389,10 @@ const DETECTOR_KEY_VALUES = {
   snapSent: '@eorth/snapDetect/sent',
   arrivalSentCountry: '@eorth/arrivalDetect/sentCountry',
   returnAbroadLast: '@eorth/returnDetect/abroadLast',
+  // 체류 중 주변국 여행 제안 — 같은 규칙(정의처 하나·초기화 시 삭제·리터럴 복붙 금지)
+  stayTripSuggestCheckedAt: '@eorth/stayTripSuggest/checkedAt',
+  stayTripSuggestPending: '@eorth/stayTripSuggest/pending',
+  stayTripSuggestDismissed: '@eorth/stayTripSuggest/dismissed',
 };
 // 같은 규칙을 받는 두 번째 목록 — '기기당 1회 안내' 플래그.
 // 발송 기록과 목록을 나눠 둔 이유는 persist.ts 주석에 있고, 여기서는 **똑같이** 검사한다:
@@ -557,11 +561,13 @@ if (svc !== null) {
 // ⚠️ 이 검사는 catch의 **존재**만 본다. 무엇을 삼키는지, 삼킨 뒤 상태가 옳은지는 보지 못한다.
 //    SnapDetector·ArrivalNotifier의 선점 정리(abort)는 규칙 1-(f)가 따로 검사하고,
 //    MomentNotifier·ReturnDetector에는 abort가 **의도적으로 없다**(각 파일 주석 참조).
+// 다섯 번째(StayTripSuggester)는 사진 기반이라 규칙 1의 발송 기록 검사는 받지 않고 예외 처리 모양만 맞춘다.
 for (const [path, tag] of [
   [SNAP, 'SnapDetector'],
   [ARRIVAL, 'ArrivalNotifier'],
   [MOMENT, 'MomentNotifier'],
   ['src/components/ReturnDetector.tsx', 'ReturnDetector'],
+  ['src/components/StayTripSuggester.tsx', 'StayTripSuggester'],
 ]) {
   const src = readSafe(path);
   if (src === null) {

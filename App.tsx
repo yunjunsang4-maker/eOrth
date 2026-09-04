@@ -34,6 +34,7 @@ import AppStateSync from './src/components/AppStateSync';
 import PushTokenSync from './src/components/PushTokenSync';
 import ReturnDetector from './src/components/ReturnDetector';
 import ReturnDetectNudge from './src/components/ReturnDetectNudge';
+import StayTripSuggester from './src/components/StayTripSuggester';
 import ArrivalNotifier from './src/components/ArrivalNotifier';
 
 // 네이티브 스플래시를 JS 가 직접 내린다.
@@ -141,6 +142,7 @@ export default function App() {
                           <ArrivalNotifier />
                           <ReturnDetector />
                           <ReturnDetectNudge />
+                          <StayTripSuggester />
                           <ProfileSync />
                           <AppStateSync />
                           <PushTokenSync />
