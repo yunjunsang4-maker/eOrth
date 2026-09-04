@@ -34,7 +34,6 @@ import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { COUNTRIES } from '../constants/countries';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
@@ -68,12 +67,10 @@ import {
 } from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
 import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
-import { copyTripCover } from '../utils/importPhotoStore';
-import { classifyImportTarget } from '../utils/importRouting';
+// 카드 생성(표지 복사·기록·그룹·사진 풀)은 훅 한 곳에 모여 있다 — 주변국 여행 제안 배너와 공유
+import { useImportTripsIntoCards } from '../hooks/useImportTripsIntoCards';
 import {
-  pickCoverCandidates,
   poolAssetIds,
-  saveTripPool,
   syncTripPools,
 } from '../utils/tripPhotoPool';
 import { sweepRecoStates } from '../services/photoAI/recoStorage';
@@ -108,10 +105,7 @@ const makeSincePeriod = (lastImportAt: number): ScanPeriodOption => ({
   sinceTs: Math.max(0, lastImportAt - RESCAN_OVERLAP_MS),
 });
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
-// 썸네일 후보 수. 무작위로 뽑은 사진은 iCloud 오프로드·content:// 자산 등으로 확보에
-// 실패할 수 있어 넉넉히 받아 두고 순서대로 시도한다(전부 실패해도 카드는 만든다).
-// 3장이었을 땐 그 여행 사진이 대부분 오프로드된 사용자에게서 전부 실패해 목업 카드가 됐다.
-const COVER_COPY_TRIES = 8;
+// (썸네일 후보 수 COVER_COPY_TRIES는 hooks/useImportTripsIntoCards로 옮겼다)
 // 분석 기간 칩 슬라이드의 양끝 흐림 폭. 이 거리만큼 스크롤되면 흐림이 완전히 켜진다.
 const PERIOD_FADE_W = 28;
 
@@ -423,7 +417,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
   // drafts·countryCovers는 고아 복사본 청소(sweepRecoOrphans)의 참조 판정용 —
   // 임시저장 글과 나라 대표핀도 복사본 uri를 품을 수 있어, 빼먹으면 그 폴더를 지워버린다.
-  const { records, tripGroups, drafts, countryCovers, addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
+  const { records, tripGroups, drafts, countryCovers } = useRecords();
+  // 선택한 여행 → 카드 생성. 저장 단계는 전부 이 훅 안에 있다.
+  const importTrips = useImportTripsIntoCards();
   const recordsRef = useRef(records);
   recordsRef.current = records;
   // 스캔 루프 안에서 최신 카드 목록이 필요하다(보관된 사진 후보 정리 기준)
@@ -1094,98 +1090,24 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     setIsImporting(true);
     setImportProgress({ done: 0, total: chosen.length });
     try {
-      let tripCount = 0;
-      let photoCount = 0; // 카드에 연결해 둔(=바로 꺼내 쓸 수 있는) 분석 사진 총 장수
-      const countries: { flag: string; name: string }[] = [];
-      // 썸네일 확보 실패 사유 모음 — 개발 빌드에서만 화면에 띄운다.
-      // 이 실패는 조용히 지나가면 "카드는 생겼는데 목업 사진"으로만 보여서 원인을 못 찾는다.
-      const coverErrors: string[] = [];
-      const homeCountryName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
-      const stayCountryName = activeStayGroup?.stay?.status !== 'ended' ? (activeStayGroup?.countryName ?? null) : null;
-
-      for (let i = 0; i < chosen.length; i++) {
-        const trip = chosen[i];
-        setImportProgress({ done: i, total: chosen.length });
-
-        // 갈 곳을 먼저 정한다 — 거주국(skip)이면 기록을 만들지 않는다.
-        // (기록부터 만들고 나중에 건너뛰면 어느 카드에도 안 붙은 기록이 남는다)
-        const target = classifyImportTarget(trip.countryName, homeCountryName, stayCountryName);
-        if (target === 'skip') continue; // clusterForeignTrips가 이미 제외 — 방어적으로 무시
-
-        // 썸네일 — 분석된 사진 중 무작위 1장. (AI 판정이 들어오면 이 선택만 교체하면 된다)
-        // 후보 순서도 무작위다. 실패해서 다음 후보로 넘어갈 때 옆 인덱스를 쓰면 방금 실패한
-        // 사진과 거의 같은 장면이 나와, 같은 이유로 또 실패한다.
-        const cover = await copyTripCover(
-          trip.id,
-          pickCoverCandidates(trip.photos, COVER_COPY_TRIES).map((c) => ({ id: c.id, uri: c.uri, localUri: c.localUri })),
-        );
-        const coverUri = cover.uri ?? undefined;
-        // 후보를 전부 실패해도 카드는 만든다 — 썸네일 없는 카드가, 여행이 통째로 안 들어오는 것보다 낫다
-        // (그 경우 프로필 카드는 이모지+그라데이션 기본 배경으로 떨어진다)
-        if (!coverUri && cover.error) coverErrors.push(`${trip.countryName}: ${cover.error}`);
-        const coverSrc = cover.source
-          ? trip.photos.find((p) => p.uri === cover.source!.uri)
-          : undefined;
-
-        const mediaAssetIds: Record<string, string> = {};
-        const mediaTimes: Record<string, number> = {};
-        if (coverUri && coverSrc?.id) mediaAssetIds[coverUri] = coverSrc.id;
-        if (coverUri && coverSrc?.creationTime) mediaTimes[coverUri] = coverSrc.creationTime;
-
-        const rec = addImportedAlbum({
-          country: trip.country, countryName: trip.countryName, countryFlag: trip.countryFlag,
-          date: trip.date, startDate: trip.startDate, endDate: trip.endDate,
-          title: trip.title,
-          medias: coverUri ? [coverUri] : [],
-          representativePhoto: coverUri,
-          mediaAssetIds,
-          mediaTimes,
-          // 사진첩이 아니라 카드 표지다 — 여행 상세의 형식 목록·프로필 카드 배지에서 빠진다.
-          // (사용자가 만들지 않은 '사진 1장짜리 사진첩'이 생긴 것처럼 보이던 문제)
-          isImportCover: true,
-        });
-
-        // 진행 중 체류국 사진이면 체류 카드로 흡수(백데이팅), 제3국이면 별도 여행 카드
-        let groupId: string | null = null;
-        if (target === 'stay') {
-          absorbIntoStay(rec.id, trip.startDate);
-          groupId = activeStayGroup?.id ?? null;
-        } else {
-          // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
-          groupId = addTripGroup({ title: trip.title, records: [rec.id], coverRecordId: rec.id }).id;
-          tripCount += 1;
-          countries.push({ flag: trip.countryFlag, name: trip.countryName });
-        }
-
-        // 분석된 사진을 카드에 연결해 보관 — 원본은 복사하지 않고 갤러리 참조만 남긴다
-        if (groupId) {
-          await saveTripPool({
-            tripGroupId: groupId,
-            recordId: rec.id,
-            country: trip.country, countryName: trip.countryName, countryFlag: trip.countryFlag,
-            title: trip.title, startDate: trip.startDate, endDate: trip.endDate,
-            photos: trip.photos.map((p) => ({ id: p.id, uri: p.uri, creationTime: p.creationTime })),
-          });
-          photoCount += trip.photos.length;
-        }
-      }
-
-      setImportProgress({ done: chosen.length, total: chosen.length });
+      // 저장 단계는 hooks/useImportTripsIntoCards가 맡는다(주변국 여행 제안 배너와 공유).
+      // 저장 규칙이 화면마다 갈라지면 한쪽만 고쳐지는 사고가 나서 화면 밖으로 꺼냈다.
+      const result = await importTrips(chosen, (done, total) => setImportProgress({ done, total }));
       // 다음 재스캔의 기본 기간 기준점 — 실제로 카드가 만들어진 경우에만 갱신한다.
       // (0건이면 기준을 옮기면 안 된다. 이번에 안 담은 사진들이 다음 스캔에서 기간 밖으로
       //  밀려나 영영 못 찾게 되기 때문)
-      if (photoCount > 0) setLastImportAt(Date.now());
+      if (result.photoCount > 0) setLastImportAt(Date.now());
       // 개발 빌드 한정 진단 — 콘솔을 못 보는 상황에서도 왜 썸네일이 비었는지 읽을 수 있게.
       // 릴리스에서는 뜨지 않는다(사용자가 할 수 있는 일이 없는 내부 사유다).
-      if (__DEV__ && coverErrors.length > 0) {
-        Alert.alert('[DEV] 썸네일 확보 실패', coverErrors.slice(0, 3).join('\n\n'));
+      if (__DEV__ && result.coverErrors.length > 0) {
+        Alert.alert('[DEV] 썸네일 확보 실패', result.coverErrors.slice(0, 3).join('\n\n'));
       }
       success();
       navigation.reset({
         index: 1,
         routes: [
           { name: 'Main' },
-          { name: 'ImportComplete', params: { tripCount, photoCount, countries, from: route.params?.from, mode: 'quick' } },
+          { name: 'ImportComplete', params: { tripCount: result.tripCount, photoCount: result.photoCount, countries: result.countries, from: route.params?.from, mode: 'quick' } },
         ],
       });
     } catch (err) {
