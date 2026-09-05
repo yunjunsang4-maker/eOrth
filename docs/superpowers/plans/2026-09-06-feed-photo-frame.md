@@ -630,7 +630,7 @@ import { isFramed, normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } f
 Run: `npx tsc --noEmit`
 Expected: 오류 0.
 
-Run: `npm test > "%TEMP%\eorth-test.log" 2>&1` 후 로그 파일을 읽는다(파이프 금지).
+Run(PowerShell): `npm test > $env:TEMP\eorth-test.log 2>&1` 후 로그 파일을 읽는다(파이프 금지).
 Expected: `photoFrame.verify.ts` 통과 포함 전체 통과. 단 `scripts/event-config.verify.mjs`의 "Supabase 프로젝트 일치" 1건은 로컬 `.env` 차이로 기존부터 실패 — 코드 결함이 아니며 보고서에 "기존 실패 1건 그대로"로 적는다.
 
 - [ ] **Step 7: 저장 형태 확인(수동 검토)**
