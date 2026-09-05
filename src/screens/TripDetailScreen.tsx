@@ -775,7 +775,8 @@ export default function TripDetailScreen() {
           <Text style={s.heroDate}>{tripDateRange}</Text>
           <View style={[s.heroPill, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}>
             {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
-            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.length })}</Text>
+            {/* 불러오기가 만든 '표지 전용' 기록은 getRecordsByType과 똑같이 뺀다 — 안 빼면 사진첩 없이 카드만 만든 여행이 "1개의 기록"으로 보인다 */}
+            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.filter((r) => !r.isImportCover).length })}</Text>
           </View>
         </Animated.View>
 
