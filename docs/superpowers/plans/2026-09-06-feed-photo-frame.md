@@ -599,22 +599,9 @@ import { isFramed, normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } f
         photoFrame: serializePhotoFrame(photoFrame), // 원본이면 undefined → 옛 글과 같은 형태
 ```
 
-- [ ] **Step 4: 이탈 판정에 포함**
+- [ ] **Step 4: 이탈 판정은 바꾸지 않는다**
 
-현재(1229-1232행):
-```ts
-  const hasInput =
-    selectedCountries.length > 0 || medias.length > 0 || photoTexts.some(text => text.trim().length > 0) ||
-    rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
-    !!budget || !!weather || !!flightType;
-```
-변경:
-```ts
-  const hasInput =
-    selectedCountries.length > 0 || medias.length > 0 || photoTexts.some(text => text.trim().length > 0) ||
-    rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
-    !!budget || !!weather || !!flightType || isFramed(photoFrame);
-```
+`hasInput`에 `isFramed(photoFrame)`을 넣지 않는다. 프레임은 사진이 있어야 의미가 있고 `medias.length > 0`이 이미 참을 만든다. 넣으면 사진을 전부 지운 빈 폼에서도 이탈 경고가 뜬다(QA F-2).
 
 - [ ] **Step 5: PhotoPagerSection에 전달**
 

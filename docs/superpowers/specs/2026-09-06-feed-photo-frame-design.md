@@ -97,8 +97,9 @@ fill 색상 매핑.
 - `const [photoFrame, setPhotoFrame] = useState<PhotoFrame>(() => normalizePhotoFrame(editRecord?.photoFrame))`.
 - 저장 객체(1155행 부근 `photoTexts` 옆)에 `photoFrame` 포함. 단 `ratio === 'original'`이고
   fill이 기본이면 필드를 생략해 옛 글과 저장 형태를 같게 한다(불필요한 diff 방지).
-- "작성 중 내용 있음" 판정(1230행 부근)에 `isFramed(photoFrame)` 추가.
-- 초기화 경로(827행 부근, 사진·글 비우는 곳)에서 `DEFAULT_PHOTO_FRAME`으로 리셋.
+- "작성 중 내용 있음" 판정은 바꾸지 않는다 — 프레임은 사진이 있어야 의미가 있고 사진이 있으면 이미 참이다.
+  (QA F-2: 판정에 넣으면 사진을 전부 지운 빈 폼에서도 이탈 경고가 뜬다.)
+- 폼을 통째로 비우는 초기화 경로는 없다(캘린더 밴드 적용은 사진·글을 유지) — 리셋 단계 없음.
 
 ### i18n
 `ko`/`en`에 키 추가: `newRecord.actionFrame`(프레임/Frame), `newRecord.frameRatioOriginal`(원본/Original),
