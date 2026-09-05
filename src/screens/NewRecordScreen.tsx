@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
+import { normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList } from '../components/record/DraggableLists';
 import PhotoPagerSection from '../components/record/PhotoPagerSection';
@@ -440,6 +441,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
     return base;
   });
+
+  // 피드 사진 프레임(비율·채움색) — 게시물 단위. 수정 모드는 기존 값 복원, 옛 글·신규는 원본·검정.
+  const [photoFrame, setPhotoFrame] = useState<PhotoFrame>(() => normalizePhotoFrame(editRecord?.photoFrame));
 
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
     editRecord?.mediaPrivacy ?? {}
@@ -1153,6 +1157,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           ? t('newRecord.defaultTitleOne', { country: first.name })
           : t('newRecord.defaultTitleMany', { country: first.name, count: selectedCountries.length - 1 })),
         photoTexts,
+        photoFrame: serializePhotoFrame(photoFrame), // 원본이면 undefined → 옛 글과 같은 형태
         memo: photoTexts[repIndex] ?? '',
         rating: firstRating,
         companions: selectedCompanions,
@@ -1370,6 +1375,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               onRemove={removeMedia}
               onPrivacyPress={(idx) => setPrivacyModalIndex(idx)}
               privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
+              frame={photoFrame}
+              onChangeFrame={setPhotoFrame}
             />
 
             {/* 사진 가져오는 중 오버레이는 화면 루트(SafeAreaView 끝)로 옮겼다 — 아래 주석 참고 */}
