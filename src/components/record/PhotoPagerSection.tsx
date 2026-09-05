@@ -1,7 +1,8 @@
 // 피드 작성 — 큰 사진 페이저 + 현재 사진의 글 입력 + 사진 액션(대표·비공개·삭제).
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
-import { warn } from '../../utils/haptics';
+// 프레임(비율·채움색)은 게시물 단위 — 액션 바 넷째 버튼으로 칩을 펼쳐 고른다(2026-09-06).
+import { warn, select } from '../../utils/haptics';
 import React, { useRef, useState, useEffect } from 'react';
 import { View, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
 import { Text, TextInput } from '../../ui/Text';
@@ -10,10 +11,14 @@ import { LockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { useStageWidth } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
+import {
+  PHOTO_FRAME_RATIOS, PHOTO_FRAME_FILLS, isFramed, frameHeight, frameFillColor,
+  type PhotoFrame, type PhotoFrameRatio, type PhotoFrameFill,
+} from '../../utils/photoFrame';
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
-  onSetRepresentative, onRemove, onPrivacyPress, privacyMarks,
+  onSetRepresentative, onRemove, onPrivacyPress, privacyMarks, frame, onChangeFrame,
 }: {
   medias: string[];
   photoTexts: string[];
@@ -24,6 +29,8 @@ export default function PhotoPagerSection({
   onRemove: (index: number) => void;
   onPrivacyPress: (index: number) => void;
   privacyMarks?: boolean[];
+  frame: PhotoFrame;
+  onChangeFrame: (f: PhotoFrame) => void;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -31,8 +38,12 @@ export default function PhotoPagerSection({
   // 페이저가 엉뚱한 사진을 가리킨다. 훅이므로 조기 return보다 위에 둔다.
   const SCREEN_W = useStageWidth();
   const PAGE_W = SCREEN_W; // Stage 폭 전체(최대한 크게)
-  const PAGE_H = Math.round(SCREEN_W * 1.05);
+  // 프레임 모드면 상세와 같은 높이(utils/photoFrame), 원본이면 기존 1.05:1 크롭 미리보기
+  const PAGE_H = frameHeight(frame, PAGE_W) ?? Math.round(SCREEN_W * 1.05);
+  const framed = isFramed(frame);
+  const fillColor = framed ? frameFillColor(frame.fill) : undefined;
   const [activeIdx, setActiveIdx] = useState(0);
+  const [frameOpen, setFrameOpen] = useState(false); // 프레임 칩 행 펼침
   const scrollRef = useRef<ScrollView>(null);
 
   // 사진 삭제 등으로 배열이 줄면 index와 스크롤 오프셋을 함께 보정
@@ -71,7 +82,7 @@ export default function PhotoPagerSection({
           style={{ width: PAGE_W, height: PAGE_H }}
         >
           {medias.map((uri, i) => (
-            <Image key={`${uri}-${i}`} source={{ uri }} style={{ width: PAGE_W, height: PAGE_H }} resizeMode="cover" />
+            <Image key={`${uri}-${i}`} source={{ uri }} style={{ width: PAGE_W, height: PAGE_H, backgroundColor: fillColor }} resizeMode={framed ? 'contain' : 'cover'} />
           ))}
         </ScrollView>
         {/* n/N + 대표 배지 */}
@@ -89,7 +100,7 @@ export default function PhotoPagerSection({
         </View>
       </View>
 
-      {/* 액션 바: 대표·비공개·삭제 */}
+      {/* 액션 바: 대표·비공개·프레임·삭제 — 프레임만 게시물 단위, 나머지는 현재 사진 단위 */}
       <View style={st.actionBar}>
         {/* 대표 버튼 — 활성이면 채워진 배지 스타일 */}
         <TouchableOpacity
@@ -115,6 +126,18 @@ export default function PhotoPagerSection({
           <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
+        {/* 프레임 버튼 — 비율·채움색 칩 행을 토글. 프레임이 적용돼 있으면 활성 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, (framed || frameOpen) && [st.actionBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+          onPress={() => { select(); setFrameOpen((v) => !v); }}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionFrame')}
+        >
+          <Text style={[st.actionBtnIcon, (framed || frameOpen) && { color: skinAccent.accent }]}>▭</Text>
+          <Text style={[st.actionBtnText, (framed || frameOpen) && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionFrame')}</Text>
+        </TouchableOpacity>
+
         {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}
         <TouchableOpacity
           style={[st.actionBtn, st.actionBtnDelete]}
@@ -137,6 +160,52 @@ export default function PhotoPagerSection({
           <Text style={st.actionBtnDeleteText}>{t('newRecord.actionDelete')}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 프레임 칩 — 비율 한 줄 + 채움색 한 줄. 원본이면 색 칩은 흐리게·비활성(채움이 없으니 의미 없음) */}
+      {frameOpen && (
+        <View style={st.frameRows}>
+          <View style={st.frameRow}>
+            {PHOTO_FRAME_RATIOS.map((r: PhotoFrameRatio) => {
+              const on = frame.ratio === r;
+              return (
+                <TouchableOpacity
+                  key={r}
+                  style={[st.chip, on && { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]}
+                  onPress={() => { select(); onChangeFrame({ ...frame, ratio: r }); }}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[st.chipText, on && { color: skinAccent.accent }]} {...andFitText}>
+                    {r === 'original' ? t('newRecord.frameRatioOriginal') : r}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={[st.frameRow, !framed && { opacity: 0.4 }]}>
+            {PHOTO_FRAME_FILLS.map((f: PhotoFrameFill) => {
+              const on = frame.fill === f;
+              return (
+                <TouchableOpacity
+                  key={f}
+                  style={[st.chip, on && { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]}
+                  onPress={() => { select(); onChangeFrame({ ...frame, fill: f }); }}
+                  disabled={!framed}
+                  activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on, disabled: !framed }}
+                >
+                  <View style={[st.chipSwatch, { backgroundColor: frameFillColor(f) }]} />
+                  <Text style={[st.chipText, on && { color: skinAccent.accent }]} {...andFitText}>
+                    {f === 'black' ? t('newRecord.frameFillBlack') : t('newRecord.frameFillWhite')}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {/* 현재 사진의 글 */}
       <View style={st.captionBox}>
@@ -205,6 +274,17 @@ const st = StyleSheet.create({
   actionBtnTextPrivacy: { color: '#BF85FC' },
   actionBtnDeleteIcon: { fontSize: 13, color: '#FF3B30' },
   actionBtnDeleteText: { fontSize: 12, color: '#FF3B30', fontWeight: '600' },
+
+  // 프레임 칩 행 — 액션 바와 같은 좌우 여백, 버튼과 같은 어두운 바탕
+  frameRows: { marginHorizontal: 16, marginTop: 8, gap: 6 },
+  frameRow: { flexDirection: 'row', gap: 6 },
+  chip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 7, borderRadius: 10,
+    backgroundColor: '#17131f', borderWidth: 1, borderColor: '#2E2E3B',
+  },
+  chipText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
+  chipSwatch: { width: 12, height: 12, borderRadius: 3, borderWidth: 1, borderColor: '#4A4A59' },
 
   captionBox: { marginHorizontal: 16, marginTop: 10 },
   captionLabel: { color: '#BF85FC', fontSize: 11, fontWeight: '700', marginBottom: 6 },
