@@ -54,6 +54,7 @@ const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '�
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
+import { isFramed, frameHeight, frameFillColor, normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import type { BlogBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
@@ -224,7 +225,9 @@ const HeartSvg = ({ filled, size = 22, color }: { filled: boolean; size?: number
 );
 
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
-const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[]; fullBleed?: boolean }) => {
+// frame: 피드 프레임(게시물 단위). 있으면 높이를 비율로 고정하고 사진을 contain + 채움색으로 넣는다.
+// 없으면(블로그 블록·옛 글) 사진마다 원본 비율을 읽어 그리는 기존 동작.
+const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed, frame }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[]; fullBleed?: boolean; frame?: PhotoFrame }) => {
   const skinAccent = useSkinAccent();
   const SCREEN_W = useStageWidth(); // 슬라이드 폭 = 페이징 오프셋. 실시간이어야 한다.
   const [activeIdx, setActiveIdx] = useState(0);
@@ -235,9 +238,11 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { 
   // 각 사진의 원본 비율을 읽어 박스를 맞춤 (크롭 방지).
   // 전부 읽은 뒤 한 번에 반영한다 — 장마다 도착 순서대로 반영하면 컨테이너 높이가
   // 여러 번 바뀌며 본문이 계단식으로 밀렸다(레이아웃 점프). 한 번의 변화도 부드럽게.
+  const framed = isFramed(frame);
   useEffect(() => {
     let alive = true;
-    if (!items.length) return;
+    // 프레임 모드는 높이가 비율로 고정이라 원본 비율을 읽을 필요가 없다
+    if (!items.length || framed) return;
     const acc: Record<number, number> = {};
     let left = items.length;
     const done = () => {
@@ -253,10 +258,12 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { 
       );
     });
     return () => { alive = false; };
-  }, [items]);
+  }, [items, framed]);
   // 너무 길거나 넓은 사진은 적당히 제한(0.6~1.4)
-  const heightFor = (i: number) => slideW * Math.min(Math.max(ratios[i] ?? 0.75, 0.6), 1.4);
-  const containerH = Math.max(slideW * 0.75, ...items.map((_, i) => heightFor(i)));
+  const fixedH = frameHeight(frame, slideW); // 프레임 모드면 모든 슬라이드 동일 높이
+  const heightFor = (i: number) => fixedH ?? slideW * Math.min(Math.max(ratios[i] ?? 0.75, 0.6), 1.4);
+  const containerH = fixedH ?? Math.max(slideW * 0.75, ...items.map((_, i) => heightFor(i)));
+  const fillColor = framed && frame ? frameFillColor(frame.fill) : undefined;
   return (
     <View style={{ marginBottom: 14 }}>
       <ScrollView
@@ -277,8 +284,8 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { 
             onPress={() => onImagePress?.(items.map(it => it.uri), i)}
             style={{ width: slideW, height: containerH, alignItems: 'center', justifyContent: 'center' }}
           >
-            <View style={{ width: slideW, height: heightFor(i), borderRadius: imgRadius, overflow: 'hidden' }}>
-              <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            <View style={{ width: slideW, height: heightFor(i), borderRadius: imgRadius, overflow: 'hidden', backgroundColor: fillColor }}>
+              <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%' }} resizeMode={framed ? 'contain' : 'cover'} />
               {/* 사진별 글 — 사진 밖 별도 텍스트였던 걸 사진 하단 그라데이션 위로 올려
                   사진과 글이 한 덩어리로 읽히게 한다 */}
               {captions && captions[i] ? (
@@ -2132,6 +2139,7 @@ export default function PostDetailScreen() {
                         onImagePress={(uris, i) => handleMediaTap(() => openFullImage(uris, i))}
                         captions={record.photoTexts}
                         fullBleed
+                        frame={normalizePhotoFrame(record.photoFrame)}
                       />
                       {companionsOverlay}
                       {heartOverlay}
