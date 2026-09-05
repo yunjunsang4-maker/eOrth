@@ -18,6 +18,7 @@ import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
+import type { PhotoFrame } from '../utils/photoFrame';
 import type { StayType, StayStatus } from '../utils/stayMachine';
 import { decideOnVisitedChange, type StaySnapshot } from '../utils/stayMachine';
 import {
@@ -105,6 +106,9 @@ export interface TravelRecord {
   // 사진별 글 — medias와 index가 짝인 병렬 배열(빈 글은 ''). 피드 한 화면 개편(2026-07-19)부터 사용.
   // 사진 추가·삭제·재정렬 시 반드시 medias와 함께 조작할 것. 옛 기록엔 없음(단일 memo 렌더 유지).
   photoTexts?: string[];
+  // 피드 사진 프레임(2026-09-06) — 게시물 단위. 없거나 ratio가 'original'이면 기존 렌더(비율대로).
+  // fill은 4:5·1:1일 때만 쓰인다. 사진 추가·삭제·재정렬과 무관. utils/photoFrame 참조.
+  photoFrame?: PhotoFrame;
   // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
   albumSections?: { id: string; title: string; count: number }[];
   // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)
