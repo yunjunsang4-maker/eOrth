@@ -341,9 +341,14 @@ enum PhotoVisionAnalyzer {
 
     // MARK: - Vision 미학 점수 (iOS 18+)
 
+    // ⚠️ 클래스 이름은 VNCalculate…다. VNGenerate…로 적혀 있었고 2026-09-05 빌드가
+    //    "cannot find 'VNGenerateImageAestheticsScoresRequest' in scope"로 처음 실패하면서
+    //    드러났다 — iOS podspec이 없어 이 파일이 한 번도 컴파일된 적이 없었기 때문이다
+    //    (modules/photo-vision/ios/PhotoVision.podspec 주석 참고). Vision의 다른 요청은
+    //    VNDetect…/VNClassify…라 Generate로 착각하기 쉽다.
     @available(iOS 18.0, *)
     private static func aestheticsScore(for image: CGImage) -> (score: Double, isUtility: Bool) {
-        let request = VNGenerateImageAestheticsScoresRequest()
+        let request = VNCalculateImageAestheticsScoresRequest()
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
         do {
             try handler.perform([request])
