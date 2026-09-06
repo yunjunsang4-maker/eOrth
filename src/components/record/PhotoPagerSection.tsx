@@ -18,7 +18,7 @@ import {
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
-  onSetRepresentative, onRemove, onPrivacyPress, privacyMarks, frame, onChangeFrame,
+  onSetRepresentative, onRemove, onPrivacyPress, privacyMarks, frame, onChangeFrame, bleed = 0,
 }: {
   medias: string[];
   photoTexts: string[];
@@ -31,6 +31,10 @@ export default function PhotoPagerSection({
   privacyMarks?: boolean[];
   frame: PhotoFrame;
   onChangeFrame: (f: PhotoFrame) => void;
+  // 부모 본문의 좌우 패딩(px). 페이저는 스테이지 폭 전체로 그리므로 이 값만큼 음수 마진으로
+  // 상쇄해야 화면 가운데에 온다. 안 넘기면 패딩만큼 오른쪽으로 밀리고 끝이 잘린다
+  // (cover 크롭일 땐 안 보였지만 프레임 contain+채움에선 좌우 띠 폭이 달라져 드러났다).
+  bleed?: number;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -71,7 +75,8 @@ export default function PhotoPagerSection({
 
   return (
     <View>
-      <View>
+      {/* 페이저 블록만 본문 패딩을 상쇄 — 액션 바·칩·글 입력은 본문 폭 안에 그대로 */}
+      <View style={bleed ? { marginHorizontal: -bleed } : undefined}>
         <ScrollView
           ref={scrollRef}
           horizontal

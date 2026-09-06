@@ -1377,6 +1377,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
               frame={photoFrame}
               onChangeFrame={setPhotoFrame}
+              bleed={20} // s.content.paddingHorizontal과 같아야 페이저가 화면 가운데에 온다
             />
 
             {/* 사진 가져오는 중 오버레이는 화면 루트(SafeAreaView 끝)로 옮겼다 — 아래 주석 참고 */}
