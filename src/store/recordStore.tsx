@@ -107,7 +107,7 @@ export interface TravelRecord {
   // 사진 추가·삭제·재정렬 시 반드시 medias와 함께 조작할 것. 옛 기록엔 없음(단일 memo 렌더 유지).
   photoTexts?: string[];
   // 피드 사진 프레임(2026-09-06) — 게시물 단위. 없거나 ratio가 'original'이면 기존 렌더(비율대로).
-  // fill은 4:5·1:1일 때만 쓰인다. 사진 추가·삭제·재정렬과 무관. utils/photoFrame 참조.
+  // fill은 원본이 아닌 비율일 때만 쓰인다(비율·색 목록은 utils/photoFrame). 사진 추가·삭제·재정렬과 무관.
   photoFrame?: PhotoFrame;
   // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
   albumSections?: { id: string; title: string; count: number }[];
