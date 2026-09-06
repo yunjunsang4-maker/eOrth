@@ -10,6 +10,7 @@ import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
 import { normalizeRegionGlobalMode, type RegionGlobalMode } from '../utils/regionModeMigration';
+import { normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { REGION_COUNTRIES } from '../constants/regionCountries';
 
 // 대륙 모드 즐겨찾기의 유효 코드 집합 — 여기 없는 ISO3는 그리드가 국가를 못 찾아
@@ -204,6 +205,11 @@ interface SettingsContextType {
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
+  // 피드 사진 프레임(비율·채움색)의 마지막 선택. 새 글의 기본값으로 쓴다 —
+  // 매번 고르지 않게 하려는 값이라 기기 로컬 persist만 하고 서버 백업에는 싣지 않는다.
+  // null이면 아직 한 번도 고르지 않음(작성 화면이 DEFAULT_PHOTO_FRAME을 쓴다).
+  lastPhotoFrame: PhotoFrame | null;
+  setLastPhotoFrame: (v: PhotoFrame | null) => void;
   // 모든 설정을 기본값으로 되돌림.
   // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·
   // signUpMethod·signUpEmail·language)은 그대로 둔다 — 설정 > '데이터 초기화'용.
@@ -275,6 +281,7 @@ interface SettingsPersistPayload {
   onboardedAt?: number;   // 온보딩 완료 시각(ms). 0=미완료. 오프라인 판정용 로컬 사본
   mateRecoAskedAt?: number;      // 메이트 추천 동의 배너를 닫은 시각(ms). 7일 뒤 재노출
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
+  lastPhotoFrame?: PhotoFrame | null; // 피드 사진 프레임 마지막 선택 (과거 저장본엔 없음)
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -365,6 +372,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [onboardedAt, setOnboardedAt] = useState(0); // 온보딩 완료 시각(ms). 0=미완료
   const [mateRecoAskedAt, setMateRecoAskedAt] = useState(0); // 동의 배너를 닫은 시각
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
+  const [lastPhotoFrame, setLastPhotoFrame] = useState<PhotoFrame | null>(null); // 피드 사진 프레임 마지막 선택(새 글 기본값)
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -526,6 +534,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       );
       setMateRecoAskedAt(typeof p.mateRecoAskedAt === 'number' ? p.mateRecoAskedAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
+      // 저장본이 깨져 있어도 normalizePhotoFrame이 항목별 기본값으로 떨어뜨린다.
+      // 값이 없던 설치는 null 그대로 — 작성 화면이 DEFAULT_PHOTO_FRAME을 쓴다.
+      setLastPhotoFrame(p.lastPhotoFrame ? normalizePhotoFrame(p.lastPhotoFrame) : null);
     },
     () => ({
       showCounts,
@@ -580,6 +591,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
+      lastPhotoFrame,
     }),
     [
       showCounts,
@@ -633,6 +645,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
+      lastPhotoFrame,
     ],
   );
 
@@ -717,6 +730,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 유예 상태인데도 배너를 못 본다.
     setMateRecoAskedAt(0);
     setStayNudgeDismissedFor(null);
+    // 사진 프레임 취향도 계정 축이다 — 다른 사람이 고른 비율·색으로 새 글이 시작되지 않게 비운다.
+    setLastPhotoFrame(null);
     visitRecordedRef.current = false;
   };
 
@@ -737,6 +752,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // lastImportAt은 일부러 싣지 않는다 — 기기 로컬 값이다(로컬 persist에는 그대로 남는다).
     // 'since' 기간의 뜻은 "이 기기에서 지난번 불러온 이후"인데, 기기 간 복원되면 새 기기·재설치에서
     // 기록만 없고 시각만 살아남아 과거 사진이 통째로 스캔에서 잘려 결과가 무조건 0건이 됐다.
+    // lastPhotoFrame도 싣지 않는다(같은 이유로 applySettingsBackup에서도 복원하지 않는다) —
+    // 화면 폭·사진 성향에 따라 고르는 기기 취향값이고, 프레임 자체는 기록 객체에 저장돼
+    // 기기를 옮겨도 글은 그대로 그려진다. 기본값 하나 복원하려고 서버 왕복을 늘릴 이유가 없다.
   });
   const applySettingsBackup = (b: Record<string, unknown>) => {
     const v = b as any;
@@ -804,6 +822,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 예전엔 "다른 기기의 더 최근 시각을 채택"했는데, 가져온 사진 자체는 그 기기에만 있으므로
     // 새 기기·재설치에서는 '지난 불러오기 이후'가 스캔할 게 없는 빈 구간을 가리켰다.
     // 이제 이 값은 오직 로컬 persist에서만 살아남는다 — 같은 기기 재실행에서는 종전과 동일하다.
+    // lastPhotoFrame도 복원하지 않는다(exportSettingsBackup에 싣지 않는 것과 짝).
   };
 
   // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다
@@ -913,6 +932,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setMateRecoAskedAt,
         stayNudgeDismissedFor,
         setStayNudgeDismissedFor,
+        lastPhotoFrame,
+        setLastPhotoFrame,
         resetSettings,
         exportSettingsBackup,
         applySettingsBackup,
