@@ -1,7 +1,7 @@
 // 피드 작성 — 큰 사진 페이저 + 현재 사진의 글 입력 + 사진 액션(대표·비공개·삭제).
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
-// 프레임(비율·채움색)은 게시물 단위 — 페이저 위 헤더를 눌러 칩을 펼쳐 고른다(2026-09-06, 9/7 위로 이동).
+// 프레임(비율·채움색)은 게시물 단위 — 액션 바 넷째 버튼으로 칩을 펼쳐 고른다(2026-09-06).
 import { warn, select } from '../../utils/haptics';
 import React, { useRef, useState, useEffect } from 'react';
 import { View, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
@@ -91,28 +91,100 @@ export default function PhotoPagerSection({
 
   return (
     <View>
-      {/* 프레임 헤더 — 페이저 '위'에 둔다: 9:16처럼 긴 프레임이면 미리보기가 폭의 1.78배까지
-          커져 아래에 두면 버튼·칩이 화면 밖으로 밀린다(9/6 실기기 신고). 게시물 단위 설정이라
-          사진 단위 액션 바(대표·비공개·삭제)와도 분리된다. 현재 선택을 요약해 접힌 채로도 읽힌다. */}
-      <TouchableOpacity
-        style={[st.frameHeader, (framed || frameOpen) && { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.accent }]}
-        onPress={() => { select(); setFrameOpen((v) => !v); }}
-        activeOpacity={0.75}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: frameOpen }}
-        accessibilityLabel={t('newRecord.actionFrame')}
-      >
-        <Text style={[st.frameHeaderIcon, (framed || frameOpen) && { color: skinAccent.accent }]}>▭</Text>
-        <Text style={[st.frameHeaderText, (framed || frameOpen) && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionFrame')}</Text>
-        <Text style={st.frameHeaderSummary} numberOfLines={1}>
-          {framed ? `${frame.ratio} · ${t(FILL_NAME_KEY[frame.fill])}` : t('newRecord.frameRatioOriginal')}
-        </Text>
-        {framed && <View style={[st.frameHeaderSwatch, { backgroundColor: frameFillColor(frame.fill) }]} />}
-        <Text style={[st.frameHeaderChevron, frameOpen && { transform: [{ rotate: '180deg' }] }]}>⌄</Text>
-      </TouchableOpacity>
+      {/* 페이저 블록만 본문 패딩을 상쇄 — 액션 바·칩·글 입력은 본문 폭 안에 그대로 */}
+      <View style={bleed ? { marginHorizontal: -bleed } : undefined}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          keyboardShouldPersistTaps="handled"
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / PAGE_W))}
+          style={{ width: PAGE_W, height: PAGE_H }}
+        >
+          {medias.map((uri, i) => (
+            <Image key={`${uri}-${i}`} source={{ uri }} style={{ width: PAGE_W, height: PAGE_H, backgroundColor: fillColor }} resizeMode={framed ? 'contain' : 'cover'} />
+          ))}
+        </ScrollView>
+        {/* n/N + 대표 배지 */}
+        <View style={st.counter}><Text style={st.counterText}>{activeIdx + 1} / {medias.length}</Text></View>
+        {isRep && (
+          <View style={[st.repBadge, { backgroundColor: skinAccent.accent }]}>
+            <Text style={st.repBadgeText}>{t('newRecord.repBadge')}</Text>
+          </View>
+        )}
+        {/* 도트 인디케이터 */}
+        <View style={st.dots}>
+          {medias.map((_, i) => (
+            <View key={i} style={[st.dot, i === activeIdx && [st.dotOn, { backgroundColor: skinAccent.accent }]]} />
+          ))}
+        </View>
+      </View>
 
-      {/* 프레임 칩 — 비율 한 줄 + 채움색 한 줄. 항목이 비율 8·색 10종이라 가로 스크롤
-          (줄바꿈하면 두 배로 부푼다). 원본이면 색 줄은 흐리게·비활성(채움이 없으니 고를 의미가 없음). */}
+      {/* 액션 바: 대표·비공개·프레임·삭제 — 프레임만 게시물 단위, 나머지는 현재 사진 단위 */}
+      <View style={st.actionBar}>
+        {/* 대표 버튼 — 활성이면 채워진 배지 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, isRep && [st.actionBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+          onPress={() => onSetRepresentative(activeIdx)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.repBadge')}
+        >
+          <Text style={[st.actionBtnIcon, isRep && { color: skinAccent.accent }]}>★</Text>
+          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.repBadge')}</Text>
+        </TouchableOpacity>
+
+        {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, hasPrivacy && [st.actionBtnPrivacyActive, { backgroundColor: skinAccent.tint(0.2), borderColor: skinAccent.accentDeep }]]}
+          onPress={() => onPrivacyPress(activeIdx)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionPrivacy')}
+        >
+          <LockClosedIcon size={13} color={hasPrivacy ? skinAccent.accent : '#A1A1B0'} />
+          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionPrivacy')}</Text>
+        </TouchableOpacity>
+
+        {/* 프레임 버튼 — 비율·채움색 칩 행을 토글. 프레임이 적용돼 있으면 활성 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, (framed || frameOpen) && [st.actionBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+          onPress={() => { select(); setFrameOpen((v) => !v); }}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionFrame')}
+        >
+          <Text style={[st.actionBtnIcon, (framed || frameOpen) && { color: skinAccent.accent }]}>▭</Text>
+          <Text style={[st.actionBtnText, (framed || frameOpen) && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionFrame')}</Text>
+        </TouchableOpacity>
+
+        {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}
+        <TouchableOpacity
+          style={[st.actionBtn, st.actionBtnDelete]}
+          onPress={() => {
+            warn(); // 되돌릴 수 없는 동작을 묻는 중
+            Alert.alert(
+              t('newRecord.deletePhotoTitle'),
+              t('newRecord.deletePhotoDesc'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('newRecord.actionDelete'), style: 'destructive', onPress: () => onRemove(activeIdx) },
+              ],
+            );
+          }}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionDelete')}
+        >
+          <Text style={st.actionBtnDeleteIcon}>✕</Text>
+          <Text style={st.actionBtnDeleteText}>{t('newRecord.actionDelete')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 프레임 칩 — 비율 한 줄 + 채움색 한 줄. 항목이 비율 8·색 10종이라 한 화면에 안 들어가
+          가로 스크롤로 둔다(줄바꿈하면 액션 바 아래가 두 배로 부푼다).
+          원본이면 색 줄은 흐리게·비활성(채움이 없으니 고를 의미가 없음). */}
       {frameOpen && (
         <View style={st.frameRows}>
           <ScrollView
@@ -176,85 +248,6 @@ export default function PhotoPagerSection({
           </ScrollView>
         </View>
       )}
-
-      {/* 페이저 블록만 본문 패딩을 상쇄 — 액션 바·칩·글 입력은 본문 폭 안에 그대로 */}
-      <View style={bleed ? { marginHorizontal: -bleed } : undefined}>
-        <ScrollView
-          ref={scrollRef}
-          horizontal
-          pagingEnabled
-          keyboardShouldPersistTaps="handled"
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={(e) => setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / PAGE_W))}
-          style={{ width: PAGE_W, height: PAGE_H }}
-        >
-          {medias.map((uri, i) => (
-            <Image key={`${uri}-${i}`} source={{ uri }} style={{ width: PAGE_W, height: PAGE_H, backgroundColor: fillColor }} resizeMode={framed ? 'contain' : 'cover'} />
-          ))}
-        </ScrollView>
-        {/* n/N + 대표 배지 */}
-        <View style={st.counter}><Text style={st.counterText}>{activeIdx + 1} / {medias.length}</Text></View>
-        {isRep && (
-          <View style={[st.repBadge, { backgroundColor: skinAccent.accent }]}>
-            <Text style={st.repBadgeText}>{t('newRecord.repBadge')}</Text>
-          </View>
-        )}
-        {/* 도트 인디케이터 */}
-        <View style={st.dots}>
-          {medias.map((_, i) => (
-            <View key={i} style={[st.dot, i === activeIdx && [st.dotOn, { backgroundColor: skinAccent.accent }]]} />
-          ))}
-        </View>
-      </View>
-
-      {/* 액션 바: 대표·비공개·삭제 — 현재 사진 단위. 게시물 단위인 프레임은 페이저 위 헤더에 있다 */}
-      <View style={st.actionBar}>
-        {/* 대표 버튼 — 활성이면 채워진 배지 스타일 */}
-        <TouchableOpacity
-          style={[st.actionBtn, isRep && [st.actionBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
-          onPress={() => onSetRepresentative(activeIdx)}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel={t('newRecord.repBadge')}
-        >
-          <Text style={[st.actionBtnIcon, isRep && { color: skinAccent.accent }]}>★</Text>
-          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.repBadge')}</Text>
-        </TouchableOpacity>
-
-        {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
-        <TouchableOpacity
-          style={[st.actionBtn, hasPrivacy && [st.actionBtnPrivacyActive, { backgroundColor: skinAccent.tint(0.2), borderColor: skinAccent.accentDeep }]]}
-          onPress={() => onPrivacyPress(activeIdx)}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel={t('newRecord.actionPrivacy')}
-        >
-          <LockClosedIcon size={13} color={hasPrivacy ? skinAccent.accent : '#A1A1B0'} />
-          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionPrivacy')}</Text>
-        </TouchableOpacity>
-
-        {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}
-        <TouchableOpacity
-          style={[st.actionBtn, st.actionBtnDelete]}
-          onPress={() => {
-            warn(); // 되돌릴 수 없는 동작을 묻는 중
-            Alert.alert(
-              t('newRecord.deletePhotoTitle'),
-              t('newRecord.deletePhotoDesc'),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                { text: t('newRecord.actionDelete'), style: 'destructive', onPress: () => onRemove(activeIdx) },
-              ],
-            );
-          }}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel={t('newRecord.actionDelete')}
-        >
-          <Text style={st.actionBtnDeleteIcon}>✕</Text>
-          <Text style={st.actionBtnDeleteText}>{t('newRecord.actionDelete')}</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* 현재 사진의 글 */}
       <View style={st.captionBox}>
@@ -326,18 +319,7 @@ const st = StyleSheet.create({
 
   // 프레임 칩 행 — 가로 스크롤이라 좌우 여백은 바깥 View가 아니라 콘텐츠에 준다
   // (marginHorizontal을 주면 스크롤 영역 자체가 좁아져 끝 항목이 화면 밖에 걸린다).
-  // 프레임 헤더 — 액션 바 버튼과 같은 어두운 바탕·테두리, 본문 폭 안(marginHorizontal 16)
-  frameHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    marginHorizontal: 16, marginBottom: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10,
-    backgroundColor: '#17131f', borderWidth: 1, borderColor: '#2E2E3B',
-  },
-  frameHeaderIcon: { fontSize: 13, color: '#A1A1B0' },
-  frameHeaderText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
-  frameHeaderSummary: { flex: 1, fontSize: 12, color: '#FFFFFF', marginLeft: 4 },
-  frameHeaderSwatch: { width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: '#4A4A59' },
-  frameHeaderChevron: { fontSize: 14, color: '#A1A1B0', lineHeight: 16 },
-  frameRows: { marginBottom: 8, gap: 8 },
+  frameRows: { marginTop: 8, gap: 8 },
   frameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
   chip: {
     // flex 없음 — 내용 폭. 8개를 균등 분할하면 라벨이 한 글자씩만 보인다
