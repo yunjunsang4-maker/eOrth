@@ -207,7 +207,7 @@ export default function PhotoPagerSection({
                   accessibilityState={{ selected: on }}
                 >
                   {aspect != null && (
-                    // 폭을 16으로 고정하고 aspectRatio로 높이를 만든다 — 라벨만으론 9:16과
+                    // 폭을 16으로 고정하고 aspectRatio로 높이를 만든다 — 라벨만으론 2:3과
                     // 16:9가 한눈에 안 구분된다. 빈 테두리 사각형이라 채움색과 섞이지 않는다.
                     <View style={[st.ratioIcon, { aspectRatio: aspect }, on && { borderColor: skinAccent.accent }]} />
                   )}
@@ -328,7 +328,7 @@ const st = StyleSheet.create({
     backgroundColor: '#17131f', borderWidth: 1, borderColor: '#2E2E3B',
   },
   chipText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
-  // 비율 모양 아이콘 — 높이는 aspectRatio가 만든다(9:16은 세로로 길고 16:9는 납작)
+  // 비율 모양 아이콘 — 높이는 aspectRatio가 만든다(2:3은 세로로 길고 16:9는 납작)
   ratioIcon: { width: 16, borderRadius: 2, borderWidth: 1.5, borderColor: '#A1A1B0' },
   // 색 스와치 — 원형 28px + 선택 링(패딩 2 + 테두리 2)
   swatchRing: { padding: 2, borderRadius: 18, borderWidth: 2 },

@@ -4,17 +4,18 @@
 // 비율대로 렌더가 유지된다(옛 글 호환).
 //
 // v2(2026-09-06): 비율 8종·색 10종으로 확장. 폰 세로 사진은 대개 3:4라 4:5·1:1로는 좌우 띠만
-// 생겼다 — 3:4보다 긴 2:3·9:16이 있어야 위아래 띠가 나온다. v1이 저장한 '4:5'·'1:1'과
+// 생겼다 — 3:4보다 긴 2:3이 있어야 위아래 띠가 나온다(9:16은 미리보기가 너무 길어 9/7 제거,
+// 저장돼 있던 '9:16'은 normalize에서 원본으로 떨어진다). v1이 저장한 '4:5'·'1:1'과
 // 'black'·'white'는 목록에 그대로 남아 있어 옛 글이 계속 유효하다.
 
-export type PhotoFrameRatio = 'original' | '1:1' | '4:5' | '3:4' | '2:3' | '9:16' | '4:3' | '16:9';
+export type PhotoFrameRatio = 'original' | '1:1' | '4:5' | '3:4' | '2:3' | '4:3' | '16:9';
 export type PhotoFrameFill =
   | 'black' | 'white' | 'cream' | 'gray' | 'charcoal'
   | 'navy' | 'lavender' | 'pink' | 'sky' | 'mint';
 export type PhotoFrame = { ratio: PhotoFrameRatio; fill: PhotoFrameFill };
 
 export const PHOTO_FRAME_RATIOS: readonly PhotoFrameRatio[] =
-  ['original', '1:1', '4:5', '3:4', '2:3', '9:16', '4:3', '16:9'];
+  ['original', '1:1', '4:5', '3:4', '2:3', '4:3', '16:9'];
 export const PHOTO_FRAME_FILLS: readonly PhotoFrameFill[] =
   ['black', 'white', 'cream', 'gray', 'charcoal', 'navy', 'lavender', 'pink', 'sky', 'mint'];
 export const DEFAULT_PHOTO_FRAME: PhotoFrame = { ratio: 'original', fill: 'black' };
@@ -28,7 +29,6 @@ const RATIO_WH: Record<FramedRatio, readonly [number, number]> = {
   '4:5': [4, 5],
   '3:4': [3, 4],
   '2:3': [2, 3],
-  '9:16': [9, 16],
   '4:3': [4, 3],
   '16:9': [16, 9],
 };

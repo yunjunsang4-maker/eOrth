@@ -12,7 +12,7 @@ v1 설계(`2026-09-06-feed-photo-frame-design.md`)의 확장. v1은 비율 3종(
 
 | 항목 | 결정 |
 |---|---|
-| 비율 | 원본 · 1:1 · 4:5 · 3:4 · 2:3 · 9:16 · 4:3 · 16:9 (이 순서) |
+| 비율 | 원본 · 1:1 · 4:5 · 3:4 · 2:3 · 4:3 · 16:9 (이 순서). 9:16은 미리보기가 폭의 1.78배로 칩이 화면 밖으로 밀려 9/7 제거 |
 | 색 | 준비된 10색 고정 팔레트 (사진 색 추출·자유 피커 없음) |
 | 마지막 선택 기억 | 설정 스토어에 **로컬 persist만**(서버 백업 제외), 새 글 기본값. 수정 모드는 그 글의 값 우선 |
 | UI | 비율 칩 가로 스크롤 한 줄(모양 아이콘+라벨), 색 스와치 가로 스크롤 한 줄(원형). 원본이면 색 줄 흐림·비활성 |
@@ -21,18 +21,18 @@ v1 설계(`2026-09-06-feed-photo-frame-design.md`)의 확장. v1은 비율 3종(
 ## 1. 유틸 — `src/utils/photoFrame.ts`
 
 ```ts
-export type PhotoFrameRatio = 'original' | '1:1' | '4:5' | '3:4' | '2:3' | '9:16' | '4:3' | '16:9';
+export type PhotoFrameRatio = 'original' | '1:1' | '4:5' | '3:4' | '2:3' | '4:3' | '16:9';
 export type PhotoFrameFill =
   | 'black' | 'white' | 'cream' | 'gray' | 'charcoal'
   | 'navy' | 'lavender' | 'pink' | 'sky' | 'mint';
 
 export const PHOTO_FRAME_RATIOS: readonly PhotoFrameRatio[] =
-  ['original', '1:1', '4:5', '3:4', '2:3', '9:16', '4:3', '16:9'];
+  ['original', '1:1', '4:5', '3:4', '2:3', '4:3', '16:9'];
 export const PHOTO_FRAME_FILLS: readonly PhotoFrameFill[] =
   ['black', 'white', 'cream', 'gray', 'charcoal', 'navy', 'lavender', 'pink', 'sky', 'mint'];
 ```
 
-높이/폭 배수(`RATIO_MULT`): `1:1`→1, `4:5`→5/4, `3:4`→4/3, `2:3`→3/2, `9:16`→16/9, `4:3`→3/4, `16:9`→9/16.
+높이/폭 배수(`RATIO_MULT`): `1:1`→1, `4:5`→5/4, `3:4`→4/3, `2:3`→3/2, `4:3`→3/4, `16:9`→9/16.
 
 채움 hex(`FILL_HEX`):
 
@@ -95,6 +95,6 @@ export function frameRatioAspect(ratio: PhotoFrameRatio): number | null;
 
 1. `node node_modules/tsx/dist/cli.mjs src/utils/photoFrame.verify.ts` 통과.
 2. `npx tsc --noEmit` 오류 0, `npm test` 전체 통과.
-3. 수동: 세로 사진 + 9:16 → 위아래 띠, 가로 사진 + 4:5 → 위아래 띠, 세로 사진 + 16:9 → 좌우 큰 띠. 색 10종 전환 즉시 반영.
+3. 수동: 세로 사진 + 2:3 → 위아래 띠, 가로 사진 + 4:5 → 위아래 띠, 세로 사진 + 16:9 → 좌우 큰 띠. 색 10종 전환 즉시 반영.
    새 글 진입 시 직전 선택이 미리 적용, 수정 모드는 그 글의 값. 옛 글(프레임 없음) 수정 진입 → 원본.
 4. 실기기 검증 전 OTA 금지.
