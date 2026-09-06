@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
-import { normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
+import { DEFAULT_PHOTO_FRAME, normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList } from '../components/record/DraggableLists';
 import PhotoPagerSection from '../components/record/PhotoPagerSection';
@@ -325,7 +325,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   );
 
   // 거주국가(국내) 여부 — 국내 기록은 지역(시/도) 선택으로 여행 카드를 구분한다
-  const { homeCountryCode, isPremium } = useSettings();
+  const { homeCountryCode, isPremium, lastPhotoFrame, setLastPhotoFrame } = useSettings();
   // 기록당 사진 상한 — 현재는 프리미엄도 동일한 기본값(20장)이다.
   // (2026-07 수익구조 변경으로 사진 상한 상향이 프리미엄 혜택에서 빠졌다 — constants/limits.ts 참조.
   //  getMaxRecordPhotos는 호출부 시그니처 유지를 위해 isPremium을 받기만 하고 쓰지 않는다)
@@ -442,8 +442,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     return base;
   });
 
-  // 피드 사진 프레임(비율·채움색) — 게시물 단위. 수정 모드는 기존 값 복원, 옛 글·신규는 원본·검정.
-  const [photoFrame, setPhotoFrame] = useState<PhotoFrame>(() => normalizePhotoFrame(editRecord?.photoFrame));
+  // 피드 사진 프레임(비율·채움색) — 게시물 단위.
+  // 수정 모드는 그 글에 저장된 값이 우선이다(옛 글은 필드가 없어 원본으로 떨어진다) —
+  // 직전 선택을 덮어씌우면 프레임 없이 쓴 옛 글을 열기만 해도 모양이 바뀐다.
+  // 신규는 직전 선택(설정 스토어, 기기 로컬)을 기본값으로 — 매번 고르지 않게 한다.
+  // 복사본을 만드는 이유: 스토어의 객체를 그대로 쥐면 setPhotoFrame이 스프레드로 새 객체를
+  // 만들긴 해도, 참조를 공유한 채로 두면 나중에 실수로 제자리 수정할 여지가 남는다.
+  const [photoFrame, setPhotoFrame] = useState<PhotoFrame>(() => (
+    editRecord ? normalizePhotoFrame(editRecord.photoFrame) : { ...(lastPhotoFrame ?? DEFAULT_PHOTO_FRAME) }
+  ));
 
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
     editRecord?.mediaPrivacy ?? {}
@@ -1176,6 +1183,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (isEdit && editRecord) {
         // 작성자·형식은 유지하고 내용(공개 범위 포함)만 갱신
         updateRecord(editRecord.id, payload);
+        // 다음 새 글의 기본값 — 원본을 골랐어도 기억한다(원본이 취향이면 계속 원본으로 시작)
+        setLastPhotoFrame(photoFrame);
       } else {
         // (핀) 활성화된 단일국가면 addRecord 전 현재 대표를 캡처(새 기록이 최신순으로 잡히기 전)
         const preCover = countryActivated && singleCountryName ? getCountryPhotoRecord(singleCountryName) : null;
@@ -1189,6 +1198,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다
           { linkTrip: !splitByCountry }
         );
+
+        // 다음 새 글의 기본값 — 원본을 골랐어도 기억한다(원본이 취향이면 계속 원본으로 시작)
+        setLastPhotoFrame(photoFrame);
 
         // (핀) 지구본 국가 대표사진 반영
         if (countryActivated && singleCountryName) {
