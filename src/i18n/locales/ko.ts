@@ -1038,8 +1038,20 @@ const ko = {
     actionDelete: '삭제',
     actionFrame: '프레임',
     frameRatioOriginal: '원본',
-    frameFillBlack: '검정',
-    frameFillWhite: '흰색',
+    // 채움색 이름 — 스와치가 원형 색점뿐이라 스크린리더는 이 라벨로만 색을 읽는다.
+    // 키는 utils/photoFrame의 PhotoFrameFill과 1:1이며, 빠지면 색 이름이 안 읽힌다.
+    frameFills: {
+      black: '검정',
+      white: '흰색',
+      cream: '크림',
+      gray: '연회색',
+      charcoal: '진회색',
+      navy: '네이비',
+      lavender: '라벤더',
+      pink: '연분홍',
+      sky: '하늘',
+      mint: '민트',
+    },
     deletePhotoTitle: '이 사진을 삭제할까요?',
     deletePhotoDesc: '사진과 함께 이 사진에 쓴 글도 지워져요.',
     sectionPhoto: '사진',

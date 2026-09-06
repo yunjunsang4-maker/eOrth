@@ -12,9 +12,25 @@ import { useSkinAccent } from '../../constants/skinTheme';
 import { useStageWidth } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
 import {
-  PHOTO_FRAME_RATIOS, PHOTO_FRAME_FILLS, isFramed, frameHeight, frameFillColor,
+  PHOTO_FRAME_RATIOS, PHOTO_FRAME_FILLS, isFramed, frameHeight, frameFillColor, frameRatioAspect,
   type PhotoFrame, type PhotoFrameRatio, type PhotoFrameFill,
 } from '../../utils/photoFrame';
+
+// 색 스와치는 원형 색점뿐이라 스크린리더가 읽을 이름이 없다 — 채움색 키를 i18n 키로 옮긴다.
+// Record<PhotoFrameFill, ...>라 색을 추가하고 여기를 빠뜨리면 tsc가 잡는다(런타임에
+// 'newRecord.frameFills.xxx'가 그대로 읽히는 사고를 막는다).
+const FILL_NAME_KEY: Record<PhotoFrameFill, `newRecord.frameFills.${PhotoFrameFill}`> = {
+  black: 'newRecord.frameFills.black',
+  white: 'newRecord.frameFills.white',
+  cream: 'newRecord.frameFills.cream',
+  gray: 'newRecord.frameFills.gray',
+  charcoal: 'newRecord.frameFills.charcoal',
+  navy: 'newRecord.frameFills.navy',
+  lavender: 'newRecord.frameFills.lavender',
+  pink: 'newRecord.frameFills.pink',
+  sky: 'newRecord.frameFills.sky',
+  mint: 'newRecord.frameFills.mint',
+};
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
@@ -166,12 +182,20 @@ export default function PhotoPagerSection({
         </TouchableOpacity>
       </View>
 
-      {/* 프레임 칩 — 비율 한 줄 + 채움색 한 줄. 원본이면 색 칩은 흐리게·비활성(채움이 없으니 의미 없음) */}
+      {/* 프레임 칩 — 비율 한 줄 + 채움색 한 줄. 항목이 비율 8·색 10종이라 한 화면에 안 들어가
+          가로 스크롤로 둔다(줄바꿈하면 액션 바 아래가 두 배로 부푼다).
+          원본이면 색 줄은 흐리게·비활성(채움이 없으니 고를 의미가 없음). */}
       {frameOpen && (
         <View style={st.frameRows}>
-          <View style={st.frameRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={st.frameRow}
+          >
             {PHOTO_FRAME_RATIOS.map((r: PhotoFrameRatio) => {
               const on = frame.ratio === r;
+              const aspect = frameRatioAspect(r); // 원본은 null → 아이콘 없이 라벨만
               return (
                 <TouchableOpacity
                   key={r}
@@ -179,36 +203,49 @@ export default function PhotoPagerSection({
                   onPress={() => { select(); onChangeFrame({ ...frame, ratio: r }); }}
                   activeOpacity={0.75}
                   accessibilityRole="button"
+                  accessibilityLabel={r === 'original' ? t('newRecord.frameRatioOriginal') : r}
                   accessibilityState={{ selected: on }}
                 >
+                  {aspect != null && (
+                    // 폭을 16으로 고정하고 aspectRatio로 높이를 만든다 — 라벨만으론 9:16과
+                    // 16:9가 한눈에 안 구분된다. 빈 테두리 사각형이라 채움색과 섞이지 않는다.
+                    <View style={[st.ratioIcon, { aspectRatio: aspect }, on && { borderColor: skinAccent.accent }]} />
+                  )}
                   <Text style={[st.chipText, on && { color: skinAccent.accent }]} {...andFitText}>
                     {r === 'original' ? t('newRecord.frameRatioOriginal') : r}
                   </Text>
                 </TouchableOpacity>
               );
             })}
-          </View>
-          <View style={[st.frameRow, !framed && { opacity: 0.4 }]}>
+          </ScrollView>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={framed}
+            contentContainerStyle={st.frameRow}
+            style={!framed ? { opacity: 0.4 } : undefined}
+          >
             {PHOTO_FRAME_FILLS.map((f: PhotoFrameFill) => {
               const on = frame.fill === f;
               return (
                 <TouchableOpacity
                   key={f}
-                  style={[st.chip, on && { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]}
+                  // 선택 링은 항상 자리를 차지하고 색만 바뀐다 — 안 고른 칩의 테두리를 폭 0으로
+                  // 두면 고를 때마다 스와치가 4px씩 밀린다.
+                  style={[st.swatchRing, { borderColor: on ? skinAccent.accent : 'transparent' }]}
                   onPress={() => { select(); onChangeFrame({ ...frame, fill: f }); }}
                   disabled={!framed}
                   activeOpacity={0.75}
                   accessibilityRole="button"
+                  accessibilityLabel={t(FILL_NAME_KEY[f])}
                   accessibilityState={{ selected: on, disabled: !framed }}
                 >
-                  <View style={[st.chipSwatch, { backgroundColor: frameFillColor(f) }]} />
-                  <Text style={[st.chipText, on && { color: skinAccent.accent }]} {...andFitText}>
-                    {f === 'black' ? t('newRecord.frameFillBlack') : t('newRecord.frameFillWhite')}
-                  </Text>
+                  <View style={[st.swatch, { backgroundColor: frameFillColor(f) }]} />
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
       )}
 
@@ -280,16 +317,22 @@ const st = StyleSheet.create({
   actionBtnDeleteIcon: { fontSize: 13, color: '#FF3B30' },
   actionBtnDeleteText: { fontSize: 12, color: '#FF3B30', fontWeight: '600' },
 
-  // 프레임 칩 행 — 액션 바와 같은 좌우 여백, 버튼과 같은 어두운 바탕
-  frameRows: { marginHorizontal: 16, marginTop: 8, gap: 6 },
-  frameRow: { flexDirection: 'row', gap: 6 },
+  // 프레임 칩 행 — 가로 스크롤이라 좌우 여백은 바깥 View가 아니라 콘텐츠에 준다
+  // (marginHorizontal을 주면 스크롤 영역 자체가 좁아져 끝 항목이 화면 밖에 걸린다).
+  frameRows: { marginTop: 8, gap: 8 },
+  frameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
   chip: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 7, borderRadius: 10,
+    // flex 없음 — 내용 폭. 8개를 균등 분할하면 라벨이 한 글자씩만 보인다
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 7, paddingHorizontal: 12, borderRadius: 10,
     backgroundColor: '#17131f', borderWidth: 1, borderColor: '#2E2E3B',
   },
   chipText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
-  chipSwatch: { width: 12, height: 12, borderRadius: 3, borderWidth: 1, borderColor: '#4A4A59' },
+  // 비율 모양 아이콘 — 높이는 aspectRatio가 만든다(9:16은 세로로 길고 16:9는 납작)
+  ratioIcon: { width: 16, borderRadius: 2, borderWidth: 1.5, borderColor: '#A1A1B0' },
+  // 색 스와치 — 원형 28px + 선택 링(패딩 2 + 테두리 2)
+  swatchRing: { padding: 2, borderRadius: 18, borderWidth: 2 },
+  swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#4A4A59' },
 
   captionBox: { marginHorizontal: 16, marginTop: 10 },
   captionLabel: { color: '#BF85FC', fontSize: 11, fontWeight: '700', marginBottom: 6 },
