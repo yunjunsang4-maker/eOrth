@@ -15,7 +15,7 @@ function eq(actual: unknown, expected: unknown, msg: string) {
 }
 
 // 상수 — 작성 화면 칩 순서가 이 배열을 그대로 쓴다
-eq(PHOTO_FRAME_RATIOS, ['original', '1:1', '4:5', '3:4', '2:3', '9:16', '4:3', '16:9'],
+eq(PHOTO_FRAME_RATIOS, ['original', '1:1', '4:5', '3:4', '2:3', '4:3', '16:9'],
   '비율 목록 순서: 원본 → 정사각 → 세로 4종 → 가로 2종');
 eq(PHOTO_FRAME_FILLS, ['black', 'white', 'cream', 'gray', 'charcoal', 'navy', 'lavender', 'pink', 'sky', 'mint'],
   '채움 목록 순서: 무채색 5색 → 유채색 5색');
@@ -34,7 +34,6 @@ eq(frameHeight({ ratio: '1:1', fill: 'black' }, 400), 400, '1:1: 높이 = 폭');
 eq(frameHeight({ ratio: '4:5', fill: 'black' }, 400), 500, '4:5: 높이 = 폭 × 1.25');
 eq(frameHeight({ ratio: '3:4', fill: 'black' }, 400), 533, '3:4: 400×4/3=533.33 → 533');
 eq(frameHeight({ ratio: '2:3', fill: 'black' }, 400), 600, '2:3: 높이 = 폭 × 1.5');
-eq(frameHeight({ ratio: '9:16', fill: 'black' }, 400), 711, '9:16: 400×16/9=711.11 → 711(가장 긴 세로)');
 eq(frameHeight({ ratio: '4:3', fill: 'black' }, 400), 300, '4:3: 높이 = 폭 × 0.75(가로)');
 eq(frameHeight({ ratio: '16:9', fill: 'black' }, 400), 225, '16:9: 높이 = 폭 × 0.5625(가장 낮음)');
 eq(frameHeight({ ratio: '4:5', fill: 'black' }, 393), 491, '4:5 소수 폭은 반올림(393×1.25=491.25→491)');
@@ -42,8 +41,10 @@ eq(frameHeight({ ratio: 'original', fill: 'black' }, 400), null, '원본 → nul
 eq(frameHeight(undefined, 400), null, 'undefined → null');
 
 // 3:4보다 긴 프레임이 있어야 폰 세로 사진(3:4)에 위아래 띠가 생긴다 — v2의 목적
-eq(frameHeight({ ratio: '9:16', fill: 'black' }, 400)! > Math.round(400 * 4 / 3), true,
-  '9:16은 폰 세로 사진(3:4)보다 길다 → 위아래 띠 생김');
+eq(frameHeight({ ratio: '2:3', fill: 'black' }, 400)! > Math.round(400 * 4 / 3), true,
+  '2:3은 폰 세로 사진(3:4)보다 길다 → 위아래 띠 생김');
+// 9:16은 9/7 제거 — 저장돼 있던 값은 원본으로 떨어져야 한다(렌더가 죽지 않게)
+eq(normalizePhotoFrame({ ratio: '9:16', fill: 'black' }), { ratio: 'original', fill: 'black' }, '제거된 9:16 → 원본');
 
 // 채움색 — 스와치 hex. 잘못되면 미리보기와 상세가 다른 색으로 그려진다
 eq(frameFillColor('black'), '#000000', '검정 hex');
@@ -62,7 +63,7 @@ eq(frameRatioAspect('1:1'), 1, '1:1 아이콘은 정사각');
 eq(frameRatioAspect('4:5'), 0.8, '4:5 → 0.8(세로로 김)');
 eq(frameRatioAspect('3:4'), 0.75, '3:4 → 0.75');
 eq(frameRatioAspect('2:3'), 2 / 3, '2:3 → 0.666…');
-eq(frameRatioAspect('9:16'), 0.5625, '9:16 → 0.5625(가장 홀쭉)');
+eq(frameRatioAspect('2:3'), 2 / 3, '2:3 → 0.667(가장 홀쭉)');
 eq(frameRatioAspect('4:3'), 4 / 3, '4:3 → 1.333…(가로로 김)');
 eq(frameRatioAspect('16:9'), 16 / 9, '16:9 → 1.777…');
 eq(frameRatioAspect('original'), null, '원본 → null(아이콘 없이 라벨만)');
@@ -84,7 +85,7 @@ eq(serializePhotoFrame({ ratio: 'original', fill: 'black' }), undefined, '기본
 eq(serializePhotoFrame({ ratio: 'original', fill: 'white' }), undefined, '원본이면 색이 바뀌어도 생략(렌더에 영향 없음)');
 eq(serializePhotoFrame({ ratio: '4:5', fill: 'black' }), { ratio: '4:5', fill: 'black' }, '4:5 검정 → 저장');
 eq(serializePhotoFrame({ ratio: '1:1', fill: 'white' }), { ratio: '1:1', fill: 'white' }, '1:1 흰 → 저장');
-eq(serializePhotoFrame({ ratio: '9:16', fill: 'lavender' }), { ratio: '9:16', fill: 'lavender' }, 'v2 조합 → 저장');
+eq(serializePhotoFrame({ ratio: '2:3', fill: 'lavender' }), { ratio: '2:3', fill: 'lavender' }, 'v2 조합 → 저장');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
