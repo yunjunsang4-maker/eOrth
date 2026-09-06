@@ -804,6 +804,9 @@ const ko = {
     reportReason5: '기타',
     blockTitle: '차단하기',
     blockConfirmMsg: '@{{username}}을 차단할까요?\n차단하면 서로의 게시물과 프로필이 보이지 않아요.',
+    // 스냅 링 줄 맨 앞 '내 스냅 +' 입구(2026-09-07)
+    mySnap: '내 스냅',
+    mySnapA11y: '스냅 찍기',
   },
   cut: {
     title: '스트립',
