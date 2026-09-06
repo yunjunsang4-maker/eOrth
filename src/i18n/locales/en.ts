@@ -791,6 +791,9 @@ const en = {
     reportReason5: 'Other',
     blockTitle: 'Block',
     blockConfirmMsg: "Block @{{username}}?\nIf you block, you won't see each other's posts and profiles.",
+    // 스냅 링 줄 맨 앞 '내 스냅 +' 입구(2026-09-07)
+    mySnap: 'My snap',
+    mySnapA11y: 'Take a snap',
   },
   cut: {
     title: 'Strip',

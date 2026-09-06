@@ -32,7 +32,7 @@ import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon, PlusIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
@@ -42,6 +42,7 @@ import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
+import { putMineFirst } from '../utils/snapStrip';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { APP_STORE_URL, PLAY_STORE_URL } from '../constants/legalLinks';
@@ -2589,6 +2590,10 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
   );
 }
 
+// 스냅 링 줄 맨 앞 '내 스냅 +' 자리표시 — 내 스냅이 하나도 없을 때만 끼워 넣는다.
+// 렌더 map에서 _mySnapEntry로 분기하므로 실제 기록 shape를 흉내 낼 필요가 없다.
+const MY_SNAP_PLACEHOLDER: any = { id: '__my-snap-entry__', _mySnapEntry: true };
+
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
@@ -2955,8 +2960,17 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const exampleFeed = useMemo(() => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent') }), [t]);
   const exampleSnap = useMemo(() => ({ ...EXAMPLE_SNAP, content: t('socialEmpty.exampleSnapContent') }), [t]);
 
-  // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링 소개
-  const snapDisplay = snapItems.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : snapItems;
+  // 스냅 링 줄 = [내 대표(또는 '내 스냅 +' 자리표시), 나머지…]
+  // 내 스냅이 있으면 맨 앞으로 끌어올려 그 링에 + 배지를 붙이고, 없으면 자리표시 칸을 끼운다.
+  // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링을 소개하는 기존 동작은 유지.
+  const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
+  // rank=timestamp: snapItems는 모두 열람 상태면 오래된 순이라, 내 스냅이 나라별로 여럿이면
+  // 배열 첫 번째가 아니라 가장 최신 스냅이 앞에 와야 방금 찍은 것에 배지가 붙는다(QA F-1)
+  const ordered = useMemo(() => putMineFirst(snapItems, isMineSnap, (snap: any) => snap.timestamp ?? 0), [snapItems, globalHandle]);
+  const hasMine = ordered.length > 0 && isMineSnap(ordered[0]);
+  const snapDisplay = hasMine
+    ? ordered
+    : [MY_SNAP_PLACEHOLDER, ...(ordered.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : ordered)];
 
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
@@ -3013,7 +3027,40 @@ function FriendsTab({ navigation }: { navigation: any }) {
         {snapDisplay.length > 0 && (
           <View style={s.storySection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storyScroll}>
-              {snapDisplay.map(snap => (
+              {snapDisplay.map((snap: any) => {
+                // '내 스냅 +' 자리표시 — 내 스냅이 없을 때만 들어온다. 어디를 눌러도 카메라로 간다.
+                if (snap._mySnapEntry) {
+                  return (
+                    <TouchableOpacity
+                      key={snap.id}
+                      style={s.storyItem}
+                      activeOpacity={0.8}
+                      onPress={() => { select(); navigation.navigate('SnapRecord'); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('social.mySnapA11y')}
+                    >
+                      {/* 아직 내 스냅이 없으므로 링은 '다 본' 상태와 같은 회색 */}
+                      <LinearGradient colors={['#3A3A4A', '#3A3A4A']} style={s.storyRing}>
+                        <View style={s.storyAvatarWrap}>
+                          <View style={s.storyAvatar}>
+                            {globalProfilePhoto ? (
+                              <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                            ) : (
+                              <PersonIcon size={30} color="#A0A0B0" />
+                            )}
+                          </View>
+                        </View>
+                      </LinearGradient>
+                      {/* + 배지 — 아이콘이 RNSVG라 새 아키텍처에서 터치를 삼킨다.
+                          여기선 부모 전체가 터치 대상이므로 View pointerEvents="none"으로 감싼다 */}
+                      <View style={[s.storyPlusBadge, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
+                        <PlusIcon size={12} color="#0A0A0F" />
+                      </View>
+                      <Text style={s.storyName} numberOfLines={1}>{t('social.mySnap')}</Text>
+                    </TouchableOpacity>
+                  );
+                }
+                return (
                 <TouchableOpacity
                   key={snap.id}
                   style={s.storyItem}
@@ -3038,6 +3085,21 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       </View>
                     </View>
                   </LinearGradient>
+                  {/* 내 대표 링(맨 앞)에만 + 배지 — 링 본체 탭은 기존대로 상세, 배지 탭은 카메라.
+                      배지는 링 위에 겹쳐 있어 hitSlop만큼 링 탭(상세)을 먹는다 — 8이면 아바타 면적의 약 23%라
+                      4로 줄였다(QA F-2). 배지 자체 22dp가 주 터치 영역 */}
+                  {hasMine && snap.id === ordered[0].id && (
+                    <TouchableOpacity
+                      style={[s.storyPlusBadge, { backgroundColor: skinAccent.accent }]}
+                      hitSlop={4}
+                      onPress={() => { select(); navigation.navigate('SnapRecord'); }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('social.mySnapA11y')}
+                    >
+                      {/* RNSVG 터치삼킴 방어 — 아이콘을 pointerEvents none View로 감싼다 */}
+                      <View pointerEvents="none"><PlusIcon size={12} color="#0A0A0F" /></View>
+                    </TouchableOpacity>
+                  )}
                   <Text
                     style={[
                       s.storyName,
@@ -3054,7 +3116,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === globalHandle)}
                   </Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </ScrollView>
           </View>
         )}
@@ -3407,6 +3470,13 @@ const s = StyleSheet.create({
   },
   storyAvatarEmoji: {
     fontSize: 24,
+  },
+  // '내 스냅 +' 배지 — 링 우하단. 라벨(높이 약 16) 위에 걸치도록 bottom 18
+  storyPlusBadge: {
+    position: 'absolute', right: 2, bottom: 18,
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 2, borderColor: '#0A0A0F',
+    alignItems: 'center', justifyContent: 'center',
   },
   storyName: {
     color: '#A1A1B0',
