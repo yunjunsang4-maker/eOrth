@@ -7,8 +7,9 @@ import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persis
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import i18n from '../i18n';
-import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMyPosts, fetchPostStatsFor, type PublishMediaOptions, type FeedCursor } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMyPosts, fetchMyPostIds, fetchPostsByIds, fetchPostStatsFor, type PublishMediaOptions, type FeedCursor } from '../services/posts';
 import { mergeServerPostCounts } from '../utils/postCountSync';
+import { mergeMyRecords, classifyServerPosts, mergeServerUpdate } from '../utils/mergeMyRecords';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
@@ -95,6 +96,12 @@ export interface TravelRecord {
   isVoyager?: boolean;  // 보관 처리됨 (미사용)
   isMyPost?: boolean;
   remoteId?: string;    // Supabase posts.id (백엔드 발행 시 연결) — 수정/삭제 동기화용
+  // 이 로컬 사본이 마지막으로 맞춰둔 서버 posts.updated_at(ms) — 기기 간 '수정 전파'의 기준선.
+  // 서버 값이 이보다 크면 다른 기기가 고친 것이므로 본문을 다시 받아 병합한다
+  // (utils/mergeMyRecords의 classifyServerPosts·mergeServerUpdate).
+  // 없으면 "기준선 없음"이고 stale로 치지 않는다 — 치면 첫 동기화에서 전 기록 본문을 다시 받는다.
+  // 로컬이 서버에 쓴 직후(발행·수정)에도 서버가 돌려준 값을 여기에 심는다.
+  serverUpdatedAt?: number;
   visibility: Visibility;
   timestamp: number;
   // v2 새 필드
@@ -364,8 +371,12 @@ interface RecordContextType {
   refreshMyPostCounts: () => Promise<void>;
   // 게시물 1건만 갱신 — 상세 진입용(내 글·피드 글 모두).
   refreshPostCounts: (postId: string) => Promise<void>;
-  // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
+  // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). remoteId 기준 병합이라 로컬 초안은 보존된다.
   hydrateMyRecords: () => Promise<void>;
+  // 기기 간 내 글 동기화 — 다른 기기(아이폰↔안드로이드)에서 쓴 내 글을 끌어와 병합하고
+  // 날짜 규칙으로 여행 카드에 편입한다. 조용한 동기화(토스트·문구 없음), 실패는 무시.
+  // 서버 id 프로브 1회 → 빠진 글만 본문 조회. 반환값은 호출부의 재시도 창 판단용.
+  syncMyRecords: () => Promise<'ok' | 'skipped' | 'failed'>;
   // 로그인 완료 직후 여행카드 복원 재무장 — 로그인 전 마운트 때 스킵된 복원을 재시도시킨다.
   rearmTripRestore: () => void;
   // 앱 상태 통합 백업(user_app_state) — 기록 부가상태(보관·신고숨김·음소거·차단·본스냅) 내보내기/적용
@@ -646,6 +657,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // linkByDate는 useCallback이 아니라 매 렌더 재생성되는 함수이고, 내부에서 클로저의
+  // `records`와 `homeCountryName`을 읽는다. 안정 콜백(useCallback([]))인 syncMyRecords가
+  // 직접 부르면 첫 렌더의 stale 버전이 박제되므로 ref를 경유한다
+  // (같은 파일의 publishToBackendRef와 같은 패턴).
+  const linkByDateRef = useRef(linkByDate);
+  linkByDateRef.current = linkByDate;
+
   // linkRecordToTrip은 예약 발행처럼 '한 pass에서 연속 호출'될 수 있다. 렌더 클로저의
   // tripSession/tripGroups는 그 사이 갱신되지 않아(스테일) 같은 국가 2건이 카드를 중복 생성하거나
   // 두 번째 setTripSession이 첫 번째 국가의 세션 매핑을 지워버린다 — ref 미러로 읽고,
@@ -899,8 +917,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // (live !== rec 같은 객체 identity 비교는 persistRecordPhotos의 로컬 URI 교체까지 수정으로
   // 오탐해, 사진 있는 글 대부분이 발행 직후 전 장을 재업로드하고 첫 업로드본을 고아로 남겼다)
   const pendingEditRef = useRef<Set<string>>(new Set());
+  // 발행(publishPost)이 날아가고 있는 건수 — 기기 간 동기화(syncMyRecords)의 경합 가드.
+  // insert는 서버에 들어갔는데 로컬 레코드에 remoteId가 아직 안 붙은 순간, 동기화 프로브가
+  // 그 id를 '빠진 글'로 오인해 같은 글을 한 벌 더 추가한다. 그 창을 이 카운터로 닫는다.
+  const publishInFlightRef = useRef(0);
   const recordsLiveRef = useRef(records);
   recordsLiveRef.current = records;
+  /**
+   * 로컬이 서버에 쓴 직후, 서버가 돌려준 `updated_at`(ms)을 그 레코드의 기준선으로 심는다.
+   * 이게 없으면 **내가 방금 고친 글**이 다음 프로브에서 "서버가 더 최신"으로 잡혀
+   * 본문(data JSONB)을 매번 다시 받는다(이그레스 낭비 + 방금 쓴 내용이 서버본으로 되돌아 보임).
+   * 값이 같으면 prev를 그대로 돌려 헛 리렌더를 만들지 않는다.
+   */
+  const stampServerUpdatedAt = (recordId: string, updatedAt: number) => {
+    if (!(updatedAt > 0)) return;
+    setRecords((prev) => {
+      const hit = prev.find((r) => r.id === recordId);
+      if (!hit || hit.serverUpdatedAt === updatedAt) return prev;
+      return prev.map((r) => (r.id === recordId ? { ...r, serverUpdatedAt: updatedAt } : r));
+    });
+  };
   // 사진첩 발행/수정 공통 옵션 — 화질(비프리미엄=압축) + 업로드 캐시 + 캐시 병합 콜백
   const albumPublishOpts = (rec: TravelRecord): PublishMediaOptions | undefined => {
     if (rec.viewType !== 'album') return undefined;
@@ -925,9 +961,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (publishAttemptRef.current.has(rec.id)) return;
     publishAttemptRef.current.add(rec.id);
     const opts = albumPublishOpts(rec);
+    publishInFlightRef.current += 1; // syncMyRecords 경합 가드 — 아래 두 갈래에서 반드시 내린다
     publishPost(rec, opts)
-      .then((rid) => {
-        if (!rid) return;
+      .then((res) => {
+        if (!res) return;
+        const rid = res.id;
         // 업로드 중 삭제된 글 → 서버에 유령 게시물로 남지 않게 즉시 삭제
         const live = recordsLiveRef.current.find((r) => r.id === rec.id);
         if (pendingDeleteRef.current.has(rec.id) || !live) {
@@ -940,17 +978,33 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         const quality = opts?.albumQuality;
         setRecords((prev) =>
           prev.map((r) =>
-            r.id === rec.id ? { ...r, remoteId: rid, ...(quality ? { albumUploadQuality: quality } : {}) } : r
+            r.id === rec.id
+              ? {
+                  ...r,
+                  remoteId: rid,
+                  // 서버가 돌려준 updated_at을 기준선으로 심는다 — 없으면 방금 내가 올린 글이
+                  // 다음 동기화마다 '서버가 더 최신'으로 오판돼 본문을 통째로 다시 받는다.
+                  ...(res.updatedAt ? { serverUpdatedAt: res.updatedAt } : {}),
+                  ...(quality ? { albumUploadQuality: quality } : {}),
+                }
+              : r
           )
         );
         // 업로드 중 '사용자 수정'된 글 → 캡처본(구버전)이 insert됐으므로 최신 내용으로 서버 갱신.
         // persistRecordPhotos의 로컬 URI 교체는 수정이 아니다(서버엔 이미 업로드본이 실림).
         if (pendingEditRef.current.has(rec.id)) {
           pendingEditRef.current.delete(rec.id);
-          updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live)).catch(notifySyncError);
+          updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live))
+            .then((ms) => { if (ms && ms > 0) stampServerUpdatedAt(rec.id, ms); })
+            .catch(notifySyncError);
         }
       })
-      .catch(notifySyncError);
+      .catch(notifySyncError)
+      // 성공·실패 어느 쪽이든 카운터를 내린다 — 여기서 새면 기기 간 동기화가 영영 막힌다.
+      // (남은 잔여 창: setRecords는 다음 렌더에 커밋되므로 remoteId가 recordsLiveRef에
+      //  반영되기 전 몇 ms가 있다. 그래서 syncMyRecords는 setRecords를 함수형으로 쓴다 —
+      //  커밋 시점의 최신 prev와 다시 대조돼 중복이 걸러진다.)
+      .finally(() => { publishInFlightRef.current = Math.max(0, publishInFlightRef.current - 1); });
   };
 
   // 프리미엄: 압축본으로 백업된 사진첩을 원본 화질로 재업로드.
@@ -969,15 +1023,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     for (const rec of targets) {
       const oldUrls = Object.values(rec.uploadedMediaUrls ?? {});
       let newMap: Record<string, string> = {};
+      // 반환: 서버 updated_at(ms) | -1(성공·타임스탬프 불명) | null(실패)
       const ok = await updatePost(rec.remoteId!, rec, {
         albumQuality: 'original',
         uploadCache: {}, // 압축본 캐시 무시 — 원본으로 전부 새로 업로드
         onUploaded: (m) => { newMap = m; },
-      }).catch(() => false);
+      }).catch(() => null);
       if (ok) {
         upgraded += 1;
         setRecords((prev) =>
-          prev.map((r) => (r.id === rec.id ? { ...r, albumUploadQuality: 'original', uploadedMediaUrls: newMap } : r))
+          prev.map((r) =>
+            r.id === rec.id
+              ? {
+                  ...r,
+                  albumUploadQuality: 'original',
+                  uploadedMediaUrls: newMap,
+                  // 내가 방금 올린 갱신이므로 기준선도 함께 옮긴다(재수신 방지)
+                  ...(ok > 0 ? { serverUpdatedAt: ok } : {}),
+                }
+              : r
+          )
         );
         // 교체된 압축본 파일 정리 (새 업로드에 포함되지 않은 것만)
         const keep = new Set(Object.values(newMap));
@@ -1009,6 +1074,42 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return out;
   };
 
+  /**
+   * 여행 카드에서 레코드 id들을 떼어낸다 — '기록이 사라졌다/이 카드 소속이 아니게 됐다'를
+   * 정리하는 공통 단계. `removeRecordsLocally`(삭제 전파)와 `updateRecord`(국가가 바뀐 수정),
+   * 그리고 동기화의 수정 전파 재연결이 **같은 규칙을 공유**한다.
+   *
+   * ⚠️ **빈 카드 폐기는 이번에 손댄 카드에만 적용한다.** `.filter((g) => g.records.length > 0)`를
+   *    배열 전체에 걸면 원래부터 멤버가 0인 카드까지 함께 사라진다 — 특히 `startStay`가
+   *    `records: []`로 만드는 **진행 중 체류 카드**가 통째로 날아가 체류 상태 메타
+   *    (거주국 통계·60일 넛지의 근거)가 유실된다. 삭제 전파는 다른 기기가 원격으로,
+   *    알림도 없이 트리거하므로 사용자가 인지할 수도 없다.
+   *    (같은 형태가 `deleteRecord`에도 남아 있지만 그쪽은 사용자가 방금 누른 행동이라 파급이
+   *     다르고 이번 범위 밖이라 손대지 않았다.)
+   *
+   * 대표(coverRecordId) 승계 규칙은 `deleteRecord`와 문자 그대로 같다(`remaining[0] ?? ''`).
+   * `updateRecord`의 옛 인라인 코드는 `?? g.coverRecordId` 폴백이었지만, 그 분기는 남은 멤버가
+   * 0일 때만 갈리고 그 카드는 어차피 폐기되므로 동작이 같다.
+   */
+  const detachRecordsFromTripGroups = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const gone = new Set(ids);
+    setTripGroups((prev) => {
+      const touched = new Set<string>();
+      for (const g of prev) if (g.records.some((rid) => gone.has(rid))) touched.add(g.id);
+      if (touched.size === 0) return prev;
+      return prev
+        .map((g) => {
+          if (!touched.has(g.id)) return g;
+          const remaining = g.records.filter((rid) => !gone.has(rid));
+          const coverRecordId = gone.has(g.coverRecordId) ? (remaining[0] ?? '') : g.coverRecordId;
+          return { ...g, records: remaining, coverRecordId };
+        })
+        // 손댄 카드만 폐기 대상 — 무관한 빈 카드(진행 중 체류 등)는 그대로 둔다
+        .filter((g) => !(touched.has(g.id) && g.records.length === 0));
+    });
+  }, []);
+
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
     const cur = records.find((r) => r.id === id);
     const updated = cur ? { ...cur, ...changes } : undefined;
@@ -1027,19 +1128,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 국가가 바뀐 수정 → 기존 여행 카드에서 빼고 새 국가 기준으로 재연결
     // (카드 표지와 내용 불일치 방지). 분할 카드 기록은 수동 관리 카드라 제외.
     if (cur && updated && changes.countryName && changes.countryName !== cur.countryName && !updated.splitByCountry) {
-      setTripGroups((prev) =>
-        prev
-          .map((g) => {
-            if (!g.records.includes(id)) return g;
-            const rest = g.records.filter((rid) => rid !== id);
-            return {
-              ...g,
-              records: rest,
-              coverRecordId: g.coverRecordId === id ? (rest[0] ?? g.coverRecordId) : g.coverRecordId,
-            };
-          })
-          .filter((g) => g.records.length > 0)
-      );
+      // 떼어내기는 공용 헬퍼로 — 동기화의 수정 전파도 같은 규칙을 쓴다(규칙이 두 벌로 갈리면
+      // 한쪽만 고쳐지는 사고가 난다). 다시 붙이는 쪽은 경로마다 달라 공유하지 않는다:
+      // 여기는 사용자가 지금 앱에서 편집한 것이라 실시간 경로(linkRecordToTrip)가 맞고,
+      // 동기화로 들어온 변경은 다른 기기의 과거 행위라 날짜 규칙(linkByDate)이어야 한다.
+      detachRecordsFromTripGroups([id]);
       linkRecordToTrip(updated);
     }
     setCountryCovers((prev) => {
@@ -1066,7 +1159,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         //    실패 시 남는 파일은 고아로 두고(탈퇴 sweep 대상) 데이터 쪽을 지킨다.
         updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes }))
           .then((ok) => {
-            if (ok && orphans.length > 0) removeMediaUrls(orphans).catch(() => {});
+            // ok: 서버 updated_at(ms) | -1(성공·타임스탬프 불명) | null(실패)
+            if (!ok) return;
+            // 내가 올린 수정이므로 기준선을 옮긴다 — 안 옮기면 다음 프로브가 이 글을
+            // '다른 기기가 고친 글'로 오인해 본문을 도로 받아온다.
+            if (ok > 0) stampServerUpdatedAt(id, ok);
+            if (orphans.length > 0) removeMediaUrls(orphans).catch(() => {});
           })
           .catch(notifySyncError);
       } else if (cur && publishAttemptRef.current.has(id)) {
@@ -1086,16 +1184,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setArchivedIds((prev) => prev.filter((i) => i !== id));
     // 여행 묶음 정합성: 삭제된 기록 id를 그룹에서 제거하고, 멤버가 없어진 그룹은 폐기.
     // 대표(coverRecordId)가 삭제됐으면 남은 첫 기록으로 승계.
-    setTripGroups((prev) =>
-      prev
-        .map((g) => {
-          if (!g.records.includes(id)) return g;
-          const remaining = g.records.filter((rid) => rid !== id);
-          const coverRecordId = g.coverRecordId === id ? (remaining[0] ?? '') : g.coverRecordId;
-          return { ...g, records: remaining, coverRecordId };
-        })
-        .filter((g) => g.records.length > 0)
-    );
+    // ⚠️ 옛 인라인 코드는 `.filter(g => g.records.length > 0)`를 **목록 전체**에 걸어, 기록 1건만
+    //    지워도 `startStay`가 만든 멤버 0인 '진행 중 체류 카드'가 함께 사라졌다. 공용 헬퍼는
+    //    이번에 손댄 카드만 폐기 대상으로 삼는다 — 세 경로(삭제·수정·동기화)를 같은 규칙으로 통일한다.
+    detachRecordsFromTripGroups([id]);
     setCountryCovers((prev) => {
       if (!Object.values(prev).some((v) => v.recordId === id)) return prev;
       const next: Record<string, CountryCover> = {};
@@ -1765,6 +1857,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     publishAttemptRef.current.clear();
     pendingDeleteRef.current.clear();
     pendingEditRef.current.clear();
+    // 카드 편입 대기 큐 — 남겨두면 이전 계정 기록 id가 새 계정에서 카드로 편입될 수 있다.
+    // (지금은 tripBackupReadyRef 게이트와 records 조회 실패가 막지만, 그 방어는 이 큐를
+    //  비우는 것과 달리 우회 가능한 간접 방어다 — 경계에서 직접 비운다.)
+    pendingLinkRef.current.clear();
+    pendingRelinkRef.current.clear(); // 재연결 대기분도 같은 이유로 비운다(이전 계정 id가 남으면 안 된다)
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
@@ -1849,17 +1946,317 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 내 기록 서버→로컬 복원 (계정 전환 후 pull). 로컬 records를 서버의 내 글로 교체한다.
-  // ⚠️ 로컬-우선 초안까지 대체하므로 계정 전환 직후(로컬을 이미 비운 상태)에만 호출할 것.
+  // 내 기록 서버→로컬 복원 (계정 전환 후 pull).
+  //
+  // 예전엔 setRecords(mine)으로 로컬을 통째 교체했다 — 로컬-우선 초안까지 대체하므로
+  // "계정 전환 직후(로컬을 이미 비운 상태)에만 호출할 것"이라는 제약이 붙어 있었고,
+  // 그래서 상시 pull이 불가능해 아이폰/안드로이드를 같이 쓰면 서로의 기록이 안 보였다.
+  // 이제 remoteId 기준 병합(mergeMyRecords)이다:
+  //   · 계정 전환 경로는 resetRecords() 직후라 prev가 비어 있어 결과가 교체와 동일하다(회귀 없음).
+  //   · hydrate 타이밍 때문에 로컬이 잠깐 비어 보일 때 초안이 날아가던 위험이 사라진다.
+  // 삭제 전파는 하지 않는다 — 서버 목록에 없는 로컬 기록도 남는다(mergeMyRecords 규칙 4).
+  //
+  // ⚠️ 계정 격리의 전제 — 병합으로 바뀌면서 **"useAccountBoundary의 resetRecords() setState가
+  //    이 함수의 updater보다 먼저 커밋된다"가 정확성의 전제**가 되었다. 교체 방식일 때는
+  //    순서와 무관하게 안전했다. 현재는 resetRecords()와 hydrateMyRecords() 사이에 실제
+  //    네트워크 await가 여러 번 있어(unregisterPushToken·clearPersistedStores·getMyProfile·
+  //    restoreAppState) prev=[]가 보장된다. **그 사이의 await를 제거·재배치하면 이전 계정의
+  //    기록이 새 계정 화면에 병합되는 개인정보 사고가 된다.** 계정 전환 경로를 손대는 사람은
+  //    reset이 먼저 커밋되는지부터 확인할 것.
+  //
+  // 여기서는 여행 카드 편입(linkByDate)을 하지 않는다 — 계정 전환·새 기기 경로의 카드는
+  // 서버 백업 복원(fetchTripState)이 담당한다. 여기서 카드를 만들면 복원분과 이중이 된다.
+  //
+  // 수정 전파 기준선: `fetchMyPosts`가 돌려주는 레코드에는 `serverUpdatedAt`이 이미 실려 있다
+  // (services/posts.ts의 mapRowToRecord가 행의 updated_at으로 채운다). 그래서 새 기기에서 받은
+  // 기록이 곧바로 'stale'로 오판돼 본문을 한 번 더 받는 일이 없다.
   const hydrateMyRecords = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
       const mine = await withTimeout(fetchMyPosts(), 12000);
-      setRecords(mine);
+      setRecords((prev) => mergeMyRecords(prev, mine));
     } catch {
-      // 타임아웃/실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
+      // 타임아웃/실패 시 현재 상태 유지 — 서버 데이터는 안전
     }
   }, []);
+
+  // ─── 기기 간 내 글 동기화 (조용한 pull) ───
+  //
+  // 같은 계정으로 아이폰과 안드로이드를 쓰면 한쪽에서 쓴 글이 다른 쪽에 영영 안 보였다.
+  // hydrateMyRecords는 useAccountBoundary에서 계정 전환/이 설치 최초 로그인 때만 돌고,
+  // 피드는 fetchFeed가 내 글을 제외하며(.neq author_id), posts Realtime 구독도 없다.
+  // 이 함수가 그 빈 경로다 — 프로필 당겨서 새로고침 + 앱 포그라운드 복귀에서 호출한다.
+  //
+  // 전파하는 것 세 가지 — 프로브 응답 한 번으로 셋을 동시에 판정한다(classifyServerPosts):
+  //   · 새 글(missing)   : 서버에 있고 로컬에 없다        → 본문을 받아 넣고 여행 카드에 편입
+  //   · 삭제(tombstoned) : deleted_at 표식이 있다          → 로컬에서만 제거(removeRecordsLocally)
+  //   · 수정(stale)      : 서버 updated_at > 로컬 기준선   → 본문을 다시 받아 미디어 보존 병합
+  //
+  // 비용 설계: 정상 상태(변화 없음)에서는 id 프로브 1회로 끝난다. 본문(data JSONB)은
+  // 새 글·수정된 글에 대해서만, 그것도 **한 번의 fetchPostsByIds로 합쳐** 받는다.
+  // 사용자에게 보이는 문구는 없다(조용한 동기화 — 삭제도 조용히 사라진다).
+  const syncMyRecordsInFlightRef = useRef(false);
+
+  // 동기화로 들어왔지만 아직 여행 카드에 편입하지 못한 레코드 id.
+  // 왜 큐가 필요한가: 편입은 `tripBackupReadyRef`가 서는 뒤에만 할 수 있는데(아래 참조),
+  // 그때까지 병합 자체는 미루면 안 된다(기록은 즉시 들어와야 한다). 그래서 "레코드는 지금
+  // 넣고, 편입은 가능해질 때까지 들고 간다".
+  const pendingLinkRef = useRef<Set<string>>(new Set());
+
+  /**
+   * 카드 **재연결**이 필요한 레코드 — 다른 기기에서 국가를 바꾼 글(수정 전파).
+   * 값은 '바뀐 뒤의 국가명'이며, 드레인 시점에 그 값이 실제로 커밋됐는지 확인하는 용도다.
+   *
+   * 왜 `pendingLinkRef`와 따로 두는가: 그쪽 드레인은 "이미 어떤 카드에도 안 붙은 것만" 붙인다.
+   * 재연결 대상은 **아직 옛 카드에 붙어 있는 상태**라 그 검사에 걸려 아무 일도 안 일어난다.
+   * 여기 들어온 id는 드레인이 떼어낸 뒤(detach) 다시 붙인다.
+   */
+  const pendingRelinkRef = useRef<Map<string, string>>(new Map());
+
+  /**
+   * **로컬 전용 제거** — 다른 기기에서 지워진 글(삭제표식)을 이 기기의 상태에서만 걷어낸다.
+   *
+   * ⚠️ `deleteRecord`를 쓰면 안 된다. 그쪽은 서버에도 삭제를 보내고(이미 지워진 글에 또 보낸다)
+   *    Storage 사진까지 지운다 — 지운 주체는 다른 기기이고 그쪽이 이미 정리했다.
+   *    여기서 서버·Storage를 건드리면 실패 응답이 사용자에게 새거나, 최악의 경우
+   *    다른 글이 참조하는 파일까지 건드릴 여지가 생긴다.
+   *
+   * ⚠️ **불변식: "서버 목록에 없음"은 절대 삭제 근거가 아니다.** 프로브는 중간 페이지 실패 시
+   *    부분 목록을 돌려주고 MAX_POSTS 상한도 있어 부분 응답과 삭제를 구분할 수 없다.
+   *    로컬 제거는 오직 서버가 준 명시적 `deleted_at` 표식이 있을 때만이다
+   *    (그 판정은 utils/mergeMyRecords의 classifyServerPosts가 한다).
+   *
+   * 정리 범위는 `deleteRecord`의 로컬 부분과 같다 — records / archivedIds /
+   * tripGroups(멤버 제거·대표 승계·빈 카드 폐기) / countryCovers, 그리고 세션 ref들.
+   */
+  const removeRecordsLocally = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const gone = new Set(ids);
+    setRecords((prev) => (prev.some((r) => gone.has(r.id)) ? prev.filter((r) => !gone.has(r.id)) : prev));
+    setArchivedIds((prev) => (prev.some((i) => gone.has(i)) ? prev.filter((i) => !gone.has(i)) : prev));
+    // 여행 묶음 정합성 — 공용 헬퍼(대표 승계 + **손댄 카드만** 빈 카드 폐기).
+    // 여기서 배열 전체에 빈 카드 필터를 걸면 진행 중 체류 카드가 조용히 사라진다(헬퍼 주석 참조).
+    detachRecordsFromTripGroups(ids);
+    setCountryCovers((prev) => {
+      if (!Object.values(prev).some((v) => gone.has(v.recordId))) return prev;
+      const next: Record<string, CountryCover> = {};
+      for (const [k, v] of Object.entries(prev)) if (!gone.has(v.recordId)) next[k] = v;
+      return next;
+    });
+    // 세션 ref 잔존물 — 지운 기록 id가 큐·집합에 남으면 다음 회차가 없는 기록을 계속 훑는다.
+    for (const id of ids) {
+      pendingLinkRef.current.delete(id);
+      pendingRelinkRef.current.delete(id);
+      publishAttemptRef.current.delete(id);
+      pendingDeleteRef.current.delete(id);
+      pendingEditRef.current.delete(id);
+    }
+  }, [detachRecordsFromTripGroups]);
+
+  /**
+   * 큐에 쌓인 레코드를 이 저장소의 기존 그룹핑 규칙으로 여행 카드에 편입한다.
+   *
+   * ⚠️ `linkRecordToTrip`이 아니라 `linkByDate`를 쓴다. linkRecordToTrip은 `coversNow(rec)`가
+   *    참이면 실시간 경로로 빠져 `tripSession`을 건드린다 — 다른 기기에서 쓴 글을 이 기기의
+   *    '현재 위치 이벤트'로 취급하면 여행 세션이 잘못 끊기거나 열린다. 동기화로 들어온 글은
+   *    회고 기록과 같은 날짜 규칙으로 붙이는 것이 맞다.
+   *
+   * ⚠️ `tripBackupReadyRef`가 서기 전에는 절대 편입하지 않는다. 새 기기에서는 서버 카드
+   *    복원(fetchTripState)이 "로컬 tripGroups가 비어 있을 때만" 돈다 — 복원 시도가 끝나기 전에
+   *    동기화가 로컬 카드를 만들어 버리면 그 게이트가 닫혀 **다른 기기의 카드 제목·커버가
+   *    영영 안 넘어온다.** 아직이면 큐에 그대로 두고 다음 트리거에서 처리한다.
+   */
+  /**
+   * @param dropMissing `records`에 없는 큐 항목을 버릴지.
+   *
+   * ⚠️ "records에 없다"는 두 가지 뜻이라 호출 지점마다 판정이 달라야 한다.
+   *    ① 정말 삭제됐다 → 버려야 한다(안 버리면 큐가 영원히 자란다)
+   *    ② setRecords가 아직 커밋되지 않았다 → 버리면 안 된다
+   *   `recordsLiveRef`도 `linkByDateRef`도 렌더 단계에서 대입되므로, 병합 직후 드레인은
+   *   렌더가 아직 안 돌았을 수 있다. 거기서 ②를 ①로 오판해 버리면 그 글은 다음 프로브에서
+   *   이미 remoteId가 로컬에 있어 '빠진 글'로도 안 잡혀 **영영 어느 카드에도 안 붙는다**
+   *   (= 프로필에 안 보이는 원래 증상 재발, 조용하고 영구적).
+   *   그래서 병합 직후에는 dropMissing=false로 큐에 남기고, 회차 시작 드레인(그 사이 렌더가
+   *   여러 번 지났다)에서만 dropMissing=true로 정리한다.
+   */
+  const drainPendingLinks = useCallback((dropMissing: boolean) => {
+    if (pendingLinkRef.current.size === 0) return;
+    if (!tripBackupReadyRef.current) return; // 카드 복원 미완 — 이번 회차는 건너뛴다(큐 유지)
+    const ids = Array.from(pendingLinkRef.current);
+    for (const id of ids) {
+      const rec = recordsLiveRef.current.find((r) => r.id === id);
+      if (!rec) {
+        if (dropMissing) {
+          pendingLinkRef.current.delete(id); // 삭제된 기록 정리
+          pendingRelinkRef.current.delete(id);
+        }
+        continue;                            // 아니면 커밋 대기로 보고 큐에 남긴다
+      }
+      const wantCountry = pendingRelinkRef.current.get(id);
+      if (wantCountry !== undefined) {
+        // ── 재연결 경로(다른 기기에서 국가가 바뀐 글) ──
+        // ⚠️ 병합이 아직 커밋되지 않았으면 rec.countryName이 옛 국가다. 그 상태로 붙이면
+        //    옛 카드에 도로 들어가고 큐에서도 빠져 **영영 잘못된 카드에 남는다**(A안 G1과 같은 함정).
+        //    커밋을 확인할 때까지 두 큐 모두에 남긴다 — 다음 회차 시작 드레인이 처리한다.
+        if (rec.countryName !== wantCountry) {
+          // 회차 시작 드레인이라면 병합은 이미 오래전에 커밋됐다 — 그런데도 값이 다르면
+          // 그 사이 로컬에서 또 바뀐 것이고 재연결 의도는 낡았다. 버리지 않으면 두 큐에
+          // 영원히 남아 계속 자란다(H2).
+          if (dropMissing) {
+            pendingRelinkRef.current.delete(id);
+            pendingLinkRef.current.delete(id);
+          }
+          continue;
+        }
+        // 떼어내기 → 다시 붙이기. 둘 다 setTripGroups 함수형 업데이트라 순서대로 적용된다
+        // (linkByDate가 보는 prev는 detach가 끝난 목록이므로 옛 카드에 재매칭되지 않는다).
+        detachRecordsFromTripGroups([id]);
+        pendingRelinkRef.current.delete(id);
+        linkByDateRef.current(rec);
+      } else {
+        // 이미 어떤 카드에도 속하지 않은 것만 편입한다(중복 편입·엉뚱한 카드 생성 방지)
+        const grouped = tripGroupsRef.current.some((g) => g.records.includes(id));
+        if (!grouped) linkByDateRef.current(rec);
+      }
+      // 시도했으면 큐에서 뺀다 — linkByDate가 붙이지 못하는 경우는 국가/날짜가 없는
+      // 기록뿐이고(그 함수의 조기 return), 그건 재시도해도 결과가 같다.
+      pendingLinkRef.current.delete(id);
+    }
+  }, [detachRecordsFromTripGroups]);
+
+  /**
+   * @returns 'ok'      프로브가 성공했다(빠진 글이 없었어도 성공이다)
+   *          'skipped' 가드에 걸려 아무것도 하지 않았다(발행 중·재진입·미설정·hydrate 전)
+   *          'failed'  프로브가 실패했다(네트워크·타임아웃)
+   * 호출부(포그라운드 effect)가 이 결과로 재시도 창을 정한다 — 실패 회차가 60초를 통째로
+   * 소모하면 안 된다.
+   */
+  const syncMyRecords = useCallback(async (): Promise<'ok' | 'skipped' | 'failed'> => {
+    if (!isSupabaseConfigured || !hydratedRef.current) return 'skipped';
+    // ⚠️ 발행 in-flight 가드. 발행 insert는 서버에 들어갔는데 로컬 레코드에 remoteId가
+    //    아직 안 붙은 순간이 있다 — 그때 프로브가 그 id를 '빠진 글'로 오인해 같은 글을
+    //    한 벌 더 추가한다. (재시작 후까지 남은 orphan은 이 카운터가 0이라 못 막으므로
+    //    classifyServerPosts의 client_id 대조가 따로 막는다.)
+    if (publishInFlightRef.current > 0) return 'skipped';
+    if (syncMyRecordsInFlightRef.current) return 'skipped';
+    syncMyRecordsInFlightRef.current = true;
+    try {
+      // 지난 회차에 미뤄둔 편입부터 처리한다(카드 복원 대기분 + 커밋을 못 기다린 분).
+      // 여기서는 그 사이 렌더가 여러 번 지났으므로 records에 없는 항목은 정말 삭제된 것이다.
+      drainPendingLinks(true);
+      const server = await withTimeout(fetchMyPostIds(), 12000);
+      if (!server) return 'failed'; // 조회 실패는 null — 조용히 포기(다음 트리거에서 재시도)
+      // 커밋 시점의 최신 목록으로 대조해야 한다. 미러 ref로 읽고(안정 콜백 유지),
+      // 실제 반영도 setRecords 함수형으로 해서 그 사이 늘어난 로컬 글과 다시 대조한다.
+      const { missing, tombstoned, stale, baseline } = classifyServerPosts(recordsLiveRef.current, server);
+
+      // ① 삭제 전파를 먼저 — 지워진 글을 stale·missing 처리에 끌고 들어가지 않는다.
+      //    (classifyServerPosts가 이미 배타적으로 나누지만, 순서를 명시해 의도를 남긴다)
+      if (tombstoned.length > 0) removeRecordsLocally(tombstoned);
+
+      // ② 기준선 심기 — serverUpdatedAt이 없던 옛 기록에 **본문 재조회 없이** 서버 값만 기록한다.
+      //    이 기능을 켜는 첫 회차에만 한 번 돌고, 그 뒤로는 항상 비어 있다(= 정상 상태 요청 0회 유지).
+      if (baseline.length > 0) {
+        setRecords((prev) => {
+          const map = new Map(baseline.map((b) => [b.postId, b.updatedAt]));
+          let changed = false;
+          const next = prev.map((r) => {
+            const at = r.remoteId ? map.get(r.remoteId) : undefined;
+            if (at === undefined || r.serverUpdatedAt === at) return r;
+            changed = true;
+            return { ...r, serverUpdatedAt: at };
+          });
+          return changed ? next : prev;
+        });
+      }
+
+      // ③ 본문이 필요한 것은 '새 글(missing)'과 '수정된 글(stale)' 둘뿐이고,
+      //    둘 다 같은 조회(fetchPostsByIds)로 받는다 — 한 회차에 요청은 최대 1번 더다.
+      const staleSet = new Set(stale);
+      const need = [...stale, ...missing.filter((id) => !staleSet.has(id))];
+      if (need.length === 0) return 'ok'; // 정상 상태 — 추가 요청 0회
+      const rows = await withTimeout(fetchPostsByIds(need), 20000);
+      if (rows.length === 0) return 'ok';
+      // 받은 뒤 분기: 이미 로컬에 있는 글이면 '수정 병합', 없으면 '새 글 추가'.
+      const staleRows = rows.filter((r) => r.remoteId && staleSet.has(r.remoteId));
+      const newRows = rows.filter((r) => !r.remoteId || !staleSet.has(r.remoteId));
+      setRecords((prev) => {
+        let next = prev;
+        if (staleRows.length > 0) {
+          const byRemote = new Map(staleRows.map((r) => [r.remoteId as string, r]));
+          let changed = false;
+          const merged = next.map((r) => {
+            const srv = r.remoteId ? byRemote.get(r.remoteId) : undefined;
+            if (!srv) return r;
+            changed = true;
+            // 미디어·로컬 전용 필드는 지키고 본문만 서버본으로 (utils/mergeMyRecords)
+            return mergeServerUpdate(r, srv);
+          });
+          if (changed) next = merged;
+        }
+        // 새 글만 병합한다 — mergeMyRecords는 이미 있는 remoteId를 건너뛰므로 staleRows를
+        // 같이 넣어도 무해하지만, 의도를 코드로 남긴다.
+        if (newRows.length > 0) next = mergeMyRecords(next, newRows);
+        return next;
+      });
+      // 카드 편입은 '새로 들어온 글'만 대상이다.
+      for (const r of newRows) pendingLinkRef.current.add(r.id);
+
+      // ④ 수정 전파의 카드 재연결 — **"수정된 글은 이미 카드에 붙어 있다"는 틀렸다.**
+      //    붙어는 있지만 '맞는 카드'라는 보장이 없다. 다른 기기에서 국가를 바꾸면 이 기기에서는
+      //    일본 카드 안에 대만 기록이 남고, 그 기록이 커버였다면 카드 표지·국기까지 어긋난다.
+      //    로컬 수정 경로(updateRecord)가 정확히 이 상황을 막는 재연결 코드를 갖고 있다.
+      //    ⚠️ 여기서 직접 붙이지 않고 큐로 넘긴다 — 재연결은 `tripBackupReadyRef` 게이트와
+      //       'linkRecordToTrip이 아니라 linkByDate'라는 A안 규칙을 지켜야 하고, 그 둘을
+      //       이미 지키는 곳이 drainPendingLinks다.
+      //    분할 카드(splitByCountry) 기록은 호출부가 국가별 카드를 직접 관리하므로 제외한다
+      //    (updateRecord의 예외와 같다).
+      for (const srv of staleRows) {
+        const loc = recordsLiveRef.current.find((r) => r.remoteId === srv.remoteId);
+        if (!loc || srv.splitByCountry) continue;
+        if (!srv.countryName || srv.countryName === loc.countryName) continue;
+        pendingRelinkRef.current.set(loc.id, srv.countryName);
+        pendingLinkRef.current.add(loc.id);
+      }
+
+      // ⑤ 지구본 국가 대표사진 핀 — updateRecord(:1140 부근)는 대표사진이 바뀌면 countryCovers를
+      //    함께 옮긴다. 여기서 안 하면 핀이 옛 URL을 계속 가리키고, 다른 기기가 그 파일을
+      //    Storage에서 지웠으면 깨진 이미지가 된다. 병합 결과를 미리 계산해 같은 규칙을 적용한다
+      //    (setRecords의 prev와 다를 수 있지만, 키가 recordId라 어긋나면 그냥 갱신이 안 될 뿐이다).
+      if (staleRows.length > 0) {
+        const previewByRecordId = new Map<string, TravelRecord>();
+        for (const srv of staleRows) {
+          const loc = recordsLiveRef.current.find((r) => r.remoteId === srv.remoteId);
+          if (loc) previewByRecordId.set(loc.id, mergeServerUpdate(loc, srv));
+        }
+        setCountryCovers((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const [k, v] of Object.entries(prev)) {
+            const uri = previewByRecordId.get(v.recordId)?.representativePhoto;
+            if (typeof uri === 'string' && uri && uri !== v.uri) {
+              next[k] = { recordId: v.recordId, uri };
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
+      // ⚠️ setRecords가 커밋될 때까지 한 틱 기다린 뒤 편입한다. linkByDate는 카드의 날짜
+      //    범위를 구할 때 클로저의 `records`로 멤버를 조회하는데, 커밋 전에 부르면 방금
+      //    만든 카드의 멤버가 조회되지 않아 같은 여행의 2건이 각각 다른 카드를 만든다.
+      //    이 기다림은 보장이 아니라 최선 노력이다 — 부족했을 때 안전한 이유는 dropMissing=false다
+      //    (커밋 전이라 못 찾은 항목을 큐에 남겨 다음 회차 시작 드레인이 처리한다).
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      drainPendingLinks(false);
+      return 'ok';
+    } catch {
+      // 조용히 무시 — 다음 트리거에서 재시도. 토스트를 띄우지 않는다(사용자가 요청한 동작이 아니다).
+      return 'failed';
+    } finally {
+      syncMyRecordsInFlightRef.current = false;
+    }
+  }, [drainPendingLinks, removeRecordsLocally]);
 
   // ─── 게시물 카운터(좋아요·댓글 수) 서버 동기화 ───
   // 내 글의 likes/comments는 '내가' 움직일 때만 바뀌고, 남이 누른 좋아요·남이 단 댓글은 서버
@@ -2096,6 +2493,31 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return () => { sub.remove(); };
   }, [refreshMyPostCounts]);
 
+  // ─── 포그라운드 복귀 시 기기 간 내 글 동기화 ───
+  // 위 카운터 동기화 effect에 얹지 않고 분리한다(같은 파일의 분리 원칙) — 실패 조건도 비용도
+  // 다르다. 카운터는 숫자 컬럼 조회 1회고, 이쪽은 id 프로브 후 '빠진 글이 있을 때만' 본문 조회다.
+  const lastMyRecordSyncAtRef = useRef(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') return;
+      // ⚠️ 발행 진행 중이면 throttle 스탬프를 갱신하지 않고 빠진다 — 갱신해 버리면
+      //    경합 때문에 건너뛴 이번 회차 탓에 60초 동안 동기화가 막힌다.
+      if (publishInFlightRef.current > 0) return;
+      // 60초 throttle — 앱 전환을 반복할 때마다 프로브가 나가면 이그레스를 태운다.
+      // (프로필 당겨서 새로고침은 사용자 의도라 이 throttle을 거치지 않는다)
+      const now = Date.now();
+      if (now - lastMyRecordSyncAtRef.current < 60000) return;
+      lastMyRecordSyncAtRef.current = now; // 먼저 창을 잡아 동시 진입을 막고
+      syncMyRecords().then((res) => {
+        // 성공 회차만 60초를 소모한다. 프로브 실패(네트워크)·가드 건너뜀은 짧은 창(10초)만
+        // 쓴다 — 지하철에서 한 번 실패했다고 다음 1분을 통째로 버리면 안 된다.
+        if (res !== 'ok') lastMyRecordSyncAtRef.current = Date.now() - 50000;
+      });
+    });
+    return () => { sub.remove(); };
+  }, [syncMyRecords]);
+
   // ─── 기존 기록 사진 소급 영속화 (앱 시작 후 1회) ───
   // persistRecordPhotos가 blogBlocks를 처리하지 않던 시절 발행된 블로그 글은 사진·영상이
   // 아직 OS 캐시 URI다 — 파일이 살아있는 동안 영속 폴더로 구조한다(캐시 정리 전이 골든타임).
@@ -2324,7 +2746,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, refreshMyPostCounts, refreshPostCounts, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, refreshMyPostCounts, refreshPostCounts, hydrateMyRecords, syncMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

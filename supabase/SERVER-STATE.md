@@ -80,12 +80,86 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준)
+## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준) + **⏳ 삭제 전파 1건 (2026-09-08 추가)**
 
 **남은 것은 아래 셋뿐이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
 `PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
+
+**2026-09-08에 추가된 1건은 같은 날 실행·확인 완료됐다 — 바로 아래.**
+
+### ✅ 기기 간 삭제·수정 전파(tombstone) (2026-09-08 추가 · **2026-09-08 실행·확인 완료**)
+
+> 아래 5건을 실행하고 반영 확인 쿼리 5개가 모두 정상임을 확인했다(사용자 실행).
+> 발췌본은 `supabase/migration-2026-09-08-post-soft-delete.sql`에 있다(schema.sql과 동일 내용).
+>
+> **앱은 아직 안 나갔다** — 이 서버 변경은 구 번들과 호환된다. 기존 번들은 hard delete를 쓰고
+> 모든 행의 `deleted_at`이 null이라 새 `posts_select` 조건이 아무것도 거르지 않는다.
+> 새 번들 사용자가 처음 soft delete를 해야 비로소 구 번들에서 그 글이 사라진다(의도된 동작).
+
+같은 계정의 두 기기 사이에서 **글 삭제와 수정이 전파되지 않던** 문제를 푼다. 행을 지우는 대신
+`deleted_at` 표식을 남겨(soft delete), 다른 기기가 "지워졌다"와 "이번 조회가 부분 실패했다"를
+구분할 수 있게 한다. 앱 쪽 대응은 `src/services/posts.ts`·`src/utils/mergeMyRecords.ts`·
+`src/store/recordStore.tsx`.
+
+실행한 것 — 전부 `schema.sql` 안에 있고 재실행 안전(멱등)하다:
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `alter table public.posts add column if not exists deleted_at timestamptz` | posts 표 정의 직후(`client_id` 유니크 인덱스 다음) | 앱의 모든 게시물 조회가 42703으로 실패 |
+| 2 | `create index if not exists idx_posts_author_deleted on public.posts (author_id, deleted_at)` | 위와 같은 블록 | 내 글 프로브가 전체 스캔 |
+| 3 | **`grant update (…, deleted_at) on public.posts to authenticated`** | 컬럼 수준 권한 재부여 문장(`revoke update on public.posts` 바로 아래) | **삭제가 `permission denied`로 조용히 실패한다.** RLS를 통과해도 컬럼 권한이 없으면 update가 거부된다 — 이 기능의 단일 최대 함정 |
+| 4 | `posts_select` 정책 교체 — `and (deleted_at is null or author_id = auth.uid())` 추가 | 파일 하단 최종 `posts_select`(차단·서로이웃 판정이 있는 쪽) | 필터가 없는 **구 앱 번들** 사용자에게 지운 글이 무기한 노출되고, 그 글에 좋아요·댓글까지 달려 작성자에게 알림이 간다 |
+| 5 | `trg_posts_invalidate_mate_cache`를 `after insert or delete or update of deleted_at`으로 교체 | 메이트 캐시 무효화 트리거 절 | soft delete는 UPDATE라 트리거가 안 뛰어, 지운 글이 추천 캐시(TTL 6h)에 계속 남는다 |
+
+⚠️ **작성자 본인은 삭제된 행을 읽을 수 있어야 한다(4번의 `or author_id = auth.uid()`).**
+양쪽 다 막으면 `fetchMyPostIds`가 표식을 못 보고, 그러면 삭제 전파가 원리적으로 불가능해진다.
+
+⚠️ **배포 순서를 강제할 것 — ① 이 SQL 실행 → ② 반영 확인 → ③ OTA.**
+반대로 하면(앱이 먼저 나가면) `deleted_at` 컬럼이 없어 **타인 프로필 글 목록과 딥링크가 사망**하고
+피드는 "불러오기 실패" 토스트 + 캐시 고정 상태가 된다.
+(내 기록은 안전하다 — `fetchMyPosts`가 `[]`를 내고 병합이 no-op이다. 프로브와 삭제는 컬럼
+누락을 감지해 구 동작으로 자기 치유한다.)
+
+반영 확인 쿼리:
+```sql
+-- 1·2번
+select column_name from information_schema.columns
+ where table_schema='public' and table_name='posts' and column_name='deleted_at';
+select indexname from pg_indexes where tablename='posts' and indexname='idx_posts_author_deleted';
+-- 3번 (deleted_at 이 목록에 있어야 한다)
+select column_name from information_schema.column_privileges
+ where table_schema='public' and table_name='posts' and grantee='authenticated' and privilege_type='UPDATE';
+-- 4번 (qual 에 deleted_at 이 보여야 한다)
+select qual from pg_policies where tablename='posts' and policyname='posts_select';
+-- 5번 (정의문에 `UPDATE OF deleted_at` 이 보여야 한다)
+--    information_schema.triggers 는 `UPDATE OF <컬럼>` 의 컬럼 목록을 노출하지 않아
+--    event_manipulation 만으로는 컬럼 한정 여부를 확인할 수 없다 — 정의문을 직접 읽는다.
+select pg_get_triggerdef(oid) from pg_trigger
+ where tgname='trg_posts_invalidate_mate_cache' and not tgisinternal;
+```
+
+⚠️ **아직 안 한 것: authenticated 세션 실측 1회.** 확인 쿼리 3번으로 `grant update` 목록에
+`deleted_at`·`data`가 있는 것은 확인했으나, 실제 앱 계정 세션의 soft delete가 통과하는지는
+앱을 내보내기 전/직후에 한 번 확인하는 것이 좋다. 아래 원문 참고.
+
+원래 문구 — authenticated 세션으로
+`update public.posts set deleted_at = now() where id = '<내 글 id>'`가 통과하는지.
+3번(컬럼 권한) 판정은 PostgreSQL 의미론과 이 저장소 `profiles`의 실동작에서 유추한 것이고,
+운영 DB에서 직접 확인하지는 못했다.
+
+**tombstone 정리(purge)는 등록하지 않았다** — `schema.sql`에 주석으로만 있다(30일 지난 표식
+hard delete). 스케줄 등록은 운영 결정이므로 `cron-setup.sql`에 넣지 않았다. 등록하지 않으면
+표식 행이 영구히 쌓이고(본문은 아래대로 이미 비어 있어 빈 행만 남는다), 반대로 주기를 짧게
+잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐 그 글이 그 기기에 영구히 남는다.
+
+**본문은 표식과 동시에 지운다** — `deletePost`·`deleteAllMyPosts`가 `deleted_at`과 함께
+`data = {}` 로 갱신한다. 표식만 남기면 앱이 "되돌릴 수 없이 삭제"라고 안내한 글의 전문과
+사진 URL이 purge 전까지 서버에 남는다. 다른 기기는 표식만 보고 지우므로 본문은 필요 없다.
+(`grant update` 목록에 `data` 가 이미 있어 추가 권한 변경은 필요 없다.)
+남는 것은 **Storage 파일**이다 — 개별 삭제는 앱이 로컬 기록에서 수집한 URL로 지우지만,
+"데이터 초기화"(`deleteAllMyPosts`)는 그 경로를 타지 않아 파일이 남는다. 별도 과제다.
 
 ### ✅ `schema.sql` 재실행 — 매칭 프라이버시 하드닝 (2026-08-11~12) — **반영 확인 2026-08-13**
 

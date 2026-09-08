@@ -301,6 +301,28 @@ alter table public.posts add column if not exists client_id text;
 create unique index if not exists uq_posts_author_client
   on public.posts (author_id, client_id) where client_id is not null;
 
+-- ── 삭제 표식(tombstone) — 기기 간 '삭제 전파'용 ──
+-- 왜 hard delete가 아닌가:
+--   행이 그냥 사라지면 클라이언트는 "작성자가 지웠다"와 "이번 조회가 부분 실패했다"를
+--   구분할 수 없다. 내 글 프로브(fetchMyPostIds)는 중간 페이지 실패 시 부분 목록을 돌려주고
+--   MAX_POSTS 상한도 있어 "목록에 없다"가 곧 "삭제됐다"가 아니다. 구분이 안 되면 로컬 기록을
+--   지워도 되는지 판정할 수 없어 삭제를 전파할 수 없다(그래서 A안은 삭제를 미뤘다).
+--   표식이 남으면 "명시적으로 지워진 글"만 골라 로컬에서 제거할 수 있다.
+alter table public.posts add column if not exists deleted_at timestamptz;
+-- 내 글 프로브는 (author_id, deleted_at)만 읽는다 — 커버링 인덱스로 본문 없이 끝나게 한다.
+create index if not exists idx_posts_author_deleted on public.posts (author_id, deleted_at);
+-- ⚠️ 위 trg_posts_updated 트리거가 update마다 updated_at을 갱신하므로,
+--    soft delete(deleted_at을 세팅하는 update)도 updated_at을 함께 올린다. **의도된 동작이다** —
+--    삭제도 하나의 변경이고, 다른 기기는 이 두 값을 같은 프로브에서 함께 읽어 판정한다.
+--
+-- (선택) tombstone 정리 — 자동 실행하지 않는다. 스케줄 등록은 운영 결정이라
+-- cron-setup.sql에 넣지 않았다. 30일이 지난 표식만 실제로 지운다:
+--   delete from public.posts
+--    where deleted_at is not null
+--      and deleted_at < now() - interval '30 days';
+-- ⚠️ 정리 주기보다 오래 잠들어 있던 기기는 표식을 못 보고 지나가 그 글이 로컬에 영구히 남는다.
+--    30일은 "그 안에 한 번은 앱을 켠다"는 가정이다. 짧게 줄이지 말 것.
+
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);
@@ -341,13 +363,16 @@ create policy "posts_delete_own" on public.posts
 -- 컬럼 수준 권한으로 클라이언트가 실제로 갱신하는 컬럼만 허용한다.
 --   · 클라이언트 갱신 컬럼: updatePost(src/services/posts.ts) → visibility, view_type, country_name, data
 --     (client_id 는 현재 insert 에서만 쓰지만, 향후 재발행 보정 여지를 남겨 함께 허용)
+--   · deleted_at 은 deletePost(src/services/posts.ts)의 soft delete가 세팅한다. **이 목록에
+--     넣지 않으면 삭제가 권한 오류로 조용히 실패한다** — RLS(posts_update_own)를 통과해도
+--     컬럼 권한이 없으면 update 자체가 거부된다. 삭제 전파 전체가 여기에 달려 있다.
 --   · updated_at 은 트리거(set_updated_at)가 채운다 — 컬럼 권한은 'UPDATE 문이 명시한
 --     컬럼'에만 적용되므로 트리거 갱신에는 권한이 필요 없다.
 --   · likes_count/comments_count 는 sync_likes_count/sync_comments_count(security definer)가
 --     소유자 권한으로 갱신하므로 이 회수의 영향을 받지 않는다.
 -- insert/select/delete 권한은 건드리지 않는다(update 만 회수 후 컬럼 단위 재부여).
 revoke update on public.posts from authenticated;
-grant update (visibility, view_type, country_name, data, client_id)
+grant update (visibility, view_type, country_name, data, client_id, deleted_at)
   on public.posts to authenticated;
 
 -- ============================================================
@@ -1462,10 +1487,22 @@ grant execute on function public.country_visitors(text, int) to authenticated;
 
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
+-- + 삭제표식(deleted_at)이 찍힌 글은 **남에게는 안 보인다. 단 작성자 본인은 볼 수 있다.**
+--
+-- ⚠️ 이 비대칭이 삭제 전파의 전제다. 양쪽 다 막으면(deleted_at is null 만 쓰면)
+--    작성자의 내 글 프로브(fetchMyPostIds)가 표식을 못 보고, 그러면 "지워졌다"와
+--    "이 페이지가 실패했다 / 상한 밖이다"를 구분할 수 없어 **삭제 전파가 원리적으로 불가능해진다.**
+--    반대로 조건을 아예 안 걸면(클라이언트 필터에만 의존) 필터가 없는 **구 앱 번들** 사용자에게
+--    지운 글이 무기한 노출되고, 그 글에 좋아요·댓글까지 달려 작성자에게 알림이 간다.
+--    tombstone purge 가 자동 실행이 아니라 노출 종료 시점도 없다 — 서버에서 막는 것이 유일한 방법이다.
+-- 부수 효과(의도된 것): 좋아요·댓글 insert 정책(likes_insert_own / comments_insert_own)이
+--    `exists (select 1 from public.posts …)` 로 이 정책을 그대로 타므로, 지운 글에 새 반응이
+--    달리는 경로도 함께 막힌다.
 drop policy if exists "posts_select" on public.posts;
 create policy "posts_select" on public.posts
   for select to authenticated using (
     not public.is_blocked_between(auth.uid(), posts.author_id)
+    and (deleted_at is null or author_id = auth.uid())
     and (
       author_id = auth.uid()
       or (visibility = 'neighbors' and public.are_neighbors(auth.uid(), posts.author_id))
@@ -2628,8 +2665,12 @@ exception when others then
 end; $$;
 
 drop trigger if exists trg_posts_invalidate_mate_cache on public.posts;
+-- ⚠️ `update of deleted_at` 이 필요하다 — 삭제가 hard delete 에서 **soft delete(UPDATE)** 로
+--    바뀌면서 `after insert or delete` 만으로는 글을 지워도 트리거가 안 뛰었다(추천 캐시가
+--    TTL 6시간 동안 지운 글을 계속 반영). 컬럼 목록을 붙였으므로 본문 수정(`data` 갱신)
+--    같은 일반 update 에는 발화하지 않는다 — 매 수정마다 캐시를 버리는 낭비를 피한다.
 create trigger trg_posts_invalidate_mate_cache
-  after insert or delete on public.posts
+  after insert or delete or update of deleted_at on public.posts
   for each row execute function public.invalidate_mate_cache();
 
 -- 설문을 마쳐도 캐시(TTL 6시간) 때문에 추천이 안 바뀌던 문제 — posts 외에 여기도 무효화한다.
