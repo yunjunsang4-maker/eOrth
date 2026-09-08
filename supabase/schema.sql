@@ -1946,6 +1946,66 @@ create policy "user_trip_state_all_own" on public.user_trip_state
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ============================================================
+-- 4-c-2b) user_trip_cards — 여행 카드 **행 단위** 동기화 (2026-09-08)
+--
+-- 왜 위 user_trip_state로는 부족한가:
+--   그쪽은 사용자당 1행에 카드 전체를 jsonb로 통째 넣는다. 두 기기가 같이 쓰면
+--   나중에 쓴 쪽이 상대의 카드를 통째로 덮어쓰고(last-write-wins), 복원은 "로컬 카드가
+--   비어 있을 때만" 돈다. 그래서 동기화로 들어온 글이 **소스 기기의 진짜 카드**(제목·커버·
+--   체류 정보)가 아니라 이 기기의 날짜 규칙으로 새로 만들어진 카드에 붙었다.
+--   카드를 행으로 쪼개면 posts와 같은 방식(프로브 → tombstone → updated_at LWW + 병합)이
+--   그대로 적용된다.
+--
+--   card_id는 **클라이언트가 만든 id**(`grp-{ms}-{random4}`)다. 기기 간 우연 충돌이 사실상
+--   없어 서버가 id를 새로 발급할 필요가 없고, 그래서 같은 카드가 두 기기에서 같은 행을 가리킨다.
+--
+--   deleted_at(tombstone)이 처음부터 있다 — posts와 같은 이유다. 행이 그냥 사라지면
+--   클라이언트가 "사용자가 카드를 지웠다"와 "이번 조회가 부분 실패했다"를 구분할 수 없다.
+--   ⚠️ **"서버 목록에 없음"은 절대 삭제 근거가 아니다**(앱 쪽 확립된 불변식).
+--
+--   coverUri(로컬 파일 경로)는 그대로 실린다. 받는 기기에서는 그 파일이 없어 카드가
+--   이모지 그라데이션 폴백으로 그려진다 — 기존 동작이며 의도된 한계다.
+--   여행 세션(tripSession)은 이 표에 없다. 세션은 '이 기기의 현재 위치 이벤트'라
+--   기기 간 공유 대상이 아니고 계속 user_trip_state에 남는다.
+-- ============================================================
+create table if not exists public.user_trip_cards (
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  card_id    text not null,          -- 클라이언트 생성 id (grp-{ts}-{rand4}) — 기기 간 충돌 없음
+  data       jsonb not null,         -- TripGroup 직렬화 (records는 remoteId 우선 변환본)
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (user_id, card_id)
+);
+
+-- 인덱스는 PK로 충분하다 — 앱의 조회는 ① user_id 전건 프로브 ② user_id + card_id in(...) 둘뿐이고
+-- 둘 다 PK(user_id, card_id)의 선두 컬럼으로 커버된다. deleted_at 전용 인덱스는 두지 않는다
+-- (사용자당 행이 수십 개 규모라 필터가 인덱스 이득을 못 낸다).
+
+drop trigger if exists trg_user_trip_cards_updated on public.user_trip_cards;
+create trigger trg_user_trip_cards_updated before update on public.user_trip_cards
+  for each row execute function public.set_updated_at();
+
+alter table public.user_trip_cards enable row level security;
+
+drop policy if exists "user_trip_cards_all_own" on public.user_trip_cards;
+create policy "user_trip_cards_all_own" on public.user_trip_cards
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 컬럼 수준 grant는 걸지 않는다. posts는 "작성자가 바꿔도 되는 컬럼"을 좁히려고 컬럼 단위로
+-- 회수·재부여했지만(likes_count 조작 방지 등), 이 표는 **행 전체가 본인 소유의 백업**이라
+-- 좁힐 대상이 없다. 위 두 이웃 표(user_trip_state·user_app_state)도 같은 이유로 안 건다.
+-- ⚠️ 여기에 섣불리 `revoke update`를 걸면 컬럼 권한이 없어 tombstone이 permission denied로
+--    조용히 실패한다(posts에서 실제로 밟은 함정).
+
+-- (선택·미등록) tombstone 정리 — 이번에는 cron에 등록하지 않는다.
+-- 사용자당 카드가 수십 개 규모라 표식 행이 쌓여도 무게가 없고(본문 data는 삭제 시 {}로 비운다),
+-- 반대로 주기를 짧게 잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐 지운 카드가
+-- 그 기기에 영구히 남는다. 필요해지면 posts와 같은 30일 기준으로:
+--
+-- delete from public.user_trip_cards
+--  where deleted_at is not null and deleted_at < now() - interval '30 days';
+
+-- ============================================================
 -- 4-c-3) user_app_state — 앱 로컬 상태 통합 백업 (재설치/기기 변경 복원용)
 --   설정(스킨·색·알림·배지·통계 등)과 기록 부가상태(보관·신고숨김·음소거·본 스냅·카드순서)는
 --   로컬이 원본이고 이 테이블은 백업본(사용자당 1행 jsonb). PII(프로필 필드)는 profiles가
@@ -2822,6 +2882,7 @@ revoke truncate, references, trigger on
   public.reports,
   public.rpc_probe_guard,
   public.user_app_state,
+  public.user_trip_cards,
   public.user_trip_state
   from anon, authenticated;
 

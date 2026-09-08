@@ -15,7 +15,19 @@ import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
 import { koAliases, matchesCountry } from '../utils/countryMatch';
 import { parseDotDate } from '../utils/momentMatch';
-import { saveTripState, fetchTripState } from '../services/tripState';
+import {
+  saveTripState,
+  fetchTripState,
+  serializeTripCard,
+  tripCardJson,
+  probeTripCards,
+  fetchTripCards,
+  upsertTripCards,
+  tombstoneTripCards,
+  type TripCardPayload,
+  type ServerTripCardRef,
+} from '../services/tripState';
+import { classifyServerCards, mergeServerCard, toLocalTripCard } from '../utils/mergeTripCards';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
@@ -208,6 +220,12 @@ export interface TripGroup {
   // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
   regionName?: string;
   stay?: TripGroupStayMeta; // 있으면 체류 카드
+  // 이 로컬 사본이 마지막으로 맞춰둔 서버 `user_trip_cards.updated_at`(ms) — 카드 '수정 전파'의 기준선.
+  // 서버 값이 이보다 크면 다른 기기가 고친 것이므로 본문을 받아 병합한다(utils/mergeTripCards).
+  // 없으면 "기준선 없음"이고 stale로 치지 않는다 — 치면 첫 동기화에서 전 카드를 다시 받는다.
+  // 로컬이 서버에 쓴 직후(upsert)에도 서버가 돌려준 값을 여기에 심는다(에코 방지).
+  // ⚠️ 이 값은 **로컬 전용**이다. 서버 payload(serializeTripCard)에는 싣지 않는다.
+  serverUpdatedAt?: number;
 }
 
 // ─────────────────────────────────────────────
@@ -1862,6 +1880,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     //  비우는 것과 달리 우회 가능한 간접 방어다 — 경계에서 직접 비운다.)
     pendingLinkRef.current.clear();
     pendingRelinkRef.current.clear(); // 재연결 대기분도 같은 이유로 비운다(이전 계정 id가 남으면 안 된다)
+    // ⚠️ **이번 구현에서 가장 위험한 한 줄.** 카드 push의 tombstone 대상은
+    //    "마지막으로 올린 목록에는 있는데 지금 tripGroups에는 없는 카드"다. 계정 전환은
+    //    tripGroups를 통째로 비우므로, 이 맵을 안 비우면 **이전 계정의 카드 전체에
+    //    tombstone을 쏜다(대량 오삭제, 조용하고 되돌릴 수 없다).**
+    lastPushedRef.current.clear();
+    lastLegacySavedRef.current = ''; // legacy 백업 중복 방지 서명도 계정 경계에서 비운다
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
@@ -2124,6 +2148,147 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, [detachRecordsFromTripGroups]);
 
+  const syncTripCardsInFlightRef = useRef(false);
+
+  /**
+   * ─── 여행 카드 pull (기기 간 동기화) ───
+   *
+   * `user_trip_cards`(카드 1장 = 1행)를 프로브해 **새 카드 / 지워진 카드 / 수정된 카드**를
+   * 로컬에 반영한다. push는 아래쪽 백업 effect가 diff로 담당한다(여기서 올리지 않는다).
+   *
+   * ⚠️ **호출 순서가 기능의 핵심이다.** `syncMyRecords`에서 반드시
+   *      ① records 병합  →  ② 여기(syncTripCards)  →  ③ drainPendingLinks
+   *    순서로 불러야 한다. 카드가 서버에서 먼저 들어오면, 동기화로 들어온 글은 이미
+   *    **소스 기기의 진짜 카드**에 소속된 상태가 된다 → drain의 `grouped` 검사가 그걸 보고
+   *    `linkByDate` 편입을 건너뛴다. 순서가 뒤집히면 이 기기의 날짜 규칙으로 만든 카드가
+   *    먼저 생겨, 같은 여행이 두 카드로 갈리고 제목·커버도 기본값이 된다
+   *    (A안의 날짜 편입은 카드 동기화가 없던 시절의 폴백이다 — 이제 카드가 먼저다).
+   *
+   * ⚠️ `tripBackupReadyRef` 게이트는 **걸지 않는다.** 그 게이트는 "빈 로컬이 서버 백업을
+   *    덮어쓰는 것"을 막는 push 쪽 방어이고, pull-병합은 로컬을 지우지 않으므로 안전하다.
+   *    오히려 여기서 카드를 먼저 채우면 legacy 복원이 "로컬이 원본" 갈래로 빠져 낡은
+   *    통째 백업을 심지 않게 되므로, 게이트를 안 거는 편이 정확하다.
+   *
+   * ⚠️ **앱 시작 경로에서도 반드시 한 번 돌아야 한다.** `syncMyRecords`의 트리거는 AppState
+   *    `'active'` 리스너와 프로필 당겨서 새로고침뿐인데, **AppState 리스너는 앱 시작 시
+   *    발화하지 않는다.** 그래서 복원 effect(로그인 확정 후 1회)에서도 직접 부른다 —
+   *    안 그러면 재설치·기기 변경·계정 전환 첫 실행에서 카드가 0장이다(legacy 복원은
+   *    게이트에 막혀 있으므로 아무도 안 심는다).
+   *
+   * @param preProbe 이미 받아둔 프로브 결과(복원 effect가 게이트 판정에 쓴 것)를 재사용한다.
+   *                 넘기지 않거나 `null`이면 직접 조회한다.
+   * @returns 'ok' 프로브 성공 / 'skipped' 가드 / 'failed' 프로브 실패
+   */
+  const syncTripCards = useCallback(async (
+    preProbe?: ServerTripCardRef[] | null,
+  ): Promise<'ok' | 'skipped' | 'failed'> => {
+    if (!isSupabaseConfigured || !hydratedRef.current) return 'skipped';
+    if (syncTripCardsInFlightRef.current) return 'skipped';
+    syncTripCardsInFlightRef.current = true;
+    // 계정 세대 — 응답이 오는 사이 계정이 바뀌면 이전 계정 카드를 새 계정에 심으면 안 된다
+    // (복원 effect의 M1 방어와 같은 장치).
+    const epoch = tripRestoreEpochRef.current;
+    try {
+      const probe = preProbe ?? (await withTimeout(probeTripCards(), 12000));
+      if (!probe) return 'failed'; // 표 없음·네트워크 실패 — 조용히 포기(다음 트리거에서 재시도)
+      if (epoch !== tripRestoreEpochRef.current) return 'skipped';
+
+      const { missing, tombstoned, stale } = classifyServerCards(tripGroupsRef.current, probe);
+
+      // ① 삭제 전파 — **카드만** 없앤다. 멤버 기록은 그대로 둔다.
+      //    기록의 삭제는 posts의 tombstone이 따로 전파한다(removeRecordsLocally). 여기서 기록까지
+      //    지우면 "카드만 정리했는데 사진이 사라졌다"가 된다.
+      if (tombstoned.length > 0) {
+        const gone = new Set(tombstoned);
+        setTripGroups((prev) => (prev.some((g) => gone.has(g.id)) ? prev.filter((g) => !gone.has(g.id)) : prev));
+        // 지문에서도 뺀다 — 안 빼면 다음 push diff가 "사라진 카드"로 보고 **이미 지워진 카드에
+        // tombstone을 다시 쏜다**(재-tombstone 루프).
+        for (const id of tombstoned) lastPushedRef.current.delete(id);
+        // ⚠️ tripSession은 건드리지 않는다. 세션이 지워진 카드를 가리켜도 조회가 빗나가 새 카드가
+        //    만들어질 뿐이고, 세션은 이 기기의 현재 위치 개념이라 원격 삭제로 끊으면 안 된다.
+      }
+
+      const need = [...stale, ...missing.filter((id) => !stale.includes(id))];
+      if (need.length === 0) {
+        // 서버가 모르는 로컬 카드가 있으면 push를 깨운다(시드 · 지난 회차 실패분 재시도).
+        // 여기서 직접 올리지 않는 이유: 올리는 규칙(직렬화·지문·기준선 심기)이 백업 effect에
+        // 한 벌만 있어야 두 곳이 어긋나지 않는다.
+        const known = new Set(probe.map((p) => p.cardId));
+        if (tripGroupsRef.current.some((g) => !known.has(g.id))) setTripPushNudge((n) => n + 1);
+        return 'ok';
+      }
+
+      const rows = await withTimeout(fetchTripCards(need), 20000);
+      if (epoch !== tripRestoreEpochRef.current) return 'skipped';
+      if (rows.length === 0) return 'ok';
+
+      // 서버 배열은 remoteId(posts.id) 기준이다 — 이 기기의 로컬 기록 id로 바꾼다.
+      // 못 찾으면 **그대로 둔다**(버리지 않는다): 그 글이 아직 동기화 전일 수 있고, 다음
+      // records 동기화가 채운다. 서버에서 받은 글은 id === remoteId라 그대로도 맞는다.
+      const byRemote = new Map<string, string>();
+      for (const r of recordsLiveRef.current) if (r.remoteId) byRemote.set(r.remoteId, r.id);
+      const mapRemoteToLocal = (remote: string) => byRemote.get(remote) ?? remote;
+      // 죽은 id 청소(mergeTripCards 주석 참조)의 조건 ① — "이 기기에 그 기록이 실존하는가".
+      // ⚠️ `hydratedRef` 가드를 이미 지났으므로 이 목록은 '영속에서 복원이 끝난 진짜 목록'이다.
+      //    비어 있는 시점에 이걸 넘기면 멀쩡한 멤버를 죽은 id로 오인해 버린다.
+      const localRecordIds = new Set(recordsLiveRef.current.map((r) => r.id));
+      const isKnownRecord = (rid: string) => localRecordIds.has(rid);
+
+      const staleSet = new Set(stale);
+      const staleRows = rows.filter((r) => staleSet.has(r.cardId));
+      // 새 카드는 **미리** 로컬 형태로 만들어 둔다(지문을 그 목록에만 심으려고).
+      // 실제로 안 들어간 카드에 지문을 심으면, 그 카드의 로컬 변경이 '서버와 같음'으로 보여
+      // 영영 안 올라간다.
+      const existing = new Set(tripGroupsRef.current.map((g) => g.id));
+      const addCards: TripGroup[] = [];
+      const addSeeds: { cardId: string; json: string }[] = [];
+      for (const r of rows) {
+        if (staleSet.has(r.cardId) || existing.has(r.cardId)) continue;
+        const c = toLocalTripCard(r, mapRemoteToLocal);
+        if (!c) continue; // 쓸 수 없는 본문(tombstone 잔재 등) — 건너뛴다
+        addCards.push(c as TripGroup);
+        addSeeds.push({ cardId: r.cardId, json: tripCardJson(r.data) });
+      }
+
+      setTripGroups((prev) => {
+        let next = prev;
+        if (staleRows.length > 0) {
+          const byId = new Map(staleRows.map((r) => [r.cardId, r]));
+          let dirty = false;
+          const merged = next.map((g) => {
+            const srv = byId.get(g.id);
+            if (!srv) return g;
+            const m = mergeServerCard(g, srv, mapRemoteToLocal, isKnownRecord);
+            if (m === g) return g; // 쓸 수 없는 본문 — 로컬 그대로
+            dirty = true;
+            return m;
+          });
+          if (dirty) next = merged;
+        }
+        if (addCards.length > 0) {
+          // 커밋 시점 기준으로 한 번 더 중복을 거른다(그 사이 같은 id가 생겼을 수 있다)
+          const have = new Set(next.map((g) => g.id));
+          const add = addCards.filter((c) => !have.has(c.id));
+          // 새 카드를 앞에 둔다 — 이 저장소의 카드 생성 경로(makeTripGroup·addTripGroup)와 같은 규칙
+          if (add.length > 0) next = [...add, ...next];
+        }
+        return next;
+      });
+
+      // ⚠️ 받은 카드는 **받자마자 지문을 심는다.** 안 심으면 다음 push diff가 이 카드를
+      //    '이 기기가 새로 만든 카드'로 오인해 그대로 되올린다(무의미한 왕복 + updated_at이
+      //    튀어 상대 기기가 다시 내려받는 에코).
+      //    stale(병합)은 심지 않는다 — 병합 결과는 서버 사본과 다를 수 있고(로컬 전용 멤버·
+      //    로컬 coverUri), 그 차이는 **서버로 올라가야 한다.**
+      for (const s of addSeeds) lastPushedRef.current.set(s.cardId, s.json);
+      return 'ok';
+    } catch {
+      return 'failed'; // 조용히 무시 — 다음 트리거에서 재시도(토스트 없음)
+    } finally {
+      syncTripCardsInFlightRef.current = false;
+    }
+  }, []);
+
   /**
    * @returns 'ok'      프로브가 성공했다(빠진 글이 없었어도 성공이다)
    *          'skipped' 가드에 걸려 아무것도 하지 않았다(발행 중·재진입·미설정·hydrate 전)
@@ -2140,12 +2305,46 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (publishInFlightRef.current > 0) return 'skipped';
     if (syncMyRecordsInFlightRef.current) return 'skipped';
     syncMyRecordsInFlightRef.current = true;
+    /**
+     * 회차 마무리 — **모든 성공 경로가 여기를 지나야 한다.**
+     *
+     * 순서: (호출부에서 이미 끝낸) records 병합 → **카드 동기화** → 편입 드레인.
+     * 카드가 먼저 들어와야 동기화로 받은 글이 소스 기기의 진짜 카드에 소속된 상태가 되고,
+     * 드레인의 `grouped` 검사가 그걸 보고 날짜 규칙 편입을 건너뛴다(syncTripCards 주석 참조).
+     * 글에 변화가 없는 회차에도 카드는 바뀌었을 수 있으므로 반드시 돈다.
+     *
+     * **카드 단계 실패는 회차 실패로 올린다.** 호출부(포그라운드 effect)가 `'ok'`가 아니면
+     * throttle 창을 60초 → 10초로 줄이는데, 카드만 실패한 회차를 `'ok'`로 삼키면 그 실패가
+     * 60초를 통째로 먹는다(records 프로브 실패를 짧게 재시도하는 설계와 어긋난다).
+     * ⚠️ 이미 커밋된 records 병합은 그대로 남는다 — 반환값은 **재시도 창 계산에만** 쓰이고
+     *    상태를 되돌리지 않는다(`setRecords`는 이 지점 이전에 끝났다).
+     *    재진입 가드로 인한 `'skipped'`는 실패가 아니므로 승격하지 않는다.
+     */
+    const finish = async (): Promise<'ok' | 'failed'> => {
+      const cardRes = await syncTripCards();
+      // ⚠️ setRecords/setTripGroups가 커밋될 때까지 한 틱 기다린 뒤 편입한다. linkByDate는
+      //    카드의 날짜 범위를 구할 때 클로저의 `records`로 멤버를 조회하는데, 커밋 전에 부르면
+      //    방금 만든 카드의 멤버가 조회되지 않아 같은 여행의 2건이 각각 다른 카드를 만든다.
+      //    이 기다림은 보장이 아니라 최선 노력이다 — 부족했을 때 안전한 이유는 dropMissing=false다
+      //    (커밋 전이라 못 찾은 항목을 큐에 남겨 다음 회차 시작 드레인이 처리한다).
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      drainPendingLinks(false);
+      return cardRes === 'failed' ? 'failed' : 'ok';
+    };
     try {
       // 지난 회차에 미뤄둔 편입부터 처리한다(카드 복원 대기분 + 커밋을 못 기다린 분).
       // 여기서는 그 사이 렌더가 여러 번 지났으므로 records에 없는 항목은 정말 삭제된 것이다.
       drainPendingLinks(true);
       const server = await withTimeout(fetchMyPostIds(), 12000);
-      if (!server) return 'failed'; // 조회 실패는 null — 조용히 포기(다음 트리거에서 재시도)
+      // 조회 실패는 null — 조용히 포기(다음 트리거에서 재시도).
+      // ⚠️ **여기서는 finish()를 지나지 않는다 = 이 회차의 카드 동기화도 통째로 건너뛴다.**
+      //    의도된 순서 의존이다: 카드 병합은 remoteId → 로컬 기록 id 매핑에 기대는데, records
+      //    프로브가 실패한 회차는 그 매핑이 낡았을 수 있다. 그 상태로 카드를 병합하면 멀쩡한
+      //    멤버가 '매핑 안 되는 id'로 남거나(무해) **죽은 id 청소가 오판**할 수 있다.
+      //    실패는 'failed'로 나가 10초 창만 쓰므로 곧 다시 시도된다(비용도 작다).
+      //    글 조회만 실패하고 카드 표는 멀쩡한 드문 경우에 카드 동기화가 한 회차 밀리는 것이
+      //    이 선택의 대가이며, 그쪽이 오판보다 싸다.
+      if (!server) return 'failed';
       // 커밋 시점의 최신 목록으로 대조해야 한다. 미러 ref로 읽고(안정 콜백 유지),
       // 실제 반영도 setRecords 함수형으로 해서 그 사이 늘어난 로컬 글과 다시 대조한다.
       const { missing, tombstoned, stale, baseline } = classifyServerPosts(recordsLiveRef.current, server);
@@ -2174,9 +2373,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       //    둘 다 같은 조회(fetchPostsByIds)로 받는다 — 한 회차에 요청은 최대 1번 더다.
       const staleSet = new Set(stale);
       const need = [...stale, ...missing.filter((id) => !staleSet.has(id))];
-      if (need.length === 0) return 'ok'; // 정상 상태 — 추가 요청 0회
+      if (need.length === 0) return finish(); // 글은 정상 상태 — 그래도 카드는 확인한다
       const rows = await withTimeout(fetchPostsByIds(need), 20000);
-      if (rows.length === 0) return 'ok';
+      if (rows.length === 0) return finish(); // 본문을 못 받았어도 카드는 확인한다
       // 받은 뒤 분기: 이미 로컬에 있는 글이면 '수정 병합', 없으면 '새 글 추가'.
       const staleRows = rows.filter((r) => r.remoteId && staleSet.has(r.remoteId));
       const newRows = rows.filter((r) => !r.remoteId || !staleSet.has(r.remoteId));
@@ -2242,21 +2441,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           return changed ? next : prev;
         });
       }
-      // ⚠️ setRecords가 커밋될 때까지 한 틱 기다린 뒤 편입한다. linkByDate는 카드의 날짜
-      //    범위를 구할 때 클로저의 `records`로 멤버를 조회하는데, 커밋 전에 부르면 방금
-      //    만든 카드의 멤버가 조회되지 않아 같은 여행의 2건이 각각 다른 카드를 만든다.
-      //    이 기다림은 보장이 아니라 최선 노력이다 — 부족했을 때 안전한 이유는 dropMissing=false다
-      //    (커밋 전이라 못 찾은 항목을 큐에 남겨 다음 회차 시작 드레인이 처리한다).
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      drainPendingLinks(false);
-      return 'ok';
+      // 카드 동기화 + 한 틱 대기 + 편입 드레인은 finish()가 한다(위 정의 참조).
+      return finish();
     } catch {
       // 조용히 무시 — 다음 트리거에서 재시도. 토스트를 띄우지 않는다(사용자가 요청한 동작이 아니다).
       return 'failed';
     } finally {
       syncMyRecordsInFlightRef.current = false;
     }
-  }, [drainPendingLinks, removeRecordsLocally]);
+  }, [drainPendingLinks, removeRecordsLocally, syncTripCards]);
 
   // ─── 게시물 카운터(좋아요·댓글 수) 서버 동기화 ───
   // 내 글의 likes/comments는 '내가' 움직일 때만 바뀌고, 남이 누른 좋아요·남이 단 댓글은 서버
@@ -2542,47 +2735,141 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  // ─── 여행 카드·세션 서버 백업 (재설치/기기 변경 복원용) ───
-  // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.
-  // 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다 (실패는 조용히 — 다음 변경 때 재시도).
+  // ─── 여행 카드 서버 백업 + 행 단위 push (기기 간 동기화) ───
+  // 로컬이 원본. 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다(실패는 조용히 — 다음 변경 때 재시도).
+  //
+  // 여기서 두 곳에 쓴다(dual-write):
+  //   ① legacy `user_trip_state` — 사용자당 1행 통째 백업. **옛 번들 기기가 이 경로로만
+  //      복원하므로 계속 쓴다.** 은퇴 조건은 services/tripState.ts의 saveTripState 주석 참조.
+  //   ② 신규 `user_trip_cards` — 카드 1장 = 1행. 아래 diff로 **바뀐 카드만** 올리고
+  //      **사라진 카드는 tombstone**을 찍는다.
+  //
+  // ⚠️ 왜 15곳의 setTripGroups 호출부를 건드리지 않고 diff로 하는가: 카드는 삭제·병합·흡수·
+  //    빈 카드 폐기 등 여러 경로에서 사라진다. 각 호출부에 push/tombstone을 심으면 반드시
+  //    한 군데를 빠뜨리고, 빠뜨린 경로는 **다른 기기에 유령 카드로 영구히 남는다.**
+  //    "현재 상태 vs 마지막으로 서버에 올린 상태"를 비교하면 경로를 몰라도 전부 잡힌다.
   const backupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 복원 시도가 끝나기 전에는 백업하지 않는다 — 재설치 직후/계정 전환 직후의 빈 상태가
   // 서버 백업을 덮어써 파괴하는 경합 방지. 복원 effect가 끝나면 true.
   const tripBackupReadyRef = useRef(false);
+  /**
+   * cardId → **서버가 가지고 있다고 아는 사본의 지문**(tripCardJson).
+   *
+   * ⚠️ **이 맵이 이번 구현의 단일 최대 위험 지점이다.** tombstone 대상은 "이 맵에는 있는데
+   *    지금 tripGroups에는 없는 카드"로 뽑는데, 계정을 전환하면 tripGroups가 통째로 비므로
+   *    맵을 안 비우면 **이전 계정의 카드 전체에 tombstone을 쏜다(대량 오삭제).**
+   *    그래서 `resetRecords`가 이 맵을 반드시 비운다. 그리고 세션 시작 시점에는 비어 있으므로
+   *    (`hydrated` 전에는 effect 자체가 돌지 않는다) 앱 시작 직후의 빈 tripGroups로
+   *    tombstone이 나가는 경로도 없다 — 뺄 게 있어야 뺀다.
+   */
+  const lastPushedRef = useRef<Map<string, string>>(new Map());
+  /**
+   * 마지막으로 **성공적으로 올린** legacy(user_trip_state) 페이로드의 서명.
+   * 같은 내용을 두 번 올리지 않기 위한 것이며, 실패한 회차는 기록하지 않아 다음에 재시도된다.
+   * 계정 경계(`resetRecords`)에서 비운다 — 서명이 계정별로 다르므로 남겨도 실무상 안전하지만,
+   * "이전 계정의 상태를 근거로 새 계정의 백업을 건너뛴다"는 모양 자체를 남기지 않는다.
+   */
+  const lastLegacySavedRef = useRef<string>('');
+  /**
+   * push effect를 한 번 더 깨우는 신호. push는 이 effect 안에서만 나가는데, effect의 deps는
+   * 상태(tripGroups·records·tripSession)뿐이라 **상태 변화 없이 '지금 밀어야 하는' 상황**
+   * — 복원 시도가 끝나 게이트가 열린 직후, pull이 "서버에 없는 로컬 카드"를 발견한 직후 —
+   * 에는 effect가 다시 돌지 않는다. 그 두 곳에서 이 카운터를 올린다.
+   * (헛돌아도 안전하다: diff에 변화가 없으면 아무 요청도 안 나간다.)
+   */
+  const [tripPushNudge, setTripPushNudge] = useState(0);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured) return;
     if (!tripBackupReadyRef.current) return;
     // 완전 빈 상태는 백업하지 않는다 — 재설치/로그인 직후의 빈 로컬이 서버 백업을 파괴하는
     // 최후 방어선(베타 실사고: 카드 전체 유실, 2026-07-10). 마지막 카드를 지운 경우 서버에
     // 직전 백업이 남는 트레이드오프는 전체 유실보다 안전하다.
+    // ⚠️ 이 가드는 신규 경로에도 그대로 걸린다 — 빈 상태에서는 tombstone도 나가지 않는다.
+    //    "마지막 카드 1장을 지웠다"가 전파되지 않는 대가가 있지만, 빈 로컬이 상대 기기의
+    //    카드를 전부 지우는 사고보다 훨씬 싸다(카드가 1장이라도 남아 있으면 정상 전파된다).
     if (tripGroups.length === 0 && !tripSession) return;
     if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
     backupTimerRef.current = setTimeout(() => {
       if (!tripBackupReadyRef.current) return; // 타이머 대기 중 재무장(rearm)된 경우 취소
       const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
-      saveTripState({
-        groups: tripGroups.map((g) => ({
-          id: g.id,
-          title: g.title,
-          records: g.records.map(toRemote),
-          coverRecordId: toRemote(g.coverRecordId),
-          createdAt: g.createdAt.toISOString(),
-          countryName: g.countryName,
-          countryFlag: g.countryFlag,
-          coverUri: g.coverUri,
-          date: g.date,
-          regionName: g.regionName,
-          stay: g.stay,
-        })),
-        session: tripSession,
-      });
+      // 카드 1장 직렬화는 legacy·신규가 **같은 함수**를 쓴다(규칙이 두 벌로 갈리지 않게)
+      const payloads = tripGroups.map((g) => serializeTripCard(g, toRemote));
+
+      // ① legacy 통째 백업 (세션도 여기에만 실린다 — 세션은 기기 로컬 개념이라 행 동기화 대상이 아니다)
+      //
+      // ⚠️ **내용이 바뀐 경우에만 보낸다.** 안 그러면 카드 1건 수정마다 요청이 2번 나간다:
+      //    upsert 성공 → serverUpdatedAt 심기(setTripGroups) → deps 변경 → 4초 뒤 타이머
+      //    재발화 → 같은 legacy payload를 또 올린다(카드 diff는 비어 있어 신규 경로는 조용하다).
+      //    `serverUpdatedAt`은 payload에 안 실리므로 그 2회차의 서명은 1회차와 정확히 같다.
+      //    성공했을 때만 서명을 기록한다 — 실패한 회차를 기록하면 다음 변경까지 재시도가 없다.
+      const legacySig = JSON.stringify({ groups: payloads, session: tripSession });
+      if (legacySig !== lastLegacySavedRef.current) {
+        saveTripState({ groups: payloads, session: tripSession })
+          .then((ok) => { if (ok) lastLegacySavedRef.current = legacySig; })
+          .catch(() => {});
+      }
+
+      // ② 행 단위 diff
+      const nextSnap = new Map<string, string>();
+      const changed: { cardId: string; data: TripCardPayload }[] = [];
+      for (const p of payloads) {
+        const json = tripCardJson(p);
+        nextSnap.set(p.id, json);
+        if (lastPushedRef.current.get(p.id) !== json) changed.push({ cardId: p.id, data: p });
+      }
+      // 사라진 카드 = 마지막으로 올린 목록에는 있는데 지금은 없는 것.
+      // ⚠️ 로컬에 없다고 무조건 지우는 게 아니다 — **이 기기가 직접 올린 적 있는 카드**만 대상이다.
+      const gone = Array.from(lastPushedRef.current.keys()).filter((id) => !nextSnap.has(id));
+
+      if (changed.length > 0) {
+        upsertTripCards(changed)
+          .then((stamps) => {
+            if (!stamps) return; // 실패 — 지문을 갱신하지 않는다(다음 변경 때 통째로 재시도)
+            for (const c of changed) {
+              const json = nextSnap.get(c.cardId);
+              if (json !== undefined) lastPushedRef.current.set(c.cardId, json);
+            }
+            // 서버가 돌려준 시각을 기준선으로 심는다 — 안 심으면 **자기가 방금 올린 카드가**
+            // 다음 pull에서 stale로 잡혀 계속 다시 내려온다(에코).
+            // ⚠️ 기기 시계(Date.now())는 절대 쓰지 않는다. 서버가 준 값만 심는다.
+            if (stamps.size > 0) {
+              setTripGroups((prev) => {
+                let dirty = false;
+                const next = prev.map((g) => {
+                  const at = stamps.get(g.id);
+                  if (at === undefined || g.serverUpdatedAt === at) return g;
+                  dirty = true;
+                  return { ...g, serverUpdatedAt: at };
+                });
+                return dirty ? next : prev; // 헛 리렌더·무한 루프 방지
+              });
+            }
+          })
+          .catch(() => {});
+      }
+      if (gone.length > 0) {
+        tombstoneTripCards(gone)
+          .then((ok) => {
+            // 성공했을 때만 지문에서 뺀다 — 실패하면 다음 회차에 다시 시도해야 한다.
+            // (성공 후 남겨두면 매 회차 같은 카드에 tombstone을 다시 쏜다 = 재-tombstone 루프)
+            if (ok) for (const id of gone) lastPushedRef.current.delete(id);
+          })
+          .catch(() => {});
+      }
     }, 4000);
     return () => { if (backupTimerRef.current) clearTimeout(backupTimerRef.current); };
-  }, [hydrated, tripGroups, tripSession, records]);
+  }, [hydrated, tripGroups, tripSession, records, tripPushNudge]);
 
   // 재설치/새 기기 복원 — 로컬에 카드가 전혀 없고 서버 백업이 있으면 1회 복원.
   // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
   // 계정 전환(resetRecords) 시 nonce 증가로 새 계정에 대해 재시도한다.
+  //
+  // ⚠️ 카드 행 동기화(user_trip_cards)가 생긴 뒤 이 복원은 **legacy 1회성 시드**로 격하된다.
+  //    "신규 표에 살아 있는 카드가 하나라도 있으면 여기서 만들지 않고 syncTripCards에 맡긴다."
+  //    왜 그래야 하는가: legacy 백업은 옛 번들이 남긴 낡은 사본일 수 있는데, 그걸 먼저 심으면
+  //    그 카드들에는 `serverUpdatedAt`(기준선)이 없어 **stale로도 안 잡힌다.** 그러면 서버의
+  //    최신 카드가 영영 안 내려오고, 반대로 첫 push가 낡은 사본을 서버에 덮어써 다른 기기의
+  //    최신 카드까지 되돌린다. 신규 표가 비어 있을 때(=아직 아무도 push한 적 없음)만 시드한다.
   const tripRestoreTriedRef = useRef(false);
   // 계정 세대(epoch) — resetRecords/rearm마다 증가. in-flight 복원 async가 계정 전환을
   // 가로질러 이전 계정의 백업을 새 계정 상태에 적용하거나(카드 혼입), tried를 선점해
@@ -2603,9 +2890,36 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       tripRestoreTriedRef.current = true;
       if (tripGroupsRef.current.length > 0) {
         tripBackupReadyRef.current = true; // 로컬이 원본 — 백업 즉시 허용
+        // 기존 사용자(카드를 이미 가진 기기)가 이 갈래로 온다. 시드 push를 여기서 깨운다
+        // (아래 finally의 nudge와 같은 이유 — ref 변경만으로는 effect가 다시 돌지 않는다).
+        setTripPushNudge((n) => n + 1);
+        // ⚠️ 이 기기에 카드가 있어도 **서버에는 다른 기기가 만든/고친 카드가 있을 수 있다.**
+        //    앱 시작 경로에는 카드 pull 트리거가 여기 말고 없다(AppState 'active'는 시작 시
+        //    발화하지 않는다) — 안 부르면 앱을 껐다 켠 사용자는 백그라운드 왕복이나
+        //    프로필 당겨서 새로고침 전까지 상대 기기의 카드를 못 본다.
+        //    실패해도 조용하다(syncTripCards는 throw하지 않는다).
+        await syncTripCards();
         return;
       }
       try {
+        // 신규 표를 먼저 본다(위 ⚠️ 참조). 프로브 실패(null)면 legacy 시드로 진행한다 —
+        // "확인할 수 없다"를 "비어 있다"로 읽으면 안 되지만, 여기서는 카드가 아예 없는
+        // 상태이므로 legacy 시드가 최악이어도 옛 사본을 되살리는 정도이고, 반대로 아무것도
+        // 안 하면 오프라인 재설치 사용자가 카드를 통째로 잃는다.
+        // ⚠️ withTimeout + catch 필수 — 이 await가 hang하면 finally에 못 가
+        //    `tripBackupReadyRef`가 그 세션 내내 false로 남아 백업·push는 물론
+        //    drainPendingLinks까지 통째로 잠긴다(카드 편입이 영영 안 된다).
+        const cardRefs = await withTimeout(probeTripCards(), 12000).catch(() => null);
+        if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 이전 계정 데이터 미적용
+        if (cardRefs && cardRefs.some((c) => !c.deletedAt)) {
+          // ★ 신규 표가 원본이다. legacy를 심지 않는 대신 **여기서 바로 받아온다.**
+          //   이 호출이 없으면 재설치·기기 변경·계정 전환 첫 실행에서 카드가 0장이다
+          //   (legacy는 게이트에 막히고, syncTripCards의 다른 트리거는 앱 시작에 안 걸린다).
+          //   이미 받아둔 프로브를 넘겨 같은 조회를 두 번 하지 않는다.
+          await syncTripCards(cardRefs);
+          return;
+        }
+
         const backup = await fetchTripState();
         if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 이전 계정 백업 미적용
         if (backup && backup.groups.length > 0) {
@@ -2624,6 +2938,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // 전환된 세대의 잔존 async가 새 계정의 백업 잠금을 조기 해제하지 않게 세대 일치 시에만
         if (epoch === tripRestoreEpochRef.current) {
           tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+          // 게이트가 열린 것은 ref 변경이라 push effect의 deps를 건드리지 않는다 — 여기서
+          // 한 번 깨워야 기존 사용자의 카드가 신규 표로 **처음 올라간다**(시드). 이 신호가
+          // 없으면 다음 상태 변화(기록 추가·카운트 동기화 등)까지 시드가 미뤄진다.
+          setTripPushNudge((n) => n + 1);
         }
       }
     })();
