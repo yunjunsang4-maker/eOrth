@@ -80,14 +80,15 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준) + **⏳ 삭제 전파 1건 (2026-09-08 추가)**
+## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준) + **⏳ 삭제 전파 후속 1건 (2026-09-08 추가, 미실행)**
 
 **남은 것은 아래 셋뿐이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
 `PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
 
-**2026-09-08에 추가된 1건은 같은 날 실행·확인 완료됐다 — 바로 아래.**
+**2026-09-08 삭제 전파 1차(tombstone 도입)는 같은 날 실행·확인 완료됐다 — 바로 아래 ✅.**
+**그 후속(집계 함수 5개 + purge cron)은 ⏳ 미실행이다 — 그 아래 절.**
 
 ### ✅ 기기 간 삭제·수정 전파(tombstone) (2026-09-08 추가 · **2026-09-08 실행·확인 완료**)
 
@@ -149,10 +150,8 @@ select pg_get_triggerdef(oid) from pg_trigger
 3번(컬럼 권한) 판정은 PostgreSQL 의미론과 이 저장소 `profiles`의 실동작에서 유추한 것이고,
 운영 DB에서 직접 확인하지는 못했다.
 
-**tombstone 정리(purge)는 등록하지 않았다** — `schema.sql`에 주석으로만 있다(30일 지난 표식
-hard delete). 스케줄 등록은 운영 결정이므로 `cron-setup.sql`에 넣지 않았다. 등록하지 않으면
-표식 행이 영구히 쌓이고(본문은 아래대로 이미 비어 있어 빈 행만 남는다), 반대로 주기를 짧게
-잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐 그 글이 그 기기에 영구히 남는다.
+**tombstone 정리(purge)는 이 1차에서는 등록하지 않았다** — `schema.sql`에 주석으로만 있었다.
+**후속(아래 ⏳ 절)에서 `cron-setup.sql`에 `purge-deleted-posts` 잡으로 등록했다. 아직 실행 전이다.**
 
 **본문은 표식과 동시에 지운다** — `deletePost`·`deleteAllMyPosts`가 `deleted_at`과 함께
 `data = {}` 로 갱신한다. 표식만 남기면 앱이 "되돌릴 수 없이 삭제"라고 안내한 글의 전문과
@@ -160,6 +159,85 @@ hard delete). 스케줄 등록은 운영 결정이므로 `cron-setup.sql`에 넣
 (`grant update` 목록에 `data` 가 이미 있어 추가 권한 변경은 필요 없다.)
 남는 것은 **Storage 파일**이다 — 개별 삭제는 앱이 로컬 기록에서 수집한 URL로 지우지만,
 "데이터 초기화"(`deleteAllMyPosts`)는 그 경로를 타지 않아 파일이 남는다. 별도 과제다.
+
+### ⏳ 집계 함수 tombstone 제외 5개 + purge cron 등록 (2026-09-08 추가) — **미실행**
+
+> 위 ✅(tombstone 도입)의 **후속**이다. 발췌본:
+> `supabase/migration-2026-09-08-tombstone-aggregates.sql` (schema.sql·cron-setup.sql과 동일 내용).
+>
+> ⚠️ **운영(blweol…)과 테스트(bqwmx…) 양쪽 프로젝트 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 증상이 사라져 오판하게 된다.
+>
+> ⚠️ **앱 코드 변경은 없다.** 배포 순서 제약도 없다 — 함수 시그니처(인자·반환 컬럼)가 그대로라
+> 구 번들·새 번들 모두와 호환된다. 집계 값이 정확해질 뿐이다.
+
+**왜 필요한가.** 1차에서 `posts_select` RLS에 tombstone 필터를 넣었지만,
+**SECURITY DEFINER 함수는 소유자 권한으로 돌아 posts의 RLS 자체가 적용되지 않는다.**
+그래서 집계 함수들은 지운 글을 여전히 살아있는 글로 세고 있다. RLS 우회는 이 함수들의
+목적(공개 통계를 일관되게 내려면 필요)이라 없앨 수 없고, 함수 본문에서 직접 걸러야 한다.
+
+실행할 것 — 전부 `schema.sql`·`cron-setup.sql`에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | 서브쿼리 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `profile_country_counts` 교체 | 1곳 | 친구 찾기 결과의 **방문국 수**에 지운 글이 계속 잡힌다 |
+| 2 | `mate_suggestions_compute` 교체 | 3곳(`pub` / `my_cities` / `ccity_pairs`) | **메이트 추천 점수·근거 문구**(나라·도시 겹침, 희소성 가중치, k-익명 판정 분모)에 지운 글이 계속 반영된다 |
+| 3 | `overlap_with` 교체 | 3곳(`my_countries` / `shared` / `shared_k`) | 타인 프로필의 **"겹치는 나라 N곳"** 이 과다. `shared_k`를 빠뜨리면 **k-익명성 분모가 부풀어 이름 공개 임계 판정이 실제보다 관대해진다**(지운 글까지 세서 방문자 수가 k를 넘긴 것처럼 보인다) |
+| 4 | `country_visitors` 교체 | 1곳 | 나라별 **"이 나라 다녀온 사람"** 목록과 그 k-익명 판정에 지운 글이 계속 잡힌다 |
+| 5 | `post_counts` 교체 | 1곳 | **비이웃 프로필의 글 수가 실제보다 많게 보인다** — 사용자가 가장 먼저 알아채는 증상 |
+| 6 | `cron.schedule('purge-deleted-posts', '50 4 * * *', …)` 등록 | — | **표식 행이 영구히 누적된다.** 그리고 `post_likes`·`comments`·`notifications`의 `on delete cascade`가 soft delete(UPDATE)엔 안 돌아 잔여 행도 함께 쌓인다 — 이 purge로 실제 행이 지워질 때 비로소 정리된다 |
+
+⚠️ **함수 시그니처는 하나도 바뀌지 않았다.** `drop function` 없이 `create or replace`만으로
+교체된다. 델타 파일에는 `schema.sql`에 있는 `drop function if exists public.mate_suggestions(...)`
+3줄을 **일부러 넣지 않았다** — 그걸 옮겨 오면 앱이 실제로 호출하는 캐시 래퍼
+`public.mate_suggestions`까지 지워지고 델타가 그걸 다시 만들지 않아 **추천 화면이 통째로 죽는다.**
+
+⚠️ **30일 purge 주기의 트레이드오프 (양방향)** —
+짧게 잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐 **그 글이 그 기기에만 영구히 남는다**
+(되돌릴 방법이 없다). 늘리면 표식 행이 더 오래 쌓이지만, **본문 `data`는 삭제 시점에 이미
+비워지므로** 남는 행은 스칼라 몇 컬럼뿐이라 가볍다. 즉 늘리는 쪽의 대가가 훨씬 싸다.
+**Storage 파일은 이 purge로 지워지지 않는다**(별도 과제 — 위 ✅ 절 끝 참조).
+
+반영 확인 쿼리:
+```sql
+-- 1~5번: 5행이 나오고 has_filter 가 전부 true. n(필터 개수) 기대값 —
+--        country_visitors 1 / mate_suggestions_compute 3 / overlap_with 3 /
+--        post_counts 1 / profile_country_counts 1 (합계 9)
+-- ⚠️ 세는 문자열에 앞 점(.)이 붙은 이유: pg_get_functiondef 는 본문의 SQL 주석까지
+--    돌려주므로, 점 없이 세면 설명 주석 속 'deleted_at is null' 이 함께 잡힌다.
+select p.proname,
+       pg_get_functiondef(p.oid) like '%.deleted_at is null%' as has_filter,
+       (length(pg_get_functiondef(p.oid))
+        - length(replace(pg_get_functiondef(p.oid), '.deleted_at is null', ''))
+       ) / length('.deleted_at is null') as n
+  from pg_proc p
+  join pg_namespace ns on ns.oid = p.pronamespace
+ where ns.nspname = 'public'
+   and p.proname in ('profile_country_counts', 'mate_suggestions_compute',
+                     'overlap_with', 'country_visitors', 'post_counts')
+ order by p.proname;
+
+-- 6번: 'purge-deleted-posts' 한 줄이 나와야 한다
+select jobname from cron.job where jobname = 'purge-deleted-posts';
+
+-- 사고 확인: 래퍼가 살아 있는지(위 ⚠️ 참조) — 1행이 나와야 한다
+select proname from pg_proc p
+  join pg_namespace ns on ns.oid = p.pronamespace
+ where ns.nspname = 'public' and p.proname = 'mate_suggestions';
+```
+
+**의도적으로 고치지 않은 것 (재조사 방지):**
+- `cleanup_unconfirmed_accounts`의 `not exists (select 1 from public.posts …)` — 미확인 계정
+  **삭제** 방어 로직이다. 표식만 남은 계정도 "활동 있음"으로 보존되는 쪽이 안전하다
+  (필터를 넣으면 글이 전부 tombstone인 계정이 삭제 대상이 되고, 계정 삭제는 되돌릴 수 없다).
+  purge가 30일 뒤 행을 실제로 지우면 그 계정은 자연히 삭제 대상이 된다.
+- 좋아요·댓글 알림 트리거(`notify_on_like` / `notify_on_comment`) — 이 둘은 definer라 tombstone
+  글의 작성자를 찾아내지만, **도달 경로가 F3의 RLS로 이미 막혀 있다.** `likes_insert_own` /
+  `comments_insert_own`의 `exists (select 1 from public.posts …)`는 정책 서브쿼리라
+  **posts의 RLS(posts_select)를 그대로 탄다** → 남의 tombstone 글에는 insert 자체가 거부되고
+  트리거가 발화하지 않는다. 남는 창은 "작성자 본인이 자기 tombstone 글에 반응"뿐인데,
+  자기 좋아요·자기 댓글은 트리거 자신의 self 검사(`post_author = new.user_id` /
+  `target = new.author_id`)가 걸러 알림이 안 만들어진다. 잔여 1건은 아래 "정리 대기"에 적었다.
 
 ### ✅ `schema.sql` 재실행 — 매칭 프라이버시 하드닝 (2026-08-11~12) — **반영 확인 2026-08-13**
 
@@ -701,6 +779,15 @@ select status_code, content, created
 - 검증을 포기한다: `drop function if exists public.mate_suggestions_old(int, text[]);` 를 실행하고 이 파일을 삭제한다.
 
 어느 쪽이든 끝난 뒤에는 이 절과 파일을 함께 지운다.
+
+**tombstone 알림 잔여 창 1건 (2026-09-08, 미수정·저위험).** 좋아요·댓글 insert는 F3의 RLS로
+막혀 알림 트리거에 도달하지 못한다. 단 **작성자 본인**은 자기 tombstone 글을 select할 수 있어
+(그게 삭제 전파의 전제다) insert도 통과한다. 자기 좋아요·자기 댓글은 트리거의 self 검사가
+걸러 알림이 안 나가지만, **작성자가 자기 tombstone 글에 달린 남의 댓글에 답글을 달면**
+그 댓글 작성자에게 `reply` 알림이 가고, 탭하면 `fetchPostById`가 null이라 죽은 링크가 된다.
+앱 UI에는 지운 글로 들어갈 경로가 없어(삭제 즉시 화면에서 빠진다) 실제로는 직접 API 호출이나
+낡은 화면으로만 재현된다. 고치려면 두 트리거에 `and deleted_at is null`을 더하면 되지만,
+알림 트리거는 이번 작업 범위 밖이라 손대지 않았다.
 
 ---
 

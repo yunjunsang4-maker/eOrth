@@ -50,6 +50,36 @@ select cron.schedule(
 );
 
 -- ------------------------------------------------------------
+-- 2-b) 삭제 표식(tombstone) 정리 — 매일 04:50 UTC
+--    글 삭제는 hard delete 가 아니라 `posts.deleted_at` 표식을 남기는 soft delete 다
+--    (기기 간 삭제 전파의 전제 — schema.sql 의 deleted_at 블록 주석 참조).
+--    표식을 지우는 주체가 없으면 행이 영구히 쌓인다.
+--
+--    ⚠️ 30일의 근거와 트레이드오프 — 양방향으로 대가가 있다:
+--      · 짧게 잡으면: 그 기간보다 **오래 잠들어 있던 기기**는 표식이 사라진 뒤에 깨어나
+--        "지워졌다"를 영영 못 보고, 그 글이 그 기기에만 영구히 남는다(되돌릴 방법이 없다).
+--        30일은 "그 안에 한 번은 앱을 켠다"는 가정이며, 기간은 '가장 오래 안 켜는 기기'보다
+--        넉넉해야 한다. 줄이지 말 것.
+--      · 늘리면: 표식 행이 그만큼 더 오래 쌓인다. 다만 **본문(data)은 삭제 시점에 이미
+--        비워지므로**(deletePost/deleteAllMyPosts 가 deleted_at 과 함께 data = {} 로 갱신)
+--        남는 행은 스칼라 몇 컬럼뿐이라 가볍다. 즉 늘리는 쪽의 대가가 훨씬 싸다.
+--
+--    ⚠️ 이 delete 가 실행돼야 비로소 cascade 가 돈다.
+--      post_likes.post_id / comments.post_id / notifications.post_id 의 `on delete cascade` 는
+--      **soft delete(UPDATE)에는 돌지 않아** 그동안 잔여 행이 쌓여 있다. 실제 행이 지워지는
+--      이 시점에 함께 정리된다.
+--
+--    ⚠️ Storage 파일은 이 purge 로 지워지지 않는다.
+--      개별 글 삭제는 앱이 로컬 기록에서 수집한 URL로 지우지만, "데이터 초기화"
+--      (deleteAllMyPosts)는 그 경로를 타지 않아 파일이 남는다 — 별도 과제다.
+-- ------------------------------------------------------------
+select cron.schedule(
+  'purge-deleted-posts',
+  '50 4 * * *',
+  $$delete from public.posts where deleted_at is not null and deleted_at < now() - interval '30 days'$$
+);
+
+-- ------------------------------------------------------------
 -- 3) 탈퇴 유예 만료 계정 파기 — 매일 18:00 UTC (KST 새벽 3시)
 --
 --    SQL 로 직접 지우지 않고 Edge Function(delete-account, scope='sweep')을 부르는 이유는
@@ -119,4 +149,5 @@ select cron.schedule(
 -- select cron.unschedule('purge-notifications');
 -- select cron.unschedule('purge-mate-cache');
 -- select cron.unschedule('purge-probe-guard');
+-- select cron.unschedule('purge-deleted-posts');
 -- select cron.unschedule('purge-deleted-accounts');

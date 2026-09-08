@@ -315,13 +315,9 @@ create index if not exists idx_posts_author_deleted on public.posts (author_id, 
 --    soft delete(deleted_at을 세팅하는 update)도 updated_at을 함께 올린다. **의도된 동작이다** —
 --    삭제도 하나의 변경이고, 다른 기기는 이 두 값을 같은 프로브에서 함께 읽어 판정한다.
 --
--- (선택) tombstone 정리 — 자동 실행하지 않는다. 스케줄 등록은 운영 결정이라
--- cron-setup.sql에 넣지 않았다. 30일이 지난 표식만 실제로 지운다:
---   delete from public.posts
---    where deleted_at is not null
---      and deleted_at < now() - interval '30 days';
--- ⚠️ 정리 주기보다 오래 잠들어 있던 기기는 표식을 못 보고 지나가 그 글이 로컬에 영구히 남는다.
---    30일은 "그 안에 한 번은 앱을 켠다"는 가정이다. 짧게 줄이지 말 것.
+-- tombstone 정리(purge)는 **cron-setup.sql의 `purge-deleted-posts` 잡**이 담당한다
+-- (매일 04:50 UTC, 30일 지난 표식을 hard delete). 기간을 정한 근거와 트레이드오프,
+-- cascade·Storage 관련 주의는 전부 그쪽 주석에 있다 — 여기서 중복 설명하지 않는다.
 
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
@@ -533,6 +529,16 @@ language sql security definer set search_path = public as $$
   select p.author_id, count(distinct p.country_name)::int as country_count
   from public.posts p
   where p.author_id = any(ids)
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    -- ⚠️ 이 저장소의 집계 함수 5개(profile_country_counts / mate_suggestions_compute /
+    --    overlap_with / country_visitors / post_counts, 총 9개 서브쿼리)가 전부 같은
+    --    처지다. SECURITY DEFINER 함수는 소유자 권한으로 돌아 posts의 RLS 자체가 적용되지
+    --    않으므로, posts_select에 넣은 `deleted_at is null` 조건이 여기까지 오지 않는다.
+    --    RLS 우회는 이 함수들의 목적(공개 통계를 일관되게 내려면 필요하다)이라 없앨 수 없고,
+    --    대신 삭제 표식을 함수 본문에서 직접 걸러야 한다. 빠뜨리면 지운 글이 방문국 통계·
+    --    추천 점수·프로필 글 수에 영원히 남는다(purge 전까지가 아니라, 표식 행이 있는 한).
+    --    아래 4개 함수에는 같은 조건을 한 줄 주석으로만 달았다.
+    and p.deleted_at is null
     and p.country_name is not null and p.country_name <> ''
     and p.visibility <> 'private'
     -- 차단 관계는 집계에서 제외 — 차단당한 사용자에게 상대의 '이웃 전용' 기록 기준
@@ -1008,7 +1014,9 @@ language sql security definer set search_path = public as $$
            case when jsonb_typeof(p.data->'countries') = 'array'
                 then p.data->'countries' else '[]'::jsonb end as countries
     from public.posts p
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
   ),
   -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 countries 배열도 펼쳐
   -- 다국가 여행이 누락되지 않게 한다(예전엔 대표 국가 1개만 셌다).
@@ -1078,7 +1086,9 @@ language sql security definer set search_path = public as $$
   my_cities as (
     select distinct p.country_name as country, p.data->>'regionName' as city
     from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = me.uid and p.visibility <> 'private'
       and coalesce(p.data->>'regionName', '') <> ''
       and coalesce(p.country_name, '') <> ''
   ),
@@ -1222,7 +1232,9 @@ language sql security definer set search_path = public as $$
     select distinct p.author_id as cid, p.country_name as country, p.data->>'regionName' as city
     from public.posts p
     join my_cities mc on mc.country = p.country_name and mc.city = p.data->>'regionName'
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
       and p.author_id in (select cid from cand)
       and p.country_name not in (select name from ubiquitous_countries)
   ),
@@ -1406,7 +1418,9 @@ begin
   with me as (select auth.uid() as uid),
   my_countries as (
     select p.country_name from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = me.uid and p.visibility <> 'private'
       and p.country_name is not null and p.country_name <> ''
     union
     -- ⚠️ 상한 30 — 호출자가 넣은 배열이 그대로 비교 집합이 되므로, 전 세계 국가를 통째로
@@ -1416,7 +1430,9 @@ begin
   shared as (
     select distinct p.country_name
     from public.posts p, me
-    where p.author_id = target and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = target and p.visibility <> 'private'
       -- 차단 관계면 빈 결과 — mate_suggestions·country_visitors 와 같은 게이트를
       -- 이 함수만 빠뜨려, 나를 차단한 사람의 '이웃 전용' 기록 국가까지 캐낼 수 있었다.
       and not public.is_blocked_between(me.uid, target)
@@ -1435,7 +1451,10 @@ begin
     select s.country_name,
            (select count(distinct p2.author_id)
               from public.posts p2
-             where p2.visibility <> 'private'
+             -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+             -- (k-익명성 분모라 여기만 빠뜨리면 이름 공개 임계 판정이 실제보다 관대해진다)
+             where p2.deleted_at is null
+               and p2.visibility <> 'private'
                and p2.country_name = s.country_name) as visitors
     from shared s
   )
@@ -1458,7 +1477,9 @@ language sql security definer set search_path = public as $$
   v as (
     select p.author_id, count(*)::int as visit_posts
     from public.posts p, me
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
       and p.country_name = target_country
       and p.author_id <> me.uid
       -- 추천 노출 거부자는 목록에서 뺀다(mate_reco_optin 주석 — null은 통과)
@@ -1642,7 +1663,10 @@ returns table (user_id uuid, post_count int)
 language sql stable security definer set search_path = public as $$
   select u as user_id,
     (select count(*) from public.posts p
-      where p.author_id = u and p.visibility = 'neighbors')::int
+      -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+      -- (가장 눈에 띄는 증상 — 이게 없으면 프로필의 글 수가 실제보다 많게 보인다)
+      where p.deleted_at is null
+        and p.author_id = u and p.visibility = 'neighbors')::int
   from unnest(ids) as u;
 $$;
 grant execute on function public.post_counts(uuid[]) to authenticated;
