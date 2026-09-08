@@ -625,8 +625,10 @@ delete from public.mate_suggestions_cache;
 --
 -- 근거·트레이드오프·cascade·Storage 주의는 cron-setup.sql 의 2-b) 절 주석에 전부 있다.
 -- **cron-setup.sql 을 통째로 재실행해도 되고**(같은 이름의 잡은 덮어써지므로 안전),
--- 이 블록만 실행해도 된다. 확장 활성화(pg_cron)는 cron-setup.sql 이 이미 다루므로
--- 여기서는 그대로 두었다 — 이 프로젝트에는 이미 잡이 4개 돌고 있어 확장은 켜져 있다.
+-- 이 블록만 실행해도 된다.
+-- ⚠️ 확장 활성화를 여기서도 한다 — 처음엔 "잡 4개가 이미 돌고 있으니 켜져 있다"고
+--    가정했는데, 그건 **운영만**이었다. cron-setup.sql 을 돌린 적 없는 테스트(bqwmx…)에는
+--    pg_cron 이 없어 `schema "cron" does not exist`(3F000)로 실행 전체가 롤백됐다(실사고).
 --
 -- 요약: 매일 04:50 UTC, 표식이 찍힌 지 30일 지난 행을 실제로 지운다.
 --   · 30일보다 짧게: 그보다 오래 잠들어 있던 기기가 표식을 놓쳐 그 글이 영구히 남는다
@@ -634,6 +636,8 @@ delete from public.mate_suggestions_cache;
 --   · 이 delete 가 돌아야 post_likes·comments·notifications 의 cascade 가 비로소 돈다
 --   · Storage 파일은 이 purge 로 지워지지 않는다(별도 과제)
 -- ============================================================
+create extension if not exists pg_cron;
+
 select cron.schedule(
   'purge-deleted-posts',
   '50 4 * * *',
