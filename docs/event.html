@@ -37,7 +37,119 @@
   .axis{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:13px;color:var(--dim)}
   .axis .track{flex:1;height:6px;background:var(--line);border-radius:3px;position:relative}
   .axis .dot{position:absolute;top:-3px;width:12px;height:12px;border-radius:6px;background:var(--neon);transform:translateX(-50%)}
-  .hide{display:none}
+  .hide{display:none!important}
+
+  /* ── 결과 화면(#done) 전용 ── 다른 섹션의 .cta/.type/.consent 는 건드리지 않는다.
+     재질은 리퀴드 글래스다: 떠 있는 판이 뒤를 흐리게 머금고, 윗모서리에 빛이 얹히고,
+     아랫모서리는 어둡게 가라앉는다. backdrop-filter 는 뒤에 비칠 것이 있어야 보이므로
+     화면 뒤에 오로라를 한 겹 깐다 — 배경이 균일한 #0A0A0F 면 유리가 유리로 보이지 않는다.
+     맨 아래에 불투명 폴백을 둔다: 부스에는 별 폰이 다 온다. */
+
+  /* 유리가 머금을 대상. 결과 화면에서만 켜지고(섹션이 숨으면 ::before 도 같이 사라진다)
+     화면 전체를 덮으므로 터치는 반드시 통과시킨다. */
+  #done::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background:radial-gradient(60% 42% at 50% 4%,rgba(191,133,252,.30),transparent 70%),
+               radial-gradient(46% 34% at 10% 46%,rgba(107,33,168,.32),transparent 72%),
+               radial-gradient(54% 38% at 94% 78%,rgba(124,84,206,.24),transparent 70%)}
+
+  .brand{display:flex;justify-content:center;margin:0 0 22px}
+  .brand svg{width:96px;height:auto;display:block}
+
+  #done .notice{display:inline-block;margin:0 0 16px;padding:8px 14px;border-radius:999px;
+                font-size:13px;color:#EBD7FF;background:rgba(191,133,252,.16);
+                border:1px solid rgba(255,255,255,.16);
+                box-shadow:inset 0 1px 0 rgba(255,255,255,.28);
+                backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+
+  /* 유형과 축은 판 하나 위에 얹혀야 한 덩어리로 읽힌다 */
+  #done .hero{position:relative;overflow:hidden;padding:34px 22px 26px;border-radius:28px;
+    text-align:center;border:1px solid rgba(255,255,255,.14);
+    background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.03) 44%,rgba(255,255,255,.06));
+    backdrop-filter:blur(26px) saturate(155%);-webkit-backdrop-filter:blur(26px) saturate(155%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.32),
+               inset 0 -1px 0 rgba(0,0,0,.36),
+               0 26px 60px -26px rgba(0,0,0,.9)}
+  /* 위에서 들어온 빛 — 이게 있어야 유리에 방향이 생긴다 */
+  #done .hero::before{content:'';position:absolute;left:-18%;right:-18%;top:-76%;height:150%;
+    pointer-events:none;border-radius:50%;
+    background:radial-gradient(closest-side,rgba(255,255,255,.17),transparent)}
+  #done .hero::after{content:'';position:absolute;left:12%;right:12%;top:0;height:1px;
+    pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.8),transparent)}
+  #done .hero>*{position:relative}
+
+  #done .lead{margin:0;font-size:13px;letter-spacing:.14em;color:#B6B3C6}
+  #done .type{margin:12px 0 0;font-size:34px;line-height:1.25;font-weight:800;color:var(--neon);
+              text-shadow:0 4px 26px rgba(191,133,252,.42)}
+  @supports ((-webkit-background-clip:text) or (background-clip:text)){
+    #done .type{background:linear-gradient(96deg,#fff 0%,#EBD7FF 42%,var(--neon) 100%);
+                -webkit-background-clip:text;background-clip:text;
+                -webkit-text-fill-color:transparent;color:transparent}
+  }
+
+  #done .axes{margin-top:26px;padding-top:22px;border-top:1px solid rgba(255,255,255,.10);text-align:left}
+  #done .axis{display:grid;grid-template-columns:52px 1fr 52px;align-items:center;gap:12px;
+              margin:0 0 16px;font-size:12px;color:#807E92}
+  #done .axis:last-child{margin-bottom:0}
+  #done .axis .side{white-space:nowrap}
+  #done .axis .side:first-child{text-align:right}
+  #done .axis .side:last-child{text-align:left}
+  #done .axis .side.on{color:#fff;font-weight:700}
+  /* 트랙은 유리에 파인 홈이다 — 안쪽 그림자로 눌러 넣고, 아래 모서리에만 빛을 남긴다 */
+  #done .axis .track{position:relative;height:9px;border-radius:999px;background:rgba(0,0,0,.30);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.6),inset 0 -1px 0 rgba(255,255,255,.10)}
+  #done .axis .track::before{content:'';position:absolute;left:50%;top:-3px;width:1px;height:15px;
+                             background:rgba(255,255,255,.16)}
+  #done .axis .fill{position:absolute;top:0;height:100%;border-radius:999px;
+    background:linear-gradient(180deg,rgba(228,194,255,.95),rgba(191,133,252,.85));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.55),0 0 12px rgba(191,133,252,.45)}
+  /* 점은 유리 구슬 — 왼쪽 위에 하이라이트가 하나 앉는다 */
+  #done .axis .dot{position:absolute;top:-3.5px;width:16px;height:16px;border-radius:50%;
+    transform:translateX(-50%);
+    background:radial-gradient(circle at 32% 28%,#fff 0%,#E6CBFF 26%,var(--neon) 62%,#8B4FD1 100%);
+    box-shadow:0 1px 4px rgba(0,0,0,.65),0 0 0 3px rgba(191,133,252,.16)}
+
+  #done .callout{margin-top:20px;padding:18px;border-radius:22px;
+    border:1px solid rgba(255,255,255,.13);
+    background:linear-gradient(180deg,rgba(191,133,252,.16),rgba(255,255,255,.03));
+    backdrop-filter:blur(20px) saturate(150%);-webkit-backdrop-filter:blur(20px) saturate(150%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.26),
+               inset 0 -1px 0 rgba(0,0,0,.32),
+               0 18px 44px -26px rgba(0,0,0,.85)}
+
+  #done .note{margin:24px 0 0;font-size:14px;text-align:center}
+
+  /* 두 버튼은 같은 재질이다 — 앱의 나머지 화면(.cta)과도 같은 네온이다.
+     유리라고 흐려지면 부스에서 무엇을 눌러야 하는지가 흐려지므로, 채움은 진하게 두고
+     광택(위→아래)과 테두리 빛만 얹는다. 위계는 색이 아니라 "버튼이냐 아니냐"로 준다:
+     처음으로는 다음 참가자를 위한 초기화라 눌러야 할 둘과 같은 무게일 이유가 없다. */
+  #done .cta{position:relative;overflow:hidden;border-radius:16px;color:var(--bg);
+    background:linear-gradient(180deg,#D9B4FF 0%,var(--neon) 52%,#A868EE 100%);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.7),
+               inset 0 -1px 0 rgba(74,20,120,.45),
+               0 12px 28px -14px rgba(0,0,0,.9)}
+  #done .cta::after{content:'';position:absolute;left:0;right:0;top:0;height:46%;pointer-events:none;
+    border-radius:16px 16px 50% 50%/16px 16px 100% 100%;
+    background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,0))}
+  #done .cta:active{transform:translateY(1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),
+                    inset 0 -1px 0 rgba(74,20,120,.45),0 6px 16px -12px rgba(0,0,0,.9)}
+  #done #storeLink{margin-top:16px}
+
+  #done .restart{display:block;width:100%;margin-top:4px;padding:14px;border:0;background:none;
+                 font:inherit;font-size:14px;color:var(--dim);cursor:pointer;
+                 text-decoration:underline;text-underline-offset:4px;
+                 text-decoration-color:rgba(161,161,176,.45)}
+  #done .restart:hover{color:#fff;text-decoration-color:currentColor}
+  /* 부스는 공용 단말이라 키보드로 훑는 사람이 있다 — 초점이 어디인지 보이게 한다 */
+  #done .cta:focus-visible,#done .restart:focus-visible{outline:2px solid var(--neon);outline-offset:3px}
+
+  /* backdrop-filter 가 없는 브라우저 — 반투명 판이 오로라 위에서 씻겨 보이지 않도록
+     같은 결의 층을 불투명 카드 위에 다시 쌓는다(유리는 못 되어도 판으로는 읽힌다). */
+  @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+    #done .hero{background:linear-gradient(180deg,rgba(255,255,255,.11),rgba(255,255,255,.03) 44%,rgba(255,255,255,.06)),var(--card)}
+    #done .callout{background:linear-gradient(180deg,rgba(191,133,252,.16),rgba(255,255,255,.03)),var(--card)}
+    #done .notice{background:rgba(74,52,96,.9)}
+  }
 </style>
 </head>
 <body>
@@ -152,13 +264,52 @@
   </section>
 
   <section id="done" class="hide">
-    <p class="sub hide" id="notice" style="color:var(--neon)"></p>
-    <p class="sub">당신의 여행 유형은</p>
-    <div class="type" id="typeKo"></div>
-    <div id="axes"></div>
+    <!-- 부스에서 참가자가 결과를 남에게 보여주고 사진도 찍는 화면이다. 로고를 맨 위에 둬야
+         화면만 봐도 어디 서비스인지 남는다. 이미지 파일은 gh-pages 게시 목록(PUBLISHED_FILES)이
+         html/js/json만 복사하므로 쓸 수 없다 — src/components/EorthLogo.tsx 와 같은 경로를 인라인한다. -->
+    <div class="brand" role="img" aria-label="eOrth">
+      <svg viewBox="0 0 125 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="eorthP0" x1="43.7535" y1="16.5962" x2="43.7535" y2="40.7361" gradientUnits="userSpaceOnUse">
+            <stop offset="0.4" stop-color="#0B0A0E"/><stop offset="0.969631" stop-color="#FFFFFF"/>
+          </linearGradient>
+          <linearGradient id="eorthP1" x1="43.7535" y1="16.5962" x2="43.7535" y2="40.7361" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#794F99" stop-opacity="0"/><stop offset="1" stop-color="#FFFFFF"/>
+          </linearGradient>
+          <linearGradient id="eorthP2" x1="43.3765" y1="32.4379" x2="43.3765" y2="37.3413" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#000000" stop-opacity="0.25"/><stop offset="1" stop-color="#FFFFFF"/>
+          </linearGradient>
+          <linearGradient id="eorthP3" x1="43.3765" y1="29.4204" x2="43.3765" y2="38.0957" gradientUnits="userSpaceOnUse">
+            <stop offset="0.105769" stop-color="#794E99" stop-opacity="0"/><stop offset="1" stop-color="#FFFFFF"/>
+          </linearGradient>
+        </defs>
+        <path d="M72.3753 22.6226C72.7682 21.2476 73.5539 20.1812 74.7326 19.4235C75.9112 18.6658 77.2301 18.287 78.6894 18.287V26.0323C77.0898 25.7797 75.6306 26.0743 74.3116 26.9162C73.0207 27.7581 72.3753 29.1332 72.3753 31.0414V39.7549H65.3877V18.7079H72.3753V22.6226ZM96.7309 25.4008H92.3532V31.5045C92.3532 32.4305 92.6899 33.0058 93.3634 33.2303C94.0369 33.4548 95.1594 33.525 96.7309 33.4408V39.7549C92.5496 40.26 89.603 39.8812 87.8912 38.6183C86.2074 37.3275 85.3656 35.0123 85.3656 31.6728V25.4008H82.2085V18.7079H85.3656V14.9194L92.3532 12.8147V18.7079H96.7309V25.4008ZM114.609 18.1186C116.882 18.1186 118.734 18.9043 120.165 20.4758C121.625 22.0193 122.354 24.2503 122.354 27.1688V39.7549H115.367V28.0528C115.367 26.9583 115.072 26.1305 114.483 25.5692C113.921 25.008 113.164 24.7273 112.21 24.7273C111.115 24.7273 110.259 25.0641 109.642 25.7376C109.053 26.383 108.758 27.3231 108.758 28.5579V39.7549H101.77V10.2891H108.758V20.8126C110.021 19.0166 111.971 18.1186 114.609 18.1186Z" fill="#FFFFFF"/>
+        <path d="M43.8887 8.29883C48.5377 8.29883 52.5138 9.91157 55.7354 13.1309L56.0352 13.4326C59.0889 16.5738 60.62 20.4362 60.6201 24.9443V24.9531L60.6152 25.3691V25.3779C60.5167 29.8491 58.8854 33.6811 55.7363 36.8008C52.513 39.9937 48.5362 41.5918 43.8887 41.5918C39.3881 41.5918 35.504 40.0928 32.3096 37.0977L32.3018 37.0908L32.0098 36.8096L32.0039 36.8047L31.9951 36.7959C28.7729 33.5736 27.1582 29.5956 27.1582 24.9443C27.1583 20.2931 28.7738 16.3277 32 13.1318C35.2488 9.91339 39.2376 8.29884 43.8887 8.29883ZM43.8848 10.335C39.759 10.3359 36.2906 11.748 33.4336 14.5781L33.1699 14.8438C30.52 17.5929 29.1944 20.9445 29.1943 24.9443L29.1992 25.332L29.2109 25.7012C29.3743 29.4921 30.7782 32.6958 33.4307 35.3506L33.6924 35.6016C36.4098 38.1541 39.6672 39.4683 43.502 39.5508H43.501L43.8926 39.5537C48.0208 39.5528 51.4742 38.1534 54.3018 35.3525C57.1578 32.5231 58.583 29.0697 58.583 24.9443C58.5829 20.9481 57.2463 17.5962 54.5684 14.8447L54.2998 14.5762C51.5582 11.8347 48.2306 10.4247 44.2754 10.3389V10.3379L43.8848 10.335Z" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1.50874"/>
+        <path d="M8.25042 31.0442C8.95198 32.7561 10.5235 33.612 12.9649 33.612C14.4803 33.612 15.7572 33.1209 16.7955 32.1387L21.8468 35.6746C19.7701 38.2844 16.7534 39.5893 12.7966 39.5893C9.23261 39.5893 6.37022 38.551 4.2094 36.4744C2.07664 34.3697 1.01026 31.7177 1.01026 28.5186C1.01026 25.3475 2.0626 22.6956 4.1673 20.5628C6.272 18.4301 8.95198 17.3637 12.2073 17.3637C15.3503 17.3637 17.9461 18.4161 19.9946 20.5207C22.0432 22.6254 23.0675 25.2633 23.0675 28.4344C23.0675 29.3605 22.9693 30.2304 22.7728 31.0442H8.25042ZM8.16623 26.2034H16.2483C15.687 24.239 14.3681 23.2569 12.2914 23.2569C10.1306 23.2569 8.75554 24.239 8.16623 26.2034Z" fill="#FFFFFF"/>
+        <circle cx="43.7535" cy="28.6661" r="11.6928" fill="url(#eorthP0)" stroke="url(#eorthP1)" stroke-width="0.754372"/>
+        <circle cx="43.3765" cy="35.0782" r="5.09201" fill="url(#eorthP2)" stroke="url(#eorthP3)" stroke-width="1.13156"/>
+        <path d="M43.7533 9.80713C41.113 14.7105 39.9814 20.3683 39.9814 25.2718C39.9814 31.3067 41.7416 38.4733 43.7533 40.7364" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <path d="M44.5074 9.80713C47.4411 14.7711 48.2793 22.4079 48.2793 25.8445C48.2793 29.2811 47.022 38.4453 44.5074 40.7364" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <path d="M43.7536 9.80713C38.1066 12.8242 34.7012 17.7315 34.7012 26.4055C34.7012 35.0795 39.219 39.605 42.2309 40.7364" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <path d="M44.5081 9.80713C50.1551 12.8242 53.5605 18.5895 53.5605 25.8445C53.5605 33.0995 49.0427 39.605 46.0308 40.7364" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <line x1="44.2442" y1="9.05273" x2="44.2443" y2="40.7364" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <line x1="27.9121" y1="25.1581" x2="59.5957" y2="25.1581" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <line x1="29.4209" y1="31.1933" x2="58.087" y2="31.1932" stroke="#FFFFFF" stroke-width="0.980684"/>
+        <line x1="29.4209" y1="19.1234" x2="58.8414" y2="19.1234" stroke="#FFFFFF" stroke-width="0.980684"/>
+      </svg>
+    </div>
+
+    <p class="sub notice hide" id="notice"></p>
+
+    <div class="hero">
+      <p class="sub lead">당신의 여행 유형은</p>
+      <div class="type" id="typeKo"></div>
+      <div id="axes" class="axes"></div>
+    </div>
+
     <!-- 우리를 팔로우하지 않는 계정으로 보내는 DM은 상대의 '메시지 요청'함으로 들어가 묻힌다.
          참가자가 우리에게 먼저 한 통 보내두면 이후 발송이 답장이 되어 일반 수신함으로 도착한다. -->
-    <div class="consent" style="margin-top:20px">
+    <div class="consent callout">
       <b>결과를 확실히 받으려면 한 가지만 해주세요</b>
       <p class="sub" style="margin:8px 0 0;font-size:14px">
         <b class="igh" style="color:#fff"></b>으로 <b style="color:#fff">DM 한 통</b>만 먼저 보내주세요. 아무 말이나 괜찮아요.<br>
@@ -167,12 +318,13 @@
       <a class="cta" id="dmLink" target="_blank" rel="noopener"
          style="display:block;text-align:center;text-decoration:none;margin-top:14px"></a>
     </div>
-    <p class="sub" style="margin-top:20px">매칭 결과는 <b style="color:var(--neon)">오늘 안에</b> 인스타 DM으로 보내드려요.<br>
+
+    <p class="sub note">매칭 결과는 <b style="color:var(--neon)">오늘 안에</b> 인스타 DM으로 보내드려요.<br>
       일찍 참여하신 분께는 행사 중에, 그 뒤에 참여하신 분께는 행사가 끝나는 대로 보내드려요.<br>
       기다리는 동안 eOrth를 먼저 둘러보세요 🌍</p>
     <a class="cta" id="storeLink" style="display:block;text-align:center;text-decoration:none"
        href="https://apps.apple.com/app/id6778678243">eOrth 앱 보러가기</a>
-    <button class="cta" id="again" style="background:var(--card);color:#fff">처음으로</button>
+    <button class="restart" id="again">처음으로</button>
   </section>
 
 </div>
@@ -387,17 +539,26 @@ function finish(notice) {
     const row = document.createElement('div');
     row.className = 'axis';
 
+    // 50 이 중립. 기울어진 쪽 이름을 흰색으로 세우고, 중앙에서 점까지 막대를 채워
+    // "어느 쪽으로 얼마나" 를 점 위치만 보고 읽지 않아도 되게 한다.
+    const v = scores[a];
     const left = document.createElement('span');
+    left.className = v < 50 ? 'side on' : 'side';
     left.textContent = l.nounA;
 
     const track = document.createElement('span');
     track.className = 'track';
+    const fill = document.createElement('b');
+    fill.className = 'fill';
+    fill.style.left = `${Math.min(50, v)}%`;
+    fill.style.width = `${Math.abs(v - 50)}%`;
     const dot = document.createElement('i');
     dot.className = 'dot';
-    dot.style.left = `${scores[a]}%`;
-    track.appendChild(dot);
+    dot.style.left = `${v}%`;
+    track.append(fill, dot);
 
     const right = document.createElement('span');
+    right.className = v > 50 ? 'side on' : 'side';
     right.textContent = l.nounB;
 
     row.append(left, track, right);
