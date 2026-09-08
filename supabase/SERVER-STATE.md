@@ -80,7 +80,7 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준) + **⏳ 삭제 전파 후속 1건 (2026-09-08 추가, 미실행)**
+## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준)
 
 **남은 것은 아래 셋뿐이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
@@ -88,7 +88,7 @@
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
 
 **2026-09-08 삭제 전파 1차(tombstone 도입)는 같은 날 실행·확인 완료됐다 — 바로 아래 ✅.**
-**그 후속(집계 함수 5개 + purge cron)은 ⏳ 미실행이다 — 그 아래 절.**
+**그 후속(집계 함수 5개 + purge cron)도 2026-09-08 운영·테스트 양쪽 실행·확인 완료 — 그 아래 절.**
 
 ### ✅ 기기 간 삭제·수정 전파(tombstone) (2026-09-08 추가 · **2026-09-08 실행·확인 완료**)
 
@@ -151,7 +151,7 @@ select pg_get_triggerdef(oid) from pg_trigger
 운영 DB에서 직접 확인하지는 못했다.
 
 **tombstone 정리(purge)는 이 1차에서는 등록하지 않았다** — `schema.sql`에 주석으로만 있었다.
-**후속(아래 ⏳ 절)에서 `cron-setup.sql`에 `purge-deleted-posts` 잡으로 등록했다. 아직 실행 전이다.**
+**후속(아래 절)에서 `cron-setup.sql`에 `purge-deleted-posts` 잡으로 등록했고 양쪽 실행 완료됐다.**
 
 **본문은 표식과 동시에 지운다** — `deletePost`·`deleteAllMyPosts`가 `deleted_at`과 함께
 `data = {}` 로 갱신한다. 표식만 남기면 앱이 "되돌릴 수 없이 삭제"라고 안내한 글의 전문과
@@ -160,7 +160,13 @@ select pg_get_triggerdef(oid) from pg_trigger
 남는 것은 **Storage 파일**이다 — 개별 삭제는 앱이 로컬 기록에서 수집한 URL로 지우지만,
 "데이터 초기화"(`deleteAllMyPosts`)는 그 경로를 타지 않아 파일이 남는다. 별도 과제다.
 
-### ⏳ 집계 함수 tombstone 제외 5개 + purge cron 등록 (2026-09-08 추가) — **미실행**
+### ✅ 집계 함수 tombstone 제외 5개 + purge cron 등록 (2026-09-08 추가 · **같은 날 운영·테스트 양쪽 실행·확인 완료**)
+
+> 확인 쿼리 실측(사용자 실행): 함수 5개 전부 has_filter=true·필터 합계 9,
+> `purge-deleted-posts` 등록(50 4 * * *, active), `mate_suggestions` 래퍼 생존.
+> ⚠️ 첫 시도는 테스트에서 `schema "cron" does not exist`(3F000)로 전체 롤백 —
+> pg_cron 확장이 운영에만 켜져 있었다. 델타에 `create extension if not exists pg_cron;`을
+> 넣어 해소(5bf164a). **테스트 프로젝트에는 이제 pg_cron이 켜져 있고 purge 잡도 돈다.**
 
 > 위 ✅(tombstone 도입)의 **후속**이다. 발췌본:
 > `supabase/migration-2026-09-08-tombstone-aggregates.sql` (schema.sql·cron-setup.sql과 동일 내용).
