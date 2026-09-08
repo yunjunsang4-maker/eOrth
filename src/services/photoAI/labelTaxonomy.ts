@@ -3,7 +3,9 @@
  *
  * iOS VNClassifyImageRequest(약 1,300 라벨)와 Android ML Kit(약 400 라벨)의
  * 라벨 체계가 다르다. 양쪽 라벨을 여기서만 해석해 파리티 차이를 이 파일 하나에 격리한다.
- * 매칭은 소문자 contains — 'sunset', 'sunsets', 'sunset_sky' 모두 잡는다.
+ *
+ * 매칭은 **토큰 단위**다(부분 문자열이 아니다). 구분자를 쪼개고 단순 복수형만 벗겨
+ * 정확히 맞춘다 — 'sunset', 'sunsets', 'sunset_sky', 'Night Life' 모두 잡는다.
  */
 import type { ConceptScores, RecoConcept } from './recoTypes';
 
@@ -32,6 +34,12 @@ const KEYWORD_AFFINITY: [string, RecoConcept, number][] = [
   ['drink', 'food', 0.4], ['restaurant', 'food', 0.5], ['cafe', 'food', 0.45],
   ['fruit', 'food', 0.4], ['bread', 'food', 0.45], ['noodle', 'food', 0.5],
   ['sushi', 'food', 0.55], ['pizza', 'food', 0.5],
+  // ── 합성어 명시 ──
+  // 토큰 단위 매칭으로 바꾸면서(2026-09-06) 예전 부분 문자열 매칭이 우연히 잡아주던
+  // 합성어가 빠졌다. 유용했던 것만 골라 표에 되살린다. 'seafood'는 특히 중요한데,
+  // 예전에는 'sea'에 걸려 emotional까지 잘못 얻고 있었다 — 이제 food만 얻는다.
+  ['seafood', 'food', 0.55],
+  ['nightclub', 'hip', 0.5], ['cityscape', 'hip', 0.4],
   // ── info: 랜드마크·구조물·전시 ──
   ['landmark', 'info', 0.55], ['monument', 'info', 0.5], ['castle', 'info', 0.5],
   ['temple', 'info', 0.5], ['church', 'info', 0.45], ['cathedral', 'info', 0.45],
@@ -45,8 +53,55 @@ export const ZERO_CONCEPT_SCORES: ConceptScores = {
 };
 
 /**
+ * 키워드 → [컨셉, 가중치] 목록. 표를 한 번만 훑어 만든다(라벨마다 표 전체를 순회하지 않는다).
+ * 한 키워드가 여러 컨셉에 걸릴 수 있으므로 값이 배열이다.
+ */
+const KEYWORD_MAP = new Map<string, [RecoConcept, number][]>();
+/** 공백이 든 키워드(구 단위). 현재는 없지만 표를 넓힐 때 쓰인다. */
+const PHRASE_KEYWORDS: [string, RecoConcept, number][] = [];
+for (const [keyword, concept, weight] of KEYWORD_AFFINITY) {
+  if (keyword.includes(' ')) {
+    PHRASE_KEYWORDS.push([keyword, concept, weight]);
+    continue;
+  }
+  const list = KEYWORD_MAP.get(keyword);
+  if (list) list.push([concept, weight]);
+  else KEYWORD_MAP.set(keyword, [[concept, weight]]);
+}
+
+/** 라벨을 소문자 토큰으로 쪼갠다. 'Sunset_Sky' → ['sunset','sky'], 'Night Life' → ['night','life'] */
+function tokenize(label: string): string[] {
+  return label.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+/**
+ * 토큰의 매칭 후보 — 원형 + 단순 복수형 제거.
+ * 'sunsets'→'sunset', 'dishes'→'dish'. 'glass'는 -ss라 건드리지 않는다.
+ */
+function variants(token: string): string[] {
+  const out = [token];
+  if (token.length > 4 && token.endsWith('es')) out.push(token.slice(0, -2));
+  if (token.length > 3 && token.endsWith('s') && !token.endsWith('ss')) out.push(token.slice(0, -1));
+  return out;
+}
+
+/**
  * 원시 라벨 배열 → 컨셉 점수. 신뢰도 가중 누적, 컨셉당 상한 1.0.
  * 라벨이 없으면(구 네이티브·미지원) 전부 0 — 호출부는 다른 신호로만 판정한다.
+ *
+ * **토큰 단위로 맞춘다. 부분 문자열이 아니다.**
+ * 예전에는 `라벨.includes(키워드)`였는데, 짧은 키워드가 긴 단어 안에 박혀 오탐했다:
+ * 'cat'이 "cathedral"에, 'ride'가 "bride"에, 'sign'이 "design"에, 'bar'가 "barbecue"에,
+ * 'sea'가 "seafood"에 걸렸다(2026-09-06 발견, labelTaxonomy.verify.ts가 5건 모두 고정한다).
+ * 성당 사진이 '유쾌' 점수를 얻는 식이라 조용히 추천 품질을 갉아먹었다.
+ *
+ * 표 안에서 키워드가 겹칠 때 한 라벨이 여러 번 발화하던 문제도 함께 사라진다 —
+ * "skyline"이 'sky'와 'skyline' 양쪽에, "nightlife"가 'night'와 'nightlife' 양쪽에
+ * 걸려 이중 계상되고 있었다.
+ *
+ * 대신 예전 부분 매칭이 우연히 잡아주던 합성어는 **표에 명시**해야 한다 —
+ * 표를 넓힐 때 이 점을 잊지 말 것. 어떤 라벨이 버려지는지는
+ * `node node_modules/tsx/dist/cli.mjs scripts/reco-lab.ts`의 '라벨 해석률'이 보여준다.
  */
 export function conceptAffinityFromLabels(
   labels: { label: string; confidence: number }[] | undefined
@@ -56,10 +111,32 @@ export function conceptAffinityFromLabels(
 
   for (const { label, confidence } of labels) {
     if (!label || confidence <= 0) continue;
-    const lower = label.toLowerCase();
-    for (const [keyword, concept, weight] of KEYWORD_AFFINITY) {
-      if (lower.includes(keyword)) {
+    const tokens = tokenize(label);
+    if (tokens.length === 0) continue;
+
+    // 한 라벨 안에서 같은 키워드가 두 번 적용되지 않게 한다
+    // (원형과 복수형이 같이 잡히거나 같은 토큰이 반복되는 경우).
+    const applied = new Set<string>();
+    const add = (keyword: string, hits: [RecoConcept, number][]) => {
+      if (applied.has(keyword)) return;
+      applied.add(keyword);
+      for (const [concept, weight] of hits) {
         out[concept] = Math.min(1, out[concept] + weight * confidence);
+      }
+    };
+
+    for (const token of tokens) {
+      for (const v of variants(token)) {
+        const hits = KEYWORD_MAP.get(v);
+        if (hits) add(v, hits);
+      }
+    }
+
+    if (PHRASE_KEYWORDS.length > 0) {
+      // 토큰을 다시 이어 붙여 구 단위로 맞춘다. 양끝 공백으로 감싸 부분 일치를 막는다.
+      const padded = ` ${tokens.join(' ')} `;
+      for (const [keyword, concept, weight] of PHRASE_KEYWORDS) {
+        if (padded.includes(` ${keyword} `)) add(keyword, [[concept, weight]]);
       }
     }
   }

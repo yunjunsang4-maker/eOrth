@@ -301,6 +301,24 @@ alter table public.posts add column if not exists client_id text;
 create unique index if not exists uq_posts_author_client
   on public.posts (author_id, client_id) where client_id is not null;
 
+-- ── 삭제 표식(tombstone) — 기기 간 '삭제 전파'용 ──
+-- 왜 hard delete가 아닌가:
+--   행이 그냥 사라지면 클라이언트는 "작성자가 지웠다"와 "이번 조회가 부분 실패했다"를
+--   구분할 수 없다. 내 글 프로브(fetchMyPostIds)는 중간 페이지 실패 시 부분 목록을 돌려주고
+--   MAX_POSTS 상한도 있어 "목록에 없다"가 곧 "삭제됐다"가 아니다. 구분이 안 되면 로컬 기록을
+--   지워도 되는지 판정할 수 없어 삭제를 전파할 수 없다(그래서 A안은 삭제를 미뤘다).
+--   표식이 남으면 "명시적으로 지워진 글"만 골라 로컬에서 제거할 수 있다.
+alter table public.posts add column if not exists deleted_at timestamptz;
+-- 내 글 프로브는 (author_id, deleted_at)만 읽는다 — 커버링 인덱스로 본문 없이 끝나게 한다.
+create index if not exists idx_posts_author_deleted on public.posts (author_id, deleted_at);
+-- ⚠️ 위 trg_posts_updated 트리거가 update마다 updated_at을 갱신하므로,
+--    soft delete(deleted_at을 세팅하는 update)도 updated_at을 함께 올린다. **의도된 동작이다** —
+--    삭제도 하나의 변경이고, 다른 기기는 이 두 값을 같은 프로브에서 함께 읽어 판정한다.
+--
+-- tombstone 정리(purge)는 **cron-setup.sql의 `purge-deleted-posts` 잡**이 담당한다
+-- (매일 04:50 UTC, 30일 지난 표식을 hard delete). 기간을 정한 근거와 트레이드오프,
+-- cascade·Storage 관련 주의는 전부 그쪽 주석에 있다 — 여기서 중복 설명하지 않는다.
+
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);
@@ -341,13 +359,16 @@ create policy "posts_delete_own" on public.posts
 -- 컬럼 수준 권한으로 클라이언트가 실제로 갱신하는 컬럼만 허용한다.
 --   · 클라이언트 갱신 컬럼: updatePost(src/services/posts.ts) → visibility, view_type, country_name, data
 --     (client_id 는 현재 insert 에서만 쓰지만, 향후 재발행 보정 여지를 남겨 함께 허용)
+--   · deleted_at 은 deletePost(src/services/posts.ts)의 soft delete가 세팅한다. **이 목록에
+--     넣지 않으면 삭제가 권한 오류로 조용히 실패한다** — RLS(posts_update_own)를 통과해도
+--     컬럼 권한이 없으면 update 자체가 거부된다. 삭제 전파 전체가 여기에 달려 있다.
 --   · updated_at 은 트리거(set_updated_at)가 채운다 — 컬럼 권한은 'UPDATE 문이 명시한
 --     컬럼'에만 적용되므로 트리거 갱신에는 권한이 필요 없다.
 --   · likes_count/comments_count 는 sync_likes_count/sync_comments_count(security definer)가
 --     소유자 권한으로 갱신하므로 이 회수의 영향을 받지 않는다.
 -- insert/select/delete 권한은 건드리지 않는다(update 만 회수 후 컬럼 단위 재부여).
 revoke update on public.posts from authenticated;
-grant update (visibility, view_type, country_name, data, client_id)
+grant update (visibility, view_type, country_name, data, client_id, deleted_at)
   on public.posts to authenticated;
 
 -- ============================================================
@@ -508,6 +529,16 @@ language sql security definer set search_path = public as $$
   select p.author_id, count(distinct p.country_name)::int as country_count
   from public.posts p
   where p.author_id = any(ids)
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    -- ⚠️ 이 저장소의 집계 함수 5개(profile_country_counts / mate_suggestions_compute /
+    --    overlap_with / country_visitors / post_counts, 총 9개 서브쿼리)가 전부 같은
+    --    처지다. SECURITY DEFINER 함수는 소유자 권한으로 돌아 posts의 RLS 자체가 적용되지
+    --    않으므로, posts_select에 넣은 `deleted_at is null` 조건이 여기까지 오지 않는다.
+    --    RLS 우회는 이 함수들의 목적(공개 통계를 일관되게 내려면 필요하다)이라 없앨 수 없고,
+    --    대신 삭제 표식을 함수 본문에서 직접 걸러야 한다. 빠뜨리면 지운 글이 방문국 통계·
+    --    추천 점수·프로필 글 수에 영원히 남는다(purge 전까지가 아니라, 표식 행이 있는 한).
+    --    아래 4개 함수에는 같은 조건을 한 줄 주석으로만 달았다.
+    and p.deleted_at is null
     and p.country_name is not null and p.country_name <> ''
     and p.visibility <> 'private'
     -- 차단 관계는 집계에서 제외 — 차단당한 사용자에게 상대의 '이웃 전용' 기록 기준
@@ -983,7 +1014,9 @@ language sql security definer set search_path = public as $$
            case when jsonb_typeof(p.data->'countries') = 'array'
                 then p.data->'countries' else '[]'::jsonb end as countries
     from public.posts p
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
   ),
   -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 countries 배열도 펼쳐
   -- 다국가 여행이 누락되지 않게 한다(예전엔 대표 국가 1개만 셌다).
@@ -1053,7 +1086,9 @@ language sql security definer set search_path = public as $$
   my_cities as (
     select distinct p.country_name as country, p.data->>'regionName' as city
     from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = me.uid and p.visibility <> 'private'
       and coalesce(p.data->>'regionName', '') <> ''
       and coalesce(p.country_name, '') <> ''
   ),
@@ -1197,7 +1232,9 @@ language sql security definer set search_path = public as $$
     select distinct p.author_id as cid, p.country_name as country, p.data->>'regionName' as city
     from public.posts p
     join my_cities mc on mc.country = p.country_name and mc.city = p.data->>'regionName'
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
       and p.author_id in (select cid from cand)
       and p.country_name not in (select name from ubiquitous_countries)
   ),
@@ -1381,7 +1418,9 @@ begin
   with me as (select auth.uid() as uid),
   my_countries as (
     select p.country_name from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = me.uid and p.visibility <> 'private'
       and p.country_name is not null and p.country_name <> ''
     union
     -- ⚠️ 상한 30 — 호출자가 넣은 배열이 그대로 비교 집합이 되므로, 전 세계 국가를 통째로
@@ -1391,7 +1430,9 @@ begin
   shared as (
     select distinct p.country_name
     from public.posts p, me
-    where p.author_id = target and p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.author_id = target and p.visibility <> 'private'
       -- 차단 관계면 빈 결과 — mate_suggestions·country_visitors 와 같은 게이트를
       -- 이 함수만 빠뜨려, 나를 차단한 사람의 '이웃 전용' 기록 국가까지 캐낼 수 있었다.
       and not public.is_blocked_between(me.uid, target)
@@ -1410,7 +1451,10 @@ begin
     select s.country_name,
            (select count(distinct p2.author_id)
               from public.posts p2
-             where p2.visibility <> 'private'
+             -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+             -- (k-익명성 분모라 여기만 빠뜨리면 이름 공개 임계 판정이 실제보다 관대해진다)
+             where p2.deleted_at is null
+               and p2.visibility <> 'private'
                and p2.country_name = s.country_name) as visitors
     from shared s
   )
@@ -1433,7 +1477,9 @@ language sql security definer set search_path = public as $$
   v as (
     select p.author_id, count(*)::int as visit_posts
     from public.posts p, me
-    where p.visibility <> 'private'
+    -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+    where p.deleted_at is null
+      and p.visibility <> 'private'
       and p.country_name = target_country
       and p.author_id <> me.uid
       -- 추천 노출 거부자는 목록에서 뺀다(mate_reco_optin 주석 — null은 통과)
@@ -1462,10 +1508,22 @@ grant execute on function public.country_visitors(text, int) to authenticated;
 
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
+-- + 삭제표식(deleted_at)이 찍힌 글은 **남에게는 안 보인다. 단 작성자 본인은 볼 수 있다.**
+--
+-- ⚠️ 이 비대칭이 삭제 전파의 전제다. 양쪽 다 막으면(deleted_at is null 만 쓰면)
+--    작성자의 내 글 프로브(fetchMyPostIds)가 표식을 못 보고, 그러면 "지워졌다"와
+--    "이 페이지가 실패했다 / 상한 밖이다"를 구분할 수 없어 **삭제 전파가 원리적으로 불가능해진다.**
+--    반대로 조건을 아예 안 걸면(클라이언트 필터에만 의존) 필터가 없는 **구 앱 번들** 사용자에게
+--    지운 글이 무기한 노출되고, 그 글에 좋아요·댓글까지 달려 작성자에게 알림이 간다.
+--    tombstone purge 가 자동 실행이 아니라 노출 종료 시점도 없다 — 서버에서 막는 것이 유일한 방법이다.
+-- 부수 효과(의도된 것): 좋아요·댓글 insert 정책(likes_insert_own / comments_insert_own)이
+--    `exists (select 1 from public.posts …)` 로 이 정책을 그대로 타므로, 지운 글에 새 반응이
+--    달리는 경로도 함께 막힌다.
 drop policy if exists "posts_select" on public.posts;
 create policy "posts_select" on public.posts
   for select to authenticated using (
     not public.is_blocked_between(auth.uid(), posts.author_id)
+    and (deleted_at is null or author_id = auth.uid())
     and (
       author_id = auth.uid()
       or (visibility = 'neighbors' and public.are_neighbors(auth.uid(), posts.author_id))
@@ -1605,7 +1663,10 @@ returns table (user_id uuid, post_count int)
 language sql stable security definer set search_path = public as $$
   select u as user_id,
     (select count(*) from public.posts p
-      where p.author_id = u and p.visibility = 'neighbors')::int
+      -- 지운 글(tombstone) 제외 — security definer라 posts_select의 필터가 안 탄다.
+      -- (가장 눈에 띄는 증상 — 이게 없으면 프로필의 글 수가 실제보다 많게 보인다)
+      where p.deleted_at is null
+        and p.author_id = u and p.visibility = 'neighbors')::int
   from unnest(ids) as u;
 $$;
 grant execute on function public.post_counts(uuid[]) to authenticated;
@@ -2628,8 +2689,12 @@ exception when others then
 end; $$;
 
 drop trigger if exists trg_posts_invalidate_mate_cache on public.posts;
+-- ⚠️ `update of deleted_at` 이 필요하다 — 삭제가 hard delete 에서 **soft delete(UPDATE)** 로
+--    바뀌면서 `after insert or delete` 만으로는 글을 지워도 트리거가 안 뛰었다(추천 캐시가
+--    TTL 6시간 동안 지운 글을 계속 반영). 컬럼 목록을 붙였으므로 본문 수정(`data` 갱신)
+--    같은 일반 update 에는 발화하지 않는다 — 매 수정마다 캐시를 버리는 낭비를 피한다.
 create trigger trg_posts_invalidate_mate_cache
-  after insert or delete on public.posts
+  after insert or delete or update of deleted_at on public.posts
   for each row execute function public.invalidate_mate_cache();
 
 -- 설문을 마쳐도 캐시(TTL 6시간) 때문에 추천이 안 바뀌던 문제 — posts 외에 여기도 무효화한다.

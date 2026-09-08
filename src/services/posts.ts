@@ -13,6 +13,7 @@ import { uploadImage, uploadImages } from './media';
 import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageCompress';
 import type { TravelRecord } from '../store/recordStore';
 import type { ServerPostCounts } from '../utils/postCountSync';
+import type { ServerPostRef } from '../utils/mergeMyRecords';
 
 // 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
 const ALBUM_EDGE = 2048;
@@ -150,8 +151,27 @@ async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions):
   return copy;
 }
 
-// 게시물 발행 → 생성된 서버 id(uuid) 반환 (실패/미설정 시 null)
-export async function publishPost(rec: TravelRecord, opts?: PublishMediaOptions): Promise<string | null> {
+/** 발행 결과 — 서버 id와, 그 시점의 서버 `updated_at`(ms). */
+export interface PublishResult {
+  /** posts.id (서버 uuid) */
+  id: string;
+  /**
+   * 서버 updated_at(ms). 호출부가 로컬 레코드의 `serverUpdatedAt`에 심는다.
+   * 안 심으면 방금 내가 쓴 글이 매 동기화마다 "서버가 더 최신"으로 오판돼 본문을 다시 받는다.
+   * 회수 경로(23505 재시도)나 구 서버 폴백에서는 없을 수 있다.
+   */
+  updatedAt?: number;
+}
+
+/** ISO 타임스탬프 → ms. 없거나 파싱 실패면 undefined (NaN을 밖으로 흘리지 않는다) */
+const toMs = (v: unknown): number | undefined => {
+  if (typeof v !== 'string' || !v) return undefined;
+  const t = Date.parse(v);
+  return Number.isFinite(t) ? t : undefined;
+};
+
+// 게시물 발행 → 생성된 서버 id(uuid)+updated_at 반환 (실패/미설정 시 null)
+export async function publishPost(rec: TravelRecord, opts?: PublishMediaOptions): Promise<PublishResult | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
   if (!uid) return null;
@@ -168,39 +188,59 @@ export async function publishPost(rec: TravelRecord, opts?: PublishMediaOptions)
       // 멱등성 키 — 오프라인 재동기화·응답 유실 재시도가 중복 게시물을 만들지 않게
       client_id: rec.id,
     };
-    let { data, error } = await supabase.from('posts').insert(row).select('id').single();
+    // updated_at 도 함께 회수한다 — 호출부가 로컬 serverUpdatedAt 기준선을 심는다.
+    let { data, error } = await supabase.from('posts').insert(row).select('id, updated_at').single();
     if (error?.code === '23505') {
       // 이미 발행된 기록의 재시도(이전 응답 유실 등) → 기존 게시물 id를 회수해 연결
+      //
+      // ⚠️ 여기에 `.is('deleted_at', null)`을 걸면 안 된다. tombstone된 행의 client_id도
+      //    uq_posts_author_client에 그대로 잡혀 있어, 필터를 걸면 회수가 0건 → null →
+      //    **발행이 영구 실패**한다(같은 client_id로는 insert도 회수도 불가능해진다).
+      //    그렇다고 이 회수가 지운 글을 되살리지도 않는다 — insert가 거부됐으므로 서버의
+      //    deleted_at은 그대로고, 로컬 기록은 remoteId만 붙는다. 그 다음 프로브에서
+      //    classifyServerPosts가 표식을 보고 로컬에서 지운다. 즉 **부활시키지 않고
+      //    로컬 tombstone 경로에 맡긴다**가 현재 동작이다.
       const { data: existing } = await supabase
         .from('posts')
-        .select('id')
+        .select('id, updated_at')
         .eq('author_id', uid)
         .eq('client_id', rec.id)
         .maybeSingle();
-      return (existing?.id as string) ?? null;
+      return existing?.id ? { id: existing.id as string, updatedAt: toMs(existing.updated_at) } : null;
     }
     if (error && /client_id/.test(`${error.message} ${error.details ?? ''}`)) {
       // 서버 스키마에 client_id 컬럼이 아직 없음(마이그레이션 전) → 키 없이 재시도(구 동작)
       ({ data, error } = await supabase
         .from('posts')
         .insert({ ...row, client_id: undefined })
-        .select('id')
+        .select('id, updated_at')
         .single());
     }
     if (error || !data) return null;
-    return data.id as string;
+    return { id: data.id as string, updatedAt: toMs(data.updated_at) };
   } catch {
     return null;
   }
 }
 
-// 게시물 수정 — 성공 여부 반환 (원본 재백업 스윕 등에서 사용)
-export async function updatePost(remoteId: string, rec: TravelRecord, opts?: PublishMediaOptions): Promise<boolean> {
-  if (!supabase || !remoteId) return false;
+/**
+ * 게시물 수정.
+ *
+ * @returns 서버 `updated_at`(ms) — 호출부가 로컬 `serverUpdatedAt`에 심는다.
+ *          `null`이면 **실패**(기존 `false`와 같은 자리 — 호출부의 진위 검사는 그대로 동작).
+ *          `-1`은 "갱신은 성공했는데 타임스탬프를 못 읽었다" — 성공으로 다뤄야 하므로
+ *          truthy 값이어야 하고, 기준선은 심지 않는다(로컬 시계로 심으면 시계가 앞선 기기에서
+ *          그 사이 다른 기기가 한 수정을 영영 못 본다).
+ *
+ * 왜 updated_at을 돌려주는가: 안 심으면 내가 방금 고친 글이 다음 동기화마다
+ * "서버가 더 최신"으로 잡혀 본문(data JSONB)을 통째로 다시 받는다(이그레스 낭비).
+ */
+export async function updatePost(remoteId: string, rec: TravelRecord, opts?: PublishMediaOptions): Promise<number | null> {
+  if (!supabase || !remoteId) return null;
   // 업로드 실패는 throw로 전파 (publishPost와 동일 — 깨진 로컬 경로로 갱신 방지)
   const uploaded = await withUploadedMedia(rec, opts);
   try {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('posts')
       .update({
         visibility: rec.visibility ?? 'neighbors',
@@ -208,20 +248,44 @@ export async function updatePost(remoteId: string, rec: TravelRecord, opts?: Pub
         country_name: rec.countryName ?? null,
         data: uploaded,
       })
-      .eq('id', remoteId);
-    return !error;
+      .eq('id', remoteId)
+      .select('updated_at')
+      .maybeSingle();
+    if (error) return null;
+    return toMs(data?.updated_at) ?? -1;
   } catch {
-    return false;
+    return null;
   }
 }
 
-// 게시물 삭제 — 성공 여부 반환(호출부가 성공했을 때만 Storage 사진을 지우도록).
+// 게시물 삭제 — soft delete(삭제표식). 성공 여부 반환(호출부가 성공했을 때만 Storage 사진을 지우도록).
 // 실패를 throw하지 않는 기존 계약은 유지한다(호출부의 .catch는 그대로 동작).
+//
+// 왜 행을 지우지 않는가: 행이 사라지면 다른 기기가 "지워졌다"와 "이번 조회가 부분 실패했다"를
+// 구분할 수 없어 로컬 기록을 지워도 되는지 판정할 수 없다(supabase/schema.sql posts 섹션 참조).
+// 표식을 남기면 그 기기가 다음 프로브에서 명시적 삭제를 보고 로컬에서도 지운다.
+// ⚠️ 표식만 남은 행은 모든 읽기 경로가 `.is('deleted_at', null)`로 걸러낸다 — 하나라도 빠지면
+//    지운 글이 남의 피드에 되살아난다.
 export async function deletePost(remoteId: string): Promise<boolean> {
   if (!supabase || !remoteId) return false;
   try {
-    const { error } = await supabase.from('posts').delete().eq('id', remoteId);
-    return !error;
+    const { error } = await supabase
+      .from('posts')
+      // ⚠️ 본문(data)도 함께 비운다. 표식만 남기면 삭제한 글의 전문·사진 URL이 purge를 걸기
+      //    전까지 서버에 무기한 남는데, 앱은 "되돌릴 수 없이 삭제"라고 안내한다. 다른 기기는
+      //    표식만 보고 지우므로 본문은 필요 없다. (Storage 파일 정리는 호출부가 로컬 기록에서
+      //    수집한 URL로 따로 한다 — recordStore.deleteRecord 참조)
+      .update({ deleted_at: new Date().toISOString(), data: {} })
+      .eq('id', remoteId);
+    if (!error) return true;
+    // deleted_at 컬럼이 아직 없는 서버(마이그레이션 전) → 구 동작(hard delete)으로 폴백.
+    // ⚠️ **오류 메시지에 deleted_at이 있을 때만** 폴백한다. 모든 오류를 삼키면 RLS 거부·권한
+    //    오류까지 hard delete로 이어져, 고쳐야 할 문제가 조용히 가려진다.
+    if (/deleted_at/.test(`${error.message} ${error.details ?? ''}`)) {
+      const { error: hardErr } = await supabase.from('posts').delete().eq('id', remoteId);
+      return !hardErr;
+    }
+    return false;
   } catch {
     return false; // 네트워크 실패 등 — 서버 게시물이 남아 있으므로 사진도 지우면 안 된다
   }
@@ -238,6 +302,10 @@ function mapRowToRecord(row: any): TravelRecord {
     authorId: row.author_id,
     isMyPost: false,
     liked: false, // 작성자가 직렬화한 liked 값이 뷰어에게 새어나오지 않게 기본 false — 호출부가 내 좋아요로 덧씌움
+    // 이 사본이 맞춰진 서버 버전. **반드시 행(row)의 값으로 덮는다** — data(JSONB) 안에도
+    // 발행 당시의 옛 serverUpdatedAt이 직렬화돼 있어서, 스프레드만 두면 그 낡은 값이 남아
+    // 수정 전파 판정이 영구히 틀어진다.
+    serverUpdatedAt: toMs(row.updated_at),
     likes: row.likes_count ?? rec.likes ?? 0,
     comments: row.comments_count ?? rec.comments ?? 0,
     timestamp: rec.timestamp ?? new Date(row.created_at).getTime(),
@@ -255,7 +323,15 @@ function mapRowToRecord(row: any): TravelRecord {
 // 직접 임베드하면 타인 작성자 정보가 null이 된다. 별칭 'profiles'로 응답 키를 유지한다.
 // ⚠️ FK 힌트(!posts_author_id_fkey) 필수 — 힌트 없이 뷰를 임베드하면 PostgREST가
 //    관계 후보를 여러 개 찾아 PGRST201(모호) 오류를 낸다 (실서버 확인됨).
-const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles:public_profiles!posts_author_id_fkey(handle, emoji, profile_photo, handle_font)';
+// updated_at 을 함께 받는다 — 받은 사본의 '서버 버전 기준선'(TravelRecord.serverUpdatedAt)이 된다.
+// 숫자 컬럼 하나라 응답 크기 영향은 없다.
+const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, updated_at, profiles:public_profiles!posts_author_id_fkey(handle, emoji, profile_photo, handle_font)';
+
+// 삭제표식(tombstone) 제외 — 아래 읽기 경로 전부에 `.is('deleted_at', null)`이 붙어 있다:
+//   fetchFeed / fetchFeedSnaps / fetchMyPosts / fetchPostsByIds / fetchPostById /
+//   fetchPostStatsFor / fetchUserPosts
+// ⚠️ 한 군데라도 빠지면 지운 글이 남의 피드·프로필·딥링크에 되살아난다.
+//    유일한 예외는 fetchMyPostIds다 — 그쪽은 표식을 **봐야** 삭제를 전파할 수 있다.
 
 // ─── 피드 조회 (커서 페이지네이션) ───
 //
@@ -300,6 +376,7 @@ export async function fetchFeed(cursor?: FeedCursor | null, limit = FEED_PAGE_SI
     let query = supabase
       .from('posts')
       .select(POST_SELECT)
+      .is('deleted_at', null) // 삭제표식 제외
       .or(TIMELINE_VIEW_TYPES)
       .order('created_at', { ascending: false })
       // created_at 동률에서도 페이지 순서가 흔들리지 않게 id를 2차 정렬키로 둔다
@@ -337,6 +414,7 @@ export async function fetchFeedSnaps(limit = 50): Promise<TravelRecord[] | null>
     let query = supabase
       .from('posts')
       .select(POST_SELECT)
+      .is('deleted_at', null) // 삭제표식 제외
       .eq('view_type', 'snap')
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -351,14 +429,33 @@ export async function fetchFeedSnaps(limit = 50): Promise<TravelRecord[] | null>
 
 // 내 게시물 전체 삭제 — 설정 > 데이터 초기화용. 성공 여부 반환(실패 시 호출부가 초기화를 중단).
 // 서버를 안 지우면 타인 피드에 글이 계속 노출되고, 다음 복원(hydrateMyPosts)이 서버 사본을
-// 다시 내려받아 로컬 초기화가 무효가 된다. (post_likes·comments는 FK cascade로 함께 정리)
+// 다시 내려받아 로컬 초기화가 무효가 된다.
+//
+// 단건 삭제와 같은 **soft delete**다. 처음에는 "계정 글 전부 없애기라 표식을 남길 이유가 없다"고
+// hard delete로 뒀는데, 삭제 전파가 생긴 뒤로는 그 판단이 뒤집힌다 — 표식이 없으면
+// `classifyServerPosts`가 볼 것이 없어 **"되돌릴 수 없이 삭제"한 기록이 다른 기기에는 통째로
+// 남는다.** 글 1건 삭제는 전파되는데 전체 초기화만 안 되는 정책 불일치이기도 하다.
+// (기존 post_likes·comments는 FK cascade가 안 도므로 서버에 남지만, 글이 모든 읽기 경로에서
+//  걸러지므로 노출되지 않는다. 완전 제거는 계정 삭제(delete-account Edge Function)의 몫이다.)
 export async function deleteAllMyPosts(): Promise<boolean> {
   if (!supabase) return true; // 로컬 모드: 지울 서버 게시물 없음
   const uid = await getMyUserId();
   if (!uid) return true; // 비로그인: 서버 게시물 없음
   try {
-    const { error } = await supabase.from('posts').delete().eq('author_id', uid);
-    return !error;
+    const { error } = await supabase
+      .from('posts')
+      // deletePost와 같은 이유로 본문도 비운다 — "데이터 초기화"는 되돌릴 수 없다고 안내한다.
+      .update({ deleted_at: new Date().toISOString(), data: {} })
+      .eq('author_id', uid)
+      .is('deleted_at', null); // 이미 지운 글의 표식 시각을 덮어쓰지 않는다(purge 기준일이 밀린다)
+    if (!error) return true;
+    // deleted_at 컬럼이 없는 구 서버 → 구 동작(hard delete)으로 폴백. deletePost와 같은 규칙 —
+    // **오류 메시지에 deleted_at이 있을 때만** 폴백한다(권한·RLS 오류를 가리지 않게).
+    if (/deleted_at/.test(`${error.message} ${error.details ?? ''}`)) {
+      const { error: hardErr } = await supabase.from('posts').delete().eq('author_id', uid);
+      return !hardErr;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -381,6 +478,7 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
         .from('posts')
         .select(POST_SELECT)
         .eq('author_id', uid)
+        .is('deleted_at', null) // 삭제표식 제외 — 다른 기기에서 지운 글을 복원하지 않는다
         // created_at 동률에서도 페이지 경계가 흔들리지 않게 id를 2차 정렬키로 둔다
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
@@ -409,6 +507,137 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
   }
 }
 
+// ─── 내 글 id 프로브 + 부족분만 받기 (기기 간 동기화) ───
+//
+// 왜 전량(fetchMyPosts)이 아니라 두 단계인가:
+//   POST_SELECT는 data(JSONB) 전체 — 블로그 본문·사진 URL·최대 100장 medias — 를 실어온다.
+//   포그라운드 복귀마다 전량을 받으면 이그레스를 그대로 태운다. 정상 상태(빠진 글 없음)에서는
+//   uuid 목록 한 번으로 끝나야 하고, 실제로 빠진 글이 있을 때만 그 id들의 본문을 받는다.
+//
+// ⚠️ 기기 시계 기반 워터마크(created_at > lastSyncAt)는 쓰지 않는다. 이 저장소에서 실제
+//    사고가 있었다 — 기기 시계가 미래로 튀면 그 뒤에 쓴 글이 영영 유실된다. id 집합 비교는
+//    시계에 의존하지 않는다.
+
+/**
+ * 내 글의 서버 id + client_id + updated_at + deleted_at 조회 —
+ * 본문(data)을 받지 않아 응답이 uuid 몇 개 크기다.
+ *
+ * · `client_id` — 발행 orphan 대조용. `classifyServerPosts`(utils/mergeMyRecords.ts) 주석 참조.
+ * · `updated_at` — 다른 기기에서 **수정**됐는지 판정. 로컬 `serverUpdatedAt`보다 크면 본문을 다시 받는다.
+ * · `deleted_at` — 다른 기기에서 **삭제**됐는지 판정. 여기에만 삭제표식 필터를 걸지 않는다
+ *   (표식을 봐야 로컬에서도 지울 수 있다).
+ * 전부 스칼라 컬럼이라 응답 크기는 사실상 그대로다.
+ *
+ * ⚠️ 실패는 반드시 null 로 구분한다(빈 배열 아님 — fetchFeed와 같은 계약).
+ *    빈 배열로 돌려주면 호출부가 "서버에 내 글이 하나도 없다"로 오해한다.
+ */
+export async function fetchMyPostIds(): Promise<ServerPostRef[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  // ── 구 서버(마이그레이션 전) 폴백 단계 ──
+  // 없는 컬럼을 select하면 쿼리 자체가 실패해 **프로브가 영구히 null**(= 동기화 전면 사망)이 된다.
+  // publishPost가 쓰는 폴백과 같은 방식으로, 오류가 지목한 컬럼만 떼어내고 다시 시도한다.
+  //   1단계 탈락(deleted_at/updated_at 없음) → **삭제·수정 전파가 꺼진다**(글 추가만 동작, A안 수준).
+  //   2단계 탈락(client_id 없음)            → 발행 orphan 방어까지 꺼진다.
+  // 열화일 뿐 사고는 아니지만, "안 되는데요"의 1순위 원인이므로 여기서만 조용히 넘어간다.
+  let columns = 'id, client_id, updated_at, deleted_at';
+  const degrade = (msg: string): boolean => {
+    if (columns.includes('deleted_at') && /deleted_at|updated_at/.test(msg)) {
+      columns = 'id, client_id';
+      return true;
+    }
+    if (columns.includes('client_id') && /client_id/.test(msg)) {
+      columns = 'id';
+      return true;
+    }
+    return false;
+  };
+  try {
+    const PAGE = 200;
+    const MAX_POSTS = 2000; // 안전 상한 — 비정상 응답으로 루프가 무한정 도는 것을 막는다
+    const out: ServerPostRef[] = [];
+    const seen = new Set<string>(); // created_at 동률로 페이지 경계가 겹칠 때의 중복 제거
+    for (let from = 0; from < MAX_POSTS; from += PAGE) {
+      // fetchMyPosts와 같은 페이징 규격 — 두 경로가 보는 '내 글'의 범위가 어긋나면
+      // 프로브가 빠진 글을 계속 보고하거나(무한 요청) 영영 놓친다.
+      const page = async () =>
+        supabase!
+          .from('posts')
+          .select(columns)
+          .eq('author_id', uid)
+          // created_at 동률에서도 페이지 경계가 흔들리지 않게 id를 2차 정렬키로 둔다
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, from + PAGE - 1);
+      let { data, error } = await page();
+      // 컬럼이 없어서 실패한 것이면 한 단계씩 떼어내며 재시도한다(이후 페이지도 그 컬럼 집합으로).
+      while (error && degrade(`${error.message} ${error.details ?? ''}`)) {
+        ({ data, error } = await page());
+      }
+      if (error) {
+        if (from === 0) return null; // 첫 페이지부터 실패 — 실패는 null
+        break;                       // 중간 실패는 받은 것까지만(부분 목록)
+      }
+      if (!data || data.length === 0) break;
+      for (const row of data as any[]) {
+        const id = row?.id as string | undefined;
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push({
+          id,
+          clientId: (row?.client_id as string | null | undefined) ?? null,
+          updatedAt: toMs(row?.updated_at) ?? null,
+          deletedAt: toMs(row?.deleted_at) ?? null,
+        });
+      }
+      if (data.length < PAGE) break; // 마지막 페이지
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 주어진 서버 id들의 게시물 본문을 받아 내 글(TravelRecord)로 변환한다 — fetchMyPostIds의 짝.
+ *
+ * 실패한 청크는 건너뛰고 받은 것만 반환한다(빈 배열도 정상 반환값). 호출부는 이 결과를
+ * mergeMyRecords로 병합하므로 부분 결과가 로컬을 훼손하지 않고, 못 받은 것은 다음 동기화에서
+ * 다시 '빠진 글'로 잡힌다.
+ */
+export async function fetchPostsByIds(ids: string[]): Promise<TravelRecord[]> {
+  if (!supabase || ids.length === 0) return [];
+  // ⚠️ author 검증은 쿼리에 넣는다(fetchMyPosts와 같은 방식). 결과에 무조건 isMyPost:true를
+  //    붙이므로, 호출부가 실수로 남의 글 id를 넘기면 남의 글이 '내 글'로 로컬에 박히고
+  //    되돌리기 어렵다(백업·재발행 경로까지 오염). 구조적으로 막는다.
+  const uid = await getMyUserId();
+  if (!uid) return [];
+  try {
+    // 200개 단위 청크 — 대량 id를 .in() 하나로 보내면 URL 길이 한도에 걸린다(fetchMyLikesFor와 동일 규격)
+    const CHUNK = 200;
+    const rows: any[] = [];
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await supabase
+        .from('posts')
+        .select(POST_SELECT)
+        .eq('author_id', uid)
+        .is('deleted_at', null) // 삭제표식 제외 — 지운 글의 본문을 다시 받아 되살리지 않는다
+        .in('id', ids.slice(i, i + CHUNK));
+      if (error || !data) continue; // 실패 청크는 건너뛴다 — 다음 동기화에서 다시 잡힌다
+      rows.push(...(data as any[]));
+    }
+    const mine = rows.map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
+    // 내 좋아요 상태 복원 — mapRowToRecord가 liked:false 기본이라 그냥 두면 재다운로드한 글의
+    // 하트가 전부 꺼진 채 들어온다 (fetchMyPosts와 같은 처리).
+    const { fetchMyLikesFor } = await import('./social');
+    const likedSet = await fetchMyLikesFor(mine.map((r) => r.remoteId).filter(Boolean) as string[]);
+    return mine.map((r) => (r.remoteId && likedSet.has(r.remoteId) ? { ...r, liked: true } : r));
+  } catch {
+    return [];
+  }
+}
+
 // 단일 게시물 조회 — 딥링크(eorth://post/<id>)·DM 링크로 진입 시 스토어에 없는 글의 폴백용.
 // id가 서버 uuid가 아니면(발신자 로컬 id 등) 조회가 실패하며 null을 반환한다.
 export async function fetchPostById(postId: string): Promise<TravelRecord | null> {
@@ -418,6 +647,7 @@ export async function fetchPostById(postId: string): Promise<TravelRecord | null
       .from('posts')
       .select(POST_SELECT)
       .eq('id', postId)
+      .is('deleted_at', null) // 삭제표식 제외 — 지운 글의 딥링크는 '없는 글'이어야 한다
       .maybeSingle();
     if (error || !data) return null;
     const rec = mapRowToRecord(data);
@@ -455,6 +685,7 @@ export async function fetchPostStatsFor(postIds: string[]): Promise<Map<string, 
       const { data, error } = await supabase
         .from('posts')
         .select('id, likes_count, comments_count')
+        .is('deleted_at', null) // 삭제표식 제외
         .in('id', postIds.slice(i, i + CHUNK));
       if (error) {
         // 첫 청크부터 실패 = 조회 자체 실패 → null(로컬 유지). 중간 실패는 받은 만큼만 반영한다
@@ -486,6 +717,7 @@ export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
       .from('posts')
       .select(POST_SELECT)
       .eq('author_id', userId)
+      .is('deleted_at', null) // 삭제표식 제외
       .eq('visibility', 'neighbors')
       .order('created_at', { ascending: false })
       .limit(100);
