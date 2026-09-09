@@ -22,8 +22,8 @@ export interface DnaQuestion {
 export const DNA_QUESTIONS: DnaQuestion[] = [
   // ① 계획 ↔ 즉흥
   { id: 1, axis: 'plan', weight: 2,
-    ko: { s: '여행 3일 전, 내 상태는', a: '시간표까지 짜여 있다', b: '항공권만 끊어놨다' },
-    en: { s: 'Three days before the trip', a: 'My schedule is planned by the hour', b: 'I only booked the flight' } },
+    ko: { s: '여행 3일 전, 내 상태는', a: '시간표까지 짜여 있다', b: '항공이랑 숙박만 예약함' },
+    en: { s: 'Three days before the trip', a: 'My schedule is planned by the hour', b: 'Just the flight and a room booked' } },
   { id: 2, axis: 'plan', weight: 1,
     ko: { s: '아침에 일어났더니 비가 온다', a: '계획대로 진행한다', b: '나갈 때 우산 챙겨야겠다는 생각만 한다' },
     en: { s: 'You wake up and it is raining', a: 'Stick to the plan', b: 'Just remember to grab an umbrella' } },
@@ -124,8 +124,8 @@ export const DNA_QUESTIONS: DnaQuestion[] = [
 
   // ⑦ 혼자 ↔ 함께
   { id: 31, axis: 'company', weight: 2,
-    ko: { s: '내 여행 동행자는', a: '길 잘못 들어도 눈치 안 보이는 혼자', b: '안 맞을 순 있어도 둘 이상' },
-    en: { s: 'Who I travel with', a: 'Alone — no one to apologize to', b: 'Two or more, friction and all' } },
+    ko: { s: '여행중 처음 보이는 사람이 말을 걸었다', a: 'Sorry,하고 지나간다', b: '프리토킹을 시작한다' },
+    en: { s: 'A stranger talks to me on a trip', a: 'A quick sorry and I move on', b: 'I start chatting away' } },
   { id: 32, axis: 'company', weight: 2,
     ko: { s: '여행지의 저녁 시간', a: '숙소에서 혼자 하루 정리', b: '누구든 붙잡고 한잔' },
     en: { s: 'Evenings on a trip', a: 'Alone at the room, winding down', b: 'A drink with whoever is around' } },

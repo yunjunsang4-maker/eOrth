@@ -10,8 +10,8 @@ var DNA_QUESTIONS = [
     id: 1,
     axis: "plan",
     weight: 2,
-    ko: { s: "여행 3일 전, 내 상태는", a: "시간표까지 짜여 있다", b: "항공권만 끊어놨다" },
-    en: { s: "Three days before the trip", a: "My schedule is planned by the hour", b: "I only booked the flight" }
+    ko: { s: "여행 3일 전, 내 상태는", a: "시간표까지 짜여 있다", b: "항공이랑 숙박만 예약함" },
+    en: { s: "Three days before the trip", a: "My schedule is planned by the hour", b: "Just the flight and a room booked" }
   },
   {
     id: 2,
@@ -226,8 +226,8 @@ var DNA_QUESTIONS = [
     id: 31,
     axis: "company",
     weight: 2,
-    ko: { s: "내 여행 동행자는", a: "길 잘못 들어도 눈치 안 보이는 혼자", b: "안 맞을 순 있어도 둘 이상" },
-    en: { s: "Who I travel with", a: "Alone — no one to apologize to", b: "Two or more, friction and all" }
+    ko: { s: "여행중 처음 보이는 사람이 말을 걸었다", a: "Sorry,하고 지나간다", b: "프리토킹을 시작한다" },
+    en: { s: "A stranger talks to me on a trip", a: "A quick sorry and I move on", b: "I start chatting away" }
   },
   {
     id: 32,
