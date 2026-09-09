@@ -11,14 +11,9 @@ import {
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
-import { select, tap } from '../utils/haptics';
+import { tap } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
-import Svg, {
-  Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
-  Stop as SvgStop,
-  Rect as SvgRect,
-} from 'react-native-svg';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { Colors, Typography, Spacing } from '../constants';
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
@@ -31,10 +26,10 @@ import {
 } from './introVisuals';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useStageWidth } from '../utils/stage';
-import { andFitText } from '../utils/fitText';
 
 // 온보딩 5단계 — 시안(iPhone 17 - 64~68.svg) 순서 그대로. 비주얼은 introVisuals에 페이지별 분리.
 // Visual에 active를 내려 영상 비주얼(5페이지)이 활성 시점에 처음부터 재생되게 함
+// 이동 수단: 하단 좌우 화살표 탭 + 2초 자동 넘김 + 오른쪽 플링(뒤로). 하단 버튼은 없앴다.
 const SLIDES: {
   id: string;
   Visual: React.ComponentType<{ active?: boolean }>;
@@ -85,6 +80,25 @@ function PageDot({ active }: { active: boolean }) {
   );
 }
 
+// 하단 이동 화살표의 셰브론 — react-native-svg Path로 그린다(이모지·텍스트 화살표 금지).
+// Svg는 새 아키텍처에서 pointerEvents="none"을 무시하므로 View로 감싸 터치가
+// 바깥 Pressable로 가게 한다(오버레이 SVG 터치 삼킴 함정과 같은 회피책).
+function ChevronGlyph({ dir, color }: { dir: 'left' | 'right'; color: string }) {
+  return (
+    <View pointerEvents="none">
+      <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+        <SvgPath
+          d={dir === 'left' ? 'M15 5L8 12L15 19' : 'M9 5L16 12L9 19'}
+          stroke={color}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </View>
+  );
+}
+
 // 텍스트 블록 — 페이지 활성화 시 step 라벨→타이틀→서브타이틀이 순서대로 올라오며 페이드인.
 // 비활성화되면 리셋해 뒤로 갔다 재진입해도 다시 연출된다.
 function SlideTextBlock({ active, stepNo, titleKey, subtitleKey }: { active: boolean; stepNo: number; titleKey: string; subtitleKey: string }) {
@@ -124,63 +138,85 @@ export default function AppIntroScreen({ navigation }: Props) {
   // 슬라이드 폭이 getItemLayout의 length/offset에 그대로 들어간다 — 박제하면
   // 폴드 펼침 시 페이지가 어긋난다.
   const SW = useStageWidth();
-  const BTN_W = SW - 68; // 다음 버튼 폭 = Stage 폭 - 좌우 패딩(40) - 버튼 마진(28)
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const [activeIdx, setActiveIdx] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const isLast = activeIdx === SLIDES.length - 1;
+
+  // 자동 넘김을 계속할지 — 사용자가 한 번이라도 "뒤로" 이동하면 false로 꺼진다.
+  // 다시 읽으려고 되돌아온 사용자를 2초마다 앞으로 밀지 않기 위해서다.
+  // 렌더에 반영할 값이 아니고(화면에 표시되지 않음) 타이머 effect가 읽기만 하므로
+  // state가 아니라 useRef로 둔다 — state면 끄는 순간 불필요한 리렌더가 난다.
+  const autoAdvanceRef = useRef(true);
+  // 대기 중인 자동 넘김 타이머 핸들 — effect cleanup과 별개로 직접 지울 수 있어야 한다(아래 stopAutoAdvance).
+  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 자동 넘김 정지 — 플래그를 끄는 동시에 이미 예약된 타이머까지 그 자리에서 지운다.
+  // effect cleanup에만 맡기면 첫 페이지 플링에서 샌다: Math.max(0, -1) === 0이라
+  // 같은 값이 setState되고, React는 Object.is 동일값이면 리렌더를 건너뛴다.
+  // → deps([activeIdx, isLast])가 그대로라 effect가 재실행되지도 cleanup이 돌지도 않고,
+  //   ref 변경은 애초에 effect를 깨우지 않으므로 옛 타이머가 살아남아 2초 뒤 발화한다.
+  //   "뒤로/멈춰"라는 뜻의 제스처가 오히려 전진을 만드는 셈이라, 상태가 바뀌든 말든
+  //   여기서 타이머를 직접 죽인다.
+  const stopAutoAdvance = () => {
+    autoAdvanceRef.current = false;
+    if (autoTimerRef.current) {
+      clearTimeout(autoTimerRef.current);
+      autoTimerRef.current = null;
+    }
+  };
 
   const goNext = () => {
     tap();
-    if (activeIdx < SLIDES.length - 1) {
+    if (!isLast) {
       setActiveIdx(activeIdx + 1);
     } else {
       navigation.replace('Login');
     }
   };
 
-  // activeIdx 변경 시 해당 페이지로 애니메이션 이동(버튼 전진·플링 후진 공용)
+  const goPrev = () => {
+    if (activeIdx === 0) return;
+    tap();
+    stopAutoAdvance(); // 뒤로 갔으면 이후 자동 넘김 중단
+    setActiveIdx(activeIdx - 1);
+  };
+
+  // activeIdx 변경 시 해당 페이지로 애니메이션 이동(화살표·자동 넘김·플링 공용)
   useEffect(() => {
     flatListRef.current?.scrollToIndex({ index: activeIdx, animated: true });
   }, [activeIdx]);
 
-  // 다음 버튼 지연 활성화 — 페이지 도착 후 1.5초간 비활성(흐림)으로 두어
-  // 사용자가 콘텐츠를 그냥 넘기지 않고 보게 한다. 활성화 시 페이드인.
-  const NEXT_DELAY_MS = 1500;
-  const [nextReady, setNextReady] = useState(false);
-  const readyAnim = useRef(new Animated.Value(0)).current;
+  // 자동 넘김 — 페이지 도착 2초 뒤 다음 페이지로. 마지막 페이지에서는 걸지 않는다.
+  // (자동으로 Login에 진입시키면 사용자가 온보딩을 못 보고 이탈당한다 — 마지막은
+  //  반드시 오른쪽 화살표를 눌러야 넘어간다.) 뒤로 이동 후에도 걸지 않는다.
+  // 페이지가 바뀌거나 화면이 언마운트되면 cleanup에서 타이머를 지운다.
+  const AUTO_ADVANCE_MS = 2000;
   useEffect(() => {
-    setNextReady(false);
-    readyAnim.setValue(0);
+    if (isLast) return;
+    if (!autoAdvanceRef.current) return;
     const timer = setTimeout(() => {
-      setNextReady(true);
-      select();
-      Animated.timing(readyAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
-    }, NEXT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [activeIdx, readyAnim]);
-
-  // 마지막 페이지 CTA 강조 — 버튼 활성화 시 유리 스타일 → 마젠타 필로 차오르며 스케일 팝.
-  // 색 애니메이션이라 JS 드라이버(별도 노드) 사용 — 네이티브 opacity 노드와 분리.
-  const isLast = activeIdx === SLIDES.length - 1;
-  const cta = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (isLast && nextReady) {
-      Animated.timing(cta, { toValue: 1, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
-    } else if (!isLast) {
-      cta.setValue(0);
-    }
-  }, [isLast, nextReady, cta]);
-  const ctaScale = cta.interpolate({ inputRange: [0, 0.55, 1], outputRange: [1, 1.05, 1] });
-  const ctaBg = cta.interpolate({ inputRange: [0, 1], outputRange: ['rgba(236,52,247,0)', 'rgba(236,52,247,1)'] });
+      autoTimerRef.current = null;
+      setActiveIdx((cur) => (cur === activeIdx ? cur + 1 : cur));
+    }, AUTO_ADVANCE_MS);
+    autoTimerRef.current = timer;
+    return () => {
+      clearTimeout(timer);
+      if (autoTimerRef.current === timer) autoTimerRef.current = null;
+    };
+  }, [activeIdx, isLast]);
 
   // 뒤로 가기 — 오른쪽 플링 제스처. 스크롤 자체는 잠가서(전 슬라이드 상시 마운트로 요소가
-  // 즉시 보이고) 전진 방향으로는 어떤 끌림도 생기지 않는다. 전진은 다음 버튼으로만.
+  // 즉시 보이고) 전진 방향으로는 어떤 끌림도 생기지 않는다. 전진은 오른쪽 화살표나 자동 넘김으로만.
   const backFling = Gesture.Fling()
     .runOnJS(true)
     .direction(Directions.RIGHT)
     .onStart(() => {
       tap();
+      // 플링도 "뒤로"이므로 자동 넘김 중단. 첫 페이지에선 setActiveIdx가 같은 값이라
+      // effect cleanup이 안 도니, 플래그만 끄지 말고 타이머까지 지워야 한다.
+      stopAutoAdvance();
       setActiveIdx((cur) => Math.max(0, cur - 1));
     });
 
@@ -200,7 +236,7 @@ export default function AppIntroScreen({ navigation }: Props) {
       <StarFieldBackground opacity={0.5} />
       <IntroAmbient />
 
-      {/* 슬라이드 — 뒤로는 오른쪽 플링으로 이동, 앞으로는 다음 버튼으로만(스크롤 잠금) */}
+      {/* 슬라이드 — 뒤로는 오른쪽 플링, 앞으로는 화살표·자동 넘김으로만(스크롤 잠금) */}
       <GestureDetector gesture={backFling}>
         <FlatList
           ref={flatListRef}
@@ -226,37 +262,40 @@ export default function AppIntroScreen({ navigation }: Props) {
         ))}
       </View>
 
-      {/* 하단 페이드 + 다음/시작하기 버튼 (시안: 흰 10% 유리 필 + #CECFCD 그라데이션 테두리) */}
+      {/* 하단 페이드 + 좌우 이동 화살표 */}
       <LinearGradient
         colors={['rgba(12,12,12,0)', '#0C0C0C']}
         style={styles.bottomFade}
         pointerEvents="none"
       />
       <View style={[styles.bottomArea, { paddingBottom: insets.bottom + 24 }]}>
-        {/* 지연 활성화 — 준비 전엔 흐리게 + 터치 무시, 준비되면 페이드인.
-            마지막 페이지에선 활성화와 함께 마젠타 필 + 스케일 팝(CTA 강조) */}
-        <Animated.View style={{ opacity: readyAnim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }}>
-        <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
-        <Pressable style={styles.nextBtn} onPress={goNext} disabled={!nextReady}>
-          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 29, backgroundColor: ctaBg }]} />
-          <Text style={styles.nextBtnLabel} {...andFitText}>
-            {activeIdx === SLIDES.length - 1 ? t('appIntro.getStarted') : t('common.next')}
-          </Text>
-          {/* 테두리 — 탭바와 동일한 #CECFCD 대각선 그라데이션 스트로크 */}
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Svg width={BTN_W} height={58}>
-              <SvgDefs>
-                <SvgLinearGradient id="introBtnRing" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                  <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                  <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgRect x={0.5} y={0.5} width={BTN_W - 1} height={57} rx={29} stroke="url(#introBtnRing)" strokeWidth={1} fill="none" />
-            </Svg>
-          </View>
+        {/* 왼쪽 = 이전 페이지. 첫 페이지에선 비활성 + 흐린 색.
+            지연 활성화는 없앴다 — 페이지에 도착하는 즉시 누를 수 있다. */}
+        <Pressable
+          style={styles.arrowBtn}
+          onPress={goPrev}
+          disabled={activeIdx === 0}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: activeIdx === 0 }}
+        >
+          <ChevronGlyph dir="left" color={activeIdx === 0 ? '#3D3D55' : '#EC34F7'} />
         </Pressable>
-        </Animated.View>
-        </Animated.View>
+
+        {/* 오른쪽 = 다음 페이지. 마지막 페이지에선 로그인으로 진입하므로
+            '시작하기' 라벨을 함께 보여 무엇이 일어나는지 분명히 한다. */}
+        <Pressable
+          style={styles.arrowBtnRight}
+          onPress={goNext}
+          hitSlop={10}
+          accessibilityRole="button"
+          // 스크린리더 문구는 기존 키만 재사용한다(locales는 이번 범위 밖).
+          // 왼쪽 '이전'에 해당하는 키가 없어 왼쪽 화살표에는 라벨을 못 붙였다.
+          accessibilityLabel={isLast ? t('appIntro.getStarted') : t('common.next')}
+        >
+          {isLast ? <Text style={styles.startLabel}>{t('appIntro.getStarted')}</Text> : null}
+          <ChevronGlyph dir="right" color="#EC34F7" />
+        </Pressable>
       </View>
     </View>
   );
@@ -322,7 +361,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
 
-  // 하단 페이드 + 다음 버튼
+  // 하단 페이드 + 좌우 화살표
   bottomFade: {
     position: 'absolute',
     left: 0,
@@ -334,19 +373,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  nextBtn: {
-    marginHorizontal: 14,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  // 화살표 터치 영역 — 컨테이너 56×48에 hitSlop 10을 더해 44pt 최소 규격을 넘긴다.
+  arrowBtn: {
+    width: 56,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  nextBtnLabel: {
+  arrowBtnRight: {
+    minWidth: 56,
+    height: 48,
+    paddingLeft: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  startLabel: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.textPrimary,
+    color: '#EC34F7',
   },
 });
