@@ -15,6 +15,7 @@ import {
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -237,6 +238,7 @@ export default function NotificationScreen({ navigation }: Props) {
       like:             { cat: 'like',    key: 'misc.likeText' },
       comment:          { cat: 'comment', key: 'misc.commentText' },
       reply:            { cat: 'comment', key: 'misc.replyText' },
+      mention:          { cat: 'comment', key: 'misc.mentionText' },
       friend_post:      { cat: 'record',  key: 'misc.friendPostText' },
     };
     setServerNotis(
@@ -261,7 +263,17 @@ export default function NotificationScreen({ navigation }: Props) {
     );
     setLoading(false);
   }, [t, isMuted, isBlocked]);
-  useEffect(() => { loadServerNotis(); }, [loadServerNotis]);
+  // 조회는 **포커스 하나로 통일한다**(마운트 useEffect 없음).
+  // 예전엔 마운트 1회 조회뿐이라 이 화면을 띄워 둔 채 프로필·상세를 다녀오면 그 사이 도착한
+  // 알림이 당겨서 새로고침 전까지 보이지 않았다. 그렇다고 마운트 effect를 남겨 두면
+  // loadServerNotis의 deps(t·isMuted·isBlocked)가 불안정해 — isMuted는
+  // recordStore의 useCallback(..., [mutedHandles]) — 뮤트/차단이 바뀔 때마다
+  // **마운트 effect와 포커스 effect가 둘 다 재실행**돼 같은 조회가 2회 나갔다.
+  // 이 화면은 스택 화면이라(AppNavigator 'Notifications') 마운트 시점에 곧바로 포커스되므로
+  // useFocusEffect 하나로 첫 조회까지 함께 처리된다.
+  useFocusEffect(
+    useCallback(() => { loadServerNotis(); }, [loadServerNotis])
+  );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try { await loadServerNotis(); } finally { if (aliveRef.current) setRefreshing(false); }

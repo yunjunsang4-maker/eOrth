@@ -659,7 +659,12 @@ export default function MainScreen({ navigation, route }: Props) {
     let alive = true;
     getMyUserId().then((uid) => {
       if (!alive || !uid) return;
-      unsub = subscribeNotifications(uid, () => {
+      unsub = subscribeNotifications(uid, (ev) => {
+        // 읽음 처리(read=true)도 UPDATE라 이벤트가 온다. 알림 화면의 '전체 읽음'은
+        // 미읽음 행 수(최대 100)만큼 이벤트를 쏟아내는데, 그때마다 count를 다시 세면
+        // getMyUserId + HEAD 쿼리가 100번 나간다 → 건너뛴다.
+        // (그 경우 배지는 위 useFocusEffect가 알림 화면에서 돌아올 때 내려 준다)
+        if (ev.eventType === 'UPDATE' && ev.row.read) return;
         fetchUnreadNotificationCount().then((n) => { if (alive) setUnreadAlerts(n); });
       });
     });

@@ -14,6 +14,7 @@ import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageComp
 import type { TravelRecord } from '../store/recordStore';
 import type { ServerPostCounts } from '../utils/postCountSync';
 import type { ServerPostRef } from '../utils/mergeMyRecords';
+import { mergeAuthorDisplay, type AuthorProfileRow } from '../utils/authorDisplay';
 
 // 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
 const ALBUM_EDGE = 2048;
@@ -294,7 +295,9 @@ export async function deletePost(remoteId: string): Promise<boolean> {
 // posts 행 → TravelRecord 변환 (피드/프로필 공통)
 function mapRowToRecord(row: any): TravelRecord {
   const rec = (row.data ?? {}) as TravelRecord;
-  const prof = row.profiles ?? {};
+  // ⚠️ `?? {}`로 뭉개지 않는다 — "임베드가 없다(차단·탈퇴)"와 "임베드는 있는데 값이 null이다
+  //    (사진 삭제·프리미엄 해지)"를 구분해야 삭제가 전파된다. 판정 규칙은 mergeAuthorDisplay.
+  const prof = (row.profiles ?? null) as AuthorProfileRow | null;
   return {
     ...rec,
     id: row.id,
@@ -309,13 +312,10 @@ function mapRowToRecord(row: any): TravelRecord {
     likes: row.likes_count ?? rec.likes ?? 0,
     comments: row.comments_count ?? rec.comments ?? 0,
     timestamp: rec.timestamp ?? new Date(row.created_at).getTime(),
-    user: {
-      name: prof.handle || rec.user?.name || '여행자',
-      emoji: prof.emoji || rec.user?.emoji || '🧳',
-      handle: prof.handle || rec.user?.handle || '',
-      photo: prof.profile_photo || rec.user?.photo || undefined,
-      font: prof.handle_font || rec.user?.font || undefined, // 아이디 표시 폰트(프리미엄) — 프로필이 최신
-    },
+    // 작성자 표시 — 사진·폰트는 임베드가 있으면 서버 null을 그대로 '없음'으로 반영한다.
+    // 예전엔 `prof.profile_photo || rec.user?.photo`로 폴백해, 사진을 지우거나 프리미엄을
+    // 해지해도 글 data에 박제된 옛 스냅샷이 되살아나 남들 눈에는 그대로 남아 있었다.
+    user: mergeAuthorDisplay(prof, rec.user),
   } as TravelRecord;
 }
 

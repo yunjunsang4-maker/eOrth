@@ -80,15 +80,167 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준)
+## 1. 지금 해야 하는 것 — 6건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건)
 
-**남은 것은 아래 셋뿐이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
+**남은 것은 아래 셋 + 2026-09-08 델타 둘이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
 `PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
 
 **2026-09-08 삭제 전파 1차(tombstone 도입)는 같은 날 실행·확인 완료됐다 — 바로 아래 ✅.**
 **그 후속(집계 함수 5개 + purge cron)도 2026-09-08 운영·테스트 양쪽 실행·확인 완료 — 그 아래 절.**
+**같은 날의 ⏳ 미반영 2건이 바로 아래에 있다 — ①사용자 간 전파(수락 알림 정리 + 공개 전환 알림),
+②여행 카드 기기 간 동기화(`user_trip_cards` 신규 표).**
+**2026-09-09 추가 ⏳ 1건 — ③댓글 @언급 알림(`mention` 타입 + `notify_on_mention` 트리거).
+이건 `send-push` 재배포도 함께 필요하다.**
+
+### ⏳ 미반영(실행 대기) — 사용자 간 전파: 수락 시 신청 알림 정리 + 공개 전환 시 이웃 알림 (2026-09-08 추가)
+
+> **2026-09-09 부분 확인 — 한 프로젝트(어느 쪽인지 사용자 확인 대기)에서 확인 쿼리 2번(가드 true/true)·
+> 3번(트리거 2개) 통과. 1번(`accept_neighbor` has_cleanup)과 다른 쪽 프로젝트, "새 글 → 이웃 알림 도착"
+> 눈 확인은 미완.** 앱 쪽 변경은 이 SQL에 런타임 의존이 없어 같은 날 OTA 4회(베타·정식 × RV 1.1.1/1.1.0)를
+> 먼저 발행했다 — 수락 시 신청 알림 정리·공개 전환 이웃 알림 2건만 서버 반영 후 동작한다. 발췌본:
+> `supabase/migration-2026-09-08-cross-user-visibility.sql` (schema.sql과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 증상이 사라져 오판하게 된다.
+>
+> ⚠️ **앱 배포 순서 제약 없음.** 구 번들과 완전히 호환된다 — 반환 계약이 그대로고,
+> 없어지는 것은 유령 알림뿐이며 새로 생기는 것은 알림 1건이다. 같은 날의 앱 변경
+> (피드 카드 댓글 수·포커스 재조회·알림 UPDATE 구독)은 이 SQL과 독립으로 동작한다.
+
+무엇을 고치나 — 둘 다 "내가 한 일이 상대 화면에 안 나타난다" 계열이다:
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `accept_neighbor` 안에 `delete from public.notifications … type='neighbor_request'` 추가 (수락 알림 insert 전) | 4-e 절 `create or replace function public.accept_neighbor` | 메이트 신청을 **수락해도 신청 알림이 남는다.** 수락은 행 UPDATE라 `trg_cleanup_neighbor_request_notif`(**after delete**)가 안 뜬다 → 눌러도 수락 목록이 비어 있는 유령 알림 |
+| 2 | `notify_on_friend_post`에 `tg_op='UPDATE'` 가드(`private → 그 외` 전환만 통과)와 `new.deleted_at is not null` 제외 추가 | 10-e 절 | 비공개로 올린 뒤 공개로 바꾼 글이 **이웃 누구에게도 알려지지 않는다** |
+| 3 | 새 트리거 `trg_notify_friend_post_visibility after update of visibility on public.posts` | 10-e 절, `trg_notify_friend_post` 바로 아래 | 2번 함수를 고쳐도 UPDATE 자체가 트리거를 안 태워 아무 일도 일어나지 않는다 |
+
+⚠️ **기존 insert 트리거 `trg_notify_friend_post`는 지우지 말 것.** 새 트리거는 **추가**다.
+UPDATE 트리거만 남기면 평범한 새 글 알림이 통째로 죽는다.
+
+⚠️ **`of visibility` 컬럼 한정을 빼지 말 것.** 빼면 좋아요·댓글 카운터 갱신 등 `posts`의
+모든 UPDATE마다 이 함수가 호출된다(대부분 `tg_op` 가드에서 즉시 return 하지만 태울 이유가 없다).
+
+반영 확인 쿼리:
+```sql
+-- 1번 (has_cleanup 이 true 여야 한다)
+select p.proname,
+       pg_get_functiondef(p.oid) like '%delete from public.notifications%neighbor_request%' as has_cleanup
+  from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+ where ns.nspname = 'public' and p.proname = 'accept_neighbor';
+
+-- 2번 (두 컬럼 모두 true 여야 한다)
+select p.proname,
+       pg_get_functiondef(p.oid) like '%tg_op = ''UPDATE''%'         as has_update_guard,
+       pg_get_functiondef(p.oid) like '%new.deleted_at is not null%' as has_tombstone_guard
+  from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+ where ns.nspname = 'public' and p.proname = 'notify_on_friend_post';
+
+-- 3번 (2행 — insert 1 + update of visibility 1)
+--    information_schema.triggers 는 `UPDATE OF <컬럼>` 의 컬럼 목록을 노출하지 않아
+--    정의문을 직접 읽는다(tombstone 델타와 같은 이유).
+select tgname, pg_get_triggerdef(oid) as def
+  from pg_trigger
+ where tgrelid = 'public.posts'::regclass and not tgisinternal
+   and tgname in ('trg_notify_friend_post', 'trg_notify_friend_post_visibility')
+ order by tgname;
+-- 기대: trg_notify_friend_post … AFTER INSERT …
+--       trg_notify_friend_post_visibility … AFTER UPDATE OF visibility …
+```
+
+⚠️ **확인 쿼리만으로는 부족하다 — 반영 후 새 글 1건을 올려 이웃에게 `friend_post` 알림이 실제로
+도착하는지 눈으로 확인할 것.** `notify_on_friend_post` 끝에는 `exception when others then
+return null`이 있어 함수 안에서 어떤 오류가 나도 **조용히 삼켜진다**(게시 자체는 성공한다).
+위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로 이 증상을 잡지 못한다.
+
+### ⏳ 미반영(실행 대기) — 댓글 @언급 알림: `mention` 타입 + `notify_on_mention` 트리거 (2026-09-09 추가)
+
+> **아직 아무 프로젝트에도 실행하지 않았다.** 발췌본:
+> `supabase/migration-2026-09-09-comment-mentions.sql` (schema.sql과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 알림이 와 "됐다"고 오판한다.
+>
+> ⚠️ **`supabase functions deploy send-push` 재배포가 함께 필요하다.** Edge Function의
+> `PREF_KEY`에 `mention`이 없으면 `isPushAllowed`가 "알 수 없는 타입"으로 보고 스킵해,
+> **앱 알림함에는 뜨는데 푸시만 영영 안 온다.** 코드는 커밋돼 있고 배포만 남았다.
+>
+> ⚠️ **전제(확장 등) 없다.** pg_cron도 필요 없다.
+>
+> ⚠️ **앱 배포 순서 제약 없음 — 미반영이어도 앱은 멀쩡하다.** 댓글 본문의 `@아이디` 보라 네온
+> 표시·프로필 이동, `@` 자동완성 칩, 답글 `@아이디 ` 자동 삽입은 전부 클라이언트 로직이라
+> 그대로 동작한다. **못 하는 것은 언급 알림 발송 하나뿐이다.** 반대로 SQL이 먼저 들어가도
+> 구 번들은 모르는 알림 타입을 `TYPE_MAP` 폴백으로 흘려보내 사고가 없다.
+
+**왜 필요한가.** 댓글에 `@아이디`를 적어도 그 사람은 아무것도 모른다. 저장 방식은 A안이라
+`comments`에 컬럼을 늘리지 않고 본문 텍스트만 신뢰한다 — 클라이언트가 보낸 '언급 대상 목록'을
+받으면 앱이 임의의 사용자 id를 끼워 넣어 스팸 알림을 만들 수 있어, **서버가 본문을 다시 파싱**한다.
+앱 쪽 짝은 `src/utils/mentions.ts`(`MENTION_HANDLE_RE`)다.
+
+실행할 것 — 전부 `schema.sql`에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `notifications_type_check`에 `'mention'` 추가 (**두 정의 모두** — 초기 정의와 10-b 재정의) | ~1853행, 10-b 절 | 트리거의 insert가 23514(check 위반)로 실패하는데 함수 끝 `exception when others`가 그걸 삼켜 **아무 흔적 없이** 알림만 안 온다. 이 델타에서 가장 놓치기 쉬운 한 줄 |
+| 2 | 같은 자리의 정리용 `delete … where type not in (…)` 목록에도 `'mention'` 추가 | ~1851행 | `schema.sql`을 **재실행할 때마다 언급 알림이 전량 삭제**되고, 이어지는 add constraint도 남은 행 때문에 실패한다 |
+| 3 | 새 함수 `public.notify_on_mention()` (security definer, `search_path=public`, plpgsql) | 10-d-2 절(`notify_on_comment` 바로 아래) | 트리거를 걸 대상이 없다 |
+| 4 | 새 트리거 `trg_notify_mention after insert on public.comments` | 같은 절 | 함수만 있고 아무 일도 일어나지 않는다 |
+
+⚠️ **기존 `trg_notify_comment`(comment·reply 알림)는 지우지 말 것.** 새 트리거는 **추가**다.
+같은 표에 after insert 트리거 두 개가 나란히 뜨고, 중복 알림은 함수 안의 제외 규칙 ④⑤가 막는다.
+
+⚠️ **정규식을 앱과 따로 고치지 말 것.** 서버의
+`'(^|[^A-Za-z0-9_])@([A-Za-z0-9_]{4,30})(?![A-Za-z0-9_])'`는 앱 `MENTION_HANDLE_RE`와 같은
+규칙이다(앞 경계는 이메일 `a@bcde` 오탐 방지, 뒤 경계는 31자 이상의 앞 30자만 잘라 잡는 오탐 방지).
+한쪽만 바꾸면 **앱에선 보라색으로 보이는데 알림은 안 오는** 조용한 어긋남이 된다.
+
+알림을 만들지 않는 경우(중복·프라이버시):
+
+| # | 조건 | 왜 |
+|---|---|---|
+| ① | 언급 대상 = 댓글 작성자 본인 | 자기 자신에게 알림을 보내지 않는다 |
+| ② | `is_blocked_between(대상, 작성자)` | 차단 관계 |
+| ③ | 대상이 글 작성자도 아니고 작성자와 `are_neighbors`도 아님 | 그 글을 못 보는 사람 — @만 적어 남의 글의 존재를 흘릴 수 없게 |
+| ④ | 답글이고 대상 = 부모 댓글 작성자 | 이미 `reply` 알림이 간다 |
+| ⑤ | 최상위 댓글이고 대상 = 글 작성자 | 이미 `comment` 알림이 간다 |
+| ⑥ | 글이 `visibility <> 'neighbors'`(=비공개) — **전체 skip** | 최종 `posts_select`는 작성자 외 전원에게 `neighbors` 글만 열어 준다. 그대로 두면 서로이웃이어도 **알림·푸시만 가고 탭하면 아무것도 안 열리는 죽은 딥링크**가 되고, "비공개 글을 썼다"는 사실까지 샌다 |
+| ⑦ | 글에 `deleted_at`(삭제표식) — **전체 skip** | 지워진 글의 알림 |
+
+반영 확인 쿼리:
+```sql
+-- 1번: check 제약 목록에 'mention' 이 들어갔는지 (def 문자열에 mention 이 보여야 한다)
+select conname, pg_get_constraintdef(oid) as def
+  from pg_constraint
+ where conrelid = 'public.notifications'::regclass
+   and conname = 'notifications_type_check';
+
+-- 2번: 함수 존재 + 정규식·제외 규칙 (네 컬럼 모두 true). 행이 안 나오면 미반영
+--    has_private_guard(post_vis)가 false면 ⑥ 비공개 글 skip이 빠진 옛 본문 — 재실행 필요
+select p.proname,
+       pg_get_functiondef(p.oid) like '%regexp_matches%'     as has_regex,
+       pg_get_functiondef(p.oid) like '%are_neighbors%'      as has_neighbor_guard,
+       pg_get_functiondef(p.oid) like '%post_vis%'           as has_private_guard,
+       pg_get_functiondef(p.oid) like '%is_blocked_between%' as has_block_guard
+  from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+ where ns.nspname = 'public' and p.proname = 'notify_on_mention';
+
+-- 3번: comments 의 알림 트리거가 2개(기존 comment/reply 1 + 새 mention 1)
+select tgname, pg_get_triggerdef(oid) as def
+  from pg_trigger
+ where tgrelid = 'public.comments'::regclass and not tgisinternal
+   and tgname in ('trg_notify_comment', 'trg_notify_mention')
+ order by tgname;
+-- 기대: trg_notify_comment … AFTER INSERT ON public.comments …
+--       trg_notify_mention … AFTER INSERT ON public.comments …
+```
+
+⚠️ **확인 쿼리만으로는 부족하다 — 반영 후 댓글에 `@아이디` 1건을 남겨 언급된 쪽에 알림이
+실제로 도착하는지 눈으로 확인할 것.** `notify_on_mention` 끝에는
+`exception when others then return null`이 있어 함수 안의 어떤 오류도 **조용히 삼켜진다**
+(댓글 저장은 성공한다). 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로
+이 증상을 잡지 못한다. 제외 규칙 ③ 때문에 **글 작성자와 서로이웃인 계정**으로 시험해야 한다.
 
 ### ✅ 기기 간 삭제·수정 전파(tombstone) (2026-09-08 추가 · **2026-09-08 실행·확인 완료**)
 

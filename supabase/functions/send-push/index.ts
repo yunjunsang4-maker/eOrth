@@ -12,8 +12,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 // notifPrefs 저장 키 → push_tokens.prefs 조회 키
 const PREF_KEY: Record<string, string> = {
   like: 'likes',
-  comment: 'likes', // 좋아요·댓글·답글은 같은 'likes' 토글
+  comment: 'likes', // 좋아요·댓글·답글·언급은 같은 'likes' 토글
   reply: 'likes',
+  mention: 'likes',
   dm: 'messages',
   neighbor_request: 'newFollower',
   neighbor_accept: 'newFollower',
@@ -73,6 +74,9 @@ function buildMessage(
       break;
     case 'reply':
       body = `${name}님이 회원님의 댓글에 답글을 남겼어요`;
+      break;
+    case 'mention':
+      body = `${name}님이 댓글에서 회원님을 언급했어요`;
       break;
     case 'neighbor_request':
       body = `${name}님이 메이트 신청을 보냈어요`;

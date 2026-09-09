@@ -34,7 +34,8 @@ import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon, PlusIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
-import { useRecords } from '../store/recordStore';
+import { useRecords, countTotalComments } from '../store/recordStore';
+import { useFocusEffect } from '@react-navigation/native';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
@@ -43,6 +44,9 @@ import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { putMineFirst } from '../utils/snapStrip';
+import MentionText from '../components/MentionText';
+import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
+import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { APP_STORE_URL, PLAY_STORE_URL } from '../constants/legalLinks';
@@ -93,8 +97,50 @@ const C = {
 // ─────────────────────────────────────────────
 // 댓글 — recordStore.commentsByPost 공유 (게시물별 저장, PostDetail과 동기화)
 // ─────────────────────────────────────────────
-type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number; photo?: string };
+// replies 포함 — 인라인 시트도 상세 화면처럼 답글을 그린다(예전엔 최상위 댓글만 보였다)
+type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number; photo?: string; replies?: SheetComment[] };
 const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
+
+// 피드 카드에 표시할 댓글 수.
+// ⚠️ 예전엔 `commentsByPost[item.id].length`였다. 그러면 ①상세를 열기 전엔 로컬 목록이 비어
+//    있어 남의 글 댓글 수가 항상 0이고 ②답글이 빠져 상세 화면 숫자와 어긋났다.
+//    기준은 서버 comments_count(item.comments)다 — 댓글이 로드되면 스토어 effect
+//    (recordStore의 commentsByPost 동기화)가 이 값을 로컬 총계로 맞춰 준다.
+// max는 **방어적 중복**이다. 그 스토어 effect가 commentsByPost가 정의되는 즉시 item.comments를
+// 로컬 총계로 덮으므로, 실제로 두 항은 '같거나(로드됨) 로컬이 0(미로드)'이라 max가 값을
+// 바꾸는 경우는 사실상 없다. 동기화 effect가 사라지거나 늦어지는 변경이 생겨도 카드 숫자가
+// 0으로 떨어지지 않게 남겨 둔다.
+// ⚠️ max가 막아 주지 못하는 것: 내가 차단한 사람의 댓글은 RLS(comments_select_visible)가
+//    빼는데 서버 comments_count는 전부 센다. 그래서 시트를 열면 숫자가 5→4처럼 줄 수 있다.
+//    상세 화면에 원래 있던 비대칭이고 여기서 고칠 문제가 아니다(서버 집계를 바꿔야 한다).
+const feedCommentCount = (item: any, local?: SheetComment[]) =>
+  Math.max(item?.comments ?? 0, countTotalComments(local as any));
+
+// 인라인 댓글 시트가 열릴 때 서버 댓글을 다시 받는다.
+// 예전엔 이 화면에 refreshComments 호출이 **0건**이었다 — 상세를 연 적 없는 글은 남이 단
+// 댓글이 통째로 안 보였고, 상세에서 한 번 본 글도 그 뒤 달린 댓글이 반영되지 않았다.
+// 이미 로드된 글도 다시 조회한다. 조회 중에도 기존 목록은 그대로 두고(깜빡임 방지),
+// 첫 로드이면서 목록이 비어 있을 때만 스피너를 띄운다(호출부의 loading && !loaded 판정).
+function useSheetCommentRefresh(
+  item: any,
+  visible: boolean,
+  refreshComments: (postId: string, remoteId?: string) => Promise<void>
+) {
+  const [loading, setLoading] = useState(false);
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  useEffect(() => {
+    if (!visible) return; // visible false→true 전이에서만
+    // 예시 콘텐츠는 서버 글이 아니다(PostDetail 본문 이펙트와 동일한 게이트).
+    // 아직 발행 전인 로컬 글은 remoteId가 없어 조회가 조용히 실패하고 로컬 목록이 유지된다.
+    if (!item?.id || item?.isExample) return;
+    setLoading(true);
+    refreshComments(item.id, item.remoteId ?? item.id)
+      .finally(() => { if (aliveRef.current) setLoading(false); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+  return loading;
+}
 
 // ─────────────────────────────────────────────
 // 바텀시트 공통 껍데기
@@ -350,13 +396,24 @@ function CommentBottomSheet({
   onSend,
   commentText,
   setCommentText,
+  loading = false,
+  postAuthor,
 }: {
   visible: boolean;
   onClose: () => void;
   comments: SheetComment[];
-  onSend: () => void;
+  /**
+   * (본문, 답글 대상 댓글 id) — 답글 상태는 **시트가 스스로** 들고 있고 호출부는 저장만 한다.
+   * 카드 4종(피드·스냅·블로그·앨범)이 저마다 답글 상태를 들면 같은 코드가 네 벌이 되고
+   * 한 곳만 고치는 사고가 난다.
+   */
+  onSend: (text: string, parentId?: string) => void;
   commentText: string;
   setCommentText: (t: string) => void;
+  /** 서버 댓글 조회 중 — 목록이 비어 있을 때만 스피너로 드러낸다(있으면 기존 목록 유지) */
+  loading?: boolean;
+  /** 글 작성자 — @자동완성 후보에 넣는다(메이트가 아니어도 태그할 수 있어야 한다) */
+  postAuthor?: { handle: string; photo?: string };
 }) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
@@ -369,6 +426,107 @@ function CommentBottomSheet({
     const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
     return () => { s1.remove(); s2.remove(); };
   }, []);
+
+  // ── 상태 ──
+  const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  const { neighbors, isBlocked } = useRecords();
+  const { handle: myHandle } = useSettings();
+  const [cursor, setCursor] = useState(0);
+  // 칩 줄은 "입력 중"에만 뜬다 — activeMention 은 텍스트+커서만 보므로, `@ab` 까지 치고
+  // 안드로이드 뒤로가기로 키보드만 내리면 칩 줄이 그대로 남는다(포커스 조건이 그걸 막는다).
+  const [inputFocused, setInputFocused] = useState(false);
+  // 연타 가드 — 상세·스토리와 같은 이유다. 서버 addComment 에 멱등키가 없어, 두 번 눌린 사이에
+  // 같은 댓글이 두 번 저장되면 중복 행이 그대로 남는다(입력 비우기에만 의존하면 못 막는다).
+  const sendingRef = useRef(false);
+  // 시트를 닫으면 답글 대상도 버린다 — 남겨 두면 다음에 연 **다른 글**의 댓글에 엉뚱한 부모가 붙는다
+  // 포커스 표식도 함께 내린다 — Modal이 닫힐 때 TextInput의 blur가 오지 않는 경우가 있어,
+  // 남겨 두면 다시 열자마자(입력 전인데도) 칩 줄이 뜬다
+  useEffect(() => { if (!visible) { setReplyTo(null); setInputFocused(false); } }, [visible]);
+  // ⚠️ blur 로 칩 줄을 **즉시** 끄면 안 된다 — 칩을 누르는 순간 blur 가 press 보다 먼저 오는
+  //    경우가 있어(안드로이드) 칩이 사라지고 그 탭이 빈 곳에 떨어진다. 한 박자 늦춰 끄고,
+  //    다시 포커스가 잡히면 예약을 취소한다. 언마운트할 때도 예약을 함께 지운다.
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
+  const onInputFocus = () => {
+    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    setInputFocused(true);
+  };
+  const onInputBlur = () => {
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => { blurTimerRef.current = null; setInputFocused(false); }, 200);
+  };
+
+  // ── 답글 ──
+  // 답글의 답글도 부모(=눌린 답글) id 를 그대로 넘긴다 — 스토어가 최상위로 승격해 2단을 유지한다
+  const handleReply = (id: string, name: string) => {
+    setReplyTo({ id, name });
+    // 답글 대상 아이디를 본문 앞에 미리 채운다 — 이미 그 사람으로 시작하면 중복 삽입하지 않는다
+    const next = ensureReplyPrefix(commentText, name);
+    setCommentText(next);
+    // ⚠️ 커서도 **같은 만큼 밀어야 한다.** 접두사를 앞에 끼우면 기존 글자가 전부 오른쪽으로
+    //    밀리는데 커서 상태를 그대로 두면 findActiveMention 이 방금 넣은 접두사의 앞부분을
+    //    "입력 중인 토큰"으로 잡는다(본문 `좋아요`·커서 3 + 대상 `jusang` → `{start:0,end:3,
+    //    query:'ju'}`). 그 상태에서 칩을 누르면 본문이 `@justin sang 좋아요` 로 깨지고
+    //    replyTo 는 여전히 jusang 이라 보이는 태그와 실제 답글 부모가 달라진다.
+    //    onSelectionChange 에 기대면 안 된다 — 안드로이드 ReactEditText.maybeSetText 는 텍스트를
+    //    바꾼 뒤 직전 selection 인덱스를 복원해, 값이 같으면 이벤트가 아예 발화하지 않는다.
+    //    접두사를 안 붙인 경우(이미 그 사람으로 시작)엔 delta 0 이라 그대로다.
+    const delta = next.length - commentText.length;
+    setCursor((c) => Math.min(c + delta, next.length));
+    inputRef.current?.focus();
+  };
+  // 답글을 취소해도 본문은 건드리지 않는다(설계 2026-09-09: 접두사 강제 삭제 안 함).
+  // 사용자가 이미 문장을 고쳐 썼을 수 있어, 지우면 쓰던 글이 사라진 것처럼 보인다.
+  const cancelReply = () => setReplyTo(null);
+
+  const send = () => {
+    if (sendingRef.current) return;
+    const body = commentText.trim();
+    if (!body) return;
+    sendingRef.current = true;
+    setTimeout(() => { sendingRef.current = false; }, 800);
+    onSend(body, replyTo?.id);
+    setReplyTo(null);
+  };
+
+  // ── @자동완성 ──
+  // 후보는 전부 로컬 데이터다(설계 2026-09-09) — 메이트 + 글 작성자 + 이 글의 댓글·답글 작성자.
+  // 중복 제거·접두 일치·상한(8)·**아이디 형식 검사**는 filterMentionCandidates 가 하므로
+  // 여기선 **순서**와 차단 제외만 정한다.
+  // useMemo 를 쓰지 않는 이유: comments 는 매 렌더 새 배열로 내려와 어차피 매번 다시 만들어진다.
+  // ⚠️ `visible` 가드는 성능상 필수다 — 이 시트는 피드 카드마다 하나씩 (닫힌 채로) 렌더된다.
+  //    가드가 없으면 피드를 스크롤할 때마다 안 보이는 시트 수십 개가 후보 목록을 다시 만든다.
+  const mentionCandidates: MentionCandidate[] = [];
+  if (visible) {
+    // 차단한 사람은 후보에서 뺀다. 이 시트의 comments 에는 상세 화면(PostDetailScreen:952)과 달리
+    // 차단 필터가 없어, 거르지 않으면 차단한 사람의 아이디가 칩으로 노출된다.
+    // name·handle 둘 다 넘기는 이유: isBlocked 는 차단 기록에 handle 이 있으면 handle 로,
+    // 없으면 name 으로 비교한다(recordStore:1449).
+    const pushCand = (handle?: string, photo?: string, emoji?: string) => {
+      if (!handle || isBlocked({ name: handle, handle })) return;
+      mentionCandidates.push({ handle, photo, emoji });
+    };
+    for (const n of neighbors) pushCand(n.username, n.photo, n.emoji);
+    pushCand(postAuthor?.handle, postAuthor?.photo);
+    for (const c of comments) {
+      pushCand(c.name, c.photo);
+      for (const r of (c.replies ?? [])) pushCand(r.name, r.photo);
+    }
+  }
+  const activeMention = visible ? findActiveMention(commentText, cursor) : null;
+
+  const pickMention = (handle: string) => {
+    if (!activeMention) return;
+    const next = applyMention(commentText, activeMention, handle);
+    setCommentText(next.text);
+    // ⚠️ TextInput 의 `selection` 을 prop 으로 **제어하지 않는다.** 안드로이드에서 제어된 selection 은
+    //    조합 중인 한글을 끊고 커서가 문장 끝으로 튀는 고질적인 함정이다. 텍스트만 갱신하고
+    //    커서 상태는 여기서 직접 맞춘다(뒤따르는 onSelectionChange 가 실제 위치로 덮어써도 무해).
+    //    삽입 뒤 본문 끝에는 공백이 붙으므로 findActiveMention 이 다시 잡지 않아 안전하다.
+    setCursor(next.cursor);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -397,6 +555,13 @@ function CommentBottomSheet({
 
             {/* 댓글 목록 */}
             <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* 첫 조회 중이고 보여줄 게 아직 없을 때만 스피너 — 이미 목록이 있으면
+                  그대로 두고 조용히 갱신한다(다시 열 때마다 깜빡이지 않게) */}
+              {loading && comments.length === 0 ? (
+                <View style={{ paddingVertical: 28, alignItems: 'center' }}>
+                  <ActivityIndicator color="#BF85FC" />
+                </View>
+              ) : null}
               {comments.map((c, idx) => (
                 <View key={c.id}>
                   <View style={cs.commentRow}>
@@ -409,14 +574,66 @@ function CommentBottomSheet({
                     </View>
                     <View style={cs.commentContent}>
                       <Text style={cs.commentName}>{c.name}</Text>
-                      <Text style={cs.commentBody}>{c.text}</Text>
-                      <Text style={cs.commentTime}>{sheetCommentTime(c)}</Text>
+                      {/* @언급은 보라 네온 + 탭하면 그 사람 프로필로 (MentionText가 처리) */}
+                      <MentionText text={c.text} style={cs.commentBody} />
+                      <View style={cs.commentMetaRow}>
+                        <Text style={cs.commentTime}>{sheetCommentTime(c)}</Text>
+                        <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
+                          <Text style={cs.commentReplyBtn} {...andFitText}>{t('postDetail.reply')}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
+                  {/* 답글 — 상세 화면과 같은 규칙(들여쓰기 42, 아바타 32).
+                      예전엔 시트가 최상위 댓글만 그려, 답글이 달린 글은 상세와 숫자·내용이 달랐다 */}
+                  {(c.replies ?? []).map((r) => (
+                    <View key={r.id} style={cs.replyRow}>
+                      <View style={cs.replyAvatar}>
+                        {r.photo ? (
+                          <Image source={{ uri: r.photo }} style={{ width: 32, height: 32, borderRadius: 16 }} />
+                        ) : (
+                          <Text style={cs.commentAvatarText}>{r.name.charAt(0)}</Text>
+                        )}
+                      </View>
+                      <View style={cs.commentContent}>
+                        <Text style={cs.commentName}>{r.name}</Text>
+                        <MentionText text={r.text} style={cs.commentBody} />
+                        <View style={cs.commentMetaRow}>
+                          <Text style={cs.commentTime}>{sheetCommentTime(r)}</Text>
+                          {/* 답글의 답글도 부모(=이 답글) id 를 넘긴다 — 스토어가 최상위로 승격 */}
+                          <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
+                            <Text style={cs.commentReplyBtn} {...andFitText}>{t('postDetail.reply')}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
                   {idx < comments.length - 1 && <View style={cs.divider} />}
                 </View>
               ))}
             </ScrollView>
+
+            {/* 답글 대상 바 — 상세 화면 s.replyBar 를 시트 토큰(카드 #2E2E3B / 구분선 #1A1A26)으로 재현 */}
+            {replyTo && (
+              <View style={cs.replyBar}>
+                <Text style={cs.replyBarText} numberOfLines={1} {...andFitText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
+                <TouchableOpacity onPress={cancelReply} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={cs.replyBarCancel}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* @자동완성 — 후보가 0이면 MentionSuggestBar 가 null 을 돌려주므로 여기선 '편집 중인가'만 본다.
+                입력창 바로 위에 둔다(목록 ScrollView 밖) — 시트 ScrollView 는 keyboardShouldPersistTaps="handled",
+                칩 줄은 "always" 라 탭이 키보드 내리기에 먹히지 않는다. */}
+            {inputFocused && activeMention && (
+              <MentionSuggestBar
+                candidates={mentionCandidates}
+                query={activeMention.query}
+                exclude={myHandle}
+                onPick={pickMention}
+              />
+            )}
 
             {/* 입력창 */}
             <View style={cs.inputRow}>
@@ -425,16 +642,22 @@ function CommentBottomSheet({
               </View>
               <View style={cs.inputWrap}>
                 <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+                  ref={inputRef}
                   style={cs.input}
-                  placeholder={t('social.commentPlaceholder')}
+                  placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('social.commentPlaceholder')}
                   placeholderTextColor="#4A4A59"
                   value={commentText}
                   onChangeText={setCommentText}
+                  // 커서 추적 — @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알아야 한다
+                  onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
+                  // 포커스 추적 — 키보드만 내렸을 때 칩 줄이 남지 않게 한다(위 onInputBlur 주석)
+                  onFocus={onInputFocus}
+                  onBlur={onInputBlur}
                   multiline
                   maxLength={500}
                 />
                 {/* 공백만 입력하면 onSend가 조용히 무시해 '고장'으로 보였다 — 비활성으로 드러낸다 */}
-                <TouchableOpacity style={cs.sendBtn} onPress={onSend} disabled={!commentText.trim()}>
+                <TouchableOpacity style={cs.sendBtn} onPress={send} disabled={!commentText.trim()}>
                   <Text style={[cs.sendIcon, !commentText.trim() && { opacity: 0.4 }]}>↑</Text>
                 </TouchableOpacity>
               </View>
@@ -497,8 +720,12 @@ function FeedCard({
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment, refreshComments } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
+  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
+  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
+  // 시트를 열 때마다 서버 댓글 재조회
+  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
   const [commentText, setCommentText] = useState('');
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [shareToast, setShareToast] = useState(false);
@@ -738,7 +965,7 @@ function FeedCard({
           </TouchableOpacity>
           <TouchableOpacity style={s.actionBtn} onPress={() => setCommentSheetVisible(true)}>
             <CommentIcon active={commentActive} />
-            {showCounts && <Text style={s.actionCount}>{comments.length}</Text>}
+            {showCounts && <Text style={s.actionCount}>{commentCount}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={s.actionBtn} onPress={() => setShareSheetVisible(true)}>
             <ShareIcon active={shareActive} />
@@ -773,14 +1000,15 @@ function FeedCard({
         visible={commentSheetVisible}
         onClose={() => setCommentSheetVisible(false)}
         comments={comments}
+        loading={commentsLoading}
         commentText={commentText}
         setCommentText={setCommentText}
-        onSend={() => {
-          if (commentText.trim()) {
-            addComment(item.id, commentText.trim());
-            setCommentText('');
-          }
+        onSend={(text, parentId) => {
+          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
+          addComment(item.id, text, parentId, item.remoteId ?? undefined);
+          setCommentText('');
         }}
+        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
       />
     </View>
   );
@@ -798,8 +1026,12 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost, addComment } = useRecords();
+  const { commentsByPost, addComment, refreshComments } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
+  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
+  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
+  // 시트를 열 때마다 서버 댓글 재조회
+  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
   const [commentText, setCommentText] = useState('');
   const nameFontStyle = usePostNameFont(item);
 
@@ -890,7 +1122,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
           </TouchableOpacity>
           <TouchableOpacity style={sc.actionBtn} onPress={() => setCommentSheetVisible(true)}>
             <CommentIcon active={false} color="#A1A1B0" />
-            {showCounts && <Text style={sc.actionCount}>{comments.length}</Text>}
+            {showCounts && <Text style={sc.actionCount}>{commentCount}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={sc.actionBtn} onPress={() => setShareSheetVisible(true)}>
             <ShareIcon active={false} />
@@ -909,14 +1141,15 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         visible={commentSheetVisible}
         onClose={() => setCommentSheetVisible(false)}
         comments={comments}
+        loading={commentsLoading}
         commentText={commentText}
         setCommentText={setCommentText}
-        onSend={() => {
-          if (commentText.trim()) {
-            addComment(item.id, commentText.trim());
-            setCommentText('');
-          }
+        onSend={(text, parentId) => {
+          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
+          addComment(item.id, text, parentId, item.remoteId ?? undefined);
+          setCommentText('');
         }}
+        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
       />
     </TouchableOpacity>
   );
@@ -1016,8 +1249,12 @@ function BlogCard({
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment, refreshComments } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
+  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
+  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
+  // 시트를 열 때마다 서버 댓글 재조회
+  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -1228,7 +1465,7 @@ function BlogCard({
           </TouchableOpacity>
           <TouchableOpacity style={bc.actionBtn} onPress={() => setCommentSheetVisible(true)}>
             <CommentIcon active={false} color="#A1A1B0" />
-            {showCounts && <Text style={bc.actionCount}>{comments.length}</Text>}
+            {showCounts && <Text style={bc.actionCount}>{commentCount}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={bc.actionBtn} onPress={() => setShareSheetVisible(true)}>
             <ShareIcon active={false} />
@@ -1246,14 +1483,15 @@ function BlogCard({
         visible={commentSheetVisible}
         onClose={() => setCommentSheetVisible(false)}
         comments={comments}
+        loading={commentsLoading}
         commentText={commentText}
         setCommentText={setCommentText}
-        onSend={() => {
-          if (commentText.trim()) {
-            addComment(item.id, commentText.trim());
-            setCommentText('');
-          }
+        onSend={(text, parentId) => {
+          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
+          addComment(item.id, text, parentId, item.remoteId ?? undefined);
+          setCommentText('');
         }}
+        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
       />
       <ReportModal
         visible={reportVisible}
@@ -1317,8 +1555,12 @@ function AlbumCard({
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment, refreshComments } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
+  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
+  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
+  // 시트를 열 때마다 서버 댓글 재조회
+  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -1559,7 +1801,7 @@ function AlbumCard({
           </TouchableOpacity>
           <TouchableOpacity style={ab.likeBtn} onPress={() => setCommentSheetVisible(true)}>
             <CommentIcon active={false} />
-            {showCounts && <Text style={ab.actionCount}>{comments.length}</Text>}
+            {showCounts && <Text style={ab.actionCount}>{commentCount}</Text>}
           </TouchableOpacity>
           <TouchableOpacity style={ab.likeBtn} onPress={() => setShareSheetVisible(true)}>
             <ShareIcon active={false} />
@@ -1581,14 +1823,15 @@ function AlbumCard({
       visible={commentSheetVisible}
       onClose={() => setCommentSheetVisible(false)}
       comments={comments}
+      loading={commentsLoading}
       commentText={commentText}
       setCommentText={setCommentText}
-      onSend={() => {
-        if (commentText.trim()) {
-          addComment(item.id, commentText.trim());
-          setCommentText('');
-        }
+      onSend={(text, parentId) => {
+        // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
+        addComment(item.id, text, parentId, item.remoteId ?? undefined);
+        setCommentText('');
       }}
+      postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
     />
     <ReportModal
       visible={reportVisible}
@@ -2603,7 +2846,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, refreshMyPostCounts, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, refreshMyPostCounts, refreshNeighbors, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2636,10 +2879,35 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // (피드 조회는 내 글을 제외하므로 내 글 카운트는 별도 조회로만 최신화된다 —
   //  안 하면 남이 내 글에 남긴 반응이 작성자에게 영영 0으로 보인다)
   const [refreshing, setRefreshing] = useState(false);
+  // 마지막으로 피드를 갱신한 시각 — 포커스 복귀 재조회의 쿨다운 기준.
+  // 마운트 시각으로 초기화한다: 첫 포커스는 건너뛰어야 한다(스토어 hydrate effect가
+  // 이미 refreshFeed/refreshNeighbors/refreshMyPostCounts를 돌린다 — recordStore 참조).
+  const lastFeedSyncRef = useRef(Date.now());
+  const FOCUS_REFRESH_COOLDOWN_MS = 60_000;
   const onRefresh = async () => {
     setRefreshing(true);
-    try { await Promise.all([refreshFeed(), refreshMyPostCounts()]); } finally { setRefreshing(false); }
+    try { await Promise.all([refreshFeed(), refreshMyPostCounts()]); } finally { setRefreshing(false); lastFeedSyncRef.current = Date.now(); }
   };
+  // 탭 복귀 시 재조회 — 예전엔 마운트 1회 조회뿐이라, 앱을 켜둔 채 다른 탭에 있는 동안
+  // 남이 올린 글·좋아요·댓글이 당겨서 새로고침 전까지 반영되지 않았다.
+  //
+  // ⚠️ 스크롤 위치: refreshFeed는 커서를 처음으로 되감아 첫 페이지(20건)로 **교체**한다
+  //    (recordStore.refreshFeed → setFeedPosts(fresh)). 이미 여러 페이지를 이어받아
+  //    깊게 스크롤한 상태에서 매 포커스마다 이걸 돌리면 목록이 짧아지며 위치가 튄다.
+  //    그래서 ①60초 쿨다운 ②첫 포커스 제외 ③당겨서 새로고침·첫 로딩 중 제외로 빈도를 낮췄다.
+  //    (탭 전환 왕복이 1분 넘게 걸릴 만큼 머문 뒤라면 새 내용을 받는 편이 낫다는 판단)
+  useFocusEffect(
+    useCallback(() => {
+      if (refreshing || feedInitialLoading) return;
+      if (Date.now() - lastFeedSyncRef.current < FOCUS_REFRESH_COOLDOWN_MS) return;
+      lastFeedSyncRef.current = Date.now();
+      refreshFeed();
+      refreshMyPostCounts();
+      // 메이트 목록도 함께 — 상대가 내 신청을 수락했으면 버튼 상태가 여기서 풀린다
+      refreshNeighbors();
+      // 스토어 액션은 안정 useCallback이라 deps에 넣어도 매 포커스 재생성되지 않는다
+    }, [refreshing, feedInitialLoading, refreshFeed, refreshMyPostCounts, refreshNeighbors])
+  );
   const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium, handleFont: myHandleFont } = useSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
@@ -3850,6 +4118,21 @@ const cs = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  // 답글 — 상세 화면(PostDetailScreen)과 같은 들여쓰기 42 / 아바타 32 규칙
+  replyRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    marginLeft: 42,
+    gap: 10,
+  },
+  replyAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   commentContent: {
     flex: 1,
     gap: 2,
@@ -3868,6 +4151,32 @@ const cs = StyleSheet.create({
     color: '#4A4A59',
     marginTop: 2,
   },
+  // 시간 + 답글 버튼을 한 줄로 — 상세 화면(s.commentActions)과 같은 배치 규칙
+  commentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  // 상세 화면 s.commentActionText 와 같은 톤(흐림색 12/600)
+  commentReplyBtn: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  // 상세 화면 s.replyBar 재현 — 시트 토큰(카드 #2E2E3B / 구분선 #1A1A26)에 맞춤
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#2E2E3B',
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A26',
+  },
+  replyBarText: { flex: 1, fontSize: 12, color: '#BF85FC', fontWeight: '600' },
+  replyBarCancel: { fontSize: 16, color: '#A1A1B0', paddingHorizontal: 4 },
   divider: {
     height: 1,
     backgroundColor: '#2E2E3B',

@@ -276,8 +276,10 @@ export interface PostComment {
 const INITIAL_NEIGHBORS: FollowedFriend[] = [];
 const INITIAL_COMMENTS: Record<string, PostComment[]> = {};
 
-// 게시물 총 댓글 수(최상위 + 답글) — record.comments(표시용 숫자)를 commentsByPost와 동기화할 때 사용
-const countTotalComments = (list?: PostComment[]) =>
+// 게시물 총 댓글 수(최상위 + 답글) — record.comments(표시용 숫자)를 commentsByPost와 동기화할 때 사용.
+// export하는 이유: 피드 카드(SocialScreen)도 같은 규칙으로 세야 한다. 화면에서 `list.length`로
+// 재현하면 답글이 빠져 상세 화면과 숫자가 어긋난다(실제로 그랬다).
+export const countTotalComments = (list?: PostComment[]) =>
   (list ?? []).reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
 
 // 네트워크 요청 타임아웃 래퍼 — 연결이 끊기지 않고 'hang'하면 스피너가 무한 대기하는 것을 방지
@@ -2548,8 +2550,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         return {
           id: p.id,
           username: p.handle || p.id,
-          emoji: p.emoji ?? ex?.emoji ?? undefined,
-          photo: p.photo ?? ex?.photo ?? undefined,
+          // ⚠️ 이모지·사진은 디스크 캐시(ex)로 폴백하지 않는다.
+          //    fetchNeighbors는 값이 없으면 **명시적으로 null**을 준다(social.ts: `?? null`).
+          //    `p.photo ?? ex?.photo`로 두면 상대가 프로필 사진을 지워도 내 기기에 남아 있던
+          //    옛 사진이 되살아나, 메이트 목록에서만 지운 사진이 영영 사라지지 않았다.
+          //    (서버 조회 자체가 실패한 경우는 위에서 `if (!list) return`으로 이미 걸렀다 —
+          //     여기 도달했다면 null은 "서버가 없다고 말한 것"이다.)
+          emoji: p.emoji ?? undefined,
+          photo: p.photo ?? undefined,
           isAbroad: ex?.isAbroad ?? false,
           currentCountry: ex?.currentCountry ?? null,
           currentCountryFlag: ex?.currentCountryFlag ?? null,

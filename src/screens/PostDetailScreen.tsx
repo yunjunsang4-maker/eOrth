@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -32,7 +32,7 @@ import Reanimated, {
   interpolate, Extrapolation, withTiming, withSpring, runOnJS,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon } from '../components/icons';
@@ -47,6 +47,9 @@ import RatingStars from '../components/RatingStars';
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
+import MentionText from '../components/MentionText';
+import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
+import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { tap, warn } from '../utils/haptics';
 
@@ -778,6 +781,24 @@ function SnapStoryViewer({
   );
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
+  // @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알려면 커서 위치가 필요하다(onSelectionChange로 추적)
+  const [commentCursor, setCommentCursor] = useState(0);
+  // 칩 줄은 "입력 중"에만 뜬다 — activeMention 은 텍스트+커서만 보므로, `@ab` 까지 치고
+  // 안드로이드 뒤로가기로 키보드만 내리면 칩 줄이 그대로 남는다(포커스 조건이 그걸 막는다).
+  const [commentFocused, setCommentFocused] = useState(false);
+  // ⚠️ blur 로 칩 줄을 **즉시** 끄면 안 된다 — 칩을 누르는 순간 blur 가 press 보다 먼저 오는
+  //    경우가 있어(안드로이드) 칩이 사라지고 그 탭이 빈 곳에 떨어진다. 한 박자 늦춰 끄고,
+  //    다시 포커스가 잡히면 예약을 취소한다(SocialScreen 댓글 시트와 같은 방식).
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
+  const onCommentFocus = () => {
+    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    setCommentFocused(true);
+  };
+  const onCommentBlur = () => {
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => { blurTimerRef.current = null; setCommentFocused(false); }, 200);
+  };
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -918,6 +939,29 @@ function SnapStoryViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id, currentSnap?.remoteId, refreshComments]);
 
+  // 복귀 포커스 — 지금 보고 있는 스냅의 서버 댓글을 다시 받는다.
+  // 스냅당 1회 조회라, 뷰어를 띄워 둔 채 프로필 등을 다녀오면 그 사이 달린 댓글이 영영 안 왔다.
+  // ⚠️ 위 이펙트를 다시 태우는 방식은 쓸 수 없다 — deps(currentSnap.id/remoteId)가 그대로라
+  //    표식을 지워도 다시 돌지 않는다. 그래서 여기서 **직접** 조회하고, 표식은 그대로 둔다
+  //    (그래야 이 콜백이 조회한 스냅을 위 이펙트가 한 번 더 받지 않는다).
+  //    조회된 적 없는 스냅이면 표식을 새로 넣는데, 그 조회도 여기서 하므로 결과는 같다.
+  // ⚠️ 진입 스냅(initialPostId)은 건너뛴다 — 그 글은 PostDetail 본문의 포커스 이펙트가
+  //    이미 refreshComments를 부른다(둘 다 도는 화면이라 안 걸러 주면 같은 조회가 2회 나간다).
+  // ⚠️ 최신 스냅은 ref로 읽는다 — deps에 넣으면 재조회 → 재렌더 → 포커스 콜백 재실행 루프.
+  const snapSyncRef = useRef({ id: currentSnap?.id, remoteId: currentSnap?.remoteId, isExample: currentSnap?.isExample });
+  snapSyncRef.current = { id: currentSnap?.id, remoteId: currentSnap?.remoteId, isExample: currentSnap?.isExample };
+  const firstSnapFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      if (firstSnapFocusRef.current) { firstSnapFocusRef.current = false; return; }
+      const { id, remoteId, isExample } = snapSyncRef.current;
+      if (!id || !remoteId || isExample) return;
+      if (id === initialPostId) return; // 본문 포커스 이펙트가 담당하는 글 — 중복 조회 방지
+      fetchedCommentsRef.current.add(id); // 조회 가드 유지(위 이펙트가 다시 받지 않게)
+      refreshComments(id, remoteId).catch(() => { fetchedCommentsRef.current.delete(id); });
+    }, [refreshComments, initialPostId])
+  );
+
   if (!currentSnap || stories.length === 0) return null;
 
   // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
@@ -941,8 +985,47 @@ function SnapStoryViewer({
     setReplyTo(null);
     setCommentText('');
   };
-  const handleReply = (id: string, name: string) => { setReplyTo({ id, name }); commentInputRef.current?.focus(); };
+  const handleReply = (id: string, name: string) => {
+    setReplyTo({ id, name });
+    // 답글 대상 아이디를 본문 앞에 미리 채운다 — 이미 그 사람으로 시작하면 중복 삽입하지 않는다
+    const next = ensureReplyPrefix(commentText, name);
+    setCommentText(next);
+    // ⚠️ 커서도 **같은 만큼 밀어야 한다.** 접두사를 앞에 끼우면 기존 글자가 전부 오른쪽으로
+    //    밀리는데 커서 상태를 그대로 두면 findActiveMention 이 방금 넣은 접두사의 앞부분을
+    //    "입력 중인 토큰"으로 잡는다(본문 `좋아요`·커서 3 + 대상 `jusang` → `{start:0,end:3,
+    //    query:'ju'}`). 그 상태에서 칩을 누르면 본문이 `@justin sang 좋아요` 로 깨지고
+    //    replyTo 는 여전히 jusang 이라 보이는 태그와 실제 답글 부모가 달라진다.
+    //    onSelectionChange 에 기대면 안 된다 — 안드로이드 ReactEditText.maybeSetText 는 텍스트를
+    //    바꾼 뒤 직전 selection 인덱스를 복원해, 값이 같으면 이벤트가 아예 발화하지 않는다.
+    //    접두사를 안 붙인 경우(이미 그 사람으로 시작)엔 delta 0 이라 그대로다.
+    const delta = next.length - commentText.length;
+    setCommentCursor((c) => Math.min(c + delta, next.length));
+    commentInputRef.current?.focus();
+  };
+  // 답글을 취소해도 본문은 건드리지 않는다(설계 2026-09-09: 접두사 강제 삭제 안 함)
   const cancelReply = () => setReplyTo(null);
+
+  // ── @자동완성 (스냅 댓글 시트) ──
+  // 후보는 전부 로컬 데이터다 — 메이트 + 스냅 작성자 + 이 스냅의 댓글·답글 작성자.
+  // 중복 제거·접두 일치·상한(8)은 filterMentionCandidates 가 하므로 여기선 순서만 정한다.
+  // useMemo 를 쓰지 않는다: 이 블록은 early return(944행) 뒤라 훅을 새로 추가할 수 없고,
+  // comments 도 매 렌더 새 배열이라 메모해도 매번 다시 계산된다.
+  const mentionCandidates: MentionCandidate[] = [];
+  for (const n of neighbors) mentionCandidates.push({ handle: n.username, photo: n.photo, emoji: n.emoji });
+  if (currentSnap.user?.handle) mentionCandidates.push({ handle: currentSnap.user.handle, photo: currentSnap.user.photo });
+  for (const c of comments) {
+    mentionCandidates.push({ handle: c.name, photo: c.photo });
+    for (const r of ((c.replies ?? []) as any[])) mentionCandidates.push({ handle: r.name, photo: r.photo });
+  }
+  const activeMention = findActiveMention(commentText, commentCursor);
+  const pickMention = (handle: string) => {
+    if (!activeMention) return;
+    const next = applyMention(commentText, activeMention, handle);
+    setCommentText(next.text);
+    // ⚠️ TextInput 의 `selection` 을 prop 으로 제어하지 않는다 — 안드로이드에서 제어된 selection 은
+    //    조합 중인 한글을 끊고 커서가 튄다. 커서 상태는 뒤따라오는 onSelectionChange 가 덮어쓴다.
+    setCommentCursor(next.cursor);
+  };
 
   const goToStory = (target: number) => {
     if (target < 0 || target >= stories.length) { navigation.goBack(); return; }
@@ -1290,7 +1373,8 @@ function SnapStoryViewer({
                   <View style={storyS.csAvatar}><AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} /></View>
                   <View style={{ flex: 1 }}>
                     <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{commentTime(c)}</Text></View>
-                    <Text style={storyS.csText}>{c.text}</Text>
+                    {/* @언급은 보라 네온 + 탭하면 그 사람 프로필로 (MentionText가 처리) */}
+                    <MentionText text={c.text} style={storyS.csText} />
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}><Text style={storyS.csReplyBtn}>{t('postDetail.reply')}</Text></TouchableOpacity>
                   </View>
                 </View>
@@ -1299,7 +1383,7 @@ function SnapStoryViewer({
                     <View style={storyS.csAvatar}><AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} /></View>
                     <View style={{ flex: 1 }}>
                       <View style={storyS.csTopRow}><Text style={storyS.csName}>{r.name}</Text><Text style={storyS.csTime}>{commentTime(r)}</Text></View>
-                      <Text style={storyS.csText}>{r.text}</Text>
+                      <MentionText text={r.text} style={storyS.csText} />
                     </View>
                   </View>
                 ))}
@@ -1313,8 +1397,18 @@ function SnapStoryViewer({
               <TouchableOpacity onPress={cancelReply}><Text style={storyS.csReplyBarCancel}>✕</Text></TouchableOpacity>
             </View>
           )}
+          {/* @자동완성 — 후보가 0이면 MentionSuggestBar 가 null 을 돌려주므로 여기선 '편집 중인가'만 본다.
+              목록 ScrollView 밖·입력 바 바로 위에 둔다(칩 줄은 keyboardShouldPersistTaps="always"). */}
+          {commentFocused && activeMention && (
+            <MentionSuggestBar
+              candidates={mentionCandidates}
+              query={activeMention.query}
+              exclude={myHandle}
+              onPick={pickMention}
+            />
+          )}
           <View style={storyS.csInputBar}>
-            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSelectionChange={(e) => setCommentCursor(e.nativeEvent.selection.end)} onFocus={onCommentFocus} onBlur={onCommentBlur} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
             <TouchableOpacity style={[storyS.csSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { backgroundColor: "#2A2A3A" }]} onPress={addComment} disabled={!commentText.trim()}>
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
@@ -1461,6 +1555,24 @@ export default function PostDetailScreen() {
   const [travelInfoPref, setTravelInfoPref] = useState<boolean | null>(null);
   const [heartBurst, setHeartBurst] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
+  // @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알려면 커서 위치가 필요하다(onSelectionChange로 추적)
+  const [commentCursor, setCommentCursor] = useState(0);
+  // 칩 줄은 "입력 중"에만 뜬다 — activeMention 은 텍스트+커서만 보므로, `@ab` 까지 치고
+  // 안드로이드 뒤로가기로 키보드만 내리면 칩 줄이 그대로 남는다(포커스 조건이 그걸 막는다).
+  const [commentFocused, setCommentFocused] = useState(false);
+  // ⚠️ blur 로 칩 줄을 **즉시** 끄면 안 된다 — 칩을 누르는 순간 blur 가 press 보다 먼저 오는
+  //    경우가 있어(안드로이드) 칩이 사라지고 그 탭이 빈 곳에 떨어진다. 한 박자 늦춰 끄고,
+  //    다시 포커스가 잡히면 예약을 취소한다(SocialScreen 댓글 시트와 같은 방식).
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
+  const onCommentFocus = () => {
+    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
+    setCommentFocused(true);
+  };
+  const onCommentBlur = () => {
+    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => { blurTimerRef.current = null; setCommentFocused(false); }, 200);
+  };
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -1532,6 +1644,26 @@ export default function PostDetailScreen() {
     // postId/remoteId가 바뀔 때만 재조회 (refreshComments·refreshPostCounts는 안정 스토어 액션)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, rawRecord?.remoteId]);
+  // 복귀 포커스마다 재조회 — 위 이펙트는 마운트(+id 변경) 1회뿐이라, 이 화면을 띄워 둔 채
+  // 프로필·사진 뷰어 등을 다녀오면 그 사이 달린 남의 댓글·좋아요가 반영되지 않았다.
+  //
+  // ⚠️ 최신 값은 **반드시 ref로** 읽는다. storeRecord/rawRecord를 useCallback deps에 넣으면
+  //    재조회 → 스토어 갱신 → 객체 신원 변경 → 포커스 콜백 재실행 → 재조회의 무한 루프가 된다.
+  //    (deps를 비워 두면 useFocusEffect가 '포커스 진입'마다 정확히 한 번 돈다)
+  const detailSyncRef = useRef({ postId, remoteId: rawRecord?.remoteId, isExample: rawRecord?.isExample, hasStore: !!storeRecord });
+  detailSyncRef.current = { postId, remoteId: rawRecord?.remoteId, isExample: rawRecord?.isExample, hasStore: !!storeRecord };
+  const firstDetailFocusRef = useRef(true);
+  useFocusEffect(
+    useCallback(() => {
+      // 첫 포커스는 위 마운트 이펙트와 중복이라 건너뛴다
+      if (firstDetailFocusRef.current) { firstDetailFocusRef.current = false; return; }
+      const { postId: pid, remoteId, isExample, hasStore } = detailSyncRef.current;
+      if (!remoteId || isExample) return;
+      // 스피너(commentsLoading)는 켜지 않는다 — 이미 목록이 있으므로 조용히 갱신한다
+      refreshComments(pid, remoteId).catch(() => { /* 실패 시 로컬 댓글 유지 */ });
+      if (hasStore) refreshPostCounts(pid).catch(() => {});
+    }, [refreshComments, refreshPostCounts])
+  );
   // 뷰어 시점에서 비공개 사진을 제거한 사본 — 내 글은 미리보기 뷰어, 타인 글은 나
   const record = rawRecord ? applyViewer(rawRecord, viewerFor(rawRecord)) : rawRecord;
 
@@ -1623,11 +1755,47 @@ export default function PostDetailScreen() {
 
   const handleReply = (id: string, name: string) => {
     setReplyTo({ id, name });
+    // 답글 대상 아이디를 본문 앞에 미리 채운다 — 이미 그 사람으로 시작하면 중복 삽입하지 않는다
+    const next = ensureReplyPrefix(commentText, name);
+    setCommentText(next);
+    // ⚠️ 커서도 **같은 만큼 밀어야 한다.** 접두사를 앞에 끼우면 기존 글자가 전부 오른쪽으로
+    //    밀리는데 커서 상태를 그대로 두면 findActiveMention 이 방금 넣은 접두사의 앞부분을
+    //    "입력 중인 토큰"으로 잡는다(본문 `좋아요`·커서 3 + 대상 `jusang` → `{start:0,end:3,
+    //    query:'ju'}`). 그 상태에서 칩을 누르면 본문이 `@justin sang 좋아요` 로 깨지고
+    //    replyTo 는 여전히 jusang 이라 보이는 태그와 실제 답글 부모가 달라진다.
+    //    onSelectionChange 에 기대면 안 된다 — 안드로이드 ReactEditText.maybeSetText 는 텍스트를
+    //    바꾼 뒤 직전 selection 인덱스를 복원해, 값이 같으면 이벤트가 아예 발화하지 않는다.
+    //    접두사를 안 붙인 경우(이미 그 사람으로 시작)엔 delta 0 이라 그대로다.
+    const delta = next.length - commentText.length;
+    setCommentCursor((c) => Math.min(c + delta, next.length));
     commentInputRef.current?.focus();
   };
 
   const cancelReply = () => {
+    // 본문은 건드리지 않는다(설계 2026-09-09: 접두사 강제 삭제 안 함 — 이미 고쳐 썼을 수 있다)
     setReplyTo(null);
+  };
+
+  // ── @자동완성 ──
+  // 후보는 전부 로컬 데이터다 — 메이트 + 글 작성자 + 이 글의 댓글·답글 작성자.
+  // 중복 제거·접두 일치·상한(8)은 filterMentionCandidates 가 하므로 여기선 순서만 정한다.
+  // useMemo 를 쓰지 않는다: 이 블록은 early return(!record) 뒤라 훅을 새로 추가할 수 없고,
+  // comments 도 매 렌더 새 배열이라 메모해도 매번 다시 계산된다.
+  const mentionCandidates: MentionCandidate[] = [];
+  for (const n of neighbors) mentionCandidates.push({ handle: n.username, photo: n.photo, emoji: n.emoji });
+  if (record.user?.handle) mentionCandidates.push({ handle: record.user.handle, photo: record.user.photo });
+  for (const c of comments) {
+    mentionCandidates.push({ handle: c.name, photo: c.photo });
+    for (const r of (c.replies ?? [])) mentionCandidates.push({ handle: r.name, photo: r.photo });
+  }
+  const activeMention = findActiveMention(commentText, commentCursor);
+  const pickMention = (handle: string) => {
+    if (!activeMention) return;
+    const next = applyMention(commentText, activeMention, handle);
+    setCommentText(next.text);
+    // ⚠️ TextInput 의 `selection` 을 prop 으로 제어하지 않는다 — 안드로이드에서 제어된 selection 은
+    //    조합 중인 한글을 끊고 커서가 튄다. 커서 상태는 뒤따라오는 onSelectionChange 가 덮어쓴다.
+    setCommentCursor(next.cursor);
   };
 
   const canShowLikers = !!rawRecord?.remoteId && record.likes > 0;
@@ -2296,7 +2464,8 @@ export default function PostDetailScreen() {
                     </Text>
                     <Text style={s.commentTime}>{commentTime(c)}</Text>
                   </View>
-                  <Text style={s.commentText}>{c.text}</Text>
+                  {/* @언급은 보라 네온 + 탭하면 그 사람 프로필로 (MentionText가 처리) */}
+                  <MentionText text={c.text} style={s.commentText} />
                   <View style={s.commentActions}>
                     <TouchableOpacity style={s.commentLikeBtn} onPress={() => { tap(); toggleCommentLike(postId, c.id); }}>
                       <Text style={[s.commentLikeIcon, c.liked && { color: C.red }]}>{c.liked ? '♥' : '♡'}</Text>
@@ -2337,7 +2506,7 @@ export default function PostDetailScreen() {
                       </Text>
                       <Text style={s.commentTime}>{commentTime(r)}</Text>
                     </View>
-                    <Text style={s.commentText}>{r.text}</Text>
+                    <MentionText text={r.text} style={s.commentText} />
                     <View style={s.commentActions}>
                       <TouchableOpacity style={s.commentLikeBtn} onPress={() => { tap(); toggleCommentLike(postId, r.id); }}>
                         <Text style={[s.commentLikeIcon, r.liked && { color: C.red }]}>{r.liked ? '♥' : '♡'}</Text>
@@ -2382,7 +2551,18 @@ export default function PostDetailScreen() {
         )}
         {/* ── 댓글 입력 (앨범 및 예시 콘텐츠 제외) ── */}
         {viewType !== 'album' && !record.isExample && (
-        // 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음)
+        <>
+        {/* @자동완성 — 후보가 0이면 MentionSuggestBar 가 null 을 돌려주므로 여기선 '편집 중인가'만 본다.
+            입력 바 바로 위·KeyboardAvoidingView 안이라 키보드 위에 붙어 뜬다. */}
+        {commentFocused && activeMention && (
+          <MentionSuggestBar
+            candidates={mentionCandidates}
+            query={activeMention.query}
+            exclude={globalHandle}
+            onPick={pickMention}
+          />
+        )}
+        {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
         <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : kbVisible ? 12 : insets.bottom + 12 }]}>
           <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             ref={commentInputRef}
@@ -2391,6 +2571,11 @@ export default function PostDetailScreen() {
             placeholderTextColor={C.muted}
             value={commentText}
             onChangeText={setCommentText}
+            // 커서 추적 — @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알아야 한다
+            onSelectionChange={(e) => setCommentCursor(e.nativeEvent.selection.end)}
+            // 포커스 추적 — 키보드만 내렸을 때 칩 줄이 남지 않게 한다(위 onCommentBlur 주석)
+            onFocus={onCommentFocus}
+            onBlur={onCommentBlur}
             onSubmitEditing={addComment}
             returnKeyType="send"
             maxLength={500}
@@ -2403,6 +2588,7 @@ export default function PostDetailScreen() {
             <Text style={[s.sendText, !commentText.trim() && s.sendTextDisabled]}>{t('postDetail.send')}</Text>
           </TouchableOpacity>
         </View>
+        </>
         )}
       </KeyboardAvoidingView>
 

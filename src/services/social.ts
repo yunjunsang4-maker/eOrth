@@ -222,12 +222,13 @@ export async function unblockUser(targetId: string): Promise<void> {
 // notifications 테이블은 서버 트리거로 채워진다 (schema.sql 10-c/d/e):
 //   neighbor_request·neighbor_accept — 메이트 신청/수락
 //   like·comment·reply              — 내 게시물/댓글에 대한 반응 (post_id 있음)
+//   mention                         — 댓글 본문에서 나를 @언급 (post_id 있음, 10-d-2)
 //   friend_post                     — 이웃의 새 기록 (post_id 있음)
 // ⚠️ 조회에서 타입을 필터하지 말 것 — 예전엔 neighbor_*만 조회해서, 서버·푸시로는
 //    좋아요/댓글 알림이 오는데 앱 목록은 비어 있었다(타입 추가 시 여기도 자동 포함되게 유지).
 export type AppNotificationType =
   | 'neighbor_request' | 'neighbor_accept'
-  | 'like' | 'comment' | 'reply' | 'friend_post';
+  | 'like' | 'comment' | 'reply' | 'mention' | 'friend_post';
 export interface AppNotification {
   id: string;
   type: AppNotificationType;
@@ -235,7 +236,7 @@ export interface AppNotification {
   actorHandle: string | null;
   actorEmoji: string | null;
   actorPhoto: string | null; // 프로필 사진 — 알림 아바타는 사진 우선(없으면 제작 실루엣)
-  postId: string | null;     // like·comment·reply·friend_post의 대상 게시물 (딥링크용)
+  postId: string | null;     // like·comment·reply·mention·friend_post의 대상 게시물 (딥링크용)
   read: boolean;
   createdAt: number; // ms
 }
@@ -301,17 +302,53 @@ export async function fetchUnreadNotificationCount(): Promise<number> {
   }
 }
 
-// 실시간 알림 구독 — 내 알림 INSERT를 받아 배지·목록을 즉시 갱신한다.
+/** subscribeNotifications 콜백 인자 — 인자를 무시하는 기존 호출부(`() => {…}`)와 호환된다 */
+export interface NotificationChangeEvent {
+  eventType: 'INSERT' | 'UPDATE';
+  row: { id: string; type: string; read: boolean; created_at: string };
+}
+
+// 실시간 알림 구독 — 내 알림 INSERT/UPDATE를 받아 배지·목록·배너를 즉시 갱신한다.
 // (RLS가 본인 행만 전달하지만, 필터를 함께 걸어 불필요한 브로드캐스트를 줄인다)
 // 해제 함수 반환 — DM subscribeInbox와 동일 패턴.
-export function subscribeNotifications(userId: string, onInsert: () => void): () => void {
+//
+// ⚠️ **INSERT 전용이면 안 된다.** `uq_notifications_actor_type(user_id, actor_id, type)`
+//    유일 인덱스 때문에 같은 사람의 두 번째 반응은 새 행이 아니라 기존 행의
+//    `on conflict do update`(created_at=now(), read=false)로 collapse된다. 그래서
+//    INSERT만 듣던 시절엔 "같은 사람이 내 다른 글에 댓글을 달면 배지도 배너도 안 뜬다"는
+//    증상이 있었다. 서버 푸시 트리거(notify_send_push)가 INSERT OR UPDATE인 것과 같은 이유다.
+//
+// ⚠️ 읽음 처리(`read=true`)도 UPDATE라 이벤트가 온다. 배너처럼 "새 알림"만 반응해야 하는
+//    소비 측은 반드시 걸러야 한다 — `utils/notificationFreshness`(created_at 기반 키) 참고.
+export function subscribeNotifications(
+  userId: string,
+  onChange: (payload: NotificationChangeEvent) => void
+): () => void {
   if (!supabase || !userId) return () => {};
+  const filter = `user_id=eq.${userId}`;
+  const emit = (eventType: 'INSERT' | 'UPDATE', payload: any) => {
+    const r = payload?.new ?? {};
+    onChange({
+      eventType,
+      row: {
+        id: String(r.id ?? ''),
+        type: String(r.type ?? ''),
+        read: !!r.read,
+        created_at: String(r.created_at ?? ''),
+      },
+    });
+  };
   const channel = supabase
     .channel(`notif-${userId}`)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-      () => onInsert()
+      { event: 'INSERT', schema: 'public', table: 'notifications', filter },
+      (payload) => emit('INSERT', payload)
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'notifications', filter },
+      (payload) => emit('UPDATE', payload)
     )
     .subscribe();
   return () => {

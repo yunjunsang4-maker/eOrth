@@ -1848,9 +1848,9 @@ alter table public.notifications drop constraint if exists notifications_type_ch
 update public.notifications set type = 'neighbor_request' where type = 'follow_request';
 update public.notifications set type = 'neighbor_accept'  where type = 'follow_accept';
 delete from public.notifications
- where type not in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post');
+ where type not in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'mention', 'friend_post');
 alter table public.notifications add constraint notifications_type_check
-  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post'));
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'mention', 'friend_post'));
 create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
 -- 같은 (수신자·행위자·타입)당 알림 1건 유지 — 반복 신청/재수락 스팸 방지.
 -- (아래 서로이웃 알림 insert는 이 유일 인덱스에 맞춰 on conflict 업서트로 처리한다.)
@@ -2080,6 +2080,13 @@ begin
     -- 수락한 행 하나로 성립하므로 삭제해도 잃는 것이 없다.
     delete from public.neighbors
       where requester_id = me and addressee_id = requester;
+    -- 처리된 신청 알림 정리 — 수락은 행을 **지우는 게 아니라 UPDATE**라
+    -- trg_cleanup_neighbor_request_notif(after delete)가 뜨지 않는다. 그래서 수락한 뒤에도
+    -- 내 알림함에 'OO님이 메이트 신청을 보냈어요'가 남아, 눌러도 수락 목록이 비어 있는
+    -- 유령 알림이 됐다. 수락 알림을 넣기 **전에** 지운다(신청자↔수락자 방향이 반대라
+    -- 아래 insert와 충돌하지 않는다 — 이건 내 알림, 저건 신청자 알림).
+    delete from public.notifications
+      where user_id = me and actor_id = requester and type = 'neighbor_request';
     insert into public.notifications (user_id, actor_id, type)
       values (requester, me, 'neighbor_accept')
       on conflict (user_id, actor_id, type) do update set created_at = now(), read = false;
@@ -2360,9 +2367,10 @@ grant execute on function public.claim_push_token(text) to authenticated;
 alter table public.notifications add column if not exists post_id uuid references public.posts(id) on delete cascade;
 
 -- 타입 제약을 확장된 목록으로 교체 (drop → recreate, idempotent)
+-- ('mention' 은 10-d-2 의 댓글 @언급 알림 — 목록에 없으면 트리거의 insert 가 조용히 실패한다)
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check
-  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post'));
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'mention', 'friend_post'));
 
 -- uq_notifications_actor_type 유일 인덱스:
 -- like/comment는 같은 게시물에 대한 중복 알림을 막지 않는다(like는 1인당 1개라 자연 방지;
@@ -2447,16 +2455,143 @@ create trigger trg_notify_comment after insert on public.comments
   for each row execute function public.notify_on_comment();
 
 -- ============================================================
+-- 10-d-2) 댓글 @언급 알림 저장 트리거
+--   댓글 본문의 `@아이디` 토큰을 파싱해 그 사람에게 type='mention' 알림.
+--   저장 방식 A안(설계 2026-09-09) — comments 에 컬럼을 늘리지 않고 본문만 신뢰한다.
+--   클라이언트가 보낸 '언급 대상 목록'을 받지 않는 이유: 앱이 임의의 사용자 id 를 끼워
+--   넣어 스팸 알림을 만들 수 있다. 서버가 본문을 다시 파싱하는 쪽이 위조 불가다.
+--
+--   ⚠️ 토큰 규칙은 앱의 src/utils/mentions.ts(MENTION_HANDLE_RE)와 **글자 그대로 같아야**
+--      한다. 앞 경계 `(^|[^A-Za-z0-9_])` 는 이메일(`a@bcde`)을 언급으로 오인하지 않게,
+--      뒤 경계 `(?![A-Za-z0-9_])` 는 31자 이상 문자열의 앞 30자만 잘라 잡는 오탐을 막는다.
+--      한쪽만 고치면 앱에선 보라색으로 보이는데 알림은 안 오는 조용한 어긋남이 생긴다.
+--
+--   알림을 만들지 않는 경우(중복·프라이버시):
+--     ① 본인 언급          — 자기 자신에게 알림 보내지 않음
+--     ② 차단 관계
+--     ③ 그 글을 못 보는 사람 — 글 작성자도 아니고 작성자와 서로이웃도 아니면 제외.
+--                             (아니면 남의 비공개 글에 @만 적어 존재를 흘릴 수 있다)
+--     ④ 답글에서 부모 댓글 작성자   — 이미 'reply' 알림이 간다
+--     ⑤ 최상위 댓글에서 글 작성자  — 이미 'comment' 알림이 간다
+--     ⑥ 비공개(private) 글의 댓글 — 전체 skip
+--     ⑦ 삭제표식(deleted_at)이 붙은 글의 댓글 — 전체 skip
+-- ============================================================
+create or replace function public.notify_on_mention()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  post_author   uuid;
+  post_vis      text;
+  post_deleted  timestamptz;
+  parent_author uuid;
+  target        uuid;
+begin
+  select author_id, visibility, deleted_at into post_author, post_vis, post_deleted
+    from public.posts where id = new.post_id;
+
+  -- ⑦ 글이 없거나 지워진 글이면 언급 알림 자체를 만들지 않는다
+  if post_author is null or post_deleted is not null then
+    return null;
+  end if;
+
+  -- ⑥ 비공개 글의 댓글도 전체 skip.
+  --    최종 posts_select(이 파일 1522~1531행)는 작성자 외 전원에게 'neighbors' 글만 열어 준다
+  --    — 그래서 아래 ③(서로이웃) 을 통과한 사람도 private 글은 **못 연다.** 그대로 두면
+  --    알림·푸시는 가는데 탭하면 아무것도 안 열리는 죽은 딥링크가 되고, 덤으로
+  --    "그 사람이 비공개 글을 썼다"는 사실 자체가 새어 나간다.
+  --    (비공개 글에는 comments_insert_own 때문에 작성자만 댓글을 달 수 있어, 이 경로는
+  --     '작성자가 자기 비공개 글 댓글에서 메이트를 언급'하는 한 가지뿐이다.)
+  --    `= 'private'` 이 아니라 `<> 'neighbors'` 로 적는다 — 정책과 같은 기준이어야
+  --    쓰이지 않는 'public' 값이 되살아나도 둘이 어긋나지 않는다.
+  if post_vis is distinct from 'neighbors' then
+    return null;
+  end if;
+
+  -- 답글이면 부모 댓글 작성자를 미리 구해 둔다(아래 ④ 제외 조건에서 쓴다)
+  if new.parent_id is not null then
+    select author_id into parent_author from public.comments where id = new.parent_id;
+  end if;
+
+  -- distinct 필수 — 한 댓글에서 같은 사람을 두 번 언급하면 같은 키 upsert 가 한 문장 안에서
+  -- 두 번 충돌해 21000(cannot affect row a second time)이 된다(notify_on_friend_post 와 같은 함정).
+  -- 여기서는 대상별로 문장을 나누어 돌지만, 루프 중복 자체가 무의미하므로 미리 접는다.
+  for target in
+    select distinct p.id
+      from regexp_matches(new.text, '(^|[^A-Za-z0-9_])@([A-Za-z0-9_]{4,30})(?![A-Za-z0-9_])', 'g') as t(m)
+      join public.profiles p on lower(p.handle) = lower((t.m)[2])
+     where p.id <> new.author_id                      -- ① 본인 언급
+  loop
+    if public.is_blocked_between(target, new.author_id) then
+      continue;                                       -- ② 차단 관계
+    end if;
+    if target <> post_author and not public.are_neighbors(target, post_author) then
+      continue;                                       -- ③ 그 글을 못 보는 사람
+    end if;
+    if new.parent_id is not null and target = parent_author then
+      continue;                                       -- ④ 이미 'reply' 알림이 간다
+    end if;
+    if new.parent_id is null and target = post_author then
+      continue;                                       -- ⑤ 이미 'comment' 알림이 간다
+    end if;
+
+    -- 언급도 여러 번 올 수 있어 uq_notifications_actor_type 충돌 가능 —
+    -- 다른 타입과 같은 collapse 규칙(대상·행위자·타입별 최신 1건)을 따른다.
+    insert into public.notifications (user_id, actor_id, type, post_id)
+      values (target, new.author_id, 'mention', new.post_id)
+      on conflict (user_id, actor_id, type) do update
+        set created_at = now(), read = false, post_id = excluded.post_id;
+  end loop;
+
+  return null;
+exception when others then
+  -- 알림 실패가 댓글 저장을 막으면 안 된다 (notify_on_friend_post·notify_send_push 와 같은 원칙).
+  -- 이 예외 흡수가 없으면 정규식·조인 오류 하나가 comments insert 를 통째로 롤백시킨다.
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_mention on public.comments;
+create trigger trg_notify_mention after insert on public.comments
+  for each row execute function public.notify_on_mention();
+
+-- ============================================================
 -- 10-e) 친구 새 기록 알림 — posts insert 시 이웃들에게 type='friend_post' 알림
 --   visibility 'neighbors'(또는 'public') 게시물만 대상.
 --   bulk insert ... select — 이웃 수가 많아도 N 쿼리 없이 1 쿼리로 처리.
+--
+--   INSERT 전용이면 안 되는 이유 (감사 2026-09-08):
+--     앱에는 '비공개로 저장했다가 나중에 공개로 전환'하는 경로가 있다
+--     (PostDetailScreen 공개범위 변경 → posts.ts updatePost 의 UPDATE).
+--     그 글은 insert 시점에 private 이라 알림이 나가지 않았고, 공개로 바뀔 때도
+--     트리거가 없어 **이웃 누구에게도 영영 알려지지 않았다.**
+--     → after update of visibility 트리거를 추가하되, UPDATE 경로는
+--       'private → 그 외' 전환일 때만 발화시킨다. 그렇지 않으면 본문을 고칠 때마다
+--       이웃 전원에게 '새 기록' 알림이 다시 간다.
 -- ============================================================
 create or replace function public.notify_on_friend_post()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
+  -- 삭제표식(tombstone)이 붙은 글은 알림 대상이 아니다 — INSERT·UPDATE 공통.
+  -- (soft delete 는 deleted_at 만 건드리는 UPDATE 라 아래 visibility 트리거로는 오지 않지만,
+  --  지워진 글을 공개로 되돌리는 경로가 생겨도 알림이 나가지 않도록 여기서 막는다)
+  if new.deleted_at is not null then
+    return null;
+  end if;
+
   -- private 게시물은 이웃에게도 알림 안 함
   if new.visibility = 'private' then
     return null;
+  end if;
+
+  -- UPDATE 경로는 '비공개 → 공개' 전환만 통과시킨다(그 외 UPDATE 는 조용히 종료).
+  -- visibility 는 not null 이라 null 비교로 판정이 흐려지지 않는다.
+  -- ⚠️ old 참조를 **중첩 if 안에** 둔다. 한 줄로 `tg_op = 'UPDATE' and (old...)` 라고 쓰면
+  --    INSERT 경로에서도 old 표현식이 평가 대상이 되는데, 이 함수 끝에는
+  --    `exception when others then return null` 이 있어 **오류가 조용히 삼켜진다.**
+  --    그러면 새 글의 이웃 알림이 통째로 죽고 아무 흔적도 남지 않는다.
+  --    (이 저장소의 다른 tg_op 분기도 전부 중첩 if / case 형태다)
+  if tg_op = 'UPDATE' then
+    if not (old.visibility = 'private' and new.visibility <> 'private') then
+      return null;
+    end if;
   end if;
 
   -- accepted 이웃 전원에게 알림 삽입 (on conflict: 같은 작성자의 이전 friend_post 알림 갱신)
@@ -2490,6 +2625,14 @@ end; $$;
 
 drop trigger if exists trg_notify_friend_post on public.posts;
 create trigger trg_notify_friend_post after insert on public.posts
+  for each row execute function public.notify_on_friend_post();
+
+-- 공개범위 전환 트리거 — 비공개로 올린 글을 나중에 공개로 바꿨을 때의 이웃 알림.
+-- ⚠️ `of visibility` 로 좁혀 둔다. 컬럼 한정을 빼면 좋아요·댓글 카운터 갱신 등 posts 의
+--    모든 UPDATE 마다 이 함수가 호출된다(대부분 위 tg_op 가드에서 즉시 return 하지만,
+--    발행량이 많은 표에서 굳이 태울 이유가 없다).
+drop trigger if exists trg_notify_friend_post_visibility on public.posts;
+create trigger trg_notify_friend_post_visibility after update of visibility on public.posts
   for each row execute function public.notify_on_friend_post();
 
 -- ============================================================

@@ -276,13 +276,45 @@ export async function getProfileById(id: string): Promise<ProfileRow | null> {
   }
 }
 
-/** 핸들 정확 일치로 프로필 조회 (차단 항목 uuid 백필 등) — 없음/실패 시 null */
+/**
+ * ilike 패턴 안에서 와일드카드를 리터럴로 만든다 — `%`(0자 이상)·`_`(한 글자)·`\\`(이스케이프).
+ * searchProfiles(192행)가 같은 처리를 인라인으로 하고 있다(선례).
+ *
+ * ⚠️ 아이디에 `_`가 쓰인다는 것이 핵심이다. 아이디 형식은 `[A-Za-z0-9_]{4,30}`이라 `%`는 못
+ *    들어오지만 `_`는 흔하다. 이스케이프 없이 `.ilike('handle', 'a_b')`를 던지면 `axb`·`a1b`도
+ *    걸려 **엉뚱한 사람의 프로필로 이동한다.**
+ */
+function escapeLike(v: string): string {
+  return v.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * 핸들로 프로필 조회 (댓글 @언급 탭·차단 항목 uuid 백필·딥링크) — 없음/실패 시 null.
+ *
+ * **대소문자를 무시한다.** 서버의 아이디 유일성이 `uq_profiles_handle_lower`
+ * (`profiles (lower(handle))`, schema.sql:128)라 `@JuSang`과 `@jusang`은 같은 사람이고,
+ * 언급 알림을 만드는 `notify_on_mention`도 `lower(p.handle) = lower(토큰)`으로 찾는다.
+ * 예전의 `.eq('handle', h)`(정확 일치)는 여기서만 규칙이 어긋나 — 표기를 다르게 직접 타이핑한
+ * `@JuSang`이 **보라 네온으로 강조되고 알림까지 가는데 탭만 아무 반응이 없었다.**
+ * (딥링크·QR도 이 함수를 거치므로 대소문자가 다른 링크의 실패도 함께 없어진다.)
+ *
+ * `ilike`는 와일드카드가 없으면 `lower(a) = lower(b)`와 같은 판정이고,
+ * 위 유니크 인덱스 덕에 결과가 최대 1건이라 `maybeSingle()`을 그대로 쓸 수 있다.
+ */
 export async function getProfileByHandle(handle: string): Promise<ProfileRow | null> {
   if (!supabase) return null;
   const h = handle.trim();
   if (!h) return null;
+  // 아이디 형식(`[A-Za-z0-9_]{1,30}`) 밖의 입력은 조회하지 않는다 — 딥링크 `eorth://u/…`는
+  // 형식 검증 없이 여기로 오는데, PostgREST가 `*`를 `%`로 바꿔 넘기므로 `a*` 같은 값이
+  // `ilike 'a%'`가 되어 **엉뚱한 프로필로 이동**할 수 있다. escapeLike는 `*`를 못 막는다
+  // (PostgREST 단계의 치환이라 백슬래시가 소용없다). 존재할 수 없는 아이디는 애초에 null.
+  if (!/^[A-Za-z0-9_]{1,30}$/.test(h)) return null;
   try {
-    const { data } = await supabase.from('public_profiles').select('*').eq('handle', h).maybeSingle();
+    const { data } = await supabase
+      .from('public_profiles').select('*')
+      .ilike('handle', escapeLike(h))
+      .maybeSingle();
     return (data as ProfileRow) ?? null;
   } catch {
     return null;
