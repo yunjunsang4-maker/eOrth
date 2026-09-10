@@ -29,6 +29,24 @@ import {
   type ServerTripCardRef,
 } from '../services/tripState';
 import { classifyServerCards, mergeServerCard, toLocalTripCard } from '../utils/mergeTripCards';
+import {
+  probeStateFlags,
+  fetchStateFlags,
+  upsertStateFlags,
+  tombstoneStateFlags,
+} from '../services/appState';
+import {
+  classifyServerFlags,
+  diffForPush,
+  emptyFlagState,
+  flagMapKey,
+  blockedFlagKey,
+  blockedFlagSig,
+  blockedFlagData,
+  mergeViewedSnap,
+  type LocalFlagState,
+  type StateFlagKind,
+} from '../utils/mergeStateFlags';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
@@ -289,6 +307,41 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
     p,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
   ]);
+}
+
+/**
+ * 부가상태 집합 6종 → `user_state_flags`의 **서버 키 공간**으로 옮겨 담는다.
+ * (판정·diff는 utils/mergeStateFlags가 하고, 여기서는 키 변환만 한다.)
+ *
+ * ⚠️ `archived`만 로컬 기록 id → **remoteId**로 바꾼다. 카드(`serializeTripCard`)와 같은 이유다 —
+ *    기기마다 로컬 id가 다르므로 로컬 id로 올리면 상대 기기에서 아무 기록과도 안 맞는다.
+ *    아직 발행 전이라 remoteId가 없으면 **로컬 id 그대로** 올린다(그 항목은 이 기기 전용이며,
+ *    발행되면 다음 diff에서 키가 remoteId로 바뀐다 — 옛 키에는 표식이 찍혀 정리된다).
+ *
+ * ⚠️ `reportedPost`·`reportedComment`는 **변환하지 않는다.** 신고는 거의 전부 피드 글/서버 댓글에
+ *    대해 일어나고 그 id는 이미 remoteId다. 화면(`SocialScreen`·`PostDetailScreen`)이
+ *    `reportedPostIds.includes(r.id)`로 **로컬 목록의 id 그대로** 비교하므로, 여기서 변환하면
+ *    오히려 숨김이 풀린다.
+ */
+function buildLocalFlagState(
+  s: {
+    archivedIds: string[]; blockedUsers: BlockedUser[]; mutedHandles: string[];
+    viewedSnapIds: string[]; reportedPostIds: string[]; reportedCommentIds: string[];
+  },
+  toRemote: (localId: string) => string,
+): LocalFlagState {
+  const st = emptyFlagState();
+  st.archived = s.archivedIds.map((id) => ({ key: toRemote(id) }));
+  st.muted = s.mutedHandles.map((h) => ({ key: h }));
+  // blocked만 지문(sig)을 갖는다 — 표시용 메타(name·emoji·id)가 바뀌면 다시 올려야 한다.
+  // 신원 키가 비는 항목(이름도 handle도 없는 손상 데이터)은 아예 올리지 않는다.
+  st.blocked = s.blockedUsers
+    .map((b) => ({ key: blockedFlagKey(b), sig: blockedFlagSig(b) }))
+    .filter((x) => !!x.key);
+  st.viewedSnap = s.viewedSnapIds.map((k) => ({ key: k }));
+  st.reportedPost = s.reportedPostIds.map((k) => ({ key: k }));
+  st.reportedComment = s.reportedCommentIds.map((k) => ({ key: k }));
+  return st;
 }
 
 interface RecordContextType {
@@ -1299,6 +1352,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const archiveRecord = (id: string) => {
+    // ⚠️ **사용자가 명시적으로 켠 항목**이라고 표시한다(아래 `noteExplicitFlagAdd` 주석).
+    //    이게 없으면 "보관 → 해제 → 다시 보관"의 마지막 단계가 서버 표식을 못 이겨
+    //    다음 pull에서 조용히 풀린다(2026-09-10 QA M1).
+    //    push 키는 remoteId 우선이라 두 표기를 모두 남긴다 — 이 시점에 발행 전이면 로컬 id로,
+    //    발행 뒤면 remoteId로 나가기 때문이다.
+    noteExplicitFlagAdd('archived', id);
+    const remoteId = recordsLiveRef.current.find((r) => r.id === id)?.remoteId;
+    if (remoteId) noteExplicitFlagAdd('archived', remoteId);
     setArchivedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
@@ -1378,10 +1439,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 앱 재시작·피드 새로고침 후에도 링이 다시 켜지지 않게 한다 (remoteId 기준, 최근 500개 유지)
     const target = feedPosts.find((r) => r.id === id) ?? records.find((r) => r.id === id);
     const rid = target?.remoteId ?? id;
+    // add-only kind라 우리가 표식을 만들지는 않지만, **데이터 초기화(clearStateFlags)는 이 행에도
+    // 표식을 찍는다.** 초기화 뒤 같은 스냅을 다시 보면 그건 명시적 재추가이므로 되살려야 한다.
+    noteExplicitFlagAdd('viewedSnap', rid);
     setViewedSnapIds((ids) => (ids.includes(rid) ? ids : [...ids, rid].slice(-500)));
   };
 
   const blockUser = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
+    // ⚠️ **이 한 줄이 QA H1의 수정 지점이다.** 없으면 "차단 → 해제 → 재차단"에서 마지막 단계가
+    //    서버 표식을 못 이겨, 다음 pull이 목록에서 그 사람을 빼 버린다. 그러면 서버 `blocks`는
+    //    차단 중인데 앱 목록은 비어 **UI로 해제할 방법조차 사라지고**(unblockUser가 목록에서
+    //    대상을 찾는다) 댓글·알림·DM의 클라이언트 필터가 전부 풀린다.
+    noteExplicitFlagAdd('blocked', blockedFlagKey(user));
     setBlockedUsers((prev) => {
       // 신원은 handle(양쪽에 있으면) 우선, 없으면 표시이름으로 중복 판정
       const dup = prev.some((b) =>
@@ -1458,6 +1527,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 이미 신고했으면 무시.
   const reportPost = (id: string, reason?: string) => {
     if (reportedPostIds.includes(id)) return;
+    noteExplicitFlagAdd('reportedPost', id); // add-only지만 초기화 표식은 넘어야 한다(markSnapViewed 주석 참조)
     setReportedPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     if (isSupabaseConfigured) {
       // remoteId 우선(백엔드 글), 피드 글은 id가 곧 remoteId. 로컬 전용 글이면 post_id 없이 접수
@@ -1475,6 +1545,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // post_id + reason(댓글 본문 일부 포함)으로 남긴다 — 운영자가 어느 댓글인지 찾을 수 있다.
   const reportComment = (postId: string, commentId: string, reason?: string) => {
     if (reportedCommentIds.includes(commentId)) return;
+    noteExplicitFlagAdd('reportedComment', commentId);
     setReportedCommentIds((prev) => (prev.includes(commentId) ? prev : [...prev, commentId]));
     if (isSupabaseConfigured) {
       const target = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
@@ -1489,6 +1560,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 사용자 알림 음소거 토글/조회 (handle 기준, 영속)
   const toggleMute = (handle: string) => {
     if (!handle) return;
+    // 켜는 방향일 때만 '명시적 재추가'로 표시한다. 방향 판정은 **렌더 미러**로 한다 —
+    // setState 업데이터 안에서 ref를 건드리면 StrictMode의 이중 호출에 두 번 기록된다
+    // (여기서는 무해하지만 관습을 깨지 않는다). 미러가 한 틱 낡아도 결과는 "revive를 한 번
+    // 더/덜 쓰는" 정도이며, 이미 살아 있는 행에 대한 revive는 no-op이다.
+    if (!flagsLiveRef.current.mutedHandles.includes(handle)) noteExplicitFlagAdd('muted', handle);
     setMutedHandles((prev) => (prev.includes(handle) ? prev.filter((h) => h !== handle) : [...prev, handle]));
   };
   const isMuted = useCallback((handle: string) => mutedHandles.includes(handle), [mutedHandles]);
@@ -1889,6 +1965,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     //    tombstone을 쏜다(대량 오삭제, 조용하고 되돌릴 수 없다).**
     lastPushedRef.current.clear();
     lastLegacySavedRef.current = ''; // legacy 백업 중복 방지 서명도 계정 경계에서 비운다
+    // ⚠️ 부가상태 집합(user_state_flags) 지문도 **같은 이유로 반드시** 비운다. 위 카드와 판박이다:
+    //    계정 전환은 6개 집합을 통째로 비우므로(위 setArchivedIds([]) 등), 이 맵을 남겨두면
+    //    다음 push diff가 "올린 적 있는데 지금 없다"로 읽어 **이전 계정의 보관·차단·음소거
+    //    전체에 삭제 표식을 쏜다.** (add-only kind는 표식이 안 나가지만 removable 3종은 나간다.)
+    lastFlagsPushedRef.current.clear();
+    // 명시적 재추가 표시도 함께 비운다 — 이전 계정에서 켠 항목이 새 계정의 서버 행을
+    // **되살리는(revive)** 데 쓰이면 안 된다. 데이터 초기화 경로에서도 같은 이유로 필요하다:
+    // `clearStateFlags()`가 방금 찍은 표식을 대기 중이던 push가 되살리지 못하게 한다.
+    explicitFlagAddsRef.current.clear();
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
@@ -2292,6 +2377,206 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const syncStateFlagsInFlightRef = useRef(false);
+
+  /**
+   * ─── 기록 부가상태 집합 6종의 기기 간 pull (user_state_flags) ───
+   *
+   * 보관·차단·음소거·본 스냅·신고 숨김은 그동안 `user_app_state` 1행 jsonb에 통째로 실려
+   * 4초 디바운스로 올라갔다. 두 기기가 같이 쓰면 나중에 쓴 쪽이 상대를 통째로 덮어써
+   * (보관을 풀었는데 되살아나고, 차단이 한쪽에만 남는) 증상이 났다. 여기서는 카드와 같은
+   * 방식으로 **행 단위**로 받아 병합한다: 프로브 → 표식 적용 → 서버에만 있는 것 추가.
+   *
+   * ⚠️ **호출 순서.** `syncMyRecords`의 `finish()`에서 **카드 다음**에 부른다
+   *    (records → cards → flags → drain). 이유는 `archived`의 키가 remoteId여서
+   *    remoteId → 로컬 기록 id 역매핑에 **records 병합이 끝난 목록**이 필요하기 때문이다.
+   *    카드보다 먼저 돌 이유는 없고, 카드 뒤가 매핑이 가장 정확하다.
+   *
+   * ⚠️ `tripBackupReadyRef` 게이트는 걸지 않는다 — pull은 로컬을 되살리지 않고 서버 표식만
+   *    적용하므로(제거는 명시적 표식이 있을 때만) 카드 pull과 같은 이유로 안전하다.
+   *
+   * @returns 'ok' 프로브 성공 / 'skipped' 가드 / 'failed' 프로브 실패
+   */
+  const syncStateFlags = useCallback(async (): Promise<'ok' | 'skipped' | 'failed'> => {
+    if (!isSupabaseConfigured || !hydratedRef.current) return 'skipped';
+    if (syncStateFlagsInFlightRef.current) return 'skipped';
+    syncStateFlagsInFlightRef.current = true;
+    // 계정 세대 — 응답이 오는 사이 계정이 바뀌면 이전 계정 상태를 새 계정에 심으면 안 된다
+    // (카드·복원 effect와 같은 장치를 공유한다).
+    const epoch = tripRestoreEpochRef.current;
+    try {
+      const probe = await withTimeout(probeStateFlags(), 12000);
+      if (!probe) return 'failed'; // 표 없음·네트워크 실패 — 조용히 포기(다음 트리거에서 재시도)
+      if (epoch !== tripRestoreEpochRef.current) return 'skipped';
+
+      const live = flagsLiveRef.current;
+      // 서버 키 ↔ 로컬 키 변환기 (archived 전용 — 나머지는 항등)
+      const toRemote = (rid: string) => recordsLiveRef.current.find((r) => r.id === rid)?.remoteId ?? rid;
+      const byRemote = new Map<string, string>();
+      for (const r of recordsLiveRef.current) if (r.remoteId) byRemote.set(r.remoteId, r.id);
+      // 못 찾으면 **그대로 둔다**(버리지 않는다): 그 글이 아직 이 기기에 없을 수 있고, 동기화로
+      // 받은 글은 id === remoteId라 그 값이 곧 로컬 id다(자기 치유). 카드의 mapRemoteToLocal과 동일.
+      const mapServerKey = (kind: StateFlagKind, key: string) =>
+        kind === 'archived' ? (byRemote.get(key) ?? key) : key;
+
+      const localState = buildLocalFlagState(live, toRemote);
+      const { missingLocally, tombstonedLocally } = classifyServerFlags(localState, probe, mapServerKey);
+
+      // ── ① 삭제 표식 적용 (classify가 removable kind만 넣어 준다) ──
+      // 로컬 집합이 서버 표기(remoteId)로 들고 있을 수도, 매핑된 표기로 들고 있을 수도 있어
+      // **두 키를 모두** 제거 대상에 넣는다.
+      const removed = new Map<StateFlagKind, Set<string>>();
+      for (const t of tombstonedLocally) {
+        const set = removed.get(t.kind) ?? new Set<string>();
+        set.add(t.localKey);
+        set.add(t.itemKey);
+        removed.set(t.kind, set);
+        // 지문에서도 뺀다 — 안 빼면 다음 push diff가 "사라진 항목"으로 보고 **이미 꺼진 항목에
+        // 표식을 다시 쏜다**(재-tombstone 루프).
+        lastFlagsPushedRef.current.delete(flagMapKey(t.kind, t.itemKey));
+      }
+      const rmArchived = removed.get('archived');
+      const rmMuted = removed.get('muted');
+      const rmBlocked = removed.get('blocked');
+      if (rmArchived?.size) {
+        setArchivedIds((prev) => (prev.some((i) => rmArchived.has(i)) ? prev.filter((i) => !rmArchived.has(i)) : prev));
+      }
+      if (rmMuted?.size) {
+        setMutedHandles((prev) => (prev.some((h) => rmMuted.has(h)) ? prev.filter((h) => !rmMuted.has(h)) : prev));
+      }
+      if (rmBlocked?.size) {
+        // ⚠️ 여기서 서버 `blocks`(RLS 집행)는 건드리지 않는다 — QA가 이 판단을 재검토하라고
+        //    지적한 자리라 근거를 다시 적는다.
+        //    ① 표식을 만든 기기가 `unblockUser`에서 **이미 `apiUnblock`을 보냈다.** `blocks`는
+        //       계정 단위 공유 상태라 그 한 번으로 두 기기 모두에 적용된다. 여기서 또 쏘면
+        //       같은 일을 두 번 하는 것이다.
+        //    ② QA가 지적한 "재차단이 풀려 blocks와 목록이 어긋난다"는 경로는 이제
+        //       **revive(`explicitFlagAddsRef`)가 닫았다** — 재차단한 행은 부활하므로 pull이
+        //       그 사람을 목록에서 빼지 않는다.
+        //    ③ 남는 어긋남은 `apiUnblock` 자체가 실패한 경우뿐인데, 그때는 "서버는 차단 중,
+        //       목록은 비어 있음" = **과차단**(안전한 방향)이다. 여기서 unblock을 쏴 맞추면
+        //       실패한 해제를 이 기기가 대신 완성하는 셈이라, 조용한 pull이 차단을 **푸는**
+        //       방향으로 움직인다 — 안전 기능에서 택할 방향이 아니다.
+        setBlockedUsers((prev) => {
+          const next = prev.filter((b) => !rmBlocked.has(blockedFlagKey(b)));
+          return next.length === prev.length ? prev : next;
+        });
+      }
+
+      // ── ② 서버에만 있는 항목 받기 ──
+      // blocked만 표시용 메타(data)가 필요하다. 나머지는 '있다'가 전부라 본문을 안 받는다.
+      const missBlocked = missingLocally.filter((m) => m.kind === 'blocked');
+      const blockedRows = missBlocked.length > 0
+        ? await withTimeout(fetchStateFlags(missBlocked.map((m) => ({ kind: m.kind, itemKey: m.itemKey }))), 20000)
+        : [];
+      if (epoch !== tripRestoreEpochRef.current) return 'skipped';
+
+      const addArchived = missingLocally.filter((m) => m.kind === 'archived').map((m) => m.localKey);
+      const addMuted = missingLocally.filter((m) => m.kind === 'muted').map((m) => m.itemKey);
+      const addReportedPost = missingLocally.filter((m) => m.kind === 'reportedPost').map((m) => m.itemKey);
+      const addReportedComment = missingLocally.filter((m) => m.kind === 'reportedComment').map((m) => m.itemKey);
+      // viewedSnap은 로컬 상한(500)이 **끝쪽을 최신으로** 보는 목록이다(markSnapViewed의 slice(-500)).
+      // 그래서 서버분을 뒤에 붙이되 서버 updated_at 오름차순으로 정렬해 넣는다 — 정렬을 안 하면
+      // 상한에 걸렸을 때 어떤 것이 밀려날지가 응답 순서에 좌우된다.
+      // (이 시각은 **로컬에 저장하지 않는다** — 정렬에만 쓰는 인메모리 값이다.)
+      const probeAtByKey = new Map<string, number>();
+      for (const p of probe) probeAtByKey.set(flagMapKey(p.kind, p.itemKey), typeof p.updatedAt === 'number' ? p.updatedAt : 0);
+      const addViewed = missingLocally
+        .filter((m) => m.kind === 'viewedSnap')
+        .sort((a, b) => (probeAtByKey.get(flagMapKey('viewedSnap', a.itemKey)) ?? 0)
+                      - (probeAtByKey.get(flagMapKey('viewedSnap', b.itemKey)) ?? 0))
+        .map((m) => m.itemKey);
+
+      // 문자열 집합 공통 병합 — 이미 있으면 그대로(참조 동일 반환)
+      const addTo = (prev: string[], add: string[]): string[] => {
+        const have = new Set(prev);
+        const fresh = add.filter((k) => k && !have.has(k));
+        return fresh.length === 0 ? prev : [...prev, ...fresh];
+      };
+      if (addArchived.length > 0) setArchivedIds((prev) => addTo(prev, addArchived));
+      if (addMuted.length > 0) setMutedHandles((prev) => addTo(prev, addMuted));
+      if (addReportedPost.length > 0) setReportedPostIds((prev) => addTo(prev, addReportedPost));
+      if (addReportedComment.length > 0) setReportedCommentIds((prev) => addTo(prev, addReportedComment));
+      if (addViewed.length > 0) {
+        // ⚠️ **받은 뒤 자르지 않는다. 넘칠 만큼은 받지 않는다**(2026-09-10 QA M2).
+        //    add-only라 밀려난 항목에는 표식이 안 나가 서버에서는 계속 살아 있고, 다음 pull에서
+        //    다시 `missingLocally`로 잡힌다 → 자르는 방식은 **500칸 창이 매 pull마다 영원히
+        //    회전**한다(안정 상태 없음, 본 스냅의 링이 계속 다시 켜진다).
+        //    `mergeViewedSnap`은 빈 칸만큼만 채워 로컬이 가득 차는 순간 수렴한다.
+        setViewedSnapIds((prev) => mergeViewedSnap(prev, addViewed));
+      }
+
+      // blocked — 본문을 받은 것만 넣는다. 못 받은 키는 다음 회차에 다시 잡힌다
+      // (표시용 메타가 없으면 목록에 이름 없는 항목이 생겨 더 나쁘다).
+      if (blockedRows.length > 0) {
+        const newcomers: BlockedUser[] = [];
+        for (const row of blockedRows) {
+          const d = row.data;
+          if (!d) continue;
+          const norm = blockedFlagData(d);
+          const name = String(norm.name ?? '');
+          const handle = String(norm.handle ?? '');
+          if (!name && !handle) continue; // 신원을 못 세우는 행은 버린다
+          newcomers.push({
+            name: name || handle,
+            emoji: String(norm.emoji ?? ''),
+            handle: handle || undefined,
+            id: String(norm.id ?? '') || undefined,
+            // ⚠️ 기기 시계로 새로 찍지 않는다 — 원래 차단한 기기의 값을 그대로 쓴다.
+            //    여기서 Date.now()를 쓰면 목록 정렬이 기기마다 달라지고, 지문에 넣지 않기로 한
+            //    필드가 매 기기에서 새 값이 되어 의미가 흐려진다. 값이 없으면 0.
+            blockedAt: typeof norm.blockedAt === 'number' ? norm.blockedAt : 0,
+          });
+        }
+        if (newcomers.length > 0) {
+          setBlockedUsers((prev) => {
+            const have = new Set(prev.map((b) => blockedFlagKey(b)));
+            const fresh = newcomers.filter((b) => !have.has(blockedFlagKey(b)));
+            return fresh.length === 0 ? prev : [...prev, ...fresh];
+          });
+        }
+      }
+
+      // ── ③ 지문 시드 ──
+      // "서버가 이미 갖고 있고 로컬에도 있는" 항목은 다시 올릴 필요가 없다. 안 심으면
+      // **앱을 켤 때마다 집합 전량(viewedSnap 500개 포함)이 한 번씩 upsert된다.**
+      //
+      // ⚠️ 심는 조건이 이 블록의 전부다: **이번 회차 시작 시점에 이미 로컬에 있던 키만.**
+      //    로컬에 없는 키를 심으면 다음 push diff가 그것을 "사라진 항목"으로 보고
+      //    **표식을 쏜다(오삭제).**
+      //    - 방금 받은 항목(`missingLocally`)은 **일부러 안 심는다.** setState는 아직 커밋 전이라
+      //      `flagsLiveRef`에 없고, 그 찰나에 push 타이머가 발화하면 방금 받은 항목이
+      //      "사라졌다"로 잡힌다. 안 심으면 최악이라도 **한 번 더 upsert**될 뿐이다(멱등).
+      //    - blocked는 지문이 본문에서 나오는데 이미 로컬에 있는 항목의 서버 본문은 받지
+      //      않으므로(불필요한 조회) 시드 대상이 아니다. 차단 목록은 규모가 작아 비용이 없다.
+      //    - 삭제 표식 행은 건너뛴다 — 위 ①에서 지문에서 뺀 것을 여기서 되살리면 안 된다.
+      const localKeySets = new Map<StateFlagKind, Set<string>>();
+      for (const kind of Object.keys(localState) as StateFlagKind[]) {
+        localKeySets.set(kind, new Set(localState[kind].map((it) => it.key)));
+      }
+      for (const p of probe) {
+        if (typeof p.deletedAt === 'number' && p.deletedAt > 0) continue;
+        if (p.kind === 'blocked') continue;
+        if (!localKeySets.get(p.kind)?.has(p.itemKey)) continue;
+        lastFlagsPushedRef.current.set(flagMapKey(p.kind, p.itemKey), '');
+      }
+
+      // ── ④ 서버가 모르는 로컬 항목이 있으면 push를 깨운다 ──
+      // (시드 · 지난 회차 실패분 재시도. 여기서 직접 올리지 않는 이유는 카드와 같다 —
+      //  올리는 규칙이 push effect에 한 벌만 있어야 두 곳이 어긋나지 않는다.)
+      const serverKnown = new Set(probe.map((p) => flagMapKey(p.kind, p.itemKey)));
+      const hasUnknownLocal = (Object.keys(localState) as StateFlagKind[]).some((kind) =>
+        localState[kind].some((it) => it.key && !serverKnown.has(flagMapKey(kind, it.key))),
+      );
+      if (hasUnknownLocal) setFlagsPushNudge((n) => n + 1);
+      return 'ok';
+    } catch {
+      return 'failed'; // 조용히 무시 — 다음 트리거에서 재시도(토스트 없음)
+    } finally {
+      syncStateFlagsInFlightRef.current = false;
+    }
+  }, []);
+
   /**
    * @returns 'ok'      프로브가 성공했다(빠진 글이 없었어도 성공이다)
    *          'skipped' 가드에 걸려 아무것도 하지 않았다(발행 중·재진입·미설정·hydrate 전)
@@ -2325,6 +2610,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
      */
     const finish = async (): Promise<'ok' | 'failed'> => {
       const cardRes = await syncTripCards();
+      // 부가상태 집합(보관·차단·음소거·본 스냅·신고 숨김)은 **카드 다음**이다.
+      // `archived`의 서버 키가 remoteId라 역매핑에 병합이 끝난 records 목록이 필요하고,
+      // 카드처럼 편입 순서에 얽히지 않으므로 드레인보다는 앞이면 충분하다.
+      // 실패해도 회차 판정에 섞지 않는다 — 카드와 달리 이 단계 실패는 화면에 보이는 결과가
+      // 없고(다음 트리거에 조용히 재시도된다), throttle 창을 10초로 줄일 만한 사유가 아니다.
+      const flagRes = await syncStateFlags();
+      if (__DEV__ && flagRes === 'failed') console.log('[stateFlags] pull 실패 — 다음 트리거에서 재시도');
       // ⚠️ setRecords/setTripGroups가 커밋될 때까지 한 틱 기다린 뒤 편입한다. linkByDate는
       //    카드의 날짜 범위를 구할 때 클로저의 `records`로 멤버를 조회하는데, 커밋 전에 부르면
       //    방금 만든 카드의 멤버가 조회되지 않아 같은 여행의 2건이 각각 다른 카드를 만든다.
@@ -2452,7 +2744,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     } finally {
       syncMyRecordsInFlightRef.current = false;
     }
-  }, [drainPendingLinks, removeRecordsLocally, syncTripCards]);
+  }, [drainPendingLinks, removeRecordsLocally, syncTripCards, syncStateFlags]);
 
   // ─── 게시물 카운터(좋아요·댓글 수) 서버 동기화 ───
   // 내 글의 likes/comments는 '내가' 움직일 때만 바뀌고, 남이 누른 좋아요·남이 단 댓글은 서버
@@ -3040,6 +3332,147 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     tripRestoreEpochRef.current += 1; // in-flight 복원 async 무효화 (감사 M1)
     setTripRestoreNonce((n) => n + 1);
   }, []);
+
+  // ─── 기록 부가상태 집합 6종의 행 단위 push (user_state_flags, 기기 간 동기화) ───
+  //
+  // 로컬이 원본. 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다(실패는 조용히 — 다음
+  // 변경 때 재시도). **legacy `user_app_state` 통째 백업은 그대로 둔다**(AppStateSync가 계속
+  // 올린다) — 옛 번들 기기가 그 경로로만 복원하고, 설정 스칼라·cardOrder·moments·countryCovers는
+  // 여전히 그쪽이 유일한 경로다(이번 범위 밖, 알려진 한계).
+  //
+  // ⚠️ 왜 6개 집합의 갱신 지점(archiveRecord·toggleMute·blockUser·markSnapViewed·reportPost…)을
+  //    직접 고치지 않고 diff로 하는가: 항목은 사용자 조작 말고도 여러 경로로 사라진다
+  //    (기록 삭제 시 archivedIds 정리, viewedSnap 500개 트림, 계정 경계 초기화…).
+  //    각 호출부에 push/tombstone을 심으면 반드시 한 군데를 빠뜨리고, 빠뜨린 경로는
+  //    **다른 기기에 유령 상태로 영구히 남는다.** 카드에서 쓴 것과 같은 판단이다.
+  //
+  // 카드 push effect와 **일부러 분리**했다(같은 스타일, 다른 상태). 두 기능의 게이트·nudge·
+  // 지문이 얽히면 한쪽 변경이 다른 쪽을 조용히 깨운다.
+  const flagsBackupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * 6개 집합의 렌더 시점 미러. `syncStateFlags`(async)가 클로저에 박제된 옛 값을 보지 않게 한다
+   * — `recordsLiveRef`·`tripGroupsRef`와 같은 관습이다.
+   */
+  const flagsLiveRef = useRef({
+    archivedIds, blockedUsers, mutedHandles, viewedSnapIds, reportedPostIds, reportedCommentIds,
+  });
+  flagsLiveRef.current = {
+    archivedIds, blockedUsers, mutedHandles, viewedSnapIds, reportedPostIds, reportedCommentIds,
+  };
+  /**
+   * `flagMapKey(kind,itemKey)` → **서버가 가지고 있다고 아는 사본의 지문**
+   * (blocked만 실제 지문, 나머지는 존재 표시 `''`).
+   *
+   * ⚠️ **부팅 직후에는 표식이 나갈 수 없다.** tombstone 대상은 `diffForPush`가
+   *    "이 맵에는 있는데 지금 로컬에는 없는 키"로만 뽑는데, 이 맵은 **useRef라 세션 시작 시
+   *    비어 있고**(영속되지 않는다) effect 자체가 `hydrated` 전에는 돌지 않는다.
+   *    즉 뺄 게 없으므로 `gone`이 항상 빈 배열이다. 맵에 키가 들어가는 시점은 오직
+   *    ①upsert 성공 ②pull이 "서버가 이미 갖고 있다"고 확인한 뒤이며, 둘 다 hydrate 이후다.
+   *    (계정 전환은 `resetRecords`가 이 맵을 비워 같은 상태로 되돌린다.)
+   */
+  const lastFlagsPushedRef = useRef<Map<string, string>>(new Map());
+  /**
+   * **사용자가 방금 명시적으로 켠** 항목의 키(`flagMapKey` 형식). push가 성공하면 뺀다.
+   *
+   * ⚠️ 이 집합만이 `deleted_at: null`(revive)을 실을 자격을 갖는다 — 2026-09-10 QA H1의 수정.
+   *    서버 upsert가 `deleted_at`을 건드리지 않는 것이 원칙인 이유는 **앱을 켤 때마다 나가는
+   *    전량 시드 upsert가 다른 기기의 끄기를 되살리는 사고**를 구조적으로 막기 위해서인데,
+   *    그 원칙만으로는 "차단 → 해제 → 재차단"의 마지막 단계가 영영 서버에 반영되지 않았다.
+   *    **시드는 이 집합에 없고 사용자 행동만 여기 들어오므로**, 두 요구를 동시에 만족한다.
+   *
+   * ⚠️ **세션 한정 ref다(영속하지 않는다).** push 전에 앱이 죽으면 그 재추가는 다음 pull에서
+   *    다시 풀린다. 좁은 창이고 **같은 동작을 한 번 더 하면 복구된다** — 고치기 전의
+   *    "몇 번을 다시 차단해도 영원히 풀리는" 상태와는 다르다. 영속화하지 않은 이유는 카드
+   *    지문과 같다(4초 디바운스 전에 죽은 편집이 영영 안 올라가는 대가가 더 비싸다).
+   */
+  const explicitFlagAddsRef = useRef<Set<string>>(new Set());
+  /**
+   * 위 집합에 키를 남긴다. **사용자 행동으로 항목을 켜는 지점에서만** 부른다
+   * (`archiveRecord`·`blockUser`·`toggleMute`의 켜는 방향·`reportPost`·`reportComment`·
+   * `markSnapViewed`). 동기화·복원·시드 경로에서는 **절대 부르지 마라** — 그 순간
+   * "남이 끈 것을 되살리지 않는다"는 이 기능의 안전선이 무너진다.
+   *
+   * `function` 선언인 이유: 위 setter들이 소스 순서상 **먼저** 정의돼 있어 호이스팅이 필요하다.
+   */
+  function noteExplicitFlagAdd(kind: StateFlagKind, key: string) {
+    if (!key) return;
+    explicitFlagAddsRef.current.add(flagMapKey(kind, key));
+  }
+  /**
+   * push effect를 한 번 더 깨우는 신호. **카드의 `tripPushNudge`를 재사용하지 않는다** —
+   * 두 기능이 같은 신호를 공유하면 한쪽의 시드가 다른 쪽 타이머를 계속 되감는다(관심사 분리).
+   * 지금 올리는 곳은 `syncStateFlags`가 "서버가 모르는 로컬 항목"을 발견했을 때 한 곳뿐이다.
+   */
+  const [flagsPushNudge, setFlagsPushNudge] = useState(0);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured) return;
+    // 계정 세대를 **예약 시점에** 잡는다. 4초 사이에 계정이 바뀌면(resetRecords/rearm이 세대를
+    // 올린다) 아래에서 즉시 빠져나간다 — 이전 계정의 보관·차단이 새 계정 행으로 올라가는 것을
+    // 막는 유일한 방어선이다(로그인 여부 자체는 서비스 함수의 `getMyUserId()`가 본다).
+    const epoch = tripRestoreEpochRef.current;
+    if (flagsBackupTimerRef.current) clearTimeout(flagsBackupTimerRef.current);
+    flagsBackupTimerRef.current = setTimeout(() => {
+      if (epoch !== tripRestoreEpochRef.current) return;
+      const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
+      const localState = buildLocalFlagState(flagsLiveRef.current, toRemote);
+      // 세 번째 인자가 revive 자격을 정한다 — **사용자가 방금 켠 키만** `deleted_at: null`을
+      // 실어 부활시킨다(시드·에코는 자격이 없다). `explicitFlagAddsRef` 주석 참조.
+      const { upserts, tombstones } = diffForPush(
+        localState, lastFlagsPushedRef.current, explicitFlagAddsRef.current,
+      );
+      if (upserts.length === 0 && tombstones.length === 0) return; // 바뀐 게 없으면 요청 0회
+
+      if (upserts.length > 0) {
+        // blocked만 본문을 싣는다. 지문(sig)과 본문이 **같은 빌더**에서 나와야 서버가 돌려준
+        // jsonb(키 순서가 재정렬된다)로 지문을 다시 만들어도 값이 맞는다.
+        const byBlockedKey = new Map(
+          flagsLiveRef.current.blockedUsers.map((b) => [blockedFlagKey(b), b] as const),
+        );
+        const rows = upserts.map((u) => ({
+          kind: u.kind,
+          itemKey: u.itemKey,
+          data: u.kind === 'blocked'
+            ? (byBlockedKey.has(u.itemKey) ? blockedFlagData(byBlockedKey.get(u.itemKey)!) : null)
+            : null,
+          revive: u.revive,
+        }));
+        upsertStateFlags(rows)
+          .then((ok) => {
+            if (!ok) {
+              // 지문을 갱신하지 않는다(다음 변경 때 통째로 재시도) — 명시적 재추가 표시도
+              // 남겨 둬야 그 회차의 revive가 유실되지 않는다.
+              if (__DEV__) console.log(`[stateFlags] upsert 실패 ${rows.length}건 — 다음 변경 때 재시도`);
+              return;
+            }
+            if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 새 계정 맵에 심지 않는다
+            for (const u of upserts) {
+              lastFlagsPushedRef.current.set(flagMapKey(u.kind, u.itemKey), u.sig ?? '');
+              // 부활까지 끝났으니 표시를 뗀다. 남겨 두면 이후 아무 upsert에나 계속
+              // `deleted_at: null`이 실려, 나중에 **다른 기기가 끈 것을 되살릴** 수 있다.
+              if (u.revive) explicitFlagAddsRef.current.delete(flagMapKey(u.kind, u.itemKey));
+            }
+          })
+          .catch(() => {});
+      }
+      if (tombstones.length > 0) {
+        tombstoneStateFlags(tombstones)
+          .then((ok) => {
+            // 성공했을 때만 지문에서 뺀다 — 실패하면 다음 회차에 다시 시도해야 한다.
+            // (성공 후 남겨두면 매 회차 같은 키에 표식을 다시 쏜다 = 재-tombstone 루프)
+            if (!ok) {
+              if (__DEV__) console.log(`[stateFlags] tombstone 실패 ${tombstones.length}건 — 다음 회차 재시도`);
+              return;
+            }
+            if (epoch !== tripRestoreEpochRef.current) return;
+            for (const t of tombstones) lastFlagsPushedRef.current.delete(flagMapKey(t.kind, t.itemKey));
+          })
+          .catch(() => {});
+      }
+    }, 4000);
+    return () => { if (flagsBackupTimerRef.current) clearTimeout(flagsBackupTimerRef.current); };
+    // `records`가 deps에 있는 이유: archived의 push 키가 remoteId라, 글이 발행돼 remoteId가
+    // 붙는 순간 그 항목의 키가 바뀐다(옛 로컬 id 키에는 표식이 찍혀 정리된다).
+  }, [hydrated, archivedIds, blockedUsers, mutedHandles, viewedSnapIds, reportedPostIds, reportedCommentIds, records, flagsPushNudge]);
 
   // ── 국가 대표사진 ──
   // 국가의 대표사진 '기록'을 찾는다: 핀 우선(핀 기록이 살아있을 때만), 없으면 기존 최신순 폴백.

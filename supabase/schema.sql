@@ -2029,6 +2029,89 @@ create policy "user_app_state_all_own" on public.user_app_state
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ============================================================
+-- 4-c-3b) user_state_flags — 기록 부가상태 **집합**의 행 단위 동기화 (2026-09-09)
+--
+-- 왜 위 user_app_state로는 부족한가:
+--   그쪽은 사용자당 1행 jsonb 통째 upsert(4초 디바운스)라 두 기기가 서로를 덮어쓴다.
+--   실제 증상: 한 기기에서 보관을 풀었는데 다른 기기가 백업을 덮어써 되살아나고,
+--   차단이 한쪽 기기에만 남는다. 카드(user_trip_cards)와 같은 방식
+--   (프로브 → tombstone → 병합)으로 올린다.
+--
+-- kind별 의미론 — **이 표의 핵심이다. 앱(utils/mergeStateFlags.ts)과 문자 그대로 일치해야 한다.**
+--
+--   kind             | item_key                         | 제거 전파(tombstone) | 비고
+--   -----------------|----------------------------------|----------------------|---------------------------
+--   archived         | posts.id(remoteId) 우선, 미발행은 로컬 id | ✅ 보관 해제        | 앱이 push 때 remoteId로 변환, pull 때 역매핑(실패 시 그대로 유지)
+--   muted            | handle                           | ✅ 음소거 해제       |
+--   blocked          | handle (없으면 `name:{표시이름}`) | ✅ 차단 해제         | data에 목록 렌더용 메타
+--   viewedSnap       | posts.id(remoteId)               | ❌ **add-only**      | 로컬 500개 상한 트림은 사용자 의도가 아니다
+--   reportedPost     | 신고 대상 글 id(피드 글이면 곧 remoteId) | ❌ add-only    | 신고 취소 경로가 앱에 없다
+--   reportedComment  | 댓글 id                          | ❌ add-only          | 〃
+--
+--   ⚠️ **add-only kind에는 삭제 표식을 쓰지 않는다.** 로컬에서 사라지는 이유가 '사용자가 껐다'가
+--      아니라 '축출(트림·정리)'이기 때문이다. 500개 상한에 밀려난 열람 표시를 tombstone으로
+--      전파하면 상대 기기의 '안 본 링'이 되살아난다. 앱은 push에서 그 표식을 만들지 않고,
+--      pull에서도 add-only kind의 표식은 **방어적으로 무시**한다(서버에 이상 행이 있어도
+--      로컬을 지우지 않는다).
+--
+--   ⚠️ **blocked는 서버 `blocks` 표(RLS 집행)의 사본이 아니다.** 그쪽은 apiBlock/apiUnblock이
+--      이미 기기와 무관하게 동기화한다. 여기 실리는 것은 **앱 안의 차단 목록 표시용 메타**
+--      (이름·이모지·uuid·차단시각)뿐이다. 두 경로를 하나로 합치려 하지 말 것 —
+--      `blocks`는 차단 집행, 이 행은 화면 표시다.
+--
+--   ⚠️ **deleted_at 은 두 갈래로만 바뀐다.**
+--      ① 앱의 일반 upsert는 이 컬럼을 **아예 건드리지 않는다**(카드와 같은 규칙). 그래야 앱을
+--         켤 때마다 나가는 전량 시드 upsert 가 다른 기기의 끄기를 통째로 되살리는 사고가
+--         구조적으로 불가능하다.
+--      ② 예외는 **사용자가 방금 명시적으로 다시 켠 항목**뿐이다. 그 행에만 앱이
+--         deleted_at = null 을 실어 부활시킨다(차단 해제 후 재차단 등). 시드·동기화 경로는
+--         이 자격이 없다. 판정은 앱의 utils/mergeStateFlags(diffForPush의 explicitAdds)가 한다.
+--      즉 "끄기가 켜기를 이기되, 사용자의 재추가는 끄기를 이긴다"가 최종 규칙이다.
+-- ============================================================
+create table if not exists public.user_state_flags (
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  kind       text not null,          -- 'archived'|'muted'|'blocked'|'viewedSnap'|'reportedPost'|'reportedComment'
+  item_key   text not null,          -- kind별 키(위 표)
+  data       jsonb,                  -- blocked만 사용(name·emoji·handle·id·blockedAt). 나머지는 null
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  primary key (user_id, kind, item_key)
+);
+
+-- 인덱스는 PK로 충분하다 — 앱의 조회는 ① user_id 전건 프로브(페이지네이션)
+-- ② user_id + kind + item_key in(...) 둘뿐이고, 둘 다 PK(user_id, kind, item_key)의
+-- 선두 컬럼으로 커버된다. deleted_at 전용 인덱스는 두지 않는다(사용자당 수백~수천 행 규모).
+
+drop trigger if exists trg_user_state_flags_updated on public.user_state_flags;
+create trigger trg_user_state_flags_updated before update on public.user_state_flags
+  for each row execute function public.set_updated_at();
+
+alter table public.user_state_flags enable row level security;
+
+drop policy if exists "user_state_flags_all_own" on public.user_state_flags;
+create policy "user_state_flags_all_own" on public.user_state_flags
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- 컬럼 수준 grant는 걸지 않는다 — user_trip_cards와 같은 판단이다. posts는 "작성자가 바꿔도
+-- 되는 컬럼"을 좁히려고 컬럼 단위로 회수·재부여했지만(likes_count 조작 방지 등), 이 표는
+-- **행 전체가 본인 소유의 로컬 상태 사본**이라 좁힐 대상이 없다.
+-- ⚠️ 섣불리 `revoke update`를 걸면 컬럼 권한이 없어 tombstone이 permission denied로 조용히
+--    실패한다(posts에서 실제로 밟은 함정). 이웃 표 셋(user_trip_state·user_trip_cards·
+--    user_app_state)도 같은 이유로 안 건다.
+
+-- (선택·미등록) tombstone 정리 — 이번에도 cron에 등록하지 않는다.
+-- ⚠️ 단, "표식 행은 본문이 null이라 무게가 없다"는 **완전히 참은 아니다.** 앱이 표식을 찍을 때
+--    data를 null로 비우지만, 그 뒤 그 키를 아직 로컬에 들고 있는 기기의 시드 upsert가 data만
+--    다시 채울 수 있다(deleted_at은 그대로라 행은 계속 꺼진 상태다 — 기능상 무해).
+--    즉 해제한 사람의 표시 메타가 서버 행에 남을 수 있다. 카드 표의 같은 성질과 동일하다.
+-- 표식 행은 대체로 가볍고, 반대로 주기를 짧게 잡으면 그보다 오래
+-- 잠들어 있던 기기가 표식을 놓쳐 **지운 항목이 그 기기에 영구히 남는다**(보관 해제·차단 해제가
+-- 그 기기에서만 안 먹는다). 필요해지면 posts·카드와 같은 30일 기준으로:
+--
+-- delete from public.user_state_flags
+--  where deleted_at is not null and deleted_at < now() - interval '30 days';
+
+-- ============================================================
 -- 4-d) RPC: 추천 친구 — 내 서로이웃의 서로이웃(2단계, mutual)
 --   neighbors 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
 --   SECURITY DEFINER RPC로 집계한다. 이미 서로이웃/본인/차단 관계는 제외.
@@ -3025,6 +3108,7 @@ revoke truncate, references, trigger on
   public.reports,
   public.rpc_probe_guard,
   public.user_app_state,
+  public.user_state_flags,
   public.user_trip_cards,
   public.user_trip_state
   from anon, authenticated;

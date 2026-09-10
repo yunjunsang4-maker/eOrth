@@ -22,6 +22,9 @@
 
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
+// 데이터 초기화에서만 쓴다(clearTripState 안). 방향은 tripState → appState 한쪽뿐이라
+// 순환 import가 아니다 — appState는 supabase·profile·withTimeout만 import한다.
+import { clearStateFlags } from './appState';
 
 export interface TripStateBackup {
   groups: Array<{
@@ -190,9 +193,16 @@ export async function clearTripCards(): Promise<boolean> {
 //    `Promise<void>`이고 실패는 여전히 내부에서 삼킨다(초기화 흐름을 막지 않는다).
 // ⚠️ `resetRecords`에는 절대 넣으면 안 된다 — 그쪽은 계정 전환에도 쓰여서, 넣으면 전환할 때마다
 //    이전 계정의 서버 카드를 지우게 된다.
+// ⚠️ **부가상태 집합(user_state_flags)도 여기서 함께 정리한다**(2026-09-10 QA H2).
+//    이 함수가 데이터 초기화 흐름의 유일한 서버 정리 지점이라(SettingsScreen:368), 여기서 안
+//    지우면 다음 pull 한 번이 보관·차단·음소거·본 스냅·신고 숨김을 통째로 되살린다.
+//    카드와 같은 이유로 hard delete가 아니라 tombstone이고, 실패는 삼킨다.
+//    (이름은 '여행 카드' 계열인데 부가상태까지 지우는 것이 어색하지만, 화면 파일을 건드리지
+//     않는 대신 초기화 정리를 이 한 곳에 모으는 쪽을 택했다 — 카드 H2에서 확립된 관행이다.)
 export async function clearTripState(): Promise<void> {
   if (!supabase) return;
   await clearTripCards();
+  await clearStateFlags();
   const uid = await getMyUserId();
   if (!uid) return;
   try {

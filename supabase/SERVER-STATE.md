@@ -155,6 +155,79 @@ select tgname, pg_get_triggerdef(oid) as def
 return null`이 있어 함수 안에서 어떤 오류가 나도 **조용히 삼켜진다**(게시 자체는 성공한다).
 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로 이 증상을 잡지 못한다.
 
+### ✅ 여행 카드 기기 간 동기화: `user_trip_cards` 신규 표 (2026-09-08 추가 · **2026-09-09 운영·테스트 양쪽 실행·확인 완료**)
+
+> 확인 쿼리 실측(사용자 실행): 컬럼 5·PK(user_id,card_id)·set_updated_at 트리거·RLS all_own 전부 정상. 발췌본:
+> `supabase/migration-2026-09-08-trip-cards-sync.sql` (schema.sql과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 카드가 동기화된다.
+>
+> ⚠️ **전제(확장 등) 없다.** pg_cron 도 필요 없다 — 이번엔 스케줄 잡을 등록하지 않는다
+> (직전 델타에서 테스트 프로젝트에 pg_cron 이 없어 3F000 으로 전체 롤백된 사고가 있었다).
+
+**왜 필요한가.** 글은 이제 기기 간 추가·수정·삭제가 전파되는데, **여행 카드는 아니었다.**
+기존 `user_trip_state`는 사용자당 1행 jsonb 통째 upsert라 두 기기가 서로의 카드를 덮어썼고
+(last-write-wins), 복원은 "로컬 카드가 비어 있을 때만" 돌았다. 그래서 동기화로 들어온 글이
+**소스 기기의 진짜 카드**(제목·커버·체류 정보)가 아니라 이 기기의 날짜 규칙으로 새로 만들어진
+카드에 붙었다. 카드를 행 단위 표로 올려 posts와 같은 방식(프로브 → tombstone →
+`updated_at` 기준 LWW + 병합)을 적용한다. 앱 쪽 대응은 `src/services/tripState.ts`·
+`src/utils/mergeTripCards.ts`·`src/store/recordStore.tsx`.
+
+실행할 것 — 전부 `schema.sql`에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `create table if not exists public.user_trip_cards (user_id, card_id, data, updated_at, deleted_at)` — PK `(user_id, card_id)` | 4-c-2b 절(`user_trip_state` 바로 아래) | 앱의 카드 동기화 함수 4개가 전부 조용히 실패 → **기능만 꺼지고 앱은 정상**(아래 하위 호환 절) |
+| 2 | `trg_user_trip_cards_updated before update … set_updated_at()` | 같은 절 | **수정이 영영 전파되지 않는다.** `default now()`는 insert에만 걸려, upsert가 update로 떨어지면 `updated_at`이 그대로 남아 상대 기기가 stale로 판정하지 못한다 |
+| 3 | RLS 활성화 + `user_trip_cards_all_own` 정책(`user_id = auth.uid()`, using·with check 양쪽) | 같은 절 | 남의 카드가 보이거나(정책 없이 RLS만 켜면) 내 카드도 안 보인다 |
+| 4 | 파일 끝 일괄 `revoke truncate, references, trigger` 목록에 `public.user_trip_cards` 추가 | 파일 하단 revoke 블록 | 이웃 표들과 권한 기준이 어긋난다(즉시 증상은 없다) |
+
+⚠️ **컬럼 수준 `grant update`를 걸지 말 것.** posts는 작성자가 바꿔도 되는 컬럼을 좁히려고
+컬럼 단위로 회수·재부여했지만, 이 표는 **행 전체가 본인 소유의 백업**이라 좁힐 대상이 없다.
+섣불리 `revoke update`를 걸면 컬럼 권한이 없어 tombstone이 `permission denied`로 **조용히**
+실패한다 — posts에서 실제로 밟은 함정이다(이웃 표 `user_trip_state`·`user_app_state`도 안 건다).
+
+⚠️ **인덱스를 따로 만들지 않았다.** 앱의 조회는 ①`user_id` 전건 프로브 ②`user_id` + `card_id in(...)`
+둘뿐이고 PK 선두 컬럼으로 전부 커버된다.
+
+**하위 호환 — 이 SQL 전에 앱이 먼저 나가도 사고는 없다.**
+표가 없으면 `probeTripCards()`→`null` / `fetchTripCards()`→`[]` / `upsertTripCards()`→`null` /
+`tombstoneTripCards()`→`false`로 전부 조용히 실패하고, 기존 `user_trip_state` 백업·복원
+(dual-write)이 그대로 돈다. 즉 **카드 동기화만 꺼진다.** 그래도 순서(SQL → 확인 → OTA)를
+지키는 편이 "카드가 안 넘어와요" 진단이 쉽다.
+
+**tombstone 정리(purge)는 등록하지 않았다** — `schema.sql`·델타에 주석으로만 있다.
+사용자당 카드가 수십 개 규모라 표식 행이 쌓여도 무게가 없고(본문 `data`는 삭제 시 `{}`로
+비운다), 반대로 주기를 짧게 잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐
+**지운 카드가 그 기기에 영구히 남는다.**
+
+반영 확인 쿼리:
+```sql
+-- 1번: 5개 컬럼(user_id, card_id, data, updated_at, deleted_at)
+select column_name, data_type from information_schema.columns
+ where table_schema='public' and table_name='user_trip_cards' order by ordinal_position;
+
+-- 2번: PK 가 (user_id, card_id) 두 컬럼 — 2행
+select a.attname from pg_index i
+  join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+ where i.indrelid = 'public.user_trip_cards'::regclass and i.indisprimary;
+
+-- 3번: 정의문에 BEFORE UPDATE + set_updated_at — 1행
+select pg_get_triggerdef(oid) from pg_trigger
+ where tgname='trg_user_trip_cards_updated' and not tgisinternal;
+
+-- 4번: RLS 켜짐(t)
+select relrowsecurity from pg_class where oid = 'public.user_trip_cards'::regclass;
+
+-- 5번: 정책 1행, cmd='ALL', qual/with_check 둘 다 auth.uid() 비교
+select policyname, cmd, qual, with_check from pg_policies where tablename='user_trip_cards';
+```
+
+⚠️ **확인 쿼리는 "객체가 있다"만 본다.** 실제로 도는지는 앱 계정(authenticated) 세션으로
+카드 1장을 upsert → 프로브에 뜨는지 → tombstone이 통과하는지까지 봐야 확정된다
+(posts의 컬럼 권한 함정이 정확히 "객체는 있는데 안 도는" 사례였다).
+
 ### ⏳ 미반영(실행 대기) — 댓글 @언급 알림: `mention` 타입 + `notify_on_mention` 트리거 (2026-09-09 추가)
 
 > **아직 아무 프로젝트에도 실행하지 않았다.** 발췌본:
@@ -241,6 +314,109 @@ select tgname, pg_get_triggerdef(oid) as def
 `exception when others then return null`이 있어 함수 안의 어떤 오류도 **조용히 삼켜진다**
 (댓글 저장은 성공한다). 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로
 이 증상을 잡지 못한다. 제외 규칙 ③ 때문에 **글 작성자와 서로이웃인 계정**으로 시험해야 한다.
+
+### ✅ 기록 부가상태 집합 동기화: `user_state_flags` 신규 표 (2026-09-09 추가 · **2026-09-10 운영·테스트 양쪽 실행 완료**)
+
+> 정책(`user_state_flags_all_own`) 존재를 양쪽에서 확인 — 델타는 단일 트랜잭션이라 마지막
+> 확인 쿼리가 행을 돌려준 것 자체가 표·트리거·RLS까지 전부 적용됐다는 증거다. 발췌본:
+> `supabase/migration-2026-09-09-state-flags-sync.sql` (schema.sql `4-c-3b` 절과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 부가상태가 동기화된다.
+>
+> ⚠️ **전제(확장 등) 없다.** pg_cron 도 필요 없다 — 이번에도 스케줄 잡을 등록하지 않는다.
+
+**왜 필요한가.** 글·여행 카드는 이제 기기 간에 전파되는데 **부가상태 집합 6종은 아니었다.**
+보관(`archivedIds`)·차단(`blockedUsers`)·음소거(`mutedHandles`)·본 스냅(`viewedSnapIds`)·
+신고 숨김(`reportedPostIds`·`reportedCommentIds`)이 전부 `user_app_state` **1행 jsonb**에 실려
+4초 디바운스로 통째 upsert되기 때문에 두 기기가 서로를 덮어썼다(보관을 풀었는데 되살아나고,
+차단이 한쪽 기기에만 남는 류). 이 6종을 행 단위 표로 올려 카드와 같은 방식
+(프로브 → tombstone → 병합)을 적용한다. 앱 쪽 대응은 `src/services/appState.ts`(신규 함수 4개)·
+`src/utils/mergeStateFlags.ts`·`src/store/recordStore.tsx`.
+
+> **범위 밖(그대로 legacy 유지):** 설정 스칼라·`cardOrder`·`moments`·`countryCovers`는 여전히
+> `user_app_state` 통째 백업(last-write-wins)이다. **알려진 한계이며 이번 델타로 해결되지 않는다.**
+
+실행할 것 — 전부 `schema.sql`에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `create table if not exists public.user_state_flags (user_id, kind, item_key, data, updated_at, deleted_at)` — PK `(user_id, kind, item_key)` | `4-c-3b` 절(`user_app_state` 바로 아래) | 앱의 함수 4개가 전부 조용히 실패 → **기능만 꺼지고 앱은 정상**(아래 하위 호환 절) |
+| 2 | `trg_user_state_flags_updated before update … set_updated_at()` | 같은 절 | 당장은 증상이 없다(LWW 판정에 안 쓴다). 다만 purge 기준과 진단이 사라지고 이웃 표들과 규격이 어긋난다 |
+| 3 | RLS 활성화 + `user_state_flags_all_own` 정책(`user_id = auth.uid()`, using·with check 양쪽) | 같은 절 | 남의 부가상태가 보이거나(정책 없이 RLS만 켜면) 내 것도 안 보인다 |
+| 4 | 파일 끝 일괄 `revoke truncate, references, trigger` 목록에 `public.user_state_flags` 추가 | 파일 하단 revoke 블록 | 이웃 표들과 권한 기준이 어긋난다(즉시 증상은 없다) |
+
+⚠️ **컬럼 수준 `grant update`를 걸지 말 것.** 이 표는 행 전체가 본인 소유의 로컬 상태 사본이라
+좁힐 대상이 없다. 섣불리 `revoke update`를 걸면 tombstone이 `permission denied`로 **조용히**
+실패한다(posts에서 실제로 밟은 함정 — 이웃 표 셋도 안 건다).
+
+⚠️ **인덱스를 따로 만들지 않았다.** 앱의 조회는 ①`user_id` 전건 프로브(페이지네이션)
+②`user_id` + `kind` + `item_key in(...)` 둘뿐이고 PK 선두 컬럼으로 전부 커버된다.
+
+**kind별 의미론(앱과 문자 그대로 일치해야 한다).**
+
+| kind | item_key | 제거 전파 |
+|---|---|---|
+| `archived` | posts.id(remoteId) 우선, 미발행은 로컬 id | ✅ 보관 해제 |
+| `muted` | handle | ✅ 음소거 해제 |
+| `blocked` | handle (없으면 `name:{표시이름}`) — `data`에 표시용 메타 | ✅ 차단 해제 |
+| `viewedSnap` | posts.id(remoteId) | ❌ **add-only** |
+| `reportedPost` | 신고한 글 id(피드 글이면 곧 remoteId) | ❌ add-only |
+| `reportedComment` | 댓글 id | ❌ add-only |
+
+⚠️ **`blocked` 행은 차단 집행이 아니다.** RLS 집행은 기존 `blocks` 표가 하고 그쪽은 이미
+기기와 무관하게 동기화된다(`apiBlock`/`apiUnblock`). 여기 실리는 것은 앱 안 차단 **목록
+표시용 메타**(이름·이모지·uuid·차단시각)뿐이다. 두 경로를 합치려 하지 말 것.
+
+⚠️ **`deleted_at`은 두 갈래로만 바뀐다** — "끄기가 켜기를 이기되, **사용자의 재추가는 끄기를
+이긴다**"가 최종 규칙이다.
+1. 앱의 일반 upsert는 이 컬럼을 **아예 건드리지 않는다**(카드와 같은 규칙). 그래야 앱을 켤 때마다
+   나가는 전량 시드 upsert가 다른 기기의 끄기를 통째로 되살리는 사고가 구조적으로 불가능하다.
+2. 예외는 **사용자가 방금 명시적으로 다시 켠 항목**뿐이다(차단 해제 후 재차단 등). 그 행에만
+   앱이 `deleted_at = null`을 실어 부활시킨다. 시드·동기화 경로에는 그 자격이 없다.
+   (이 예외가 없던 1차 구현에서는 **재차단이 조용히 풀려 서버 `blocks`와 앱 목록이 영구히
+   어긋났다** — 2026-09-10 QA H1.)
+
+**데이터 초기화(설정 > 데이터 초기화)는 이 표도 함께 끈다.** `clearTripState()` 안에서
+`clearStateFlags()`가 내 행 전체에 표식을 찍는다(hard delete 아님 — 다른 기기에도 전파돼야 한다).
+없으면 초기화 후 다음 pull 한 번이 보관·차단·음소거·신고 숨김을 통째로 되살린다.
+
+**하위 호환 — 이 SQL 전에 앱이 먼저 나가도 사고는 없다.**
+표가 없으면 `probeStateFlags()`→`null` / `fetchStateFlags()`→`[]` / `upsertStateFlags()`→`false` /
+`tombstoneStateFlags()`→`false` / `clearStateFlags()`→`false`로 전부 조용히 실패하고, 기존
+`user_app_state` 통째 백업이 그대로 돈다. 즉 **집합 동기화만 꺼진다.**
+
+**tombstone 정리(purge)는 등록하지 않았다** — `schema.sql`·델타에 주석으로만 있다.
+표식 행은 대체로 가볍지만(표식을 찍을 때 `data`를 null로 비운다) ⚠️ 그 키를 아직 로컬에 들고
+있는 기기의 시드 upsert가 `data`만 다시 채울 수 있다(행은 계속 꺼진 상태 — 기능상 무해).
+반대로 주기를 짧게 잡으면 그보다 오래 잠들어 있던 기기가 표식을 놓쳐
+**보관 해제·차단 해제가 그 기기에서만 안 먹는다.**
+
+반영 확인 쿼리:
+```sql
+-- 1번: 6개 컬럼. data 는 is_nullable='YES'
+select column_name, data_type, is_nullable from information_schema.columns
+ where table_schema='public' and table_name='user_state_flags' order by ordinal_position;
+
+-- 2번: PK 가 (user_id, kind, item_key) 세 컬럼 — 3행
+select a.attname from pg_index i
+  join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+ where i.indrelid = 'public.user_state_flags'::regclass and i.indisprimary;
+
+-- 3번: 정의문에 BEFORE UPDATE + set_updated_at — 1행
+select pg_get_triggerdef(oid) from pg_trigger
+ where tgname='trg_user_state_flags_updated' and not tgisinternal;
+
+-- 4번: RLS 켜짐(t)
+select relrowsecurity from pg_class where oid = 'public.user_state_flags'::regclass;
+
+-- 5번: 정책 1행, cmd='ALL', qual/with_check 둘 다 auth.uid() 비교
+select policyname, cmd, qual, with_check from pg_policies where tablename='user_state_flags';
+```
+
+⚠️ **확인 쿼리는 "객체가 있다"만 본다.** 실제로 도는지는 앱 계정(authenticated) 세션으로
+행 1개를 upsert → 프로브에 뜨는지 → tombstone이 통과하는지까지 봐야 확정된다
+(posts의 컬럼 권한 함정이 정확히 "객체는 있는데 안 도는" 사례였다).
 
 ### ✅ 기기 간 삭제·수정 전파(tombstone) (2026-09-08 추가 · **2026-09-08 실행·확인 완료**)
 
