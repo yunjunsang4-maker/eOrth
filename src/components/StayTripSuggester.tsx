@@ -112,6 +112,9 @@ export default function StayTripSuggester() {
           createdAfter: now - RECENT_WINDOW_MS,
           createdBefore: now,
           excludeIds: importedIds,
+          // 오프라인 KP 판정을 믿을지 정하는 데만 쓰인다(countryLocate.isOfflineCountryTrusted).
+          // 이 경로도 불러오기 화면과 같은 여행 카드를 만들므로 같은 규칙을 태워야 한다.
+          homeCountryCode,
         });
 
         // 기간 겹침 판정은 모든 형식의 기록을 본다 — 피드·블로그로 직접 남긴 여행도 걸러야 한다.

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
+import { findWronglyImportedKpRecords } from '../utils/kpImportCleanup';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persist';
@@ -2742,6 +2743,81 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
+
+  // ─── 잘못 불러와진 '북한 여행 카드' 소급 정리 ───
+  // 국가 판정이 110m 폴리곤을 쓰던 시절, 파주 임진각·도라산역 등 남측 접경지 사진이
+  // North Korea로 판정돼 가본 적 없는 북한 여행 카드가 만들어졌다. 폴리곤은
+  // utils/countryLocate에서 10m(data/koreaBorder10m)로 고쳤지만 이미 만들어진 카드는 남는다.
+  //
+  // 삭제는 **기존 `deleteRecord`를 그대로 호출**한다. 새 삭제 경로를 짜면 안 된다 —
+  // deleteRecord가 여행 그룹 분리(detachRecordsFromTripGroups), 지구본 대표사진 정리,
+  // 서버 게시물 tombstone(deletePost), Storage 정리를 이미 전부 한다.
+  //
+  // ⚠️ 카드(트립 그룹)는 **직접 tombstone한다.** 아래 push effect의 행 diff에 기대면 안 된다 —
+  //    그 diff의 `gone`은 `lastPushedRef`(useRef, **앱 실행마다 빈 맵**)의 키에서만 뽑는데,
+  //    이 정리는 `hydrated` 직후, 즉 이 기기가 이번 세션에 카드를 한 번도 push하기 전에 돈다.
+  //    그래서 `gone`은 항상 빈 배열이고 서버 행은 영구 생존한다. 그 상태로 두면 같은 마운트의
+  //    복원 effect가 `syncTripCards`로 그 행을 `missing`으로 되받아 **멤버 기록이 없는 유령
+  //    카드**로 되살린다(`toLocalTripCard`는 멤버 실존을 검사하지 않는다). (2026-09-09 QA F2)
+  //
+  // ⚠️ **tombstone이 먼저, 삭제가 나중이다.** 반대 순서로 하면 재시도가 영구 불가능해진다:
+  //    `deleteRecord`는 성공했는데 `tombstoneTripCards`만 실패하면(권한·네트워크) 기록이
+  //    로컬에서도 서버에서도 사라져 다음 실행의 `targets`가 빈 배열이 되고, 서버 카드 행만
+  //    영원히 남는다. 이 저장소는 정확히 그 계열의 사고 전력이 있다 — grant update 목록에
+  //    `deleted_at`이 없어 조용한 permission denied가 났다(그 경우 실패율은 드문 게 아니라 100%다).
+  //    tombstone을 먼저 걸고 성공했을 때만 지우면, 실패한 회차는 로컬 기록이 그대로 남아
+  //    다음 실행에 같은 대상이 다시 잡힌다.
+  //
+  // ⚠️ 영속 플래그(스키마 번호)를 두지 않는다 — 매 실행마다 도는 **멱등** 정리다.
+  //    ① 다른 기기에서 동기화로 뒤늦게 넘어온 북한 카드도 잡아야 하고
+  //    ② 1회 스캔이 O(n) 필드 3개 비교뿐이라 `records`가 바뀔 때마다 돌아도 무시할 수준이다.
+  //    무기한 삭제가 되지 않도록 막는 것은 플래그가 아니라 `KP_CLEANUP_CUTOFF_MS`다 —
+  //    커트오프 뒤에 생기는 KP 기록은 지오코딩이 확인한 **진짜 방북**이라 건드리면 안 된다
+  //    (외국인 사용자는 실제로 북한에 갈 수 있다). 근거는 utils/kpImportCleanup 주석 참조.
+  //    대상이 0건이면 setState를 한 번도 부르지 않으므로 리렌더 루프도 없다.
+  useEffect(() => {
+    if (!hydrated) return;
+    const targets = findWronglyImportedKpRecords(records);
+    if (targets.length === 0) return; // 정상 상태 — 아무 것도 하지 않는다(setState 0회)
+    const targetSet = new Set(targets);
+    // 이번 삭제로 멤버가 0이 되는 카드 = deleteRecord가 로컬에서 폐기할 카드. 미리 뽑아둔다.
+    // `!g.stay`는 방어로 남긴다. 멤버 0인 진행 중 체류 카드를 거르는 일은 옆의
+    // `g.records.length > 0`이 이미 하지만, 이 조건이 막는 것은 다른 경우다 —
+    // **멤버가 전부 정리 대상인 체류 카드**(체류국 이름이 'KP'여야 성립하므로 도달 가능성은
+    // 사실상 0). 그런 카드를 tombstone하면 체류 상태 메타가 유실되고, 반대로
+    // `detachRecordsFromTripGroups`(:1130)에는 stay 예외가 없어 로컬에서는 폐기되므로
+    // 좁은 유령 카드 구멍이 남는다. 그 구멍을 넓히지 않으려고 여기서는 대상에서 뺀다.
+    const doomedCards = tripGroups
+      .filter((g) => !g.stay && g.records.length > 0 && g.records.every((rid) => targetSet.has(rid)))
+      .map((g) => g.id);
+    if (__DEV__) {
+      console.log(`[kpCleanup] 북한 표지 기록 ${targets.length}건 · 카드 ${doomedCards.length}장 삭제`);
+    }
+    const purge = () => {
+      for (const id of targets) deleteRecord(id);
+      if (doomedCards.length === 0) return;
+      for (const id of doomedCards) lastPushedRef.current.delete(id);
+      // ⚠️ 한 번 더 지운다. tombstone과 삭제 사이에 같은 마운트의 `syncTripCards`가
+      //    이 카드를 `missing`으로 되받아 로컬에 되살렸을 수 있다.
+      setTripGroups((prev) => {
+        const next = prev.filter((g) => !doomedCards.includes(g.id));
+        return next.length === prev.length ? prev : next; // 헛 리렌더 방지
+      });
+    };
+    // 지울 카드가 없으면(기록만 있는 경우) 서버에 걸 것도 없다. Supabase 미설정 빌드도 마찬가지 —
+    // `tombstoneTripCards`는 `!supabase`면 무조건 false를 돌려주므로(services/tripState.ts),
+    // 성공을 기다리면 로컬 전용 빌드에서 정리가 영영 안 돈다.
+    if (doomedCards.length === 0 || !isSupabaseConfigured) { purge(); return; }
+    tombstoneTripCards(doomedCards)
+      .then((ok) => { if (ok) purge(); }) // 실패하면 아무것도 지우지 않는다 → 다음 실행에 재시도
+      .catch(() => {});
+    // 잔여 위험 두 가지:
+    //  ① 상대 기기가 우리 tombstone이 서버에 쓰이기 **전에** 프로브를 마쳤으면 그쪽에 유령
+    //     카드가 잠시 남는다. 그 기기의 다음 pull이 `deleted_at`을 보고 지우므로 자연 수렴한다.
+    //  ② 비로그인 상태에서는 `tombstoneTripCards`가 uid를 못 얻어 false다 → 정리가 로그인
+    //     이후로 미뤄진다. 지우지 않고 미루는 쪽이 서버 행을 남긴 채 지우는 것보다 안전하다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, records, tripGroups]);
 
   // ─── 여행 카드 서버 백업 + 행 단위 push (기기 간 동기화) ───
   // 로컬이 원본. 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다(실패는 조용히 — 다음 변경 때 재시도).

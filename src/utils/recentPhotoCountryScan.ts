@@ -11,7 +11,7 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
-import { locateCountry } from './countryLocate';
+import { locateCountry, isOfflineCountryTrusted } from './countryLocate';
 import { countryInfoFromCode, type ScannedPhoto } from './pastTripScan';
 import { isPhotoLocationAvailable, getLocations } from '../../modules/photo-location';
 import { normalizeLocations, type LatLon } from './photoLocationBatch';
@@ -49,6 +49,12 @@ export async function scanRecentPhotoCountries(opts: {
   createdAfter: number;
   createdBefore: number;
   excludeIds?: Set<string>;
+  /**
+   * 사용자의 거주국 ISO2(`settingsStore.homeCountryCode`). 오프라인 폴리곤 판정을
+   * 신뢰할지 정하는 데만 쓴다 — `countryLocate.isOfflineCountryTrusted` 참조.
+   * 안 넘기면 전부 신뢰한다(= 이 배선이 생기기 전과 같은 동작).
+   */
+  homeCountryCode?: string;
 }): Promise<ScannedPhoto[]> {
   if (!(await hasFullPhotoAccess())) return [];
 
@@ -88,6 +94,15 @@ export async function scanRecentPhotoCountries(opts: {
     let geo = geocodeCache[key];
     if (geo !== undefined) return geo;
     geo = locateCountry(lat, lon);
+    // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
+    // 접경 오차). `TravelImportScreen.countryAt`과 **같은 규칙**이다: 이 파일에도 바로 아래
+    // 지오코딩 폴백(reverseOnce + 1회 재시도)이 있으므로 미상으로 버리지 않고 그 경로를
+    // 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면 지오코딩이 정답), 다른 나라를 주면
+    // 그 값을, 실패하면 null(미상)이 된다 — 미상 사진은 fillCountries가 앞뒤 구간 국가를
+    // 물려주므로 가짜 북한 카드가 안 생긴다.
+    // ⚠️ 이 경로도 `useImportTripsIntoCards`로 같은 여행 카드를 만든다. 불러오기 화면만
+    //    고치면 체류 제안 배너를 통해 같은 가짜 카드가 그대로 생긴다.
+    if (geo && !isOfflineCountryTrusted(geo.code, opts.homeCountryCode)) geo = null;
     if (!geo) {
       const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
       if (wait > 0) await sleep(wait);

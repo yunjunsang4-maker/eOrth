@@ -42,7 +42,7 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryLabel } from '../utils/countryLabel';
 import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 import AssetImage from '../components/AssetImage';
-import { locateCountry } from '../utils/countryLocate';
+import { locateCountry, isOfflineCountryTrusted } from '../utils/countryLocate';
 // 좌표 배치 조회 — 네이티브가 있으면 getAssetInfoAsync(원본 파일 접근)를 건너뛴다
 import { isPhotoLocationAvailable, getLocations } from '../../modules/photo-location';
 import {
@@ -733,6 +733,18 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         let geo = geocodeCache[key];
         if (geo === undefined) {
           geo = locateCountry(lat, lon); // 오프라인 point-in-polygon (즉시)
+          // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
+          // 접경 오차. utils/countryLocate.isOfflineCountryTrusted 주석 참조). null로 떨어뜨려
+          // 아래 지오코딩 폴백을 그대로 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면
+          // 지오코딩이 정답이다), 다른 나라를 주면 그 값을, 실패하거나 결과가 없으면 null(미상)이
+          // 된다 — 미상 사진은 segmentsFromProbes가 앞뒤 구간 국가를 물려주므로 가짜 카드가 안 생긴다.
+          //
+          // ⚠️ 캐시 계약은 그대로다. `geocodeCache[key]`는 이 분기가 **끝난 뒤의 최종값**만
+          //    담는다(아래 754행) — `undefined`=미조회 / `null`=조회했고 미상 구분이 유지된다.
+          //    다만 0.5도 버킷이라, 보류된 KP 좌표 한 번의 지오코딩 결과가 그 셀 전체에 쓰인다.
+          //    (셀 안에서 KP/KR이 갈릴 수 있으나, 원래부터 0.5도 해상도로 국가를 판정하는
+          //     설계이며 접경 셀은 어차피 지오코딩이 대표값을 정한다.)
+          if (geo && !isOfflineCountryTrusted(geo.code, homeCountryCode)) geo = null;
           if (geo) {
             prof.bump('⑤오프라인적중');
           } else {
