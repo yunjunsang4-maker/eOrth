@@ -80,9 +80,9 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 7건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건 + 2026-09-11 추가 1건)
+## 1. 지금 해야 하는 것 — 6건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건; 2026-09-11 추가 1건은 당일 반영 완료)
 
-**남은 것은 아래 셋 + 2026-09-08 델타 둘 + 2026-09-09 델타 하나 + 2026-09-11 델타 하나, 합쳐서 7건이다.**
+**남은 것은 아래 셋 + 2026-09-08 델타 둘 + 2026-09-09 델타 하나, 합쳐서 6건이다.**
 ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
 `PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
@@ -94,7 +94,7 @@
 ②여행 카드 기기 간 동기화(`user_trip_cards` 신규 표).**
 **2026-09-09 추가 ⏳ 1건 — ③댓글 @언급 알림(`mention` 타입 + `notify_on_mention` 트리거).
 이건 `send-push` 재배포도 함께 필요하다.**
-**2026-09-11 추가 ⏳ 1건 — ④기기 간 동기화의 실시간 트리거(`user_sync_signals` 신규 표 +
+**2026-09-11 추가 → 같은 날 ✅ 반영 완료 — ④기기 간 동기화의 실시간 트리거(`user_sync_signals` 신규 표 +
 `bump_sync_signal` 트리거 3개 + **publication 등재**). 완전 동기화 5단계이고, 앞선 1~4단계와 달리
 이번엔 publication 등재를 빠뜨리면 나머지가 다 맞아도 조용히 아무 일도 일어나지 않는다.**
 
@@ -105,6 +105,10 @@
 > 눈 확인은 미완.** 앱 쪽 변경은 이 SQL에 런타임 의존이 없어 같은 날 OTA 4회(베타·정식 × RV 1.1.1/1.1.0)를
 > 먼저 발행했다 — 수락 시 신청 알림 정리·공개 전환 이웃 알림 2건만 서버 반영 후 동작한다. 발췌본:
 > `supabase/migration-2026-09-08-cross-user-visibility.sql` (schema.sql과 동일 내용).
+>
+> **2026-09-11 운영(`blweolnunmsxgztmvzfd`) 실행·확인 완료** — `supabase db query --linked`로 확인 쿼리 7개 실측:
+> 컬럼 3 · PK user_id · 트리거 3개(posts만 `UPDATE OF` 6컬럼) · publication 1행 · RLS t · 정책 select 1개 · `has_table_privilege` t.
+> **테스트(`bqwmxxhtsvfuyywfuswo`) 실행·확인 완료(같은 날)** — SQL Editor 실측: publication 1 · 트리거 3 · 정책 SELECT만 · `has_table_privilege` t.
 >
 > ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
 > 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 증상이 사라져 오판하게 된다.
@@ -319,7 +323,7 @@ select tgname, pg_get_triggerdef(oid) as def
 (댓글 저장은 성공한다). 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로
 이 증상을 잡지 못한다. 제외 규칙 ③ 때문에 **글 작성자와 서로이웃인 계정**으로 시험해야 한다.
 
-### ⏳ 미반영(실행 대기) — 기기 간 동기화의 실시간 트리거: `user_sync_signals` 신규 표 (2026-09-11 추가)
+### ✅ 반영 완료(2026-09-11 운영·테스트 양쪽) — 기기 간 동기화의 실시간 트리거: `user_sync_signals` 신규 표
 
 > 발췌본: `supabase/migration-2026-09-11-realtime-sync.sql`
 > (schema.sql `4-c-3c` 절 + 실시간 publication 블록 + 파일 끝 revoke 목록과 동일 내용).
