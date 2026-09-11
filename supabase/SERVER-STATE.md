@@ -82,7 +82,8 @@
 
 ## 1. 지금 해야 하는 것 — 7건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건 + 2026-09-11 추가 1건)
 
-**남은 것은 아래 셋 + 2026-09-08 델타 둘이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
+**남은 것은 아래 셋 + 2026-09-08 델타 둘 + 2026-09-09 델타 하나 + 2026-09-11 델타 하나, 합쳐서 7건이다.**
+①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
 `PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
@@ -358,7 +359,7 @@ select tgname, pg_get_triggerdef(oid) as def
 |---|---|---|---|
 | 1 | `create table if not exists public.user_sync_signals (user_id pk, domain, bumped_at)` | `4-c-3c` 절(`user_state_flags` 바로 아래) | 구독이 조용히 무동작 → **실시간 반영만 꺼지고 앱은 정상** |
 | 2 | RLS 활성화 + `user_sync_signals_select_own` **(select 전용)** | 같은 절 | 정책 없이 RLS만 켜면 이벤트가 전달되지 않는다(조용한 무동작) |
-| 3 | `bump_sync_signal()` (security definer, 예외 삼킴) + 트리거 3개(`posts`·`user_trip_cards`·`user_state_flags`, **after insert or update**) | 같은 절 | 신호가 만들어지지 않는다 |
+| 3 | `bump_sync_signal()` (security definer, 예외 삼킴) + 트리거 3개. `user_trip_cards`·`user_state_flags`는 **after insert or update**, `posts`만 **after insert or update of (visibility, view_type, country_name, data, client_id, deleted_at)** | 같은 절 | 신호가 만들어지지 않는다 |
 | 4 | **`alter publication supabase_realtime add table public.user_sync_signals`** | 실시간 구독 활성화 블록(`dm_messages`·`notifications` 바로 아래) | **가장 조용한 실패.** 1~3이 다 맞아도 이벤트가 영영 안 온다(DM·알림에서 이미 밟은 함정) |
 | 5 | 파일 끝 일괄 `revoke truncate, references, trigger` 목록에 `public.user_sync_signals` 추가 | 파일 하단 revoke 블록 | 이웃 표들과 권한 기준이 어긋난다(즉시 증상 없음) |
 
@@ -377,10 +378,18 @@ UPDATE)이라 update 트리거가 이미 잡는다. 진짜 hard delete는 purge 
 "표식이 찍힌 지 30일이 지나 이미 모든 기기가 반영을 끝낸 행"이라 기기를 깨울 이유가 없다
 (오히려 전 사용자 신호를 한꺼번에 튕겨 동기화 폭주를 만든다).
 
-⚠️ **성능(현 규모 무관, 알아만 둘 것).** 좋아요·댓글 카운터 갱신도 `posts` UPDATE라 트리거가
-돈다. upsert 1회(PK 조회 1건)라 비용은 싸지만, **사용자당 1행에 몰리는 구조**라 같은 사용자의
-글에 동시 다발 반응이 쏟아지면 그 1행에 행 잠금 경합이 이론상 생긴다. 문제가 되면 첫 수단은
-posts 트리거를 `after insert or update of data, deleted_at, visibility`로 좁히는 것이다.
+⚠️ **posts 트리거는 컬럼을 한정했다 — 목록을 `grant update`와 같이 유지할 것.**
+`after insert or update of visibility, view_type, country_name, data, client_id, deleted_at`이며,
+이 6개는 `schema.sql` `2) posts` 절 끝의 `grant update (…)` 목록과 **정확히 같은 집합**이다
+(클라이언트가 바꿀 수 있는 컬럼 = 다른 기기에 알릴 가치가 있는 변경). 한쪽만 늘리면 새 컬럼
+변경이 조용히 전파되지 않으므로 **둘은 항상 같이 고친다.** 배제되는 것은 `likes_count`·
+`comments_count`·`updated_at` 셋이다 — 좋아요·댓글 카운터는 **남의 행동**이라 내 기기를 깨울
+이유가 없고(한정하지 않으면 인기 글 하나로 작성자의 켜진 모든 기기가 5초마다 동기화를 반복한다),
+카운터의 기기 간 반영은 기존 `refreshMyPostCounts`가 이미 담당해 잃는 기능이 없다.
+
+⚠️ **성능(현 규모 무관, 알아만 둘 것).** **사용자당 1행에 몰리는 구조**라 같은 사용자의 글에
+동시 다발 변경이 쏟아지면 그 1행에 행 잠금 경합이 이론상 생긴다. 위 컬럼 한정으로 가장 잦은
+발생원(카운터 갱신)은 이미 제거됐다.
 
 **신호 행은 정리(purge)가 필요 없다** — 사용자당 1행 upsert라 늘지 않고, 계정 삭제 시
 `profiles`의 `on delete cascade`가 함께 지운다.
@@ -396,7 +405,9 @@ select a.attname from pg_index i
   join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
  where i.indrelid = 'public.user_sync_signals'::regclass and i.indisprimary;
 
--- 3번: 트리거 3개, 각각 AFTER INSERT OR UPDATE — 3행
+-- 3번: 트리거 3개 — 3행. posts 만 `AFTER INSERT OR UPDATE OF visibility, view_type,
+--       country_name, data, client_id, deleted_at` 로 보여야 한다(UPDATE OF 목록이 없으면
+--       컬럼 한정이 빠진 것 → drop 후 재생성). 나머지 둘은 AFTER INSERT OR UPDATE
 select tgname, pg_get_triggerdef(oid) from pg_trigger
  where tgname in ('trg_posts_bump_sync_signal',
                   'trg_user_trip_cards_bump_sync_signal',
@@ -412,9 +423,14 @@ select relrowsecurity from pg_class where oid = 'public.user_sync_signals'::regc
 
 -- 6번: 정책이 select 1개뿐이어야 한다(insert/update/delete 가 보이면 잘못 실행된 것)
 select policyname, cmd, qual, with_check from pg_policies where tablename='user_sync_signals';
+
+-- 7번: authenticated 의 SELECT **권한**(grant) — t 여야 한다. RLS 정책(6번)이 있어도 테이블
+--      권한이 없으면 postgres_changes 가 이벤트를 전달하지 않는다(또 하나의 조용한 실패).
+--      f 면 `grant select on public.user_sync_signals to authenticated;` 한 줄을 실행할 것
+select has_table_privilege('authenticated', 'public.user_sync_signals', 'select');
 ```
 
-⚠️ **확인 쿼리는 "객체가 있다"만 본다.** 실제로 도는지는 앱 계정(authenticated) 세션으로 글을
+⚠️ **확인 쿼리 7개는 "객체가 있다"만 본다.** 실제로 도는지는 앱 계정(authenticated) 세션으로 글을
 하나 저장한 뒤 `select * from public.user_sync_signals where user_id = auth.uid();`의 `bumped_at`이
 방금 시각으로 올라가는지, 그리고 **다른 기기에서 새로고침 없이 반영되는지**까지 봐야 확정된다.
 

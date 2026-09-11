@@ -2169,12 +2169,10 @@ create policy "user_sync_signals_select_own" on public.user_sync_signals
 --    반영이 늦어질 뿐이다.
 --
 -- ⚠️ 성능 — 알아 두고 넘어가는 항목(현 규모에서는 문제 없음):
---    · **좋아요·댓글 카운터 갱신도 posts UPDATE라 이 트리거가 돈다.** 남이 내 글에 좋아요를
---      누를 때마다 upsert 1회가 추가된다. 문장 하나·PK 조회 하나라 비용 자체는 싸다.
---    · 다만 **사용자당 1행에 몰리는 구조**라, 같은 사용자의 글에 동시 다발 반응이 쏟아지면
---      그 1행에 행 잠금 경합이 이론상 생긴다(현재 규모에서는 무관하며, 문제가 되면 posts
---      트리거를 `update of data, deleted_at, visibility`로 좁히는 것이 첫 수단이다 —
---      그러면 카운터 갱신은 신호를 만들지 않는다).
+--    · **사용자당 1행에 몰리는 구조**라, 같은 사용자의 글에 동시 다발 변경이 쏟아지면 그 1행에
+--      행 잠금 경합이 이론상 생긴다(현재 규모에서는 무관).
+--    · 좋아요·댓글 카운터 갱신이 신호를 만들던 문제는 **posts 트리거의 컬럼 한정으로 이미
+--      제거했다**(아래 create trigger 주석). 남은 완화 수단은 현재 필요 없다.
 create or replace function public.bump_sync_signal()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
@@ -2209,9 +2207,24 @@ end; $$;
 --    UPDATE)이라 위 update 트리거가 이미 잡는다. 진짜 hard delete 는 purge cron뿐인데, purge
 --    대상은 "표식이 찍힌 지 30일이 지나 이미 모든 기기가 반영을 끝낸 행"이므로 그때 기기를
 --    깨울 이유가 없다(오히려 전 사용자 신호를 한꺼번에 튕겨 동기화 폭주를 만든다).
+-- ⚠️ **posts 트리거만 컬럼을 한정한다.** 목록은 이 파일 위쪽
+--    `2) posts` 절 끝의 카운터 컬럼 보호 블록에 있는
+--    `grant update (visibility, view_type, country_name, data, client_id, deleted_at)` 와
+--    **정확히 같은 집합**이다 — 클라이언트가 실제로 바꿀 수 있는 컬럼이 곧 "다른 기기에 알릴
+--    가치가 있는 변경"이기 때문이다. **둘은 항상 같이 고칠 것**(한쪽만 늘리면 새 컬럼 변경이
+--    조용히 전파되지 않는다).
+--    배제되는 것은 정확히 `likes_count`·`comments_count`·`updated_at` 셋이다:
+--      · 좋아요·댓글 카운터는 **남의 행동**이라 내 기기를 깨울 이유가 없다. 한정하지 않으면
+--        인기 글 하나만으로 작성자의 켜진 모든 기기가 5초마다 syncMyRecords 1회(프로브 3회)를
+--        무기한 반복한다(이 구독이 포그라운드 60초 throttle을 의도적으로 우회하므로 상한이
+--        12배가 된다).
+--      · 카운터의 기기 간 반영은 기존 `refreshMyPostCounts`(src/store/recordStore.tsx)가 이미
+--        담당한다 — 이 한정으로 잃는 기능이 없다.
+--      · `updated_at` 은 set_updated_at 트리거가 채우는 파생 값이라 단독으로 바뀌지 않는다.
 drop trigger if exists trg_posts_bump_sync_signal on public.posts;
 create trigger trg_posts_bump_sync_signal
-  after insert or update on public.posts
+  after insert or update of visibility, view_type, country_name, data, client_id, deleted_at
+  on public.posts
   for each row execute function public.bump_sync_signal();
 
 drop trigger if exists trg_user_trip_cards_bump_sync_signal on public.user_trip_cards;

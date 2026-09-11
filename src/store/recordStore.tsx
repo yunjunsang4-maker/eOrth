@@ -3478,7 +3478,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // ─── 실시간 동기화 트리거 (user_sync_signals 구독 — 완전 동기화 5단계, 2026-09-11) ───
   //
   // 1~4단계로 글·여행 카드·부가상태가 기기 간에 전파되게 됐지만, 반영을 **당기는 트리거**는
-  // ①AppState 'active' 복귀(위 :2994 effect, 60초 throttle) ②프로필 당겨서 새로고침 둘뿐이었다.
+  // ①AppState 'active' 복귀(위 :2995 effect, 60초 throttle) ②프로필 당겨서 새로고침 둘뿐이었다.
   // 그래서 두 기기를 **동시에 켜 둔 채** 쓰면 상대 기기의 변경이 화면에 영영 안 나타났다.
   // 서버 트리거가 찍어 주는 신호 행을 구독해, 새로고침 없이 그 둘과 **같은 경로**를 깨운다.
   //
@@ -3519,15 +3519,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       syncBumpPendingRef.current = false;
       // ⚠️ 포그라운드 60초 throttle을 **일부러 우회한다.** 그 throttle은 AppState effect
       //    안의 지역 변수(`lastMyRecordSyncAtRef`)로만 구현돼 있고 `syncMyRecords` 자체에는
-      //    없다(:2994~:3013 확인). 신호는 "상대 기기가 방금 뭔가 바꿨다"는 확정 정보라
+      //    없다(:2995~:3014 확인). 신호는 "상대 기기가 방금 뭔가 바꿨다"는 확정 정보라
       //    앱 전환을 반복할 때의 헛 프로브와 성격이 다르다 — 아낄 이유가 없다.
       //    폭주 방어는 ①5초 트레일링 디바운스 ②`syncMyRecordsInFlightRef` 재진입 가드
       //    ③`publishInFlightRef` 발행 경합 가드 셋이 이미 한다.
+      // 실기기 에코 루프 관측용 — 이 줄이 5초 간격으로 끝없이 찍히면 write→signal→sync→write
+      // 루프다(지문 가드가 서버가 돌려주는 값과 영원히 다른 필드를 물었다는 뜻).
+      if (__DEV__) console.log('[syncSignal] runSync — syncMyRecords 호출');
       syncMyRecordsRef.current();
     };
 
     const onBump = () => {
       if (!alive) return;
+      if (__DEV__) console.log('[syncSignal] bump 수신 — 디바운스 예약');
       syncBumpPendingRef.current = true;
       // 트레일링 디바운스 — 사용자의 한 동작이 서버에서 여러 신호를 만든다(글 저장 하나가
       // posts + user_trip_cards + user_state_flags 갱신으로 이어질 수 있다). 마지막 신호에서
@@ -3546,9 +3550,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     };
 
     // 복귀 시 미뤄둔 신호 소진.
-    // ⚠️ **중복 호출이 되지 않는 이유** — 위 :2994 effect도 'active'에서 `syncMyRecords()`를
+    // ⚠️ **중복 호출이 되지 않는 이유** — 위 :2995 effect도 'active'에서 `syncMyRecords()`를
     //    부른다. 그런데 `syncMyRecords`는 첫 줄에서 `syncMyRecordsInFlightRef`를 **동기적으로**
-    //    세우고 재진입을 `'skipped'`로 되돌린다(:2594~2595). 두 리스너가 같은 틱에 불려도
+    //    세우고 재진입을 `'skipped'`로 되돌린다(:2595~2596). 두 리스너가 같은 틱에 불려도
     //    실제 왕복은 한 번뿐이고, 나중 것은 요청 0회로 끝난다.
     //    그럼에도 이 리스너를 둔 이유: 그쪽은 **60초 throttle**이라 직전 회차로부터 60초가
     //    안 지났으면 조용히 건너뛴다 — 그러면 미뤄둔 신호가 통째로 유실된다. 여기서만
