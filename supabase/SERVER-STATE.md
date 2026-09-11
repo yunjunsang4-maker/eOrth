@@ -106,10 +106,6 @@
 > 먼저 발행했다 — 수락 시 신청 알림 정리·공개 전환 이웃 알림 2건만 서버 반영 후 동작한다. 발췌본:
 > `supabase/migration-2026-09-08-cross-user-visibility.sql` (schema.sql과 동일 내용).
 >
-> **2026-09-11 운영(`blweolnunmsxgztmvzfd`) 실행·확인 완료** — `supabase db query --linked`로 확인 쿼리 7개 실측:
-> 컬럼 3 · PK user_id · 트리거 3개(posts만 `UPDATE OF` 6컬럼) · publication 1행 · RLS t · 정책 select 1개 · `has_table_privilege` t.
-> **테스트(`bqwmxxhtsvfuyywfuswo`) 실행·확인 완료(같은 날)** — SQL Editor 실측: publication 1 · 트리거 3 · 정책 SELECT만 · `has_table_privilege` t.
->
 > ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
 > 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 증상이 사라져 오판하게 된다.
 >
@@ -327,6 +323,10 @@ select tgname, pg_get_triggerdef(oid) as def
 
 > 발췌본: `supabase/migration-2026-09-11-realtime-sync.sql`
 > (schema.sql `4-c-3c` 절 + 실시간 publication 블록 + 파일 끝 revoke 목록과 동일 내용).
+>
+> **2026-09-11 운영(`blweolnunmsxgztmvzfd`) 실행·확인 완료** — `supabase db query --linked`로 확인 쿼리 7개 실측:
+> 컬럼 3 · PK user_id · 트리거 3개(posts만 `UPDATE OF` 6컬럼) · publication 1행 · RLS t · 정책 select 1개 · `has_table_privilege` t.
+> **테스트(`bqwmxxhtsvfuyywfuswo`) 실행·확인 완료(같은 날)** — SQL Editor 실측: publication 1 · 트리거 3 · 정책 SELECT만 · `has_table_privilege` t.
 >
 > ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
 > 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 실시간 반영이 되어
