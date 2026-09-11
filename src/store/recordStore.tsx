@@ -47,6 +47,7 @@ import {
   type LocalFlagState,
   type StateFlagKind,
 } from '../utils/mergeStateFlags';
+import { subscribeSyncSignals, SYNC_SIGNAL_DEBOUNCE_MS } from '../services/syncRealtime';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
@@ -3473,6 +3474,118 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // `records`가 deps에 있는 이유: archived의 push 키가 remoteId라, 글이 발행돼 remoteId가
     // 붙는 순간 그 항목의 키가 바뀐다(옛 로컬 id 키에는 표식이 찍혀 정리된다).
   }, [hydrated, archivedIds, blockedUsers, mutedHandles, viewedSnapIds, reportedPostIds, reportedCommentIds, records, flagsPushNudge]);
+
+  // ─── 실시간 동기화 트리거 (user_sync_signals 구독 — 완전 동기화 5단계, 2026-09-11) ───
+  //
+  // 1~4단계로 글·여행 카드·부가상태가 기기 간에 전파되게 됐지만, 반영을 **당기는 트리거**는
+  // ①AppState 'active' 복귀(위 :2994 effect, 60초 throttle) ②프로필 당겨서 새로고침 둘뿐이었다.
+  // 그래서 두 기기를 **동시에 켜 둔 채** 쓰면 상대 기기의 변경이 화면에 영영 안 나타났다.
+  // 서버 트리거가 찍어 주는 신호 행을 구독해, 새로고침 없이 그 둘과 **같은 경로**를 깨운다.
+  //
+  // ⚠️ **Realtime은 트리거일 뿐 데이터 경로가 아니다.** 페이로드에서 아무것도 읽지 않고
+  //    (`domain`조차) 디바운스 뒤 기존 `syncMyRecords()`를 부를 뿐이다. 여기서 페이로드를
+  //    병합에 쓰기 시작하면 병합 로직이 한 벌 더 생겨 1~4단계 QA 보증이 통째로 무효가 된다.
+  //
+  // ⚠️ **이 구독은 보강이지 대체가 아니다.** 소켓이 끊긴 사이의 이벤트는 재전송되지 않는다
+  //    (`services/syncRealtime.ts` 한계 주석). 따라잡기는 여전히 위 ①②가 담당하므로 그 둘을
+  //    지우면 안 된다.
+  const syncBumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * "신호를 받았는데 아직 sync를 못 돌렸다" — 백그라운드에서 신호가 온 경우다.
+   * 포그라운드 복귀 때 소진한다(아래 AppState 리스너).
+   */
+  const syncBumpPendingRef = useRef(false);
+  /**
+   * `syncMyRecords`를 **ref로 경유한다.** 아래 effect의 deps에 직접 넣으면 그 콜백이 재생성될
+   * 때마다 구독이 끊겼다 다시 붙는데, 웹소켓 재연결 사이의 이벤트는 재전송되지 않아
+   * **신호가 통째로 유실된다.** 구독은 계정 세대가 바뀔 때만 다시 걸어야 한다.
+   */
+  const syncMyRecordsRef = useRef(syncMyRecords);
+  syncMyRecordsRef.current = syncMyRecords;
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured) return;
+    let alive = true;
+    let unsub: (() => void) | null = null;
+    // 계정 세대를 **구독 시점에** 잡는다(카드·부가상태 push effect와 같은 관습).
+    // 5초 디바운스 사이에 계정이 바뀌면 이전 계정의 신호로 새 계정 동기화를 돌리지 않는다.
+    const epoch = tripRestoreEpochRef.current;
+
+    const runSync = () => {
+      if (!alive || epoch !== tripRestoreEpochRef.current) return;
+      // 대기 중인 디바운스 타이머가 있으면 취소한다 — 없으면 "백그라운드 직전에 신호가 와
+      // 타이머가 살아 있는 채로 복귀"한 경우에 이 리스너와 타이머가 sync를 두 번 부른다
+      // (재진입 가드가 있어 무해하지만, 첫 회차가 이미 끝난 뒤라면 진짜 왕복 2회가 된다).
+      if (syncBumpTimerRef.current) { clearTimeout(syncBumpTimerRef.current); syncBumpTimerRef.current = null; }
+      syncBumpPendingRef.current = false;
+      // ⚠️ 포그라운드 60초 throttle을 **일부러 우회한다.** 그 throttle은 AppState effect
+      //    안의 지역 변수(`lastMyRecordSyncAtRef`)로만 구현돼 있고 `syncMyRecords` 자체에는
+      //    없다(:2994~:3013 확인). 신호는 "상대 기기가 방금 뭔가 바꿨다"는 확정 정보라
+      //    앱 전환을 반복할 때의 헛 프로브와 성격이 다르다 — 아낄 이유가 없다.
+      //    폭주 방어는 ①5초 트레일링 디바운스 ②`syncMyRecordsInFlightRef` 재진입 가드
+      //    ③`publishInFlightRef` 발행 경합 가드 셋이 이미 한다.
+      syncMyRecordsRef.current();
+    };
+
+    const onBump = () => {
+      if (!alive) return;
+      syncBumpPendingRef.current = true;
+      // 트레일링 디바운스 — 사용자의 한 동작이 서버에서 여러 신호를 만든다(글 저장 하나가
+      // posts + user_trip_cards + user_state_flags 갱신으로 이어질 수 있다). 마지막 신호에서
+      // 5초를 세어 한 번만 돈다. 자기 기기 발행의 **에코**도 여기서 대부분 접히고, 남는 것은
+      // 위 두 가드가 흡수한다(그 회차의 sync는 서버와 로컬이 이미 같아 no-op으로 끝난다).
+      if (syncBumpTimerRef.current) clearTimeout(syncBumpTimerRef.current);
+      syncBumpTimerRef.current = setTimeout(() => {
+        syncBumpTimerRef.current = null;
+        if (!alive) return;
+        // 백그라운드에서 신호가 와도(소켓이 아직 살아 있을 때) 지금 도는 건 낭비다 —
+        // 화면이 없으니 반영해도 보이지 않고, OS가 곧 네트워크를 끊는다.
+        // pending을 **남긴 채** 미루고, 아래 리스너가 복귀 시점에 소진한다.
+        if (AppState.currentState !== 'active') return;
+        runSync();
+      }, SYNC_SIGNAL_DEBOUNCE_MS);
+    };
+
+    // 복귀 시 미뤄둔 신호 소진.
+    // ⚠️ **중복 호출이 되지 않는 이유** — 위 :2994 effect도 'active'에서 `syncMyRecords()`를
+    //    부른다. 그런데 `syncMyRecords`는 첫 줄에서 `syncMyRecordsInFlightRef`를 **동기적으로**
+    //    세우고 재진입을 `'skipped'`로 되돌린다(:2594~2595). 두 리스너가 같은 틱에 불려도
+    //    실제 왕복은 한 번뿐이고, 나중 것은 요청 0회로 끝난다.
+    //    그럼에도 이 리스너를 둔 이유: 그쪽은 **60초 throttle**이라 직전 회차로부터 60초가
+    //    안 지났으면 조용히 건너뛴다 — 그러면 미뤄둔 신호가 통째로 유실된다. 여기서만
+    //    `pending`이 참일 때 한정으로 그 창을 메운다(신호가 없었으면 아무 일도 하지 않는다).
+    const appSub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active' || !alive) return;
+      if (!syncBumpPendingRef.current) return;
+      runSync();
+    });
+
+    // 로그인 전(세션 없음)에는 uid가 null이라 구독하지 않는다. 로그인이 확정되면
+    // `useAccountBoundary`가 `rearmTripRestore()`를 부르고, 그것이 `tripRestoreNonce`를
+    // 올려 이 effect를 다시 돌린다(아래 deps 주석 참조).
+    getMyUserId()
+      .then((uid) => {
+        if (!alive || !uid) return;
+        if (epoch !== tripRestoreEpochRef.current) return; // 계정 전환됨 — 이 구독 폐기
+        unsub = subscribeSyncSignals(uid, onBump);
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+      appSub.remove();
+      if (syncBumpTimerRef.current) { clearTimeout(syncBumpTimerRef.current); syncBumpTimerRef.current = null; }
+      syncBumpPendingRef.current = false; // 이전 계정의 미뤄둔 신호를 새 계정으로 넘기지 않는다
+      unsub?.(); // await 중이라 아직 null일 수 있다 — 그때는 위 alive 플래그가 구독 자체를 막는다
+    };
+    // 재구독 신호로 `tripRestoreNonce`를 쓴다 — 새 state를 만들지 않은 이유:
+    //   · `resetRecords()`(계정 전환)와 `rearmTripRestore()`(로그인 확정) **둘 다** 이 값을
+    //     올린다(:1981, :3333). 구독을 다시 걸어야 하는 시점이 정확히 그 둘이다.
+    //   · `tripRestoreEpochRef`는 ref라 effect를 다시 돌리지 못한다(그래서 세대 검사 전용).
+    //   · 카드 복원 effect(:3255)가 이미 같은 쌍(epoch ref + nonce state)을 쓰고 있어
+    //     관습이 하나로 유지된다.
+    // (`tripRestoreNonce`는 본문에서 읽지 않는 '신호 전용' deps다. eslint는 이 조합에
+    //  경고하지 않으므로 disable 주석을 달지 않는다 — 달면 unused directive 경고가 난다.)
+  }, [hydrated, tripRestoreNonce]);
 
   // ── 국가 대표사진 ──
   // 국가의 대표사진 '기록'을 찾는다: 핀 우선(핀 기록이 살아있을 때만), 없으면 기존 최신순 폴백.

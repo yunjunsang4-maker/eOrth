@@ -80,7 +80,7 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 6건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건)
+## 1. 지금 해야 하는 것 — 7건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건 + 2026-09-11 추가 1건)
 
 **남은 것은 아래 셋 + 2026-09-08 델타 둘이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
 ②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
@@ -93,6 +93,9 @@
 ②여행 카드 기기 간 동기화(`user_trip_cards` 신규 표).**
 **2026-09-09 추가 ⏳ 1건 — ③댓글 @언급 알림(`mention` 타입 + `notify_on_mention` 트리거).
 이건 `send-push` 재배포도 함께 필요하다.**
+**2026-09-11 추가 ⏳ 1건 — ④기기 간 동기화의 실시간 트리거(`user_sync_signals` 신규 표 +
+`bump_sync_signal` 트리거 3개 + **publication 등재**). 완전 동기화 5단계이고, 앞선 1~4단계와 달리
+이번엔 publication 등재를 빠뜨리면 나머지가 다 맞아도 조용히 아무 일도 일어나지 않는다.**
 
 ### ⏳ 미반영(실행 대기) — 사용자 간 전파: 수락 시 신청 알림 정리 + 공개 전환 시 이웃 알림 (2026-09-08 추가)
 
@@ -314,6 +317,106 @@ select tgname, pg_get_triggerdef(oid) as def
 `exception when others then return null`이 있어 함수 안의 어떤 오류도 **조용히 삼켜진다**
 (댓글 저장은 성공한다). 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로
 이 증상을 잡지 못한다. 제외 규칙 ③ 때문에 **글 작성자와 서로이웃인 계정**으로 시험해야 한다.
+
+### ⏳ 미반영(실행 대기) — 기기 간 동기화의 실시간 트리거: `user_sync_signals` 신규 표 (2026-09-11 추가)
+
+> 발췌본: `supabase/migration-2026-09-11-realtime-sync.sql`
+> (schema.sql `4-c-3c` 절 + 실시간 publication 블록 + 파일 끝 revoke 목록과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다. 한쪽만 실행하면 그쪽에서만 실시간 반영이 되어
+> "아이폰은 바로 뜨는데 안드로이드는 안 뜬다"는 오판으로 이어진다.
+>
+> ⚠️ **전제(확장 등) 없다.** pg_cron 도 필요 없다.
+> ⚠️ **전제(선행 표) 있다** — `posts`·`user_trip_cards`(3단계)·`user_state_flags`(4단계)가 이미
+> 있어야 한다. 셋 다 이 문서 기준 반영 완료다. 없으면 트리거 생성이 42P01로 실패하고 델타 전체가
+> 롤백된다.
+>
+> ⚠️ **앱 배포 순서 제약 없음.** 표가 없으면 구독이 조용히 아무 이벤트도 못 받고, 기존 트리거
+> (포그라운드 복귀 60초 throttle · 프로필 당겨서 새로고침)로 4단계까지의 동작이 그대로 유지된다.
+
+**왜 필요한가.** 1~4단계로 글·여행 카드·부가상태가 기기 간에 전파되게 됐지만, 반영을 **당기는
+트리거**가 ①앱 포그라운드 복귀(60초 throttle) ②프로필 당겨서 새로고침 둘뿐이다. 그래서 두 기기를
+**동시에 켜 둔 채** 쓰면 상대 기기의 변경이 화면에 영영 안 나타난다(앱을 껐다 켜야 보인다).
+이 표는 "그 사용자의 무언가가 서버에서 바뀌었다"를 Realtime으로 알리는 **초인종**이다.
+앱 쪽 대응은 `src/services/syncRealtime.ts`(신규)·`src/store/recordStore.tsx`.
+
+> ⚠️ **이 표는 데이터 경로가 아니라 트리거다.** 앱은 이벤트 페이로드에서 **아무것도 읽지 않고**
+> (`domain`조차) 디바운스 뒤 기존 `syncMyRecords()`를 부를 뿐이다. 여기에 두 번째 병합 경로를
+> 만들면 1~4단계 QA가 쌓은 보증이 통째로 무효가 된다.
+
+> **왜 posts·user_trip_cards·user_state_flags를 직접 구독하지 않는가.**
+> ① `postgres_changes`는 **바뀐 행 전체**를 내려보낸다. `posts.data`(jsonb)는 앨범 글이면 사진
+> 100장 URL로 수십 KB인데, 남이 누른 좋아요 하나가 만드는 `likes_count` UPDATE마다 그 본문
+> 전체가 작성자의 모든 기기로 내려온다(앱은 그 값을 쓰지도 않는다 — 순수 이그레스).
+> ② 표 3개를 구독하면 WAL 디코딩과 구독자별 RLS 평가가 3벌 돈다.
+> 이 표는 사용자당 1행·수십 바이트다.
+
+실행할 것 — 전부 `schema.sql`에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `create table if not exists public.user_sync_signals (user_id pk, domain, bumped_at)` | `4-c-3c` 절(`user_state_flags` 바로 아래) | 구독이 조용히 무동작 → **실시간 반영만 꺼지고 앱은 정상** |
+| 2 | RLS 활성화 + `user_sync_signals_select_own` **(select 전용)** | 같은 절 | 정책 없이 RLS만 켜면 이벤트가 전달되지 않는다(조용한 무동작) |
+| 3 | `bump_sync_signal()` (security definer, 예외 삼킴) + 트리거 3개(`posts`·`user_trip_cards`·`user_state_flags`, **after insert or update**) | 같은 절 | 신호가 만들어지지 않는다 |
+| 4 | **`alter publication supabase_realtime add table public.user_sync_signals`** | 실시간 구독 활성화 블록(`dm_messages`·`notifications` 바로 아래) | **가장 조용한 실패.** 1~3이 다 맞아도 이벤트가 영영 안 온다(DM·알림에서 이미 밟은 함정) |
+| 5 | 파일 끝 일괄 `revoke truncate, references, trigger` 목록에 `public.user_sync_signals` 추가 | 파일 하단 revoke 블록 | 이웃 표들과 권한 기준이 어긋난다(즉시 증상 없음) |
+
+⚠️ **쓰기 정책(insert/update/delete)을 만들지 말 것.** 쓰는 주체는 트리거뿐이고, 함수가
+`security definer`라 정책 없이도 쓴다. 클라이언트에 쓰기를 열면 **남의 기기를 임의로 깨우는
+(동기화 폭주) 수단**이 된다. 확인 쿼리 6번이 정확히 이걸 본다(정책이 select 1개여야 한다).
+
+⚠️ **`revoke select`로 더 좁히지 말 것.** Realtime의 `postgres_changes`는 구독자의 select 권한 +
+RLS로 전달 여부를 정한다 — select를 회수하면 이벤트가 조용히 끊긴다.
+
+⚠️ **`domain`은 진단용이다. 앱의 판정에 쓰지 않는다.** 신호가 겹치면 마지막 것만 남으므로
+이 값으로 "무엇을 동기화할지"를 고르면 반드시 하나를 빠뜨린다(앱은 항상 전체 체인을 돈다).
+
+⚠️ **DELETE 트리거는 일부러 없다.** 1~4단계의 삭제는 전부 tombstone(= `deleted_at`을 채우는
+UPDATE)이라 update 트리거가 이미 잡는다. 진짜 hard delete는 purge cron뿐인데, 그 대상은
+"표식이 찍힌 지 30일이 지나 이미 모든 기기가 반영을 끝낸 행"이라 기기를 깨울 이유가 없다
+(오히려 전 사용자 신호를 한꺼번에 튕겨 동기화 폭주를 만든다).
+
+⚠️ **성능(현 규모 무관, 알아만 둘 것).** 좋아요·댓글 카운터 갱신도 `posts` UPDATE라 트리거가
+돈다. upsert 1회(PK 조회 1건)라 비용은 싸지만, **사용자당 1행에 몰리는 구조**라 같은 사용자의
+글에 동시 다발 반응이 쏟아지면 그 1행에 행 잠금 경합이 이론상 생긴다. 문제가 되면 첫 수단은
+posts 트리거를 `after insert or update of data, deleted_at, visibility`로 좁히는 것이다.
+
+**신호 행은 정리(purge)가 필요 없다** — 사용자당 1행 upsert라 늘지 않고, 계정 삭제 시
+`profiles`의 `on delete cascade`가 함께 지운다.
+
+반영 확인 쿼리:
+```sql
+-- 1번: 3개 컬럼(user_id, domain, bumped_at). domain 은 is_nullable='YES'
+select column_name, data_type, is_nullable from information_schema.columns
+ where table_schema='public' and table_name='user_sync_signals' order by ordinal_position;
+
+-- 2번: PK 가 user_id 한 컬럼 — 1행
+select a.attname from pg_index i
+  join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+ where i.indrelid = 'public.user_sync_signals'::regclass and i.indisprimary;
+
+-- 3번: 트리거 3개, 각각 AFTER INSERT OR UPDATE — 3행
+select tgname, pg_get_triggerdef(oid) from pg_trigger
+ where tgname in ('trg_posts_bump_sync_signal',
+                  'trg_user_trip_cards_bump_sync_signal',
+                  'trg_user_state_flags_bump_sync_signal')
+   and not tgisinternal order by tgname;
+
+-- 4번: publication 등재 — 가장 조용히 실패하는 항목. 1행이 나와야 한다
+select schemaname, tablename from pg_publication_tables
+ where pubname = 'supabase_realtime' and tablename = 'user_sync_signals';
+
+-- 5번: RLS 켜짐(t)
+select relrowsecurity from pg_class where oid = 'public.user_sync_signals'::regclass;
+
+-- 6번: 정책이 select 1개뿐이어야 한다(insert/update/delete 가 보이면 잘못 실행된 것)
+select policyname, cmd, qual, with_check from pg_policies where tablename='user_sync_signals';
+```
+
+⚠️ **확인 쿼리는 "객체가 있다"만 본다.** 실제로 도는지는 앱 계정(authenticated) 세션으로 글을
+하나 저장한 뒤 `select * from public.user_sync_signals where user_id = auth.uid();`의 `bumped_at`이
+방금 시각으로 올라가는지, 그리고 **다른 기기에서 새로고침 없이 반영되는지**까지 봐야 확정된다.
 
 ### ✅ 기록 부가상태 집합 동기화: `user_state_flags` 신규 표 (2026-09-09 추가 · **2026-09-10 운영·테스트 양쪽 실행 완료**)
 

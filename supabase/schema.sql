@@ -2112,6 +2112,119 @@ create policy "user_state_flags_all_own" on public.user_state_flags
 --  where deleted_at is not null and deleted_at < now() - interval '30 days';
 
 -- ============================================================
+-- 4-c-3c) user_sync_signals — 기기 간 동기화의 **실시간 트리거 신호** (2026-09-11, 완전 동기화 5단계)
+--
+-- 무엇을 푸는가:
+--   1~4단계로 글·여행 카드·부가상태가 기기 간에 전파되게 됐지만, 반영을 **당기는 트리거**가
+--   ①앱 포그라운드 복귀(60초 throttle) ②프로필 당겨서 새로고침 둘뿐이다. 두 기기를 **동시에
+--   켜 둔 채** 쓰면 상대 기기의 변경이 화면에 영영 안 나타난다(앱을 껐다 켜야 보인다).
+--   이 표는 "그 사용자의 무언가가 서버에서 바뀌었다"를 Realtime으로 알리는 **초인종**이다.
+--
+-- ⚠️ **이 표는 데이터 경로가 아니라 트리거다.** 앱은 이벤트 페이로드에서 아무것도 읽지 않고
+--    (domain 조차) 디바운스 뒤 기존 `syncMyRecords()`를 부를 뿐이다. 병합 로직은 1~4단계 것
+--    한 벌뿐이며, 여기에 두 번째 병합 경로를 만들면 그 세 단계의 QA 보증이 통째로 무효가 된다.
+--
+-- ⚠️ **왜 posts·user_trip_cards·user_state_flags를 직접 구독하지 않는가** — 두 가지 비용 때문이다.
+--    ① postgres_changes는 **바뀐 행 전체**를 구독자에게 내려보낸다. posts.data(jsonb)는 앨범 글이면
+--       사진 100장 URL로 수십 KB다. 남이 좋아요 하나를 누를 때마다 발생하는 `likes_count` UPDATE가
+--       그 본문 전체를 작성자의 모든 기기로 밀어 보내게 된다(순수 이그레스 낭비 — 앱은 그 값을
+--       쓰지도 않는다).
+--    ② 표 3개를 구독하면 WAL 디코딩과 **구독자별 RLS 평가**가 3벌 돈다. 이 표 하나로 모으면
+--       사용자당 1행·수십 바이트다.
+--
+-- 쓰기 주체는 **아래 트리거뿐이다.** 클라이언트에는 select 정책만 준다(insert/update/delete 정책
+-- 없음 = RLS가 전부 거부). 앱이 이 표에 쓸 일이 없고, 쓸 수 있게 두면 남의 기기를 임의로
+-- 깨우는(동기화 폭주) 수단이 된다.
+-- ============================================================
+create table if not exists public.user_sync_signals (
+  user_id   uuid primary key references public.profiles(id) on delete cascade,
+  domain    text,                                  -- 마지막 변경 도메인('posts'|'cards'|'flags')
+  bumped_at timestamptz not null default now()
+);
+
+-- domain은 **진단용이다. 앱의 판정에 쓰지 않는다.**
+-- 신호가 겹치면(글·카드·부가상태가 한꺼번에 바뀌면) 마지막 것만 남으므로 이 값으로 "무엇을
+-- 동기화할지"를 고르면 반드시 하나를 빠뜨린다. 앱은 항상 records→cards→flags 전체 체인을 돈다.
+
+-- 인덱스 추가 없음 — 조회는 Realtime의 RLS 평가(user_id = auth.uid())뿐이고 PK가 커버한다.
+
+-- updated_at 트리거(set_updated_at)를 걸지 않는다 — 이 표에는 updated_at 컬럼 자체가 없다.
+-- 시각은 트리거 함수가 now()로 직접 넣는 bumped_at 하나뿐이다(이웃 표들과 다른 점).
+
+alter table public.user_sync_signals enable row level security;
+
+-- 본인 행 **select만**. 쓰기 정책은 의도적으로 없다(위 설명) — 트리거가 security definer라
+-- 정책 없이도 쓴다.
+drop policy if exists "user_sync_signals_select_own" on public.user_sync_signals;
+create policy "user_sync_signals_select_own" on public.user_sync_signals
+  for select to authenticated using (user_id = auth.uid());
+
+-- ── 신호 갱신 함수 ──
+-- security definer 인 이유: 이 표에는 쓰기 정책이 없으므로 호출자 권한으로는 못 쓴다
+-- (notify_on_like 와 같은 패턴).
+--
+-- ⚠️ **예외를 반드시 삼킨다.** 신호 갱신이 실패해서 본 트랜잭션(글 저장·카드 저장·부가상태
+--    저장)이 롤백되면, 편의 기능 하나 때문에 실제 데이터가 날아간다. invalidate_mate_cache 와
+--    같은 판단이다. 실패해도 기존 트리거(포그라운드 복귀·당겨서 새로고침)가 그대로 남아 있어
+--    반영이 늦어질 뿐이다.
+--
+-- ⚠️ 성능 — 알아 두고 넘어가는 항목(현 규모에서는 문제 없음):
+--    · **좋아요·댓글 카운터 갱신도 posts UPDATE라 이 트리거가 돈다.** 남이 내 글에 좋아요를
+--      누를 때마다 upsert 1회가 추가된다. 문장 하나·PK 조회 하나라 비용 자체는 싸다.
+--    · 다만 **사용자당 1행에 몰리는 구조**라, 같은 사용자의 글에 동시 다발 반응이 쏟아지면
+--      그 1행에 행 잠금 경합이 이론상 생긴다(현재 규모에서는 무관하며, 문제가 되면 posts
+--      트리거를 `update of data, deleted_at, visibility`로 좁히는 것이 첫 수단이다 —
+--      그러면 카운터 갱신은 신호를 만들지 않는다).
+create or replace function public.bump_sync_signal()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid;
+  dom text;
+begin
+  -- 표마다 소유자 컬럼 이름이 다르다: posts=author_id, 나머지=user_id
+  -- (DELETE 트리거는 걸지 않으므로 new 는 항상 할당돼 있다 — invalidate_mate_cache 가
+  --  tg_op 분기를 해야 했던 이유가 여기엔 없다)
+  if tg_table_name = 'posts' then
+    uid := new.author_id;
+    dom := 'posts';
+  elsif tg_table_name = 'user_trip_cards' then
+    uid := new.user_id;
+    dom := 'cards';
+  else
+    uid := new.user_id;
+    dom := 'flags';
+  end if;
+  if uid is null then return null; end if;
+
+  insert into public.user_sync_signals (user_id, domain, bumped_at)
+    values (uid, dom, now())
+    on conflict (user_id) do update
+      set bumped_at = now(), domain = excluded.domain;
+  return null;
+exception when others then
+  return null; -- 신호 실패가 본 트랜잭션을 막으면 안 된다
+end; $$;
+
+-- ⚠️ **DELETE 트리거는 일부러 없다.** 1~4단계의 삭제는 전부 tombstone(= deleted_at 을 채우는
+--    UPDATE)이라 위 update 트리거가 이미 잡는다. 진짜 hard delete 는 purge cron뿐인데, purge
+--    대상은 "표식이 찍힌 지 30일이 지나 이미 모든 기기가 반영을 끝낸 행"이므로 그때 기기를
+--    깨울 이유가 없다(오히려 전 사용자 신호를 한꺼번에 튕겨 동기화 폭주를 만든다).
+drop trigger if exists trg_posts_bump_sync_signal on public.posts;
+create trigger trg_posts_bump_sync_signal
+  after insert or update on public.posts
+  for each row execute function public.bump_sync_signal();
+
+drop trigger if exists trg_user_trip_cards_bump_sync_signal on public.user_trip_cards;
+create trigger trg_user_trip_cards_bump_sync_signal
+  after insert or update on public.user_trip_cards
+  for each row execute function public.bump_sync_signal();
+
+drop trigger if exists trg_user_state_flags_bump_sync_signal on public.user_state_flags;
+create trigger trg_user_state_flags_bump_sync_signal
+  after insert or update on public.user_state_flags
+  for each row execute function public.bump_sync_signal();
+
+-- ============================================================
 -- 4-d) RPC: 추천 친구 — 내 서로이웃의 서로이웃(2단계, mutual)
 --   neighbors 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
 --   SECURITY DEFINER RPC로 집계한다. 이미 서로이웃/본인/차단 관계는 제외.
@@ -2286,6 +2399,14 @@ exception when duplicate_object then null;
 end $$;
 do $$ begin
   alter publication supabase_realtime add table public.notifications;
+exception when duplicate_object then null;
+        when undefined_object then null;
+end $$;
+-- (2026-09-11) 기기 간 동기화 트리거 신호 — 이 표가 publication 에 없으면
+-- subscribeSyncSignals 가 '에러 없이' 이벤트만 영영 못 받는다(위 둘과 같은 함정).
+-- 앱은 그래도 기존 트리거(포그라운드 복귀·당겨서 새로고침)로 동작한다 — 실시간 반영만 꺼진다.
+do $$ begin
+  alter publication supabase_realtime add table public.user_sync_signals;
 exception when duplicate_object then null;
         when undefined_object then null;
 end $$;
@@ -3109,6 +3230,7 @@ revoke truncate, references, trigger on
   public.rpc_probe_guard,
   public.user_app_state,
   public.user_state_flags,
+  public.user_sync_signals,
   public.user_trip_cards,
   public.user_trip_state
   from anon, authenticated;
