@@ -1,4 +1,5 @@
 import { COUNTRIES } from '../constants/countries';
+import { countryNameKoByCode } from './countryLocate';
 
 export interface ScannedPhoto {
   id?: string;
@@ -57,7 +58,8 @@ export const KO_TRIP_TEXT: TripTextMaker = {
 // 국가 코드(ISO) → { 국문명, 국기 }
 // 앱 전체 국가 목록(constants/countries.ts)에서 자동 생성한다. 각 term의 첫 토큰이 ISO 코드.
 // → 포르투갈 등 누락 국가의 국기/국문명을 일괄 해결(하드코딩 목록 유지보수 불필요).
-const _COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = {};
+// Object.create(null): 'constructor' 같은 Object.prototype 키가 잡히지 않게(countryLocate의 own()과 같은 계열).
+const _COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = Object.create(null);
 for (const c of COUNTRIES) {
   const code = c.term.split(' ')[0].toUpperCase();
   if (!_COUNTRY_FLAGS[code]) _COUNTRY_FLAGS[code] = { name: c.name, flag: c.flag };
@@ -67,11 +69,26 @@ for (const c of COUNTRIES) {
 // MainScreen·badgeRules의 별칭 보정이 흡수).
 export const COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = _COUNTRY_FLAGS;
 
+/**
+ * ISO 코드 → 표시용 { 국기 + 국문명 }.
+ *
+ * ⚠️ 이름 우선순위: `COUNTRY_FLAGS`(앱 나라 목록) → `fallbackCountry`(호출부가 준 이름,
+ *    대개 역지오코딩의 country) → **10m 데이터의 한글명** → 코드 그대로.
+ *    세 번째 단계는 2026-09-11 추가. 괌·사이판·지브롤터·바티칸처럼 `constants/countries.ts`에
+ *    없는 영토는 여행 카드 이름이 `'GU'`·`'MP'`처럼 코드로 떨어져 있었다.
+ *    (`constants/countries.ts`는 지구본 매핑 4곳과 동기화되는 제품 데이터라 여기서 안 건드린다)
+ *
+ * ⚠️ 세 번째 단계는 10m 인덱스가 **이미 디코드돼 있을 때만** 답한다(스스로 디코드하지
+ *    않는다). 스캔 경로는 직전에 locateCountry를 수백 번 불러 인덱스가 따뜻하고, 프로필 등
+ *    다른 화면은 저장된 countryName을 그대로 그리므로 색인이 필요 없다 — 렌더 중 1.3MB
+ *    JSON.parse가 도는 일은 없다. 차가운 상태면 코드 문자열로 폴백한다.
+ */
 export function countryInfoFromCode(
   code: string,
   fallbackCountry?: string
 ): { country: string; countryName: string; countryFlag: string } {
-  const detail = COUNTRY_FLAGS[code] || { name: fallbackCountry || code, flag: '✈️' };
+  const detail = COUNTRY_FLAGS[code]
+    || { name: fallbackCountry || countryNameKoByCode(code) || code, flag: '✈️' };
   return { country: `${detail.flag} ${detail.name}`, countryName: detail.name, countryFlag: detail.flag };
 }
 

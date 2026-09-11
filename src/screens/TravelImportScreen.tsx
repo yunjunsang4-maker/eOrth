@@ -530,6 +530,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   // 이 권한이 없으면 네이티브 배치도 getAssetInfoAsync도 좌표를 한 건도 못 돌려줘,
   // 스캔은 정상으로 보이면서 결과만 조용히 0건이 된다 → 빈 화면에 이유로 노출한다.
   const [mediaLocationDenied, setMediaLocationDenied] = useState(false);
+  // 이번 스캔의 "왜 못 찾았나" 근거 두 가지. 둘 다 **실제로 발생했을 때만** 사유 줄을 띄운다 —
+  // 해당 없는 설명을 늘어놓으면 진짜 원인이 묻힌다(emptyReasons의 기존 규칙).
+  const [geocodeFailCount, setGeocodeFailCount] = useState(0); // 지오코딩 폴백이 예외로 실패한 횟수
+  const [smallTripCount, setSmallTripCount] = useState(0);     // 사진이 적어 걸러진 여행 수
   const ensureMediaLocationPermission = async () => {
     if (Platform.OS !== 'android') return;
     // API 29 미만에는 이 권한 자체가 없다(요청하면 항상 거부로 떨어져 오탐이 된다)
@@ -622,6 +626,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     setDiscovered([]);
     setScannedTrips([]);
     setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
+    setGeocodeFailCount(0); // 이전 스캔의 사유가 새 결과 화면에 남지 않게
+    setSmallTripCount(0);
     const foundCodes = new Set<string>(); // 발견 나라 중복 방지(홈 국가 제외)
     // 성능 계측 — 병목이 파일 I/O(좌표 조회)인지 지오코딩 폴백 대기인지 숫자로 남긴다.
     // 개발 빌드에서만 콘솔에 찍고, 릴리스에선 오버헤드가 사실상 0(Date.now 몇 번)이다.
@@ -711,10 +717,22 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const probeBudget = estimateProbeCount(buckets.length);
       let probesDone = 0;
 
-      // 좌표 → 국가코드 (오프라인 폴리곤 1순위, 실패분만 지오코딩 폴백). 0.5도 버킷 캐시.
+      // 좌표 → 국가코드 (오프라인 폴리곤 1순위, 실패분만 지오코딩 폴백).
+      //
+      // ⚠️ 2026-09-11: 캐시 격자를 0.5도(≈55km) → 0.05도(≈5km)로 줄이고,
+      //    **오프라인 폴리곤 판정은 아예 캐시하지 않는다.**
+      //    0.5도 셀은 국경 도시를 통째로 삼켰다 — 바젤(CH)·생루이(FR)·바일암라인(DE)이
+      //    한 칸에 들어가서, 그 셀에서 처음 판정된 나라가 셀 전체 사진에 적용됐다.
+      //    폴리곤이 완벽해도(10m로 바꿔도) 이 캐시가 옆 나라로 덮어썼다.
+      //    잘츠부르크·제네바·스트라스부르·코펜하겐/말뫼가 같은 함정이었다.
+      //    폴리곤 판정은 bbox 선별 후 point-in-polygon이라 사실상 공짜이므로 캐시가 필요 없다.
+      //    ⚠️ `recentPhotoCountryScan.countryAt`과 **같은 규칙**이다. 한쪽만 고치면 갈라진다.
       const geocodeCache: Record<string, { code: string; name: string } | null> = {};
       const bucketKey = (lat: number, lon: number) =>
-        `${Math.round(lat * 2) / 2}_${Math.round(lon * 2) / 2}`; // 0.5도 단위(국가 판정엔 충분)
+        `${Math.round(lat * 20) / 20}_${Math.round(lon * 20) / 20}`; // 0.05도(≈5km)
+      // 이번 스캔에서 지오코딩이 **실패**한 횟수(결과 없음이 아니라 예외). 빈 결과 화면의
+      // "인터넷 연결" 사유를 조건부로 띄우는 근거다 — 실패가 0이면 그 안내는 노이즈다.
+      let geocodeFailures = 0;
 
       const reverseOnce = async (lat: number, lon: number) => {
         const res = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
@@ -728,45 +746,45 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // 실측(1.4만 장)에서 폴백은 30초에 7회뿐인데 매번 250ms를 자 1.75초를 버렸다.
       let lastGeocodeAt = 0;
 
-      const countryAt = async (lat: number, lon: number) => {
-        const key = bucketKey(lat, lon);
-        let geo = geocodeCache[key];
-        if (geo === undefined) {
-          geo = locateCountry(lat, lon); // 오프라인 point-in-polygon (즉시)
-          // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
-          // 접경 오차. utils/countryLocate.isOfflineCountryTrusted 주석 참조). null로 떨어뜨려
-          // 아래 지오코딩 폴백을 그대로 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면
-          // 지오코딩이 정답이다), 다른 나라를 주면 그 값을, 실패하거나 결과가 없으면 null(미상)이
-          // 된다 — 미상 사진은 segmentsFromProbes가 앞뒤 구간 국가를 물려주므로 가짜 카드가 안 생긴다.
-          //
-          // ⚠️ 캐시 계약은 그대로다. `geocodeCache[key]`는 이 분기가 **끝난 뒤의 최종값**만
-          //    담는다(아래 754행) — `undefined`=미조회 / `null`=조회했고 미상 구분이 유지된다.
-          //    다만 0.5도 버킷이라, 보류된 KP 좌표 한 번의 지오코딩 결과가 그 셀 전체에 쓰인다.
-          //    (셀 안에서 KP/KR이 갈릴 수 있으나, 원래부터 0.5도 해상도로 국가를 판정하는
-          //     설계이며 접경 셀은 어차피 지오코딩이 대표값을 정한다.)
-          if (geo && !isOfflineCountryTrusted(geo.code, homeCountryCode)) geo = null;
-          if (geo) {
-            prof.bump('⑤오프라인적중');
-          } else {
-            // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 — 전체의 극히 일부
-            const endGeo = prof.begin('④지오코딩폴백(대기포함)');
-            // 호출 "전"에만 간격을 맞춘다. 뒤에서 자면 마지막 호출 뒤 대기가 순수 낭비다.
-            const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
-            if (wait > 0) await sleep(wait);
-            lastGeocodeAt = Date.now();
-            try {
-              geo = await reverseOnce(lat, lon);
-            } catch {
-              await sleep(500);
-              lastGeocodeAt = Date.now();
-              try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
-            }
-            endGeo();
-          }
-          geocodeCache[key] = geo;
-        } else {
-          prof.bump('⑥좌표캐시히트');
+      // 반환 타입을 명시한다 — 안 하면 폴리곤 분기(nameKo 있음)와 지오코딩 분기(없음)의
+      // 유니온이 되어 호출부에서 `geo.nameKo`를 못 읽는다.
+      type GeoHit = { code: string; name: string; nameKo?: string };
+      const countryAt = async (lat: number, lon: number): Promise<GeoHit | null> => {
+        // ① 오프라인 폴리곤 — 매번 직접 판정한다(캐시 없음). 위 주석 참조.
+        // nameKo는 10m 폴리곤 판정에서만 붙는다(지오코딩 폴백엔 없다) — 발견 칩 이름에 쓴다.
+        let geo: GeoHit | null = locateCountry(lat, lon);
+        // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
+        // 접경 오차. utils/countryLocate.isOfflineCountryTrusted 주석 참조). null로 떨어뜨려
+        // 아래 지오코딩 폴백을 그대로 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면
+        // 지오코딩이 정답이다), 다른 나라를 주면 그 값을, 실패하거나 결과가 없으면 null(미상)이
+        // 된다 — 미상 사진은 segmentsFromProbes가 앞뒤 구간 국가를 물려주므로 가짜 카드가 안 생긴다.
+        if (geo && !isOfflineCountryTrusted(geo.code, homeCountryCode)) geo = null;
+        if (geo) {
+          prof.bump('⑤오프라인적중');
+          return geo;
         }
+        // ② 지오코딩 폴백만 캐시한다. `undefined`=미조회 / `null`=조회했고 미상 구분 유지.
+        const key = bucketKey(lat, lon);
+        const cached = geocodeCache[key];
+        if (cached !== undefined) {
+          prof.bump('⑥좌표캐시히트');
+          return cached;
+        }
+        // 폴리곤 미포함(먼바다·단순화로 깎인 해안선) 좌표만 지오코딩 — 전체의 극히 일부
+        const endGeo = prof.begin('④지오코딩폴백(대기포함)');
+        // 호출 "전"에만 간격을 맞춘다. 뒤에서 자면 마지막 호출 뒤 대기가 순수 낭비다.
+        const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
+        if (wait > 0) await sleep(wait);
+        lastGeocodeAt = Date.now();
+        try {
+          geo = await reverseOnce(lat, lon);
+        } catch {
+          await sleep(500);
+          lastGeocodeAt = Date.now();
+          try { geo = await reverseOnce(lat, lon); } catch { geo = null; geocodeFailures++; }
+        }
+        endGeo();
+        geocodeCache[key] = geo;
         return geo;
       };
 
@@ -859,7 +877,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           // 일어나면, 이전 스캔의 칩이 새 스캔의 setDiscovered([]) 뒤에 도착해 유령으로 남는다.
           if (!cancelled() && geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
             foundCodes.add(geo.code);
-            const cinfo0 = countryInfoFromCode(geo.code, geo.name);
+            // 폴백은 한글명 우선. 영문명을 쓰면 발견 칩만 'Guam'이고 저장된 카드는 '괌'이라
+            // 같은 나라가 화면마다 다른 이름으로 보였다(2026-09-11).
+            const cinfo0 = countryInfoFromCode(geo.code, geo.nameKo ?? geo.name);
             const code = geo.code;
             setDiscovered((prev) =>
               prev.some((d) => d.code === code)
@@ -952,7 +972,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const endCluster = prof.begin('⑦클러스터링');
       const allTrips = clusterForeignTrips(scanned, homeCountryCode, tripText, sessionId);
       endCluster(scanned.length);
-      // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
+      // 사진이 MIN_TRIP_PHOTOS장 이하인 여행은 표시하지 않음 (짧은 경유/오탐 제거).
+      // 숫자를 주석에 박지 말 것 — 빈 결과 화면의 emptyReasonFewPhotos도 같은 상수를 보간한다.
       const sized = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
       // 2차 방어선 — 자산 id로 못 거른 경우(다른 기기에서 가져옴·사진 재추가 등)를 위해
       // 같은 국가 + 기간이 겹치는 기존 기록이 있으면 표시해 둔다(기본 선택에서 제외된다).
@@ -972,6 +993,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       if (cancelled()) return;
       setProgress(100);
       success();
+      // 빈 결과 화면의 사유 줄 근거 — 결과와 같은 시점에 확정한다
+      setGeocodeFailCount(geocodeFailures);
+      setSmallTripCount(allTrips.length - trips.length);
       setTimeout(() => {
         if (cancelled()) return;
         setScanning(false);
@@ -1152,6 +1176,15 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     // 부분 접근(선택한 사진만)이면 그 안내가 우선이다 — 둘 다 "권한을 바꿔라"는 같은 말이라
     // 나란히 띄우면 어느 설정을 봐야 하는지가 흐려진다.
     ...(mediaLocationDenied && !isLimited ? [t('imports.emptyReasonNoMediaLocation')] : []),
+    // 오프라인 폴리곤에 없는 좌표(먼바다·단순화로 깎인 해안선·10m에 없는 작은 섬)는
+    // 역지오코딩이 필요하다. 그게 실패한 사진은 미상이 되고, 미상 사진은 앞뒤 구간 국가를
+    // 물려받으므로 여행이 통째로 거주국 구간에 흡수된다 → 실패가 있었을 때만 안내한다.
+    ...(geocodeFailCount > 0 ? [t('imports.emptyReasonNetwork')] : []),
+    // 짧은 경유·오탐 제거용 필터에 걸린 여행이 있으면 그 사실을 알린다.
+    // 장수는 MIN_TRIP_PHOTOS에서 그대로 넘긴다(문구에 숫자를 박으면 상수와 갈라진다).
+    ...(smallTripCount > 0
+      ? [t('imports.emptyReasonFewPhotos', { min: MIN_TRIP_PHOTOS, count: smallTripCount })]
+      : []),
   ];
 
   // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.

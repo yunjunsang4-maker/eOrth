@@ -4,6 +4,7 @@
  */
 import { findWronglyImportedKpRecords, isNorthKoreaName, KP_CLEANUP_CUTOFF_MS } from './kpImportCleanup';
 import { countryInfoFromCode } from './pastTripScan';
+import { locateCountry } from './countryLocate';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -23,14 +24,31 @@ eq(
 
 // 2) ⚠️ **저장 경로 재현** — 손으로 'North Korea'를 박은 픽스처는 실제 사고를 못 잡는다.
 //    불러오기가 실제로 무엇을 저장하는지 그 함수를 직접 불러 확인한다:
-//    TravelImportScreen이 countryInfoFromCode(code)를 폴백 이름 없이 부르므로 결과는 'KP'다.
+//    TravelImportScreen이 countryInfoFromCode(code)를 폴백 이름 없이 부른다.
 //    이 케이스가 깨지면 정리 함수가 실제 오염 데이터를 0건 잡는다(2026-09-09 QA F1).
+//
+//    ⚠️ 기대값이 2026-09-11에 'KP' → '조선민주주의인민공화국'으로 바뀌었다.
+//    countryInfoFromCode에 10m `name_ko` 폴백이 생기면서(pastTripScan.ts) KP처럼
+//    constants/countries.ts에 없는 코드도 한글 이름을 받게 됐기 때문이다.
+//    `KP_NAMES`가 이 표기를 이미 포함하므로 정리는 계속 잡는다 — 바로 아래 assert가 그 증거.
+//    ⚠️ 재현 조건: `countryNameKoByCode`는 10m 인덱스가 **이미 있을 때만** 답한다
+//    (없으면 스스로 디코드하지 않고 undefined — 렌더 경로 방어, 2026-09-11 QA F2).
+//    실제 저장 경로는 스캔 한복판이라 `locateCountry`가 이미 수백 번 돌아 인덱스가 서 있다.
+//    그 조건을 여기서도 똑같이 만들고 잰다. 이 한 줄이 없으면 옛 값('KP')이 측정된다.
+locateCountry(37.5665, 126.978);
 const stored = countryInfoFromCode('KP').countryName;
-eq(stored, 'KP', "저장 경로 실측: countryInfoFromCode('KP').countryName");
+eq(stored, '조선민주주의인민공화국', "저장 경로 실측: countryInfoFromCode('KP').countryName");
 eq(
   findWronglyImportedKpRecords([{ id: 'real', countryName: stored, isImportCover: true }]),
   ['real'],
   '저장 경로가 실제로 만드는 값으로 만든 표지 기록 → 대상',
+);
+// 2-1) **옛 저장값 'KP'도 계속 잡혀야 한다.** 위 기대값이 바뀌어도 이미 만들어진 카드에는
+//      코드 문자열 'KP'가 그대로 들어 있다 — 그게 이 정리 기능의 원래 대상이다.
+eq(
+  findWronglyImportedKpRecords([{ id: 'legacy', countryName: 'KP', isImportCover: true }]),
+  ['legacy'],
+  "옛 저장값 'KP' 표지 기록 → 대상(이름 폴백 변경 전에 만들어진 카드)",
 );
 // 대조군 — 같은 함수가 KR에 대해서는 정상 이름을 주고, 그건 대상이 아니다
 eq(countryInfoFromCode('KR').countryName, '대한민국', "저장 경로 실측: KR은 '대한민국'");

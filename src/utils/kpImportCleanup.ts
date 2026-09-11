@@ -15,15 +15,22 @@
 /**
  * 북한을 가리키는 countryName 표기.
  *
- * ⚠️ **실제 저장값은 `'KP'`다** — ISO 코드 문자열 그 자체. 이게 목록의 첫 줄인 이유:
- *    불러오기 저장 경로가 `TravelImportScreen.tsx`에서 `countryInfoFromCode(code)`를
- *    **폴백 이름 없이** 부르고, `COUNTRY_FLAGS['KP']`가 `undefined`(북한은
- *    `constants/countries.ts`의 COUNTRIES에 없다)라 `pastTripScan.ts`의
- *    `{ name: fallbackCountry || code }`가 `name = code = 'KP'`로 떨어진다.
- *    오프라인 폴리곤이 준 `'North Korea'`도, 역지오코딩이 준 로케일별 이름도 그 줄에서 버려진다.
- *    (그래서 사용자에게 보이는 카드 제목도 "KP 여행", 국기는 ✈️였다.)
+ * ⚠️ **실제 저장값은 시기에 따라 두 가지다. 둘 다 아래 목록에 있어 동작은 같다.**
  *
- * 나머지 4종은 방어용이다 — 지오코딩 폴백 경로가 이름을 넘기게 바뀌거나, `countries.ts`에
+ *  ① `'KP'` — ISO 코드 문자열 그 자체. **2026-09-11 이전 번들이 만든 카드**가 이 값이다.
+ *     불러오기 저장 경로가 `TravelImportScreen.tsx`에서 `countryInfoFromCode(code)`를
+ *     **폴백 이름 없이** 부르고, `COUNTRY_FLAGS['KP']`가 `undefined`(북한은
+ *     `constants/countries.ts`의 COUNTRIES에 없다)라 `pastTripScan.ts`의
+ *     `{ name: fallbackCountry || code }`가 `name = code = 'KP'`로 떨어졌다.
+ *     (그래서 사용자에게 보이는 카드 제목도 "KP 여행", 국기는 ✈️였다.)
+ *
+ *  ② `'조선민주주의인민공화국'` — **2026-09-11 이후**. `pastTripScan.countryInfoFromCode`에
+ *     10m 데이터의 `name_ko` 폴백이 한 단계 끼면서
+ *     (`fallbackCountry || countryNameKoByCode(code) || code`) 코드 대신 한글명이 저장된다.
+ *
+ * 정리 대상 판정은 `KP_NAMES` 조회 한 번뿐이고 두 표기가 모두 들어 있으므로,
+ * **옛 카드와 새 카드가 똑같이 잡힌다**(`kpImportCleanup.verify.ts`가 둘 다 정면으로 검증한다).
+ * 나머지 3종은 방어용이다 — 지오코딩 폴백 경로가 이름을 넘기거나 `countries.ts`에
  * KP가 추가되면 그때부터는 그쪽 값이 저장된다.
  */
 const KP_NAMES = new Set([

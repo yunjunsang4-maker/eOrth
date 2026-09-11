@@ -1,61 +1,34 @@
 // 사진 GPS 좌표 → 특정 국가 안인지 오프라인 판정 (사진첩 "이 국가 사진만" 필터용).
-// 지구본과 같은 세계 GeoJSON을 재사용해 네트워크·역지오코딩 없이 즉시 판정한다.
-import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
+//
+// ⚠️ 2026-09-11: 이 파일이 들고 있던 **두 번째 point-in-polygon 구현**(110m vendorWorldGeo +
+//    자체 GEO_NAME_FIX + 자체 inRing)을 전부 지우고 `countryLocate`에 위임한다.
+//    왜: 국가 판정이 두 곳에 있으면 한쪽만 고쳐진다. 실제로 그렇게 됐다 — 여행 불러오기는
+//    10m로 올려 제네바를 CH로 맞췄는데, 이 필터는 110m라 같은 사진을 FR로 봐서
+//    '스위스 사진만' 필터에서 조용히 사라졌다. 이제 **판정은 countryLocate 한 곳**뿐이다.
+//    부수 효과: 구멍(내부 링) 처리와 작은 영토 우선 정렬이 공짜로 따라온다(옛 inRing은 구멍을 무시했다).
+//
+// API 모양은 호출부(`AlbumCreateScreen`)를 안 건드리려고 그대로 뒀다. `getCountryFeature`가
+// 돌려주는 값은 이제 GeoJSON 피처가 아니라 **불투명 토큰**이다 — 안을 들여다보지 말 것.
+import { NO_POLYGON_CODES, countryCodeByNameEn, locateCountry } from './countryLocate';
 
-type Ring = [number, number][]; // [lon, lat]
-type Feature = { properties: { name: string }; geometry: { type: string; coordinates: any } };
+/** `getCountryFeature`의 반환 — 내부 표현이다. 호출부는 truthy 검사와 전달만 한다. */
+export type CountryToken = { code: string };
 
-// GeoJSON의 구식 국가명 → 표준 이름. countryLocate.ts·GlobeView의 GEO_NAME_FIX와 같은 표다
-// (같은 GeoJSON을 쓰므로 세 곳이 항상 같아야 한다).
-// 이 보정이 없으면 호출부가 넘기는 표준명('United States of America' 등)이 피처의 구식
-// 이름('USA')과 안 맞아 미국·영국·세르비아 등에서 GPS 필터가 조용히 사라진다.
-const GEO_NAME_FIX: Record<string, string> = {
-  'USA': 'United States of America',
-  'England': 'United Kingdom',
-  'Republic of Serbia': 'Serbia',
-  'United Republic of Tanzania': 'Tanzania',
-  'Macedonia': 'North Macedonia',
-  'Swaziland': 'Eswatini',
-  'Republic of the Congo': 'Congo',
-  'West Bank': 'Palestine',
-};
-
-let worldGeo: { features: Feature[] } | null = null;
-const featureCache: Record<string, Feature | null> = {};
-
-/** 영문 국가명(GeoJSON properties.name) → 피처. 최초 호출 때 한 번만 파싱한다. */
-export function getCountryFeature(nameEn: string): Feature | null {
-  if (nameEn in featureCache) return featureCache[nameEn];
-  if (!worldGeo) {
-    try { worldGeo = JSON.parse(WORLD_GEO_TEXT); } catch { worldGeo = { features: [] }; }
-  }
-  // 표준명·구식 이름 어느 쪽으로 물어봐도 찾도록 양방향으로 대조한다.
-  const f = worldGeo!.features.find((x) => {
-    const raw = x.properties?.name;
-    return !!raw && (raw === nameEn || (GEO_NAME_FIX[raw] ?? raw) === nameEn);
-  }) ?? null;
-  featureCache[nameEn] = f;
-  return f;
+/**
+ * 영문 국가명 → 판정 토큰. 이름을 ISO2로 못 풀면 null(호출부가 `countryFeature &&`로 거른다).
+ * 이름 표기 흔들림(`Czech Republic` vs `Czechia` 등)은 countryLocate의 별칭 표가 흡수한다.
+ */
+export function getCountryFeature(nameEn: string): CountryToken | null {
+  const code = countryCodeByNameEn(nameEn);
+  // 폴리곤이 없는 나라(바티칸)는 토큰을 안 준다. 주면 모든 좌표가 false가 되어
+  // 필터가 "사진 0장"이 된다 — 110m 시절엔 피처를 못 찾아 필터가 그냥 꺼졌었다.
+  return code && !NO_POLYGON_CODES.has(code) ? { code } : null;
 }
 
-// 레이 캐스팅 — 홀(내부 링)은 국가 판정 용도에선 무시해도 충분하다
-function inRing(ring: Ring, lon: number, lat: number): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-/** 좌표가 국가 폴리곤 안인지. 국경 정밀도는 지구본 지도 수준(접경 지역 오차 가능). */
-export function pointInCountry(feature: Feature, lat: number, lon: number): boolean {
-  const g = feature.geometry;
-  if (!g) return false;
-  if (g.type === 'Polygon') return inRing(g.coordinates[0] as Ring, lon, lat);
-  if (g.type === 'MultiPolygon') {
-    return (g.coordinates as Ring[][][]).some((poly) => inRing(poly[0] as unknown as Ring, lon, lat));
-  }
-  return false;
+/**
+ * 좌표가 그 국가 안인지. Natural Earth 10m 기준이라 국경 정밀도는 여행 불러오기와 동일하다.
+ * ⚠️ 폴리곤이 없는 나라(바티칸 — 10m 단순화에서 소실)는 항상 false다.
+ */
+export function pointInCountry(token: CountryToken, lat: number, lon: number): boolean {
+  return locateCountry(lat, lon)?.code === token.code;
 }

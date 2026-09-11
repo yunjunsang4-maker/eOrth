@@ -1603,6 +1603,8 @@ const en = {
     emptyReasonAlreadyImported: 'Trips you already imported were skipped to avoid duplicates.',
     emptyReasonLimited: 'Only selected photos were analyzed. Switch to "All Photos" in Settings to find more.',
     emptyReasonNoMediaLocation: 'Without access to your photos\' location data, we can\'t find any trips. Check Settings > Apps > eOrth > Permissions.',
+    emptyReasonNetwork: 'Some places need an internet connection. Check your connection and try scanning again.',
+    emptyReasonFewPhotos: 'We hid {{count}} trip(s) with {{min}} photos or fewer.',
     retryFullPeriod: 'Search all time instead',
     skip: 'Skip',
     foundTripsPrefix: 'Found ',

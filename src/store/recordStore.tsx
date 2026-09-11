@@ -3040,7 +3040,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // ─── 잘못 불러와진 '북한 여행 카드' 소급 정리 ───
   // 국가 판정이 110m 폴리곤을 쓰던 시절, 파주 임진각·도라산역 등 남측 접경지 사진이
   // North Korea로 판정돼 가본 적 없는 북한 여행 카드가 만들어졌다. 폴리곤은
-  // utils/countryLocate에서 10m(data/koreaBorder10m)로 고쳤지만 이미 만들어진 카드는 남는다.
+  // utils/countryLocate에서 10m(data/vendorCountries10m)로 고쳤지만 이미 만들어진 카드는 남는다.
   //
   // 삭제는 **기존 `deleteRecord`를 그대로 호출**한다. 새 삭제 경로를 짜면 안 된다 —
   // deleteRecord가 여행 그룹 분리(detachRecordsFromTripGroups), 지구본 대표사진 정리,

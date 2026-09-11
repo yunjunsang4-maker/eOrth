@@ -81,7 +81,14 @@ export async function scanRecentPhotoCountries(opts: {
   assets.sort((x, y) => (x.creationTime || 0) - (y.creationTime || 0));
   const total = assets.length;
 
-  // ── 2) 좌표 → 국가 (오프라인 폴리곤 1순위, 실패분만 지오코딩, 0.5도 캐시) ──
+  // ── 2) 좌표 → 국가 (오프라인 폴리곤 1순위, 실패분만 지오코딩, 0.05도 캐시) ──
+  //
+  // ⚠️ 2026-09-11: 캐시 격자를 0.5도(≈55km) → 0.05도(≈5km)로 줄이고,
+  //    **오프라인 폴리곤 판정은 아예 캐시하지 않는다.**
+  //    0.5도 셀은 국경 도시를 통째로 삼켰다 — 바젤(CH)·생루이(FR)·바일암라인(DE)이 한 칸에
+  //    들어가서, 그 셀에서 처음 판정된 나라가 셀 전체 사진에 적용됐다. 폴리곤이 완벽해도
+  //    이 캐시가 옆 나라로 덮어썼다. 폴리곤 판정은 bbox 선별 후 PIP라 사실상 공짜다.
+  //    ⚠️ `TravelImportScreen.countryAt`과 **같은 규칙**이다. 한쪽만 고치면 갈라진다.
   const geocodeCache: Record<string, { code: string; name: string } | null> = {};
   let lastGeocodeAt = 0;
   const reverseOnce = async (lat: number, lon: number) => {
@@ -90,10 +97,8 @@ export async function scanRecentPhotoCountries(opts: {
     return addr?.isoCountryCode ? { code: addr.isoCountryCode, name: addr.country || addr.isoCountryCode } : null;
   };
   const countryAt = async (lat: number, lon: number) => {
-    const key = `${Math.round(lat * 2) / 2}_${Math.round(lon * 2) / 2}`;
-    let geo = geocodeCache[key];
-    if (geo !== undefined) return geo;
-    geo = locateCountry(lat, lon);
+    // ① 오프라인 폴리곤 — 매번 직접 판정한다(캐시 없음). 위 주석 참조.
+    let geo: { code: string; name: string } | null = locateCountry(lat, lon);
     // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
     // 접경 오차). `TravelImportScreen.countryAt`과 **같은 규칙**이다: 이 파일에도 바로 아래
     // 지오코딩 폴백(reverseOnce + 1회 재시도)이 있으므로 미상으로 버리지 않고 그 경로를
@@ -103,20 +108,23 @@ export async function scanRecentPhotoCountries(opts: {
     // ⚠️ 이 경로도 `useImportTripsIntoCards`로 같은 여행 카드를 만든다. 불러오기 화면만
     //    고치면 체류 제안 배너를 통해 같은 가짜 카드가 그대로 생긴다.
     if (geo && !isOfflineCountryTrusted(geo.code, opts.homeCountryCode)) geo = null;
-    if (!geo) {
-      const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
-      if (wait > 0) await sleep(wait);
+    if (geo) return geo;
+    // ② 지오코딩 폴백만 캐시. `undefined`=미조회 / `null`=조회했고 미상 구분 유지.
+    const key = `${Math.round(lat * 20) / 20}_${Math.round(lon * 20) / 20}`; // 0.05도(≈5km)
+    const cached = geocodeCache[key];
+    if (cached !== undefined) return cached;
+    const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
+    if (wait > 0) await sleep(wait);
+    lastGeocodeAt = Date.now();
+    try {
+      geo = await reverseOnce(lat, lon);
+    } catch {
+      // 실패한 결과도 아래에서 캐시에 박힌다 — 일시적 네트워크 실패 한 번이 그 0.05도
+      // 구역 사진 전부를 미상으로 만들어 버린다. 화면(TravelImportScreen)과 같이 1회 재시도한다.
+      // 14일 창은 표본이 적어 한 번의 실패가 차지하는 비중이 상대적으로 더 크다.
+      await sleep(500);
       lastGeocodeAt = Date.now();
-      try {
-        geo = await reverseOnce(lat, lon);
-      } catch {
-        // 실패한 결과도 아래에서 캐시에 박힌다 — 일시적 네트워크 실패 한 번이 그 0.5도
-        // 구역 사진 전부를 미상으로 만들어 버린다. 화면(TravelImportScreen)과 같이 1회 재시도한다.
-        // 14일 창은 표본이 적어 한 번의 실패가 차지하는 비중이 상대적으로 더 크다.
-        await sleep(500);
-        lastGeocodeAt = Date.now();
-        try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
-      }
+      try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
     }
     geocodeCache[key] = geo;
     return geo;

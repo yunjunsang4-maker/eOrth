@@ -1622,6 +1622,8 @@ const ko = {
     emptyReasonAlreadyImported: '이미 가져온 여행은 중복을 막기 위해 제외됐어요.',
     emptyReasonLimited: '선택한 사진만 분석했어요. 설정 > 사진에서 "모든 사진 허용"으로 바꾸면 더 잘 찾아요.',
     emptyReasonNoMediaLocation: '사진의 위치 정보 접근 권한이 꺼져 있으면 여행을 찾을 수 없어요. 설정 > 애플리케이션 > eOrth > 권한에서 확인해 주세요.',
+    emptyReasonNetwork: '일부 지역은 인터넷 연결이 필요해요. 연결 상태를 확인하고 다시 분석해 보세요.',
+    emptyReasonFewPhotos: '사진이 {{min}}장 이하인 여행 {{count}}개는 표시하지 않았어요.',
     retryFullPeriod: '전체 기간으로 다시 찾기',
     skip: '건너뛰기',
     foundTripsPrefix: '총 ',
