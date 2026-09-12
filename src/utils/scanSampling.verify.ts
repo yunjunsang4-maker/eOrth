@@ -11,7 +11,17 @@ import {
   geocodeWaitMs,
   GEOCODE_MIN_GAP_MS,
   BUCKET_MS,
+  isScreenshotAsset,
+  inheritFromNearestKnown,
+  INHERIT_WINDOW_MS,
+  scanProgress,
+  SCAN_STAGE_RANGE,
+  canGeocode,
+  shouldCacheGeocode,
+  GEOCODE_MAX_CALLS,
+  GEOCODE_TIME_BUDGET_MS,
   type ProbePoint,
+  type ScanStage,
 } from './scanSampling';
 
 let failures = 0;
@@ -229,6 +239,149 @@ const a = (t: number) => ({ creationTime: t });
   // 시계가 뒤로 간 경우(사용자 수동 변경) — 과소 대기로 레이트리밋을 뚫지 않게 전체 대기
   assert(geocodeWaitMs(5_000, 1_000) === G, '경과가 음수면 간격 전체를 대기');
   assert(geocodeWaitMs(1_000, 1_050, 100) === 50, 'minGapMs 인자를 따른다');
+}
+
+// -- 스크린샷 판정 (iOS mediaSubtypes) --
+{
+  assert(isScreenshotAsset(['screenshot']) === true, '배열에 screenshot 하나 → 스크린샷');
+  assert(isScreenshotAsset(['hdr', 'screenshot']) === true, '배열 중간에 섞여 있어도 스크린샷');
+  assert(isScreenshotAsset(['hdr', 'livePhoto']) === false, '다른 서브타입만 있으면 아님');
+  assert(isScreenshotAsset([]) === false, '빈 배열 → 아님');
+  // 타입 선언은 배열이지만 getAssetsAsync 옵션 쪽은 단일값도 받는다 — 둘 다 견딘다
+  assert(isScreenshotAsset('screenshot') === true, '단일 문자열도 스크린샷으로 판정');
+  assert(isScreenshotAsset('hdr') === false, '단일 문자열이 다른 값이면 아님');
+  // Android에는 필드 자체가 없다 — undefined가 '스크린샷'이 되면 사진첩이 통째로 빈다
+  assert(isScreenshotAsset(undefined) === false, 'undefined → 아님(Android)');
+  assert(isScreenshotAsset(null) === false, 'null → 아님');
+  assert(isScreenshotAsset('') === false, '빈 문자열 → 아님');
+  assert(isScreenshotAsset({ 0: 'screenshot' }) === false, '배열이 아닌 객체 → 아님');
+}
+
+// -- 이웃 상속: 폴리곤 밖 사진이 같은 날 이웃의 나라를 물려받는다 --
+{
+  // 앞뒤 모두 판정됨, 뒤가 더 가까움
+  {
+    const times = [0, 10 * HOUR, 11 * HOUR];
+    const codes = ['JP', null, 'KR'];
+    assert(inheritFromNearestKnown(1, times, codes) === 'KR', '더 가까운 쪽(뒤) 이웃의 나라를 따른다');
+  }
+  // 앞이 더 가까움
+  {
+    const times = [0, 1 * HOUR, 11 * HOUR];
+    const codes = ['JP', null, 'KR'];
+    assert(inheritFromNearestKnown(1, times, codes) === 'JP', '더 가까운 쪽(앞) 이웃의 나라를 따른다');
+  }
+  // 앞·뒤 동거리 → 앞 우선 (임의 선택이 아니라 결정적 규칙이어야 재스캔 결과가 흔들리지 않는다)
+  {
+    const times = [0, 2 * HOUR, 4 * HOUR];
+    const codes = ['JP', null, 'KR'];
+    assert(inheritFromNearestKnown(1, times, codes) === 'JP', '앞뒤 동거리면 앞(이른 시각) 우선');
+  }
+  // 창 밖(±12h 초과)은 보지 않는다
+  {
+    const times = [0, 20 * HOUR];
+    const codes = ['JP', null];
+    assert(inheritFromNearestKnown(1, times, codes) === null, '12시간을 넘은 이웃은 상속하지 않는다');
+    assert(inheritFromNearestKnown(1, times, codes, 24 * HOUR) === 'JP', 'windowMs를 넓히면 같은 이웃을 상속');
+  }
+  // 창 경계 — 정확히 12시간은 포함
+  {
+    const times = [0, INHERIT_WINDOW_MS];
+    const codes = ['JP', null];
+    assert(inheritFromNearestKnown(1, times, codes) === 'JP', '경계값(정확히 12시간)은 창 안');
+  }
+  // 이웃이 전부 미상
+  {
+    const times = [0, 1 * HOUR, 2 * HOUR];
+    const codes = [null, null, null];
+    assert(inheritFromNearestKnown(1, times, codes) === null, '판정된 이웃이 없으면 null(지오코딩으로 넘김)');
+  }
+  // 바로 옆이 미상이면 그 방향은 포기 — 더 먼 사진까지 끌어오지 않는다
+  {
+    const times = [0, 1 * HOUR, 2 * HOUR, 3 * HOUR];
+    const codes = ['JP', null, null, 'KR'];
+    assert(inheritFromNearestKnown(2, times, codes) === 'KR', '바로 옆이 미상이면 반대쪽 최근접을 쓴다');
+  }
+  // 경계·범위 밖 인덱스
+  {
+    assert(inheritFromNearestKnown(0, [0], [null]) === null, '사진 1장뿐이면 상속할 이웃이 없다');
+    assert(inheritFromNearestKnown(5, [0], [null]) === null, '범위 밖 인덱스는 null');
+    assert(inheritFromNearestKnown(-1, [0], [null]) === null, '음수 인덱스는 null');
+    assert(inheritFromNearestKnown(0, [], []) === null, '빈 배열은 null');
+  }
+  // undefined(미조회 표기)도 미상과 같게 본다
+  {
+    const times = [0, 1 * HOUR, 2 * HOUR];
+    const codes = [undefined, null, 'KR'];
+    assert(inheritFromNearestKnown(1, times, codes) === 'KR', 'undefined는 미상과 같게 취급');
+  }
+}
+
+// -- 진행률 단계 배정 --
+{
+  const stages: ScanStage[] = ['enumerate', 'batch', 'locate', 'geocode', 'cluster'];
+  for (const st of stages) {
+    const [lo, hi] = SCAN_STAGE_RANGE[st];
+    assert(scanProgress(st, 0, 10) === lo, st + ': done=0이면 단계 시작값 ' + lo);
+    assert(scanProgress(st, 10, 10) === hi, st + ': done=total이면 단계 끝값 ' + hi);
+    assert(scanProgress(st, 99, 10) === hi, st + ': done이 넘쳐도 단계 끝값을 넘지 않는다');
+    assert(scanProgress(st, -5, 10) === lo, st + ': 음수 done은 시작값');
+    // 할 일이 0건인 단계는 끝값 — 0을 돌려주면 진행바가 뒤로 간다
+    assert(scanProgress(st, 0, 0) === hi, st + ': total=0이면 단계 끝값(뒤로 가지 않게)');
+    assert(scanProgress(st, 0, -1) === hi, st + ': total 음수도 끝값');
+  }
+  // 단계들이 빈틈·겹침 없이 0→100을 덮는다
+  let prevHi = 0;
+  let contiguous = true;
+  for (const st of stages) {
+    const [lo, hi] = SCAN_STAGE_RANGE[st];
+    if (lo !== prevHi || hi <= lo) contiguous = false;
+    prevHi = hi;
+  }
+  assert(contiguous && prevHi === 100, '단계 구간이 0→100을 빈틈 없이 덮는다');
+
+  // 단조 증가 — done이 커질수록 값이 줄지 않는다
+  let monotonic = true;
+  for (const st of stages) {
+    let last = -1;
+    for (let d = 0; d <= 200; d++) {
+      const v = scanProgress(st, d, 200);
+      if (v < last) monotonic = false;
+      last = v;
+    }
+  }
+  assert(monotonic, '모든 단계에서 done 증가 → 진행률 단조 증가');
+
+  // 대표값
+  assert(scanProgress('batch', 1, 2) === 40, 'batch 절반 → 40');
+  assert(scanProgress('locate', 1, 2) === 73, 'locate 절반 → 73(반올림)');
+  assert(scanProgress('enumerate', 14, 18) === 16, 'enumerate 점근식(14/18) → 16');
+  // 열거는 총 페이지 수를 모르므로 done/(done+4) 점근식을 쓴다 — 완료 전엔 20에 닿지 않는다
+  let enumCapped = true;
+  for (let pages = 1; pages <= 500; pages++) {
+    if (scanProgress('enumerate', pages, pages + 4) > 20) enumCapped = false;
+  }
+  assert(enumCapped, '열거 점근식은 다음 단계(20%)를 절대 침범하지 않는다');
+}
+
+// -- 지오코딩 예산·캐시 정책 --
+{
+  assert(canGeocode(0) === true, '0회 사용 → 호출 가능');
+  assert(canGeocode(GEOCODE_MAX_CALLS - 1) === true, '상한 직전은 호출 가능');
+  assert(canGeocode(GEOCODE_MAX_CALLS) === false, '상한에 도달하면 더 부르지 않는다(→ 미상 → 이웃 상속)');
+  assert(canGeocode(GEOCODE_MAX_CALLS + 10) === false, '상한을 넘겨도 계속 false');
+  assert(canGeocode(3, 3) === false, 'max 인자를 따른다');
+  assert(canGeocode(2, 3) === true, 'max 인자 안이면 가능');
+  assert(canGeocode(0, 40, 0) === true, '시간 예산 0ms 소비 → 가능');
+  assert(canGeocode(0, 40, GEOCODE_TIME_BUDGET_MS - 1) === true, '예산 직전은 가능');
+  assert(canGeocode(0, 40, GEOCODE_TIME_BUDGET_MS) === false, '시간 예산 소진이면 횟수가 남아도 중단');
+  assert(canGeocode(0, 40, 5, 5) === false, 'budgetMs 인자를 따른다');
+  assert(canGeocode(0, 40, 4, 5) === true, 'budgetMs 안이면 가능');
+
+  assert(shouldCacheGeocode('hit') === true, '나라를 얻은 결과는 캐시한다');
+  assert(shouldCacheGeocode('unknown') === true, '정상 응답인데 나라 없음(공해 등)은 캐시한다');
+  // 일시 실패를 캐시하면 그 0.05도 구역이 스캔이 끝날 때까지 영구 미상이 된다
+  assert(shouldCacheGeocode('failed') === false, '타임아웃·네트워크 오류는 캐시하지 않는다');
 }
 
 console.log(failures === 0 ? '\n모든 검증 통과' : `\n실패 ${failures}건`);

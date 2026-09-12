@@ -224,3 +224,136 @@ export function overlapsImportedTrip(
     return s <= re && e >= rs; // 기간이 하루라도 겹치면 같은 여행으로 본다
   });
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// iOS 전수 좌표 스캔 (2026-09-12)
+//
+// iOS의 PHAsset.location은 Photos DB 필드라 파일을 열지 않는다 — 사진 1장당 사실상
+// 공짜다. 그래서 iOS에서는 위 버킷 표본 대신 **모든 사진의 좌표를 다 읽는다.**
+// 표본이 물려주던 "12시간 버킷 대표 1장의 나라"가 사라지므로, GPS가 벗겨진 사진
+// (카톡 수신·스크린샷·다운로드)이 여행 사진 수·표지·사진 풀에 딸려 들어가지 않는다.
+// Android는 배치 조회도 파일 EXIF라 장당 10~30ms → 표본 경로를 그대로 쓴다.
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 스크린샷 자산인지 — expo-media-library의 `Asset.mediaSubtypes`(iOS)를 본다.
+ * 값이 배열이 아닐 수도 있어(단일값·undefined·플랫폼별 부재) 형태를 믿지 않는다.
+ * Android에는 이 필드가 아예 없어 항상 false — 양 플랫폼에 같이 걸어도 무해하다.
+ */
+export function isScreenshotAsset(mediaSubtypes: unknown): boolean {
+  if (typeof mediaSubtypes === 'string') return mediaSubtypes === 'screenshot';
+  if (!Array.isArray(mediaSubtypes)) return false;
+  return mediaSubtypes.some((s) => s === 'screenshot');
+}
+
+/** 이웃 상속 창 — "같은 날"의 조작적 정의(±12h). 버킷 크기와 같은 값이지만 뜻이 달라 별도 상수다. */
+export const INHERIT_WINDOW_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * 폴리곤 밖으로 떨어진 사진(먼바다·해안선 단순화)의 나라를 이웃에서 물려받는다.
+ * 지오코딩보다 먼저 시도한다 — 네트워크 왕복 없이 대부분 해결되고, 같은 날 옆 사진이
+ * 같은 나라일 확률이 압도적으로 높다.
+ *
+ * 규칙:
+ *  - `times`는 촬영시각 오름차순이어야 한다(거리 단조성에 의존해 창 밖에서 끊는다).
+ *  - 앞뒤로 가장 가까운 '판정된' 사진을 찾아 그 나라를 쓴다. 창(±windowMs) 밖은 보지 않는다.
+ *  - 앞·뒤가 같은 거리면 **앞(더 이른 시각)을 쓴다** — 임의 선택이 아니라 결정적 규칙이어야
+ *    같은 사진첩이 항상 같은 결과를 낸다.
+ *  - 이웃이 없으면 null(호출부가 지오코딩으로 넘긴다).
+ *
+ * codes는 상속 **전** 스냅샷을 넘길 것. 상속 결과를 다시 상속시키면 한 장의 오판이
+ * 하루 전체로 번진다.
+ */
+export function inheritFromNearestKnown(
+  index: number,
+  times: number[],
+  codes: (string | null | undefined)[],
+  windowMs: number = INHERIT_WINDOW_MS
+): string | null {
+  const n = times.length;
+  if (index < 0 || index >= n) return null;
+  const t0 = times[index];
+  let best: string | null = null;
+  let bestDist = Infinity;
+  // 뒤(미래) 방향을 먼저 잡고, 앞(과거) 방향은 '<=' 로 이겨 동거리에서 앞이 우선하게 한다
+  for (let j = index + 1; j < n; j++) {
+    const d = Math.abs(times[j] - t0);
+    if (d > windowMs) break;
+    const c = codes[j];
+    if (c) { best = c; bestDist = d; break; }
+  }
+  for (let j = index - 1; j >= 0; j--) {
+    const d = Math.abs(times[j] - t0);
+    if (d > windowMs) break;
+    const c = codes[j];
+    if (c) { if (d <= bestDist) { best = c; bestDist = d; } break; }
+  }
+  return best;
+}
+
+/**
+ * 진행률 단계. 구간을 코드 여기저기에 흩어 둔 숫자로 두면 "80%에서 멈췄다"가 반복된다 —
+ * 어느 단계가 몇 %를 먹는지 한 곳에서만 정한다.
+ *
+ * enumerate: 사진 열거(총 페이지 수를 미리 모른다 → 호출부가 점근식으로 넣는다)
+ * batch:     네이티브 좌표 배치 조회
+ * locate:    좌표 → 나라 판정(오프라인 폴리곤)
+ * geocode:   폴리곤 밖 잔여분 역지오코딩(네트워크 — 여기가 제일 잘 멈춘다)
+ * cluster:   여행 묶기
+ */
+export type ScanStage = 'enumerate' | 'batch' | 'locate' | 'geocode' | 'cluster';
+
+export const SCAN_STAGE_RANGE: Record<ScanStage, [number, number]> = {
+  enumerate: [0, 20],
+  batch: [20, 60],
+  locate: [60, 85],
+  geocode: [85, 95],
+  cluster: [95, 100],
+};
+
+/**
+ * 단계 안의 진척(done/total)을 전체 진행률(0~100 정수)로 옮긴다.
+ * total<=0(그 단계에 할 일이 없음)이면 단계 끝값 — 0으로 두면 진행바가 뒤로 간다.
+ * done이 넘쳐도 단계 끝값을 넘지 않는다(예산 추정이 빗나가도 다음 단계를 침범하지 않게).
+ */
+export function scanProgress(stage: ScanStage, done: number, total: number): number {
+  const [lo, hi] = SCAN_STAGE_RANGE[stage];
+  if (!(total > 0)) return hi;
+  if (!(done > 0)) return lo;
+  if (done >= total) return hi;
+  return Math.round(lo + (hi - lo) * (done / total));
+}
+
+/** 스캔 1회당 역지오코딩 호출 상한. 넘으면 미상 → 이웃 상속에 맡긴다. */
+export const GEOCODE_MAX_CALLS = 40;
+/** 역지오코딩 1회 타임아웃(ms). 정상 왕복은 실측 41ms라 100배 여유다. */
+export const GEOCODE_TIMEOUT_MS = 5000;
+
+/**
+ * 스캔당 지오코딩 벽시계 예산(ms). 횟수 상한만으로는 "40회 × (5초 타임아웃+재시도)" ≈ 3.5분이
+ * 그대로 정체 시간이 된다(QA M1). 횟수와 시간 중 먼저 닿는 쪽이 뚜껑.
+ */
+export const GEOCODE_TIME_BUDGET_MS = 30_000;
+
+/** 이번 스캔에서 지오코딩을 더 불러도 되는지. 상한은 "스캔이 멈춘 것처럼 보이는" 시간의 뚜껑이다. */
+export function canGeocode(
+  used: number,
+  max: number = GEOCODE_MAX_CALLS,
+  spentMs: number = 0,
+  budgetMs: number = GEOCODE_TIME_BUDGET_MS
+): boolean {
+  return used < max && spentMs < budgetMs;
+}
+
+/** 지오코딩 1회의 결과 종류 — 캐시해도 되는지를 가른다 */
+export type GeocodeOutcome = 'hit' | 'unknown' | 'failed';
+
+/**
+ * 지오코딩 결과를 좌표 캐시에 박아도 되는가.
+ * 'failed'(타임아웃·네트워크 오류)는 **캐시하지 않는다** — null로 박으면 그 0.05도 구역이
+ * 스캔이 끝날 때까지 영구 미상이 되어, 잠깐 끊긴 네트워크가 나라 하나를 통째로 지운다.
+ * 'unknown'(정상 응답인데 나라가 없음 — 공해 한복판 등)은 다시 물어도 같은 답이라 캐시한다.
+ */
+export function shouldCacheGeocode(outcome: GeocodeOutcome): boolean {
+  return outcome !== 'failed';
+}

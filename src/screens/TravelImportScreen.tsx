@@ -63,7 +63,14 @@ import {
   overlapsImportedTrip,
   geocodeWaitMs,
   MAX_BOUNDARY_STEPS,
+  isScreenshotAsset,
+  inheritFromNearestKnown,
+  scanProgress,
+  canGeocode,
+  shouldCacheGeocode,
+  GEOCODE_TIMEOUT_MS,
   type ProbePoint,
+  type GeocodeOutcome,
 } from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
 import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
@@ -208,7 +215,7 @@ function patrolWave(v: Animated.Value, axis: 'x' | 'y', amp: number) {
 
 // 분석 효과 오브 — 링은 축 방향 회전 투영(scale 진동), 보라 원은 십자선 왕복 순찰.
 // width 미지정 시 화면 폭(초기 화면). 스캔 화면 등은 작은 width로 재사용한다.
-function ImportOrbVisual({ width = ORB_W }: { width?: number }) {
+function ImportOrbVisualBase({ width = ORB_W }: { width?: number }) {
   const spinV = useRef(new Animated.Value(0)).current; // 세로 링
   const spinH = useRef(new Animated.Value(0)).current; // 가로 링
   const walk = useRef(new Animated.Value(0)).current;  // 보라 원 순찰
@@ -251,6 +258,11 @@ function ImportOrbVisual({ width = ORB_W }: { width?: number }) {
     </View>
   );
 }
+
+// 스캔 중에는 진행률 state가 초당 여러 번 바뀐다. memo가 없으면 그때마다 이 오브가
+// 통째로 재조정되어(6 레이어 + Animated 보간) 진행바가 끊겨 보인다. props는 width 하나뿐이라
+// 기본 얕은 비교로 충분하다.
+const ImportOrbVisual = React.memo(ImportOrbVisualBase);
 
 // 분석 기간 칩 — 상단좌측이 밝고 하단우측으로 어두워지는 그라데이션 테두리(입체감).
 function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boolean; idSuffix: string; onPress: () => void }) {
@@ -498,9 +510,33 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [displayPct, setDisplayPct] = useState(0);
   useEffect(() => {
-    const id = progressAnim.addListener(({ value }) => setDisplayPct(Math.round(value)));
+    // 리스너는 애니메이션 프레임마다(초 60회) 불린다. 그때마다 setState 하면 같은 정수를
+    // 수십 번 다시 넣어 화면 전체가 재렌더된다 — 정수가 실제로 바뀔 때만 올린다.
+    let last = -1;
+    const id = progressAnim.addListener(({ value }) => {
+      const v = Math.round(value);
+      if (v === last) return;
+      last = v;
+      setDisplayPct(v);
+    });
     return () => progressAnim.removeListener(id);
   }, [progressAnim]);
+  // 진행률의 단일 창구. ① 뒤로 가지 않고 ② 정수 값이 실제로 바뀔 때만 setState 한다.
+  // (예전엔 탐침마다 setProgress를 불러 같은 값을 수백 번 다시 넣었다 — 화면 전체 재렌더)
+  // ref를 쓰는 이유: 같은 프레임 안에서 연달아 불려도 직전 값을 즉시 읽어야 한다.
+  const progressRef = useRef(0);
+  const bumpProgress = (value: number) => {
+    const v = Math.max(0, Math.min(100, Math.round(value)));
+    if (v <= progressRef.current) return;
+    progressRef.current = v;
+    setProgress(v);
+  };
+  const resetProgress = () => {
+    progressRef.current = 0;
+    setProgress(0);
+    progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
+    setDisplayPct(0);
+  };
   useEffect(() => {
     Animated.timing(progressAnim, {
       toValue: progress,
@@ -620,9 +656,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     // 이유가 없어 기다리지 않는다(결과는 빈 화면에서만 쓰인다).
     void refreshMediaLocationStatus();
     setScanning(true);
-    setProgress(0);
-    progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
-    setDisplayPct(0);
+    resetProgress();
     setDiscovered([]);
     setScannedTrips([]);
     setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
@@ -647,6 +681,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       let assets: MediaLibrary.Asset[] = [];
       let after: string | undefined = undefined;
       let hasNext = true;
+      let pagesDone = 0;
+      let screenshotSkipped = 0;
       while (hasNext) {
         if (cancelled()) return;
         const endPage = prof.begin('①페이지네이션');
@@ -661,10 +697,22 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         if (page.assets.length === 0) break;
         // 스프레드 대신 루프 — 스프레드는 배열 길이만큼을 인자로 넘기므로 PAGE_SIZE를
         // 더 키우면 Hermes 인자 한계에 걸린다(아래 '제외' 자리에서 실제로 겪은 버그).
-        for (const a of page.assets) assets.push(a);
+        for (const a of page.assets) {
+          // 스크린샷은 여행 사진이 아니다. GPS도 없어서, 구간 국가를 물려받는 표본 경로에선
+          // 카톡 대화 캡처가 여행 사진 수를 부풀리고 표지 후보(무작위)에도 뽑혔다.
+          // (iOS mediaSubtypes 전용 — Android는 이 필드가 없어 항상 통과한다)
+          if (isScreenshotAsset(a.mediaSubtypes)) { screenshotSkipped++; continue; }
+          assets.push(a);
+        }
         after = page.endCursor;
         hasNext = page.hasNextPage;
+        // 총 페이지 수를 미리 알 수 없어(hasNextPage만 준다) done/(done+4) 점근식으로
+        // 20%에 다가간다. 끝에서 정확히 20으로 맞춘다 — 열거 동안 0%에 멈춰 있지 않게.
+        pagesDone++;
+        if (!cancelled()) bumpProgress(scanProgress('enumerate', pagesDone, pagesDone + 4));
       }
+      if (cancelled()) return;
+      bumpProgress(scanProgress('enumerate', 1, 1));
       if (assets.length === 0) throw new Error('No photos found in gallery');
 
       // 촬영시각 오름차순 보장 — 버킷 분할·경계 탐색이 정렬을 전제로 한다
@@ -710,7 +758,13 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       if (assets.length === 0) throw new Error('No new photos to scan');
       const totalAssets = assets.length;
 
-      // ── 3) 시간 버킷 샘플링으로 좌표 조회 (핵심 최적화) ──
+      // iOS는 표본 추출 대신 '전수 좌표 조회'를 쓴다(설계: docs/superpowers/specs/
+      // 2026-09-12-import-scan-ios-full-gps-design.md). PHAsset.location은 Photos DB 필드라
+      // 장당 사실상 공짜 — 버킷 대표 1장의 나라를 온 버킷에 물려주던 근사가 필요 없다.
+      // Android는 배치 조회조차 파일 EXIF(장당 10~30ms)라 기존 표본 경로 그대로다.
+      const iosFullScan = Platform.OS === 'ios' && isPhotoLocationAvailable;
+
+      // ── 3) 시간 버킷 샘플링으로 좌표 조회 (핵심 최적화 — iOS 전수 경로가 실패했을 때의 길이기도 하다) ──
       // getAssetInfoAsync 1회 = 원본 파일 I/O 1회라 호출 횟수 자체를 줄여야 한다.
       // 버킷(12시간)마다 대표 1~3장만 조회하고, 좌표를 얻으면 그 버킷은 즉시 중단한다.
       const buckets = bucketRanges(assets);
@@ -734,8 +788,28 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // "인터넷 연결" 사유를 조건부로 띄우는 근거다 — 실패가 0이면 그 안내는 노이즈다.
       let geocodeFailures = 0;
 
+      // 타임아웃이 없으면 한 호출이 영영 안 끝나는 것만으로 스캔 전체가 멈춘다(행사 실측에서
+      // 진행바가 80%에 박힌 원인 중 하나). 정상 왕복은 41ms라 5초면 100배 여유다.
+      // 타이머는 finally에서 반드시 지운다 — 안 지우면 성공한 호출마다 5초짜리 타이머가 남는다.
+      const withTimeout = async <T,>(work: Promise<T>, ms: number): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([
+            work,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new Error('geocode timeout')), ms);
+            }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      };
+
       const reverseOnce = async (lat: number, lon: number) => {
-        const res = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+        const res = await withTimeout(
+          Location.reverseGeocodeAsync({ latitude: lat, longitude: lon }),
+          GEOCODE_TIMEOUT_MS
+        );
         const addr = res && res[0];
         return addr?.isoCountryCode
           ? { code: addr.isoCountryCode, name: addr.country || addr.isoCountryCode }
@@ -749,44 +823,189 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // 반환 타입을 명시한다 — 안 하면 폴리곤 분기(nameKo 있음)와 지오코딩 분기(없음)의
       // 유니온이 되어 호출부에서 `geo.nameKo`를 못 읽는다.
       type GeoHit = { code: string; name: string; nameKo?: string };
-      const countryAt = async (lat: number, lon: number): Promise<GeoHit | null> => {
-        // ① 오프라인 폴리곤 — 매번 직접 판정한다(캐시 없음). 위 주석 참조.
-        // nameKo는 10m 폴리곤 판정에서만 붙는다(지오코딩 폴백엔 없다) — 발견 칩 이름에 쓴다.
+
+      // ① 오프라인 폴리곤 — 매번 직접 판정한다(캐시 없음). 위 주석 참조.
+      // nameKo는 10m 폴리곤 판정에서만 붙는다(지오코딩 폴백엔 없다) — 발견 칩 이름에 쓴다.
+      const polygonAt = (lat: number, lon: number): GeoHit | null => {
         let geo: GeoHit | null = locateCountry(lat, lon);
         // KP 보류 — 거주국이 한국이면 오프라인 KP 판정을 믿지 않는다(한강 하구·군사분계선
         // 접경 오차. utils/countryLocate.isOfflineCountryTrusted 주석 참조). null로 떨어뜨려
-        // 아래 지오코딩 폴백을 그대로 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면
+        // 지오코딩 폴백을 그대로 태운다. 지오코딩이 KP를 주면 KP를 쓰고(온라인이면
         // 지오코딩이 정답이다), 다른 나라를 주면 그 값을, 실패하거나 결과가 없으면 null(미상)이
-        // 된다 — 미상 사진은 segmentsFromProbes가 앞뒤 구간 국가를 물려주므로 가짜 카드가 안 생긴다.
+        // 된다 — 미상 사진은 구간 국가(표본 경로)나 이웃 상속(iOS 전수 경로)이 채운다.
         if (geo && !isOfflineCountryTrusted(geo.code, homeCountryCode)) geo = null;
-        if (geo) {
-          prof.bump('⑤오프라인적중');
-          return geo;
-        }
-        // ② 지오코딩 폴백만 캐시한다. `undefined`=미조회 / `null`=조회했고 미상 구분 유지.
+        if (geo) prof.bump('⑤오프라인적중');
+        return geo;
+      };
+
+      // ② 지오코딩 폴백. 폴리곤 밖(먼바다·단순화로 깎인 해안선) 좌표만 온다 — 전체의 극히 일부.
+      // 스캔당 상한(canGeocode)을 두는 이유: 상한이 없으면 "느린 네트워크 × 수십 장"이
+      // 그대로 사용자가 보는 정체 시간이 된다. 넘치면 미상으로 두고 이웃 상속에 맡긴다.
+      let geocodeCalls = 0;
+      let geocodeSpentMs = 0; // 대기·타임아웃·재시도 포함 벽시계 합 — 시간 예산 판정용
+      const geocodeAt = async (lat: number, lon: number): Promise<GeoHit | null> => {
+        // `undefined`=미조회 / `null`=조회했고 미상 구분 유지.
         const key = bucketKey(lat, lon);
         const cached = geocodeCache[key];
         if (cached !== undefined) {
           prof.bump('⑥좌표캐시히트');
           return cached;
         }
-        // 폴리곤 미포함(먼바다·단순화로 깎인 해안선) 좌표만 지오코딩 — 전체의 극히 일부
+        if (!canGeocode(geocodeCalls, undefined, geocodeSpentMs)) {
+          // 상한 초과는 캐시하지 않는다 — 안 물어본 것이지 '미상'으로 확인된 게 아니다
+          prof.bump('⑥지오코딩상한초과');
+          return null;
+        }
         const endGeo = prof.begin('④지오코딩폴백(대기포함)');
+        const geoStartedAt = Date.now();
         // 호출 "전"에만 간격을 맞춘다. 뒤에서 자면 마지막 호출 뒤 대기가 순수 낭비다.
         const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
         if (wait > 0) await sleep(wait);
         lastGeocodeAt = Date.now();
+        geocodeCalls++;
+        let geo: GeoHit | null = null;
+        let outcome: GeocodeOutcome = 'unknown';
         try {
           geo = await reverseOnce(lat, lon);
+          outcome = geo ? 'hit' : 'unknown';
         } catch {
           await sleep(500);
           lastGeocodeAt = Date.now();
-          try { geo = await reverseOnce(lat, lon); } catch { geo = null; geocodeFailures++; }
+          geocodeCalls++;
+          try {
+            geo = await reverseOnce(lat, lon);
+            outcome = geo ? 'hit' : 'unknown';
+          } catch {
+            geo = null;
+            outcome = 'failed';
+            geocodeFailures++;
+          }
         }
         endGeo();
-        geocodeCache[key] = geo;
+        geocodeSpentMs += Date.now() - geoStartedAt;
+        // 타임아웃·네트워크 오류는 캐시하지 않는다. null로 박으면 그 0.05도 구역이 스캔이
+        // 끝날 때까지 영구 미상이 되어, 잠깐 끊긴 네트워크가 나라 하나를 통째로 지운다.
+        if (shouldCacheGeocode(outcome)) geocodeCache[key] = geo;
         return geo;
       };
+
+      const countryAt = async (lat: number, lon: number): Promise<GeoHit | null> =>
+        polygonAt(lat, lon) ?? (await geocodeAt(lat, lon));
+
+      // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출.
+      // 진입 시 가드만으로는 부족하다 — 좌표 조회·지오코딩 대기 사이에 취소+재스캔이
+      // 일어나면, 이전 스캔의 칩이 새 스캔의 setDiscovered([]) 뒤에 도착해 유령으로 남는다.
+      const noteDiscovered = (geo: GeoHit) => {
+        if (cancelled() || geo.code === homeCountryCode || foundCodes.has(geo.code)) return;
+        foundCodes.add(geo.code);
+        // 폴백은 한글명 우선. 영문명을 쓰면 발견 칩만 'Guam'이고 저장된 카드는 '괌'이라
+        // 같은 나라가 화면마다 다른 이름으로 보였다(2026-09-11).
+        const cinfo0 = countryInfoFromCode(geo.code, geo.nameKo ?? geo.name);
+        const code = geo.code;
+        setDiscovered((prev) =>
+          prev.some((d) => d.code === code)
+            ? prev
+            : [...prev, { code, flag: cinfo0.countryFlag, name: cinfo0.countryName }]
+        );
+        select();
+      };
+
+      // ── 3-i) iOS 전수 좌표 조회 ──
+      // 모든 사진의 좌표를 2,000장씩 배치로 읽고 장마다 폴리곤 판정한다. 버킷·탐침·국경
+      // 이분탐색은 여기서 쓰지 않는다(아래 표본 경로는 이 경로가 실패했을 때만 돈다).
+      //
+      // 정확도 쪽 대가를 명시한다: **좌표가 없는 사진은 여행에 넣지 않는다.** 표본 경로는
+      // 구간 국가를 물려줘 실내 사진까지 살렸지만, 그 대가로 카톡 수신 사진·다운로드 이미지가
+      // 같은 기간이라는 이유만으로 카드에 딸려 들어갔다(행사 실측 증상 3). 위치를 지우는
+      // 카메라로 찍은 본인 사진도 함께 빠지는데, 이는 의도된 동작이며 되돌리지 않는다.
+      let fullCodes: (string | null)[] | null = null;
+      let noCoordSkipped = 0;   // 좌표가 없어 여행에서 통째로 제외된 사진 수
+      let inheritedCount = 0;   // 폴리곤 밖이라 이웃에게서 나라를 물려받은 사진 수
+      if (iosFullScan) {
+        const endFull = prof.begin('③-N네이티브전수좌표');
+        const allIds = assets.map((a) => a.id);
+        const located = await fetchLocationsInBatches(allIds, getLocations, {
+          // 취소되면 네이티브 배치 루프 자체를 끊는다. 안 끊으면 이전 스캔의 배치가
+          // 끝까지 돌며 새 스캔의 진행바를 되돌려 놓는다.
+          shouldCancel: cancelled,
+          onBatch: (done, total) => {
+            if (cancelled()) return;
+            bumpProgress(scanProgress('batch', done, total));
+          },
+        });
+        endFull(allIds.length);
+        if (cancelled()) return;
+        if (located.size === 0) {
+          // 좌표가 한 건도 안 나오면 네이티브가 조용히 빠졌을 수 있다(로컬 모듈 podspec 함정).
+          // 느려도 결과가 나오는 표본 경로로 되돌린다 — 빠르게 아무것도 못 찾는 편보다 낫다.
+          console.log('[TravelImport] iOS 전수 좌표 0건 → 표본 경로로 폴백');
+        } else {
+          bumpProgress(scanProgress('batch', 1, 1));
+          // 좌표가 있는 사진만 판정 대상에 넣는다. coord* 배열은 촬영시각 오름차순
+          // (assets가 이미 정렬돼 있다) — 이웃 상속이 그 단조성에 의존한다.
+          const coordIdx: number[] = [];            // assets 상의 원래 인덱스
+          const coordTimes: number[] = [];
+          const coordCodes: (string | null)[] = []; // null = 좌표는 있는데 폴리곤 밖
+          const pending: number[] = [];             // coordIdx 기준 위치 — 상속/지오코딩 대상
+          const endLocate = prof.begin('④-i판정');
+          for (let i = 0; i < totalAssets; i++) {
+            const loc = located.get(assets[i].id);
+            if (!loc) { noCoordSkipped++; continue; }
+            const geo = polygonAt(loc.latitude, loc.longitude);
+            if (!geo) pending.push(coordIdx.length);
+            coordIdx.push(i);
+            coordTimes.push(assets[i].creationTime || 0);
+            coordCodes.push(geo ? geo.code : null);
+            if (geo) noteDiscovered(geo);
+            // 500장마다만 진행률을 올리고 UI에 양보한다. sleep(0) 한 번이 RN에서 10ms
+            // 왕복이라 장마다 넣으면 1.4만 장에 140초가 그것만으로 샌다(탐침 루프의
+            // YIELD_EVERY_BUCKETS와 같은 교훈).
+            if (i % 500 === 499) {
+              if (cancelled()) return;
+              bumpProgress(scanProgress('locate', i + 1, totalAssets));
+              await sleep(0);
+            }
+          }
+          endLocate(totalAssets);
+          if (cancelled()) return;
+          bumpProgress(scanProgress('locate', 1, 1));
+
+          // 폴리곤 밖(먼바다·해안선 단순화) — 같은 날(±12h) 가장 가까운 '판정된' 사진의
+          // 나라를 먼저 물려받는다. 지오코딩보다 먼저 하는 이유는 네트워크 왕복이 0이기 때문.
+          // ⚠️ 상속은 **상속 전 스냅샷**을 보고 한다. 상속 결과를 다시 상속시키면 한 장의
+          //    오판이 하루 전체로 번진다.
+          const endInherit = prof.begin('④-i이웃상속');
+          const baseCodes = coordCodes.slice();
+          for (const at of pending) {
+            const inherited = inheritFromNearestKnown(at, coordTimes, baseCodes);
+            if (inherited) { coordCodes[at] = inherited; inheritedCount++; }
+          }
+          endInherit(pending.length);
+
+          // 이웃도 없는 것만 지오코딩한다(호출당 5초 타임아웃 · 스캔당 상한).
+          const stillUnknown = pending.filter((at) => coordCodes[at] == null);
+          for (let g = 0; g < stillUnknown.length; g++) {
+            if (cancelled()) return;
+            const at = stillUnknown[g];
+            const loc = located.get(assets[coordIdx[at]].id);
+            if (!loc) continue;
+            const geo = await geocodeAt(loc.latitude, loc.longitude);
+            // 위 await가 최대 10초라 그 사이 취소+재스캔이면 이전 세대의 진행률이
+            // 새 스캔(resetProgress 직후)을 85~95%에 못박는다(QA H1) — 재검사 필수.
+            if (cancelled()) return;
+            if (geo) { coordCodes[at] = geo.code; noteDiscovered(geo); }
+            bumpProgress(scanProgress('geocode', g + 1, stillUnknown.length));
+          }
+          if (cancelled()) return;
+          bumpProgress(scanProgress('geocode', 1, 1));
+
+          const filled: (string | null)[] = new Array(totalAssets).fill(null);
+          for (let k = 0; k < coordIdx.length; k++) filled[coordIdx[k]] = coordCodes[k];
+          fullCodes = filled;
+        }
+      }
+      // 전수 경로가 값을 냈으면 아래 표본 경로는 전부 빈 루프가 된다(버킷 0개).
+      const probeBuckets = fullCodes ? [] : buckets;
 
       // ── 3-0) 네이티브 배치 좌표 조회 (있으면) ──
       // 탐침 후보는 probeOrder가 결정적으로 정하므로 미리 다 모을 수 있다. 좌표만 필요한데
@@ -795,14 +1014,14 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // 여전히 파일마다 EXIF를 읽지만 GPS 태그만 보고 왕복도 배치당 1회다.
       let prefetched: Map<string, LatLon> | null = null;
       const prefetchedIds = new Set<string>();
-      if (isPhotoLocationAvailable) {
+      if (!fullCodes && isPhotoLocationAvailable) {
         const endPre = prof.begin('③-N네이티브배치좌표');
         for (const b of buckets) {
           for (const idx of probeOrder(b.start, b.end)) prefetchedIds.add(assets[idx].id);
         }
         const ids = [...prefetchedIds];
         // 비용이 이 구간으로 옮겨왔으니 진행률도 여기서 움직여야 한다(안드로이드는 수 초 걸린다).
-        // 0~70%를 배치 진행에 쓰고, 뒤이은 탐침 루프는 자기 공식으로 80%까지 올린다.
+        // 구간 배정은 scanSampling.SCAN_STAGE_RANGE 한 곳에서만 정한다(batch 20→60).
         prefetched = await fetchLocationsInBatches(ids, getLocations, {
           // 안드로이드는 배치 하나가 곧 원본 EXIF 파일 I/O 수천 건이라(장당 10~30ms),
           // 기본 2,000장이면 진행 콜백 사이가 수십 초로 벌어져 진행바가 멈춘 것처럼 보인다.
@@ -813,7 +1032,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           shouldCancel: cancelled,
           onBatch: (done, total) => {
             if (cancelled()) return;
-            setProgress((p) => Math.max(p, Math.round((done / total) * 70)));
+            bumpProgress(scanProgress('batch', done, total));
           },
         });
         endPre(ids.length);
@@ -835,10 +1054,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         // 취소된 스캔은 진행률·발견 국기 칩을 더 이상 건드리지 않는다
         if (cancelled()) return null;
         probesDone++;
-        // 진행률 0~80%는 샘플링 구간 (예산 초과 시 80에서 멈춰 있게).
-        // Math.max로 감싼 이유: 네이티브 배치가 앞에서 70%까지 올려 두므로, 여기서 낮은
-        // 값을 그대로 쓰면 바가 뒤로 간다.
-        setProgress((p) => Math.max(p, Math.min(80, Math.round((probesDone / Math.max(1, probeBudget)) * 80))));
+        // 탐침 구간의 진행률. 예산(probeBudget)이 빗나가도 scanProgress가 단계 끝값을
+        // 넘지 않고, bumpProgress가 뒤로 가는 값을 버린다.
+        bumpProgress(scanProgress('locate', probesDone, Math.max(1, probeBudget)));
         try {
           let lat: number;
           let lon: number;
@@ -872,22 +1090,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           }
           const geo = await countryAt(lat, lon);
           if (!geo) return null;
-          // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출.
-          // 진입 시 가드만으로는 부족하다 — 위 좌표 조회·지오코딩 대기 사이에 취소+재스캔이
-          // 일어나면, 이전 스캔의 칩이 새 스캔의 setDiscovered([]) 뒤에 도착해 유령으로 남는다.
-          if (!cancelled() && geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
-            foundCodes.add(geo.code);
-            // 폴백은 한글명 우선. 영문명을 쓰면 발견 칩만 'Guam'이고 저장된 카드는 '괌'이라
-            // 같은 나라가 화면마다 다른 이름으로 보였다(2026-09-11).
-            const cinfo0 = countryInfoFromCode(geo.code, geo.nameKo ?? geo.name);
-            const code = geo.code;
-            setDiscovered((prev) =>
-              prev.some((d) => d.code === code)
-                ? prev
-                : [...prev, { code, flag: cinfo0.countryFlag, name: cinfo0.countryName }]
-            );
-            select();
-          }
+          noteDiscovered(geo);
           return geo.code;
         } catch {
           return null;
@@ -895,9 +1098,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       };
 
       const probes: ProbePoint[] = [];
-      for (let bi = 0; bi < buckets.length; bi++) {
+      for (let bi = 0; bi < probeBuckets.length; bi++) {
         if (cancelled()) return;
-        const b = buckets[bi];
+        const b = probeBuckets[bi];
         // 버킷에서 좌표가 나올 때까지 최대 3장 시도 (실내 사진만 있는 버킷은 미상 처리)
         for (const idx of probeOrder(b.start, b.end)) {
           const code = await probeCountry(idx);
@@ -934,11 +1137,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // ── 4) 구간 확정 → 전체 사진에 국가 채우기 ──
       // GPS가 없던 사진도 그 구간의 국가를 물려받는다(실내 사진 누락 해소).
       const segments = segmentsFromProbes(probes, totalAssets);
-      const codes = fillCountries(totalAssets, segments);
+      // iOS 전수 경로는 사진마다 직접 판정했으므로 구간을 물려줄 것이 없다.
+      const codes = fullCodes ?? fillCountries(totalAssets, segments);
       // 이분탐색 루프의 마지막 await 도중 취소되면 루프는 정상 종료해 여기로 온다.
-      // 무가드로 두면 setProgress(90)이 새 스캔의 진행바를 90%에 못박는다(Math.max 누적).
+      // 무가드로 두면 여기 진행률이 새 스캔의 진행바를 못박는다(단조 누적).
       if (cancelled()) return;
-      setProgress(90);
+      bumpProgress(scanProgress('cluster', 0, 1));
 
       const scanned: ScannedPhoto[] = [];
       let geocodedOk = 0;
@@ -981,8 +1185,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const trips = sized.map((t) => ({ ...t, alreadyImported: overlapsImportedTrip(t, importedAlbums) }));
 
       // 디버그 로그 — 좌표 조회 횟수가 사진 수 대비 얼마나 줄었는지 확인용
-      console.log('[TravelImport] 총 스캔 사진:', totalAssets, '/ 버킷:', buckets.length, '/ 이미 가져와 제외:', skippedImported);
-      console.log('[TravelImport] 좌표 조회(getAssetInfoAsync):', probesDone, `(사진 대비 ${totalAssets ? Math.round((probesDone / totalAssets) * 100) : 0}%)`);
+      console.log('[TravelImport] 경로:', fullCodes ? 'iOS전수' : `표본(버킷 ${buckets.length})`, '/ 총 스캔 사진:', totalAssets, '/ 이미 가져와 제외:', skippedImported, '/ 스크린샷 제외:', screenshotSkipped);
+      console.log('[TravelImport] 좌표 없어 제외:', noCoordSkipped, '/ 이웃 상속:', inheritedCount, '/ 지오코딩 호출:', geocodeCalls, '(실패', geocodeFailures, ')');
+      console.log('[TravelImport] 좌표 조회(탐침):', probesDone, `(사진 대비 ${totalAssets ? Math.round((probesDone / totalAssets) * 100) : 0}%)`);
       console.log('[TravelImport] 국가 확정 구간:', segments.length, '→ 국가 채워진 사진:', geocodedOk, '/ 촬영시각 없어 제외:', noTimeSkipped);
       // 구간별 소요 시간 — 어디가 병목인지(파일 I/O vs 지오코딩 대기) 판단용.
       // 20만 장 같은 대용량에서 네이티브 모듈 도입의 이득을 숫자로 보기 위한 근거다.
@@ -991,7 +1196,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
       if (cancelled()) return;
-      setProgress(100);
+      bumpProgress(100);
       success();
       // 빈 결과 화면의 사유 줄 근거 — 결과와 같은 시점에 확정한다
       setGeocodeFailCount(geocodeFailures);
@@ -1008,7 +1213,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     } catch (error) {
       if (cancelled()) return;
       console.error('Scan failed:', error);
-      setProgress(100);
+      bumpProgress(100);
       setTimeout(() => {
         if (cancelled()) return;
         setScanning(false);
@@ -1024,9 +1229,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     scanGenRef.current += 1;
     setScanning(false);
     setScanFinished(false);
-    setProgress(0);
-    progressAnim.setValue(0);
-    setDisplayPct(0);
+    resetProgress();
     setDiscovered([]);
   };
 
