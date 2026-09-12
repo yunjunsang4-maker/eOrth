@@ -33,7 +33,7 @@ import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type AppLanguage } from '../store/settingsStore';
-import { isHandleAvailable, markOnboarded } from '../services/profile';
+import { isHandleAvailable, markOnboarded, saveMateRecoOptin } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { detectCurrentCountry } from '../services/snapService';
@@ -138,6 +138,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const [handle, setHandle] = useState(storeHandle || '');
   const [checkingHandle, setCheckingHandle] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+  // 메이트 추천 선택 동의 — 온보딩 단계를 줄이려고 독립 동의 화면을 이 화면으로 흡수했다(그 화면은 삭제됨).
+  // 기본값은 반드시 '꺼짐'. 선택 동의는 사전 동의가 원칙이라 미리 체크해 두면 다크패턴이 된다.
+  const [mateRecoAgreed, setMateRecoAgreed] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(storeLanguage || 'ko');
   const [selectedCountry, setSelectedCountry] = useState<Country>(
     COUNTRIES.find((c) => codeOf(c) === homeCountryCode) ?? DEFAULT_COUNTRY
@@ -319,7 +322,16 @@ export default function BasicInfoScreen({ navigation }: Props) {
     // 온보딩 완료 기록 — 다음 실행부터 Main으로 바로 간다. 서버 실패해도 진행을 막지 않는다
     // (로컬 사본이 오프라인 판정을 맡고, 다음 성공한 동기화가 서버를 따라잡는다).
     setOnboardedAt(Date.now());
-    markOnboarded().catch(() => {});
+    // 메이트 추천 동의 — 체크하지 않았어도(false=명시적 거부) 반드시 저장한다. 저장을 건너뛰면
+    // 서버 값이 null(유예)로 남아 소셜 탭 배너가 나중에 또 묻는다(원래 동의 화면과 같은 의미).
+    // ⚠️ 반드시 markOnboarded 뒤에 이어 붙인다 — set_mate_reco_optin 은 맨 UPDATE라 profiles 행이
+    // 아직 없으면 0행을 갱신하고도 성공으로 돌아온다(가입 직후엔 행 생성이 늦을 수 있다).
+    // 행을 만드는 쪽은 upsert 를 쓰는 markOnboarded 다. 같은 틱에 병렬로 쏘면 경주가 된다.
+    // 체인 전체를 await 하지는 않는다 — 온보딩 진행을 네트워크에 묶지 않기 위해서다.
+    // 실패하면 null 유예로 남고 MateRecoConsentBanner 가 회수하므로 알림·토스트도 띄우지 않는다.
+    markOnboarded()
+      .then(() => saveMateRecoOptin(mateRecoAgreed))
+      .catch(() => {});
     navigation.navigate('TravelImport');
   };
 
@@ -438,6 +450,30 @@ export default function BasicInfoScreen({ navigation }: Props) {
               <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm')}</Text>
             </TouchableOpacity>
             <Text style={styles.privacyHint}>{t('basicInfo.ageConfirmHint')}</Text>
+          </View>
+
+          {/* 메이트 추천 동의(선택) — 온보딩 단계 축소로 독립 동의 화면을 여기로 흡수했다.
+              선택 동의라 canContinue 에는 넣지 않는다: 체크하지 않아도 [다음]이 눌려야 한다.
+              스타일은 위 만 14세 확인 블록의 것을 그대로 재사용한다(같은 생김새 = 같은 스타일). */}
+          <View style={styles.inputSection}>
+            <TouchableOpacity
+              style={styles.ageRow}
+              onPress={() => setMateRecoAgreed((v) => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: mateRecoAgreed }}
+              hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
+            >
+              <View style={[styles.ageBox, mateRecoAgreed && styles.ageBoxOn]}>
+                {mateRecoAgreed && (
+                  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
+                )}
+              </View>
+              <Text style={styles.ageLabel}>{t('mateConsent.checkbox')}</Text>
+            </TouchableOpacity>
+            <Text style={styles.privacyHint}>{t('mateConsent.bannerBody')}</Text>
           </View>
 
           {/* 언어 */}

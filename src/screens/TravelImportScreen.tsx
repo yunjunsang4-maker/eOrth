@@ -461,8 +461,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       return;
     }
     await requestNotificationPermission().catch(() => {});
-    // 온보딩 종점은 동의 화면이다 — Main reset은 그 화면이 대신 수행한다.
-    navigation.replace('MateRecoConsent');
+    // 메이트 추천 동의는 기본정보 화면의 체크박스로 옮겼다 — 여기가 온보딩 종점이라
+    // Main 리셋과 startTutorial(첫 진입 코치마크)을 이 자리에서 직접 수행한다.
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
+    });
   };
   const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);

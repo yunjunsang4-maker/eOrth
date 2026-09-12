@@ -502,9 +502,12 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
         <TouchableOpacity
           onPress={() => {
             if (!fromOnboarding) { navigation.goBack(); return; }
-            // 온보딩 종점은 동의 화면이다 — 스택 정리(reset)와 startTutorial 전달은
-            // MateRecoConsentScreen 이 대신 수행한다.
-            navigation.replace('MateRecoConsent');
+            // 온보딩 종점 — 스택 정리(reset)와 startTutorial 전달을 여기서 직접 한다.
+            // (메이트 추천 동의는 기본정보 화면의 체크박스로 흡수돼 독립 화면이 사라졌다.)
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
+            });
           }}
         >
           <Text style={st.secondaryText}>{fromOnboarding ? t('common.done') : t('common.close')}</Text>

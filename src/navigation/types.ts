@@ -110,7 +110,6 @@ export type RootStackParamList = {
   BasicInfo: undefined;
   // from: 'profile' = 앱 내(프로필) 진입 — 완료 후 온보딩처럼 메인+튜토리얼로 리셋하지 않고 되돌아간다
   TravelImport: { from?: 'profile' } | undefined;
-  MateRecoConsent: undefined;
   ImportPhotoSelect: { trips: ImportTrip[]; from?: 'profile' };
   // mode: 'quick' = 사진첩 없이 카드만 즉시 만든 경로. 이때 photoCount는 '복사한 장수'가
   // 아니라 '카드에 연결해 둔(바로 꺼내 쓸 수 있는) 분석 사진 장수'라 완료 문구가 다르다.

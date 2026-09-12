@@ -83,9 +83,10 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       : t('imports.icTripSingle', { flag: lead.flag, name: lead.name })
     : t('imports.icTripNone', { count: tripCount });
 
-  // "이어스 시작하기" → 온보딩 경로는 메이트 추천 동의 화면으로 곧장 간다.
-  // 그 화면의 finish()가 startTutorial 플래그와 함께 메인 스택을 리셋한다(첫 진입 코치마크).
-  // 온보딩 마지막 단계 — 다음 화면 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
+  // "이어스 시작하기" → 여기가 온보딩 종점이다.
+  // 메이트 추천 동의는 기본정보(BasicInfoScreen)의 체크박스로 옮겨 단계를 하나 줄였고,
+  // 그 화면이 하던 Main 리셋 + startTutorial 을 이제 여기서 직접 수행한다.
+  // 온보딩 마지막 단계 — 리셋 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
   const startEorth = async () => {
     // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청 없이
     // 원래 보던 화면으로 돌아간다. 스택에 남은 불러오기 단계들은 함께 정리한다.
@@ -98,8 +99,13 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
     await requestNotificationPermission().catch(() => {});
     // 여기 있던 축약판 여행 DNA 설문(축당 1문항)은 제외했다 — 가입~과거여행 불러오기까지가
     // 이미 길어서 첫 시작이 지친다. 성향 검사는 프로필의 DNA 칩(미완료면 맥동)이 유도한다.
-    // 설문을 '전부 건너뛴' 것과 같은 경로로, 온보딩 종점인 동의 화면이 메인 리셋을 수행한다.
-    navigation.replace('MateRecoConsent');
+    // replace 가 아니라 reset 이어야 한다 — 이 화면으로 올 때 스택이 이미 [Main, ImportComplete]로
+    // 리셋돼 있어서 replace 하면 Main 이 두 장 쌓인다.
+    // startTutorial 을 빠뜨리면 첫 진입 코치마크가 영영 안 뜬다(MainScreen 이 읽는 살아있는 플래그).
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
+    });
   };
 
   return (
