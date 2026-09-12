@@ -99,10 +99,15 @@ export const GlassSurface: React.FC<GlassSurfaceProps> = ({
   const reduce = useReduceTransparency();
   const gradId = useId();
 
-  // 접근성: 투명도 줄이기 → 반투명 단색(블러/유리 없음)
+  // 접근성: 투명도 줄이기 → 고불투명 단색(블러/유리 없음).
+  // ⚠️ 표면 고유 매트색(androidTint)을 써야 한다. 예전엔 보라를 하드코딩해서, 탭 바처럼
+  //    어두운 틴트를 넘긴 표면도 이 설정을 켠 기기에서만 통째로 보라색으로 보였다
+  //    (2026-09 행사 iOS 사용자 "탭 바가 그냥 보라색" 신고 — iOS 26 리퀴드 글래스를 끄려고
+  //    투명도 줄이기를 켠 사용자가 늘었다). androidTint는 원래 "블러 없이 뒤가 안 비치는 색"이라
+  //    이 폴백의 요구와 정확히 같다.
   if (reduce) {
     return (
-      <View style={[style, { borderRadius, overflow: 'hidden', backgroundColor: 'rgba(117,26,173,0.6)' }]}>
+      <View style={[style, { borderRadius, overflow: 'hidden', backgroundColor: androidTint }]}>
         {children}
       </View>
     );
