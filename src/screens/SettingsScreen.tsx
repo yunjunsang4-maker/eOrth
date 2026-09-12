@@ -48,6 +48,7 @@ import {
   ChatIcon,
   DocumentIcon,
   InfoIcon,
+  HomeIcon,
   ExitIcon,
   GalleryIcon,
   TrashIcon,
@@ -56,6 +57,7 @@ import {
   PaletteIcon,
   LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
+import HomeRegionSheet from '../components/HomeRegionSheet';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
@@ -160,6 +162,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     showCounts, setShowCounts,
     hapticsEnabled, setHapticsEnabled,
     homeCountryCode, setHomeCountryCode,
+    homeRegion,
     diaryCardMode, setDiaryCardMode,
     language, setLanguage,
     isPremium, setIsPremium,
@@ -229,6 +232,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   //  저장되면 거주국 제외·통계·프로필 매칭이 전부 실패하기 때문인데, 이제 목록에 있는
   //  국가만 고를 수 있어 그 경로 자체가 사라졌다.)
   const [countryModalVisible, setCountryModalVisible] = useState(false);
+  const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 거주 지역 설정 시트
   const openCountryModal = () => setCountryModalVisible(true);
 
   // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
@@ -493,6 +497,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               onPress: openCountryModal,
             },
             {
+              // 거주 지역(시·도) — 소셜 탭 '일상' 링의 기준. 미설정이면 '미설정'
+              icon: <HomeIcon size={22} />,
+              label: t('settings.homeRegion'),
+              value: homeRegion?.name ?? t('settings.homeRegionUnset'),
+              onPress: () => setRegionSheetVisible(true),
+            },
+            {
               icon: <GlobeSkinIcon size={22} />,
               label: t('stay.settingsStart'),
               value: activeStayGroup
@@ -641,6 +652,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         searchPlaceholder={t('settings.countrySearchPlaceholder')}
         selectedCode={homeCountryCode}
       />
+
+      {/* 거주 지역(시·도) 설정 — '현재 위치로 설정'(주) / '직접 선택'(보조) */}
+      <HomeRegionSheet visible={regionSheetVisible} onClose={() => setRegionSheetVisible(false)} />
 
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
       <Modal

@@ -26,6 +26,8 @@ import {
   formatLateSeconds,
 } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
+import { normalizeHomeRegion } from '../constants/homeRegions';
+import HomeRegionSheet from '../components/HomeRegionSheet';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import type { RootStackScreenProps } from '../navigation/types';
 import { stageWidthNow } from '../utils/stage';
@@ -156,7 +158,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const { addRecord } = useRecords();
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode, homeRegion, homeRegionPromptShown, setHomeRegionPromptShown } = useSettings();
   const insets = useSafeAreaInsets();
 
   // ─── 카메라 상태 ───
@@ -178,6 +180,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [sendSize, setSendSize] = useState({ w: 0, h: 0 }); // 공유 버튼 그라데이션 테두리 SVG 크기
   const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
   const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
+  const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 저장 직후 거주 지역 제안(1회)
 
   // ─── 메타 ───
   const [caption, setCaption] = useState('');
@@ -399,14 +402,31 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
 
+    // ─── 지역·'일상' 판정 (소셜 탭 스냅 링) ───
+    // 거주국 스냅이면 GPS 도시명(detectedCity)을 거주국 지역 프리셋으로 정규화해 저장한다.
+    // 지금까지 detectedCity는 상단 표시에만 쓰고 저장하지 않아, 국내 스냅은 지역이 통째로 비어
+    // 서울 출근길과 제주 여행이 같은 여행 카드·같은 링이 됐다.
+    // 사용자가 국가 시트에서 직접 고른 지역이 있으면 그 값이 우선(기존 동작).
+    const isHomeCountry = !!homeCountry && (finalCountry?.name ?? '') === homeCountry.name;
+    const normalizedRegion = isHomeCountry ? normalizeHomeRegion(homeCountryCode, detectedCity) : null;
+    const regionName =
+      selectedCountry?.region
+      || (isHomeCountry ? (normalizedRegion?.name ?? detectedCity ?? undefined) : undefined);
+    const regionNameEn =
+      selectedCountry?.regionEn
+      || (isHomeCountry ? (normalizedRegion?.nameEn ?? detectedCity ?? undefined) : undefined);
+    // 거주지에서 찍은 스냅 = 여행이 아니라 '일상'. 저장 시점에 박제한다 —
+    // 남의 화면에서는 그 사람의 거주지를 알 수 없어 이 값이 유일한 근거다.
+    const snapDaily = isHomeCountry && !!homeRegion && !!regionName && regionName === homeRegion.name;
+
     addRecord({
       user: { name: '', emoji: '⚡', handle: '' }, // addRecord가 로그인 사용자로 채움
       country: finalCountry ? `${finalCountry.flag} ${finalCountry.name}` : (detectedCountry || ''),
       countryName: finalCountry?.name || detectedCountry || '',
       countryFlag: finalCountry?.flag || '',
       countries: finalCountry ? [{ flag: finalCountry.flag, name: finalCountry.name }] : [],
-      regionName: selectedCountry?.region || undefined,
-      regionNameEn: selectedCountry?.regionEn || undefined,
+      regionName,
+      regionNameEn,
       date: dateStr,
       content: caption || t('snap.defaultCaption'),
       visibility: 'neighbors',
@@ -418,9 +438,18 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapDetectedCountry: detectedCountry || undefined,
       snapLateSeconds: lateSeconds > 0 ? lateSeconds : undefined,
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
+      snapDaily: snapDaily || undefined, // false는 싣지 않는다(발행 payload를 부풀리지 않음)
     }, { countryGuessed });
 
     savedRef.current = true;
+    // 거주 지역 미설정 사용자에게 1회만 제안 — 거주국에서 찍었을 때가 가장 맥락이 맞는 순간이다.
+    // ⚠️ goBack()을 먼저 부르면 이 화면과 함께 시트도 언마운트돼 아무것도 안 보인다.
+    //    시트를 닫는 시점에 나간다(onClose).
+    if (isHomeCountry && !homeRegion && !homeRegionPromptShown) {
+      setHomeRegionPromptShown(true); // 닫아도 다시 뜨지 않는다
+      setRegionSheetVisible(true);
+      return;
+    }
     navigation.goBack();
   };
 
@@ -754,6 +783,14 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       {/* 스냅은 영구 보존 (인스타 스토리와 달리 사라지지 않음) */}
       <Text style={st.expireNote}>{t('snap.expireNote')}</Text>
       </KeyboardAvoidingView>
+
+      {/* 저장 직후 거주 지역 제안(1회). 닫으면 그때 화면을 빠져나간다 */}
+      <HomeRegionSheet
+        visible={regionSheetVisible}
+        // Modal 해제와 화면 pop을 같은 틱에 하면 iOS에서 터치가 죽는 조합(메모리: Modal 직후 네이티브
+        // 전환 금지). 해제 애니메이션이 끝난 뒤 빠져나간다.
+        onClose={() => { setRegionSheetVisible(false); setTimeout(() => navigation.goBack(), 350); }}
+      />
     </SafeAreaView>
   );
 }

@@ -193,6 +193,10 @@ export interface TravelRecord {
   snapViewed?: boolean;               // (현재 사용자가) 스냅 열람 여부
   snapViewers?: { handle: string; name: string; time: number }[]; // 이 스냅을 본 사람들 (조회자)
   snapHour?: number;                  // 촬영 시점 '현지 시각'의 시(0~23) — 89·90 시간대 배지용
+  // 거주지(시·도)에서 찍은 스냅 — 여행이 아니라 소셜 탭의 고정 '일상' 링으로 모인다.
+  // 저장 시점(SnapRecordScreen)에 작성자 기기에서 판정해 박제한다. 보는 쪽에서는
+  // 남의 거주지를 알 수 없으므로 이 값이 유일한 근거다(utils/snapStrip.groupSnapRings).
+  snapDaily?: boolean;
   // v5 네컷 필드 (viewType='cut'일 때)
   cutPhoto?: {
     layout: import('../constants/cutFrames').CutLayout;
@@ -683,53 +687,69 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우).
   // 국내(거주국가) 기록은 지역(시/도)까지 같아야 같은 카드 — "제주 여행"과
   // 서울 일상 기록이 시기가 가깝다고 한 카드로 묶이는 것 방지.
-  const linkByDate = (rec: TravelRecord) => {
+  //
+  // 반환값: 이 기록이 들어간(또는 새로 만든) 카드 id. 붙이지 못했으면 null.
+  // ⚠️ 그 반환값을 내기 위해 판정을 `setTripGroups(prev => …)` 콜백 밖으로 꺼내
+  //    `tripGroupsRef.current`로 읽는다. 대신 mutate할 때마다 ref도 동기 갱신해야 한다 —
+  //    연속 호출(drainPendingLinks 루프)이 앞선 호출의 결과를 못 보면 같은 카드를 두 장 만든다.
+  //    같은 이유로 `detachRecordsFromTripGroups`도 ref를 함께 민다(그 함수 주석 참고).
+  const linkByDate = (rec: TravelRecord): string | null => {
+    // 일상(거주지) 스냅은 여행이 아니다 — 카드에 넣지 않는다. 가드가 여기 있어야 하는 이유:
+    // linkRecordToTrip뿐 아니라 drainPendingLinks(다른 기기에서 받은 기록의 편입)도 이 함수를
+    // 직접 부른다. linkRecordToTrip에만 두면 기기 B가 A의 일상 스냅으로 카드를 만들어 A로 역류시킨다(QA F1).
+    if (rec.snapDaily) return null;
     const country = rec.countryName;
     const recStart = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
     const recEnd = parseRecDate(rec.endDate) ?? recStart;
-    if (!country || recStart == null || recEnd == null) return; // 국가/날짜 없으면 매칭 불가
+    if (!country || recStart == null || recEnd == null) return null; // 국가/날짜 없으면 매칭 불가
     const isDomestic = !!homeCountryName && country === homeCountryName;
     // 지역은 거주국가 프리셋으로 정규화(수원시→경기, Kyoto→교토부 등). 정규화 실패 시 원본 유지, 미입력은 null
     const recRegion = isDomestic
       ? (normalizeHomeRegion(homeCountryCode, rec.regionName)?.name ?? rec.regionName ?? null)
       : null;
 
-    setTripGroups((prev) => {
-      const match = prev.find((g) => {
-        const members = g.records
-          .map((id) => records.find((r) => r.id === id))
-          .filter(Boolean) as TravelRecord[];
-        if (members.length === 0) return false;
-        // 카드의 실제 국가는 오버라이드(다국가 분할 카드) 우선 — 포르투갈 카드에
-        // 스페인(대표국가) 기록이 붙는 오매칭 방지
-        const groupCountry = g.countryName ?? members[0].countryName;
-        if (groupCountry !== country) return false;
-        if (isDomestic) {
-          const gRegion =
-            g.regionName ??
-            normalizeHomeRegion(homeCountryCode, members[0].regionName)?.name ??
-            members[0].regionName ??
-            null;
-          if (gRegion !== recRegion) return false; // 지역이 다르면(미입력 포함) 다른 카드
-        }
-        let gStart = Infinity;
-        let gEnd = -Infinity;
-        for (const m of members) {
-          const s = parseRecDate(m.startDate) ?? parseRecDate(m.date);
-          const e = parseRecDate(m.endDate) ?? s;
-          if (s != null) gStart = Math.min(gStart, s);
-          if (e != null) gEnd = Math.max(gEnd, e);
-        }
-        if (!Number.isFinite(gStart) || !Number.isFinite(gEnd)) return false;
-        return recStart <= gEnd + GROUP_GAP_MS && recEnd >= gStart - GROUP_GAP_MS;
-      });
-
-      if (match) {
-        if (match.records.includes(rec.id)) return prev;
-        return prev.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
+    const match = tripGroupsRef.current.find((g) => {
+      const members = g.records
+        .map((id) => records.find((r) => r.id === id))
+        .filter(Boolean) as TravelRecord[];
+      if (members.length === 0) return false;
+      // 카드의 실제 국가는 오버라이드(다국가 분할 카드) 우선 — 포르투갈 카드에
+      // 스페인(대표국가) 기록이 붙는 오매칭 방지
+      const groupCountry = g.countryName ?? members[0].countryName;
+      if (groupCountry !== country) return false;
+      if (isDomestic) {
+        const gRegion =
+          g.regionName ??
+          normalizeHomeRegion(homeCountryCode, members[0].regionName)?.name ??
+          members[0].regionName ??
+          null;
+        if (gRegion !== recRegion) return false; // 지역이 다르면(미입력 포함) 다른 카드
       }
-      return [makeTripGroup(country, rec, recRegion ?? undefined), ...prev];
+      let gStart = Infinity;
+      let gEnd = -Infinity;
+      for (const m of members) {
+        const s = parseRecDate(m.startDate) ?? parseRecDate(m.date);
+        const e = parseRecDate(m.endDate) ?? s;
+        if (s != null) gStart = Math.min(gStart, s);
+        if (e != null) gEnd = Math.max(gEnd, e);
+      }
+      if (!Number.isFinite(gStart) || !Number.isFinite(gEnd)) return false;
+      return recStart <= gEnd + GROUP_GAP_MS && recEnd >= gStart - GROUP_GAP_MS;
     });
+
+    if (match) {
+      if (!match.records.includes(rec.id)) {
+        const grow = (list: TripGroup[]) =>
+          list.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
+        setTripGroups((prev) => grow(prev));
+        tripGroupsRef.current = grow(tripGroupsRef.current);
+      }
+      return match.id;
+    }
+    const ng = makeTripGroup(country, rec, recRegion ?? undefined);
+    setTripGroups((prev) => [ng, ...prev]);
+    tripGroupsRef.current = [ng, ...tripGroupsRef.current];
+    return ng.id;
   };
 
   // linkByDate는 useCallback이 아니라 매 렌더 재생성되는 함수이고, 내부에서 클로저의
@@ -748,14 +768,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const tripGroupsRef = useRef(tripGroups);
   tripGroupsRef.current = tripGroups;
 
-  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }) => {
+  /** 반환값: 이 기록이 들어간(또는 새로 만든) 카드 id. 붙이지 않았으면 null. */
+  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }): string | null => {
     const country = rec.countryName;
-    if (!country) return;
+    if (!country) return null;
+
+    // 거주지 '일상' 스냅은 여행이 아니다 — 카드에 넣지도, 여행 세션을 열거나 닫지도 않는다.
+    // (거주지 지하철 스냅 한 장이 여행 카드를 만들거나 진행 중 세션을 귀국으로 끊는 것 방지)
+    if (rec.snapDaily) return null;
 
     // 회고(과거 여행 작성) 기록 — 현재 위치와 무관하므로 세션을 건드리지 않고 날짜 규칙으로
     if (!coversNow(rec)) {
-      linkByDate(rec);
-      return;
+      return linkByDate(rec);
     }
 
     // 진행 중(active) 체류국의 실시간 기록 → 체류 카드에 직접 합류 + 활동 시각 갱신
@@ -773,7 +797,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         setTripGroups((prev) => grow(prev));
         tripGroupsRef.current = grow(tripGroupsRef.current);
       }
-      return;
+      return stayG.id;
     }
 
     // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료.
@@ -784,8 +808,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         setTripSession(null);
         tripSessionRef.current = null;
       }
-      linkByDate(rec);
-      return;
+      return linkByDate(rec);
     }
 
     // 해외 실시간 기록 — 살아 있는(30일 무활동 만료 전) 세션에 이 국가의 카드가 있으면 추가
@@ -802,7 +825,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const refreshed: TripSession = { groups: session!.groups, lastActiveAt: Date.now() }; // 활동 갱신
       setTripSession(refreshed);
       tripSessionRef.current = refreshed;
-      return;
+      return target.id;
     }
     // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제·세션 만료) → 새 카드 + 세션 등록
     const ng = makeTripGroup(country, rec);
@@ -811,6 +834,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const opened: TripSession = { groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() };
     setTripSession(opened);
     tripSessionRef.current = opened;
+    return ng.id;
   };
 
   // ─── 장기체류(Stay) ───
@@ -958,7 +982,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 프로필 여행 카드 자동 생성/연결 — 예약 글은 발행 시점(아래 예약 발행 effect)에 연결한다
     const isFutureScheduled = !!newRecord.scheduledAt && newRecord.scheduledAt > Date.now();
     if (opts?.linkTrip !== false && !isFutureScheduled) {
-      linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed });
+      const gid = linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed });
+      // 스냅 링은 '여행 카드 1장 = 원 1개'라 남의 화면에서도 같은 묶음이 되려면 카드 id가
+      // 발행 payload에 실려야 한다. 링크가 발행보다 먼저 도는 이 순서 덕에 여기서 심을 수 있다.
+      // (객체를 직접 고치는 이유: publishToBackend가 이 `newRecord` 참조를 그대로 읽는다.
+      //  setRecords는 화면 반영용으로 따로 건다 — 같은 객체를 고쳐도 리렌더가 안 돈다.)
+      if (gid && newRecord.viewType === 'snap' && !newRecord.tripGroupId) {
+        newRecord.tripGroupId = gid;
+        setRecords((prev) => prev.map((r) => (r.id === newRecord.id ? { ...r, tripGroupId: gid } : r)));
+      }
     }
     publishToBackend(newRecord); // Supabase 발행(설정 시)
     // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
@@ -1169,7 +1201,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const detachRecordsFromTripGroups = useCallback((ids: string[]) => {
     if (ids.length === 0) return;
     const gone = new Set(ids);
-    setTripGroups((prev) => {
+    const apply = (prev: TripGroup[]) => {
       const touched = new Set<string>();
       for (const g of prev) if (g.records.some((rid) => gone.has(rid))) touched.add(g.id);
       if (touched.size === 0) return prev;
@@ -1182,7 +1214,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         })
         // 손댄 카드만 폐기 대상 — 무관한 빈 카드(진행 중 체류 등)는 그대로 둔다
         .filter((g) => !(touched.has(g.id) && g.records.length === 0));
-    });
+    };
+    setTripGroups(apply);
+    // ⚠️ ref도 같이 민다. '떼어내기 → 다시 붙이기'(updateRecord 국가 변경·drainPendingLinks
+    //    재연결)는 두 번째 단계가 **떼어낸 뒤의 목록**을 봐야 옛 카드에 도로 매칭되지 않는다.
+    //    예전에는 linkByDate가 setTripGroups의 prev를 읽어 함수형 업데이트 순서가 그걸
+    //    보장했지만, 지금은 카드 id를 반환하려고 tripGroupsRef.current를 읽는다.
+    //    여기서 ref를 안 밀면 그 불변식이 조용히 깨진다(컴파일도 통과, 증상은 오편입).
+    tripGroupsRef.current = apply(tripGroupsRef.current);
   }, []);
 
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
@@ -2221,8 +2260,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           }
           continue;
         }
-        // 떼어내기 → 다시 붙이기. 둘 다 setTripGroups 함수형 업데이트라 순서대로 적용된다
-        // (linkByDate가 보는 prev는 detach가 끝난 목록이므로 옛 카드에 재매칭되지 않는다).
+        // 떼어내기 → 다시 붙이기. linkByDate는 tripGroupsRef.current로 판정하므로
+        // detachRecordsFromTripGroups가 ref도 함께 밀어야 옛 카드에 재매칭되지 않는다(그렇게 되어 있다).
         detachRecordsFromTripGroups([id]);
         pendingRelinkRef.current.delete(id);
         linkByDateRef.current(rec);

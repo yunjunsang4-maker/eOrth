@@ -32,7 +32,7 @@ import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon, PlusIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon, PlusIcon, HomeIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords, countTotalComments } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
@@ -43,7 +43,7 @@ import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { putMineFirst } from '../utils/snapStrip';
+import { putMineFirst, groupSnapRings } from '../utils/snapStrip';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
@@ -2908,7 +2908,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       // 스토어 액션은 안정 useCallback이라 deps에 넣어도 매 포커스 재생성되지 않는다
     }, [refreshing, feedInitialLoading, refreshFeed, refreshMyPostCounts, refreshNeighbors])
   );
-  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium, handleFont: myHandleFont } = useSettings();
+  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
@@ -3144,28 +3144,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
     // snapViewed는 세션 한정(feedPosts 재조회 시 초기화) → 영속 viewedSnapIds(remoteId)도 함께 판정
     const isUnviewed = (s: any) =>
       !isMine(s) && !s.snapViewed && !viewedSnapIds.includes(s.remoteId ?? s.id);
-    const snaps = allVisible.filter(r => r.viewType === 'snap');
-    const seen = new Set<string>();
-    const reps = snaps.reduce<any[]>((acc, snap) => {
-      // 같은 사용자라도 다른 나라면 별도 스토리로 인식
-      const key = `${snap.user.handle}::${snap.countryName || snap.snapDetectedCountry || ''}`;
-      if (seen.has(key)) {
-        // 같은 작성자+같은 나라의 추가 스냅: 안 본 게 있으면 대표 항목에 반영
-        const rep = acc.find((s: any) =>
-          s.user.handle === snap.user.handle &&
-          (s.countryName || s.snapDetectedCountry || '') === (snap.countryName || snap.snapDetectedCountry || '')
-        );
-        if (rep && isUnviewed(snap)) rep._hasUnviewed = true;
-        return acc;
-      }
-      seen.add(key);
-      acc.push({ ...snap, _hasUnviewed: isUnviewed(snap) });
-      return acc;
-    }, []);
-    // 모든 스토리를 다 봤으면(내 스냅은 본 것으로 간주) 제일 먼저 올린 것부터(오름차순) 정렬
-    const allViewed = reps.every((s: any) => !s._hasUnviewed);
-    if (allViewed) reps.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
-    return reps;
+    // 묶음 규칙(여행 카드 1장 = 원 1개, 거주지 스냅은 '일상' 링)은 순수 함수로 분리했다 —
+    // utils/snapStrip.groupSnapRings(+verify). 열람 판정·차단 필터는 지금처럼 앞단에서 끝낸다.
+    return groupSnapRings<any>(allVisible.filter((r) => r.viewType === 'snap'), isUnviewed);
   }, [allVisible, globalHandle, viewedSnapIds]);
   // 피드·블로그·앨범·네컷(스냅 제외)을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
   const timelineItems = useMemo(
@@ -3234,8 +3215,15 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
   // rank=timestamp: snapItems는 모두 열람 상태면 오래된 순이라, 내 스냅이 나라별로 여럿이면
   // 배열 첫 번째가 아니라 가장 최신 스냅이 앞에 와야 방금 찍은 것에 배지가 붙는다(QA F-1)
-  const ordered = useMemo(() => putMineFirst(snapItems, isMineSnap, (snap: any) => snap.timestamp ?? 0), [snapItems, globalHandle]);
-  const hasMine = ordered.length > 0 && isMineSnap(ordered[0]);
+  // putMineFirst는 **여행 링에만** 적용한다. 일상 링까지 대상에 넣으면 내 일상이 맨 앞으로
+  // 끌려와 '일상은 여행 링 뒤'라는 규칙이 깨진다(groupSnapRings가 정렬해 둔 것을 되돌리는 셈).
+  const ordered = useMemo(() => {
+    const trips = snapItems.filter((s: any) => !s._isDaily);
+    const dailies = snapItems.filter((s: any) => s._isDaily);
+    return [...putMineFirst(trips, isMineSnap, (snap: any) => snap.timestamp ?? 0), ...dailies];
+  }, [snapItems, globalHandle]);
+  // 내 '여행' 링이 맨 앞일 때만 배지를 붙인다 — 내 일상 링만 있으면 '내 스냅 +' 자리표시가 앞에 온다
+  const hasMine = ordered.length > 0 && isMineSnap(ordered[0]) && !(ordered[0] as any)._isDaily;
   const snapDisplay = hasMine
     ? ordered
     : [MY_SNAP_PLACEHOLDER, ...(ordered.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : ordered)];
@@ -3368,21 +3356,35 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       <View pointerEvents="none"><PlusIcon size={12} color="#0A0A0F" /></View>
                     </TouchableOpacity>
                   )}
-                  <Text
-                    style={[
-                      s.storyName,
-                      // 아이디 폰트(프리미엄) — 내 스냅은 내 설정값, 타인은 서버 handle_font
-                      handleFontStyle(
-                        snap.isMyPost || snap.user.handle === globalHandle
-                          ? (isPremium ? myHandleFont : null)
-                          : snap.user.font
-                      ),
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {snap.countryFlag ? `${snap.countryFlag} ` : ''}
-                    {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === globalHandle)}
-                  </Text>
+                  {/* 링 라벨(사용자 결정 2026-09-12) — 내 링은 '어디'(일상(집 아이콘)/지역명/나라명),
+                      다른 사람 링은 국기 + 아이디. 내 링은 장소 텍스트라 아이디 폰트(프리미엄)를 걸지 않는다. */}
+                  {(() => {
+                    const mine = snap.isMyPost || snap.user.handle === globalHandle;
+                    const place = snap.regionName || snap.countryName || snap.snapDetectedCountry || '';
+                    const flag = snap.countryFlag ? `${snap.countryFlag} ` : '';
+                    const label = mine
+                      ? (snap._isDaily ? t('snap.dailyRing') : `${flag}${place || getPostDisplayName(snap.user, true)}`)
+                      : `${flag}${getPostDisplayName(snap.user, false)}`;
+                    return (
+                  <View style={s.storyNameRow}>
+                    {mine && snap._isDaily && (
+                      // RNSVG 터치삼킴 방어 — 부모가 터치 대상이라 pointerEvents none View로 감싼다
+                      <View pointerEvents="none"><HomeIcon size={10} color="#A1A1B0" /></View>
+                    )}
+                    <Text
+                      style={[
+                        s.storyName,
+                        mine && snap._isDaily && s.storyNameWithIcon,
+                        // 아이디 폰트(프리미엄)는 아이디를 그리는 타인 링에만(서버 handle_font)
+                        !mine && handleFontStyle(snap.user.font),
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                    );
+                  })()}
                 </TouchableOpacity>
                 );
               })}
@@ -3752,6 +3754,19 @@ const s = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
     width: 68,
+  },
+  // 일상 링의 집 아이콘 + 라벨을 한 줄로. 아이콘이 없을 때는 예전과 똑같이 보이도록
+  // 행 자체는 폭 68 고정이고 storyName의 width도 그대로 둔다.
+  storyNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 68,
+  },
+  // 아이콘이 붙는 경우에만 폭을 줄여 아이콘 자리를 만든다(아이콘 10 + 간격 3)
+  storyNameWithIcon: {
+    width: 55,
+    marginLeft: 3,
   },
   storyLiveDot: {
     position: 'absolute',

@@ -69,11 +69,27 @@ export interface SkinColorSet {
 // 스킨별 기본 활성화색 (MainScreen DS_PALETTES 기본색과 일치해야 함 — 채도 -15% 반영)
 const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#C88BF6', cyan: '#12CAE1', mint: '#8FF6BD' };
 
+/**
+ * 거주지 시·도 — 소셜 탭의 '일상' 링 판정 기준(설계 2026-09-12).
+ * `nameEn`은 constants/homeRegions의 규약대로 **지역 코드**('KR-11' / 'JP-14')이고,
+ * GPS 도시명을 정규화하지 못했을 때만 원문 도시명이 양쪽에 들어간다.
+ */
+export interface HomeRegionPref {
+  name: string;
+  nameEn: string;
+}
+
 interface SettingsContextType {
   showCounts: boolean;
   setShowCounts: (v: boolean) => void;
   homeCountryCode: string;
   setHomeCountryCode: (v: string) => void;
+  /** 거주지 시·도 (미설정이면 null) */
+  homeRegion: HomeRegionPref | null;
+  setHomeRegion: (v: HomeRegionPref | null) => void;
+  /** 거주 지역 제안 시트를 이미 띄웠는가 — 로컬 전용(서버 백업 제외) */
+  homeRegionPromptShown: boolean;
+  setHomeRegionPromptShown: (v: boolean) => void;
   snapEnabled: boolean;
   setSnapEnabled: (v: boolean) => void;
   /** 촉각 피드백 — 끄면 utils/haptics의 전 호출부가 조용해진다(HapticsBridge가 전달) */
@@ -225,6 +241,8 @@ interface SettingsContextType {
 interface SettingsPersistPayload {
   showCounts: boolean;
   homeCountryCode: string;
+  homeRegion?: HomeRegionPref | null;   // 과거 저장본엔 없다
+  homeRegionPromptShown?: boolean;      // 과거 저장본엔 없다
   snapEnabled: boolean;
   hapticsEnabled?: boolean; // 과거 저장본엔 없을 수 있어 optional
   diaryCardMode: DiaryCardMode;
@@ -289,6 +307,15 @@ const SettingsContext = createContext<SettingsContextType | null>(null);
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [showCounts, setShowCounts] = useState(true);
   const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
+  const [homeRegion, setHomeRegion] = useState<HomeRegionPref | null>(null); // 거주지 시·도(미설정)
+  const [homeRegionPromptShown, setHomeRegionPromptShown] = useState(false); // 제안 시트 1회 노출용
+  // 거주 국가가 바뀌면 거주 지역은 의미를 잃는다 — KR의 '경기'는 JP에 없는 지역이고,
+  // 남겨 두면 '일상' 링 판정(스냅 저장 시점)이 옛 나라의 지역명과 대조해 영영 참이 되지 않는다.
+  // hydrate와 백업 복원은 원시 setter(setHomeCountryCode)를 직접 써 이 리셋을 타지 않는다.
+  const setHomeCountryCodeWithRegionReset = (v: string) => {
+    if (v !== homeCountryCode) setHomeRegion(null);
+    setHomeCountryCode(v);
+  };
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
   const [hapticsEnabled, setHapticsEnabled] = useState(true);    // 촉각 피드백(기본 켜짐)
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
@@ -421,6 +448,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     (p) => {
       setShowCounts(p.showCounts);
       setHomeCountryCode(p.homeCountryCode);
+      setHomeRegion(p.homeRegion ?? null);
+      setHomeRegionPromptShown(p.homeRegionPromptShown ?? false);
       setSnapEnabled(p.snapEnabled);
       setHapticsEnabled(p.hapticsEnabled ?? true); // 과거 저장본엔 없다 — 기본 켜짐
       setDiaryCardMode(p.diaryCardMode);
@@ -541,6 +570,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     () => ({
       showCounts,
       homeCountryCode,
+      homeRegion,
+      homeRegionPromptShown,
       snapEnabled,
       hapticsEnabled,
       diaryCardMode,
@@ -596,6 +627,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     [
       showCounts,
       homeCountryCode,
+      homeRegion,
+      homeRegionPromptShown,
       snapEnabled,
       hapticsEnabled,
       diaryCardMode,
@@ -674,6 +707,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const keepIdentity = opts?.keepIdentity === true;
     setShowCounts(true);
     setHomeCountryCode('KR');
+    setHomeRegion(null);
+    // 제안 시트 1회 플래그도 되돌린다 — 거주 지역이 비워졌으니 다시 물어봐야 한다
+    setHomeRegionPromptShown(false);
     setSnapEnabled(true);
     setHapticsEnabled(true);
     setDiaryCardMode('full');
@@ -740,6 +776,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
     showCounts, snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect,
+    // 거주지 시·도 — 거주 '국가'와 달리 profiles에 칸이 없어(서버 SQL 없이 도입) 여기 싣는다.
+    // 기기를 옮겨도 '일상' 링 판정이 살아 있어야 한다. homeRegionPromptShown은 로컬 전용이라 제외.
+    homeRegion,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
     taggedRegions, dismissedRegionTagChips, regionFavoriteCodes,
@@ -807,6 +846,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.qrDesign === 'string') setQrDesign(v.qrDesign);
     if (Array.isArray(v.verifiedNaverBlogIds)) setVerifiedNaverBlogIds(v.verifiedNaverBlogIds);
     if (typeof v.handleLastChanged === 'number') setHandleLastChanged(v.handleLastChanged);
+    // 거주 지역 — null도 유효한 값(미설정)이라 'homeRegion' in v로 판정한다.
+    // typeof 검사로 거르면 다른 기기에서 지운 미설정 상태가 영영 안 넘어온다.
+    if ('homeRegion' in v) {
+      const hr = v.homeRegion;
+      setHomeRegion(hr && typeof hr.name === 'string' && typeof hr.nameEn === 'string'
+        ? { name: hr.name, nameEn: hr.nameEn } : null);
+    }
     if (typeof v.handleChosen === 'boolean') setHandleChosen(v.handleChosen);
     // 탭별 튜토리얼 — 신형 백업(tutorialsSeen 있음)은 서버값을 그대로 쓴다:
     // '튜토리얼 다시 보기'(리셋)도 백업에 실리므로, 병합(true 우선)하면 리셋이
@@ -836,7 +882,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         showCounts,
         setShowCounts,
         homeCountryCode,
-        setHomeCountryCode,
+        setHomeCountryCode: setHomeCountryCodeWithRegionReset,
+        homeRegion,
+        setHomeRegion,
+        homeRegionPromptShown,
+        setHomeRegionPromptShown,
         snapEnabled,
         setSnapEnabled,
         hapticsEnabled,
