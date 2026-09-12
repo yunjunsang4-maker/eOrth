@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { warn } from '../utils/haptics';
 import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 // 프로필은 탭을 오갈 때마다 같은 사진을 다시 그린다. RN Image는 화면을 벗어나면
 // 디코딩 결과를 잃어 재진입 때마다 늦게 뜨므로, 메모리·디스크 캐시가 있는 expo-image를 쓴다.
 import { Image } from 'expo-image';
@@ -17,6 +17,7 @@ import {
   Platform,
   Alert,
   Animated,
+  Easing,
   PanResponder,
   Dimensions,
   Linking,
@@ -1656,6 +1657,27 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, refreshMyPostCounts, syncMyRecords, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
   // 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사)
   const { label: dnaLabel, isComplete: dnaComplete } = useTravelDna();
+  // 미완료일 때만 칩을 은은하게 맥동시켜 검사를 유도한다 — 온보딩에서 축약 설문을 뺐으므로
+  // (첫 시작이 너무 길어져 제외) 이 칩이 성향 검사의 주 유도 지점이 된다
+  // (다른 유도는 메이트찾기의 DNA 배너 하나뿐이다).
+  // 반드시 네이티브 드라이버 — JS 드라이버로 무한 루프를 돌리면 프로필 탭에 머무는 내내
+  // JS 스레드를 60fps로 점유한다(MainCoachmark의 링 맥동과 같은 이유).
+  const dnaPulse = useRef(new Animated.Value(0)).current;
+  const dnaFocused = useIsFocused();
+  useEffect(() => {
+    // 완료됐거나 이 화면을 보고 있지 않으면 루프를 멈추고 정지 상태(불투명도 1 / scale 1 = 값 0)로.
+    // 프로필 탭은 첫 진입 후 앱이 끝날 때까지 마운트된 채 남으므로(unmountOnBlur/freezeOnBlur 없음)
+    // 포커스로 끊지 않으면 다른 탭에 있는 내내 900ms 루프가 영구히 돈다.
+    if (dnaComplete || !dnaFocused) { dnaPulse.setValue(0); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(dnaPulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(dnaPulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => { loop.stop(); dnaPulse.setValue(0); };
+  }, [dnaComplete, dnaFocused, dnaPulse]);
 
   const [staySheetVisible, setStaySheetVisible] = useState(false);
   const stayActive = activeStayGroup?.stay?.status === 'active';
@@ -2043,7 +2065,18 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 </Text>
               </TouchableOpacity>
               {/* 여행 DNA — 거주국 오른쪽. 완료: 유형 텍스트(탭→결과·재검사),
-                  미완료: 점선 빈 칩으로 빈자리를 보여줘 검사를 유도(탭→설문) */}
+                  미완료: 점선 빈 칩 + 은은한 맥동으로 검사를 유도(탭→설문).
+                  래퍼가 statusRow의 flex 자식이 되므로 flexShrink를 래퍼로 옮겨 받아
+                  긴 유형명이 들어와도 잘리는 동작이 래퍼 없을 때와 같게 한다. */}
+              <Animated.View
+                style={[
+                  styles.dnaChipPulseWrap,
+                  {
+                    opacity: dnaPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 0.45] }),
+                    transform: [{ scale: dnaPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] }) }],
+                  },
+                ]}
+              >
               <TouchableOpacity
                 style={[
                   styles.dnaChip,
@@ -2063,6 +2096,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
                 </Text>
               </TouchableOpacity>
+              </Animated.View>
             </View>
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
@@ -2557,6 +2591,11 @@ const styles = StyleSheet.create({
   },
   // 여행 DNA 칩 — 소개(bio)의 marginBottom(-15)이 statsRow(marginTop 23)를 겨냥해 튜닝돼
   // 있던 값이라, 칩이 그 사이에 끼면서 marginTop을 23으로 두어 동일한 시각적 간격(≈8)을 물려받는다.
+  // 맥동 래퍼 — statusRow에서 칩이 갖고 있던 축소 특성을 그대로 이어받는다
+  // (래퍼가 안 줄어들면 긴 유형명일 때 칩이 오른쪽으로 밀려나간다)
+  dnaChipPulseWrap: {
+    flexShrink: 1,
+  },
   dnaChip: {
     flexDirection: 'row',
     alignItems: 'center',

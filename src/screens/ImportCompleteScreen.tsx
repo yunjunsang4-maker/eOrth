@@ -83,11 +83,11 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       : t('imports.icTripSingle', { flag: lead.flag, name: lead.name })
     : t('imports.icTripNone', { count: tripCount });
 
-  // "이어스 시작하기" → 온보딩 경로는 축약판 여행 DNA 설문으로, 결과 화면(Task 7)이
-  // startTutorial 플래그와 함께 메인 스택 리셋을 이어받는다
-  // 온보딩 마지막 단계 — 설문 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
+  // "이어스 시작하기" → 온보딩 경로는 메이트 추천 동의 화면으로 곧장 간다.
+  // 그 화면의 finish()가 startTutorial 플래그와 함께 메인 스택을 리셋한다(첫 진입 코치마크).
+  // 온보딩 마지막 단계 — 다음 화면 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
   const startEorth = async () => {
-    // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청·설문 없이
+    // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청 없이
     // 원래 보던 화면으로 돌아간다. 스택에 남은 불러오기 단계들은 함께 정리한다.
     if (from === 'profile') {
       // 스택 루트(Main)로 — 탭 상태는 그대로라 프로필 탭으로 돌아간다.
@@ -96,9 +96,10 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       return;
     }
     await requestNotificationPermission().catch(() => {});
-    // 온보딩 마지막 — 축당 1문항(약 40초)만 받는다. 36문항 전체는 여기 넣기엔 길다.
-    // 건너뛰면 결과 없이 메인으로 가고, 메이트찾기 배너가 나중에 회수한다.
-    navigation.replace('TravelDnaSurvey', { mode: 'onboarding' });
+    // 여기 있던 축약판 여행 DNA 설문(축당 1문항)은 제외했다 — 가입~과거여행 불러오기까지가
+    // 이미 길어서 첫 시작이 지친다. 성향 검사는 프로필의 DNA 칩(미완료면 맥동)이 유도한다.
+    // 설문을 '전부 건너뛴' 것과 같은 경로로, 온보딩 종점인 동의 화면이 메인 리셋을 수행한다.
+    navigation.replace('MateRecoConsent');
   };
 
   return (
