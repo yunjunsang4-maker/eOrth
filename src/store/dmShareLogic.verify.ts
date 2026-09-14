@@ -8,11 +8,24 @@ function assert(cond: boolean, msg: string) {
   else { failures++; console.error('  ✗ ' + msg); }
 }
 
-// nowTimeString
+// nowTimeString — 언어별 오전/오후 위치가 다르다(ko: 앞, en: 뒤)
 {
-  assert(nowTimeString(new Date(2025, 0, 1, 9, 5)) === '오전 9:05', '오전 시간 포맷');
-  assert(nowTimeString(new Date(2025, 0, 1, 14, 30)) === '오후 2:30', '오후 시간 포맷');
-  assert(nowTimeString(new Date(2025, 0, 1, 0, 0)) === '오전 12:00', '자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ko') === '오전 9:05', 'ko 오전 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'ko') === '오후 2:30', 'ko 오후 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'ko') === '오전 12:00', 'ko 자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'ko') === '오후 12:00', 'ko 정오 12시');
+
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'en') === '9:05 AM', 'en 오전 — AM은 뒤에');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'en') === '2:30 PM', 'en 오후 — PM은 뒤에');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'en') === '12:00 AM', 'en 자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'en') === '12:00 PM', 'en 정오 12시');
+  // 'en-US' 같은 지역 태그도 영어로 잡혀야 한다 (i18n.language가 항상 2글자는 아니다)
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'en-US') === '9:05 AM', 'en-US도 영어 포맷');
+
+  // 미지의 언어는 ko로 떨어진다. 검증은 노드에서 i18next 초기화 없이 돌므로
+  // 인자를 생략한 호출도 같은 ko 폴백을 탄다.
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'fr') === '오전 9:05', '미지의 언어 → ko 폴백');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5)) === '오전 9:05', 'lang 생략 — 초기화 전이면 ko');
 }
 
 // buildSharedRecord

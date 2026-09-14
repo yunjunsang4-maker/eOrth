@@ -2311,6 +2311,35 @@ const en = {
     n128: 'France tour', d128: 'Visited multiple regions of France',
     n129: 'Italy tour', d129: 'Visited multiple regions of Italy',
   },
+  // Currency display names — the code list itself lives in constants/currencies.ts.
+  // Do not use Intl.DisplayNames (Hermes/RN ships no locale data; it returns empty strings).
+  currency: {
+    EUR: 'Euro (EU)',
+    CNY: 'Yuan (China)',
+    GBP: 'Pound (UK)',
+    AUD: 'Australian Dollar',
+    CAD: 'Canadian Dollar',
+    CHF: 'Swiss Franc',
+    HKD: 'Hong Kong Dollar',
+    SGD: 'Singapore Dollar',
+    THB: 'Baht (Thailand)',
+    VND: 'Dong (Vietnam)',
+    MYR: 'Ringgit (Malaysia)',
+    PHP: 'Peso (Philippines)',
+    IDR: 'Rupiah (Indonesia)',
+    INR: 'Rupee (India)',
+    TRY: 'Lira (Turkiye)',
+    MXN: 'Peso (Mexico)',
+    BRL: 'Real (Brazil)',
+    AED: 'Dirham (UAE)',
+    NZD: 'New Zealand Dollar',
+    SEK: 'Krona (Sweden)',
+    NOK: 'Krone (Norway)',
+    DKK: 'Krone (Denmark)',
+    CZK: 'Koruna (Czechia)',
+    HUF: 'Forint (Hungary)',
+    PLN: 'Zloty (Poland)',
+  },
 } as const;
 
 export default en;

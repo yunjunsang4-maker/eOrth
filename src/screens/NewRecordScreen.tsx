@@ -25,6 +25,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
+import { defaultCurrencyForCountry } from '../constants/currencies';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { DEFAULT_PHOTO_FRAME, normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
@@ -815,7 +816,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [budget,     setBudget]     = useState(
     editRecord?.budget ? String(editRecord.budget.amount) : tripPrefill?.budget ? String(tripPrefill.budget.amount) : ''
   );
-  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? 'KRW');
+  // 아무것도 안 고른 상태의 출발 통화는 거주국 기준 — 'KRW' 고정은 해외 거주자에게 틀린 값이었다.
+  // (국가를 고르면 바로 아래 자동 추천 useEffect가 덮는다)
+  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? defaultCurrencyForCountry(homeCountryCode));
   // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
   // (편집 모드·여행 카드 프리필로 통화가 이미 정해진 경우도 수동 취급)
   const currencyTouchedRef = useRef(isEdit || !!tripPrefill?.budget);

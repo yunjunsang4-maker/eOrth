@@ -35,6 +35,8 @@ import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
+import { OTHER_CURRENCIES, currencyName, defaultCurrencyForCountry } from '../constants/currencies';
+import { useSettings } from '../store/settingsStore';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
 import AutoTocModal from '../components/AutoTocModal';
@@ -133,25 +135,7 @@ const FONT_SIZE_KEY: Record<number, string> = {
   22: 'comp2.fontSizeXLarge', 26: 'comp2.fontSizeHeading',
 };
 
-const OTHER_CURRENCIES = [
-  { code: 'EUR', name: '유로 (EU)' },
-  { code: 'CNY', name: '위안 (중국)' },
-  { code: 'GBP', name: '파운드 (영국)' },
-  { code: 'AUD', name: '호주 달러' },
-  { code: 'CAD', name: '캐나다 달러' },
-  { code: 'CHF', name: '스위스 프랑' },
-  { code: 'HKD', name: '홍콩 달러' },
-  { code: 'SGD', name: '싱가포르 달러' },
-  { code: 'THB', name: '바트 (태국)' },
-  { code: 'VND', name: '동 (베트남)' },
-  { code: 'MYR', name: '링깃 (말레이시아)' },
-  { code: 'PHP', name: '페소 (필리핀)' },
-  { code: 'IDR', name: '루피아 (인도네시아)' },
-  { code: 'INR', name: '루피 (인도)' },
-  { code: 'TRY', name: '리라 (튀르키예)' },
-  { code: 'AED', name: '디르함 (UAE)' },
-  { code: 'NZD', name: '뉴질랜드 달러' },
-];
+// OTHER_CURRENCIES 목록·표시 이름은 constants/currencies 로 이동(모달 쪽 배열과 항목 수가 어긋나 있었다)
 
 // ─── 공개 범위 아이콘 ───
 // 기본 이모지(🏡/🔒)는 기기 폰트마다 모양·크기가 달라 옆의 동행자 칩과 톤이 어긋났다.
@@ -353,6 +337,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
+  // 아무것도 안 고른 상태의 출발 통화는 거주국 기준 — 'KRW' 고정은 해외 거주자에게 틀린 값이었다.
+  // (여행국이 정해지면 아래 자동 추천 useEffect가 덮는다)
+  const { homeCountryCode } = useSettings();
+  const homeCurrency = defaultCurrencyForCountry(homeCountryCode);
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -510,7 +498,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [weather, setWeather] = useState(editRecord?.weather ?? tripPrefill?.weather ?? '');
   const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : tripPrefill?.budget ? String(tripPrefill.budget.amount) : '');
-  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? 'KRW');
+  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? homeCurrency);
   // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
   // (편집 모드·여행 카드 프리필로 통화가 이미 정해진 경우도 수동 취급)
   const currencyTouchedRef = useRef(isEdit || !!tripPrefill?.budget);
@@ -769,7 +757,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setVisibility(draft.visibility ?? 'neighbors');
     setWeather(draft.weather || '');
     setBudget(draft.budget ? String(draft.budget.amount) : '');
-    chooseCurrency(draft.budget?.currency || 'KRW');
+    chooseCurrency(draft.budget?.currency || homeCurrency);
     setFlightType(draft.flightType || '');
     setKeywords(normalizeKeywords(draft.keywords));
     if (draft.mediaPrivacy && draft.mediaPrivacy[0]) {
@@ -1988,7 +1976,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     autoFocus
                   />
                   <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                    {/* 검색 대상은 현재 언어로 보이는 이름 — 영어 모드에서 'Euro'로 못 찾으면 없는 줄 안다 */}
                     {OTHER_CURRENCIES
+                      .map(code => ({ code, name: currencyName(code, t) }))
                       .filter(c => {
                         const q = currencySearch.trim().toLowerCase();
                         return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);

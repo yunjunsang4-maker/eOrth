@@ -17,6 +17,7 @@ import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { select, warn } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
@@ -49,9 +50,11 @@ const dayKey = (ts?: number): string | null => {
   const d = new Date(ts);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 };
-const dayLabel = (key: string): string => {
+// 'M월 D일'을 박아 두면 영어 모드에서도 한글이 샌다. 언어별 배치는 time.monthDay 키가 정한다
+// (ko: '{{m}}월 {{d}}일' / en: '{{m}}/{{d}}'). NoticeScreen.formatDate 와 같은 방식.
+const dayLabel = (key: string, t: TFunction): string => {
   const [, m, d] = key.split('.');
-  return `${Number(m)}월 ${Number(d)}일`;
+  return t('time.monthDay', { m: Number(m), d: Number(d) });
 };
 
 // 빈 trips 방어용 자리표시자 — 훅 순서를 지키기 위해서만 쓰이고 화면에 그려지지는 않는다
@@ -582,7 +585,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
                   onPress={() => setDayFilter(d)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayLabel(d)}</Text>
+                  <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayLabel(d, t)}</Text>
                 </TouchableOpacity>
               );
             })}

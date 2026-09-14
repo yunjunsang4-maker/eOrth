@@ -18,6 +18,7 @@ import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { GlassButton } from '../components/ui';
 import { useRecords } from '../store/recordStore';
@@ -57,9 +58,11 @@ const dayKey = (ts?: number): string | null => {
   const d = new Date(ts);
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 };
-const dayLabel = (key: string): string => {
+// 'M월 D일'을 박아 두면 영어 모드에서도 한글이 샌다. 언어별 배치는 time.monthDay 키가 정한다
+// (ko: '{{m}}월 {{d}}일' / en: '{{m}}/{{d}}'). NoticeScreen.formatDate 와 같은 방식.
+const dayLabel = (key: string, t: TFunction): string => {
   const [, m, d] = key.split('.');
-  return `${Number(m)}월 ${Number(d)}일`;
+  return t('time.monthDay', { m: Number(m), d: Number(d) });
 };
 
 const fmtDate = (d: Date) =>
@@ -814,7 +817,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                   onPress={() => setDayFilter(d)}
                   activeOpacity={0.8}
                 >
-                  <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayLabel(d)}</Text>
+                  <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayLabel(d, t)}</Text>
                 </TouchableOpacity>
               );
             })}
