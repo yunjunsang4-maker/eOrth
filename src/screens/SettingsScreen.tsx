@@ -65,7 +65,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // 개인정보처리방침·이용약관 게시 URL — 가입 화면과 공유하므로 constants/legalLinks 가 단일 출처
-import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
+import { privacyPolicyUrl, termsUrl } from '../constants/legalLinks';
 // 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
 const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
@@ -391,17 +391,19 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     );
   };
 
-  // 개인정보처리방침 — 게시된 웹 페이지를 인앱 브라우저로 열기
+  // 개인정보처리방침 — 게시된 웹 페이지를 인앱 브라우저로 열기 (앱 언어에 맞는 번역본)
   const handleOpenPrivacyPolicy = () => {
-    WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch(() => {
-      Alert.alert(t('settings.privacyPolicy'), PRIVACY_POLICY_URL);
+    const url = privacyPolicyUrl(i18n.language);
+    WebBrowser.openBrowserAsync(url).catch(() => {
+      Alert.alert(t('settings.privacyPolicy'), url);
     });
   };
 
   // 이용약관 — 방침과 동일하게 게시 페이지를 인앱 브라우저로 열기
   const handleOpenTerms = () => {
-    WebBrowser.openBrowserAsync(TERMS_URL).catch(() => {
-      Alert.alert(t('settings.terms'), TERMS_URL);
+    const url = termsUrl(i18n.language);
+    WebBrowser.openBrowserAsync(url).catch(() => {
+      Alert.alert(t('settings.terms'), url);
     });
   };
 

@@ -9,6 +9,7 @@ export const PUBLISHED_FILES = [
   'terms.html',
   'privacy-policy.html',
   'privacy-policy-en.html',  // 영문 스토어 로케일용 번역(한국어 원문이 정본)
+  'terms-en.html',           // 영문 이용약관(한국어 원문이 정본) — 앱이 영어일 때 여는 주소
   'support-en.html',         // App Store 영문 지원 URL
   'account-deletion.html',   // 스토어 데이터 안전 양식의 '계정 삭제 요청 URL'(Play 필수 입력란)
   'notices.json',

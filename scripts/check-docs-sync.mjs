@@ -64,11 +64,19 @@ for (const base of ['terms', 'privacy-policy']) {
     if (mi < 0) return null;
     return `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
   };
-  const ko = normDate(headerEffectiveDate(read('privacy-policy.md')));
-  const en = enDate(read('privacy-policy-en.html'));
-  if (!ko || !en) bad(`privacy-policy-en: 시행일을 읽지 못했습니다 (ko=${ko} en=${en})`);
-  else if (ko !== en) bad(`privacy-policy-en: 한국어 원문과 시행일 불일치 — ko=${ko}, en=${en} (번역본만 안 고쳤을 가능성)`);
-  else ok(`privacy-policy-en 시행일 일치: ${en}`);
+  // 번역본이 늘어날 때 한 쌍만 검사하고 나머지가 조용히 낡는 것을 막으려고 목록으로 둔다.
+  const PAIRS = [
+    ['privacy-policy.md', 'privacy-policy-en.html'],
+    ['terms.md',          'terms-en.html'],
+  ];
+  for (const [koFile, enFile] of PAIRS) {
+    const base = enFile.replace(/\.html$/, '');
+    const ko = normDate(headerEffectiveDate(read(koFile)));
+    const en = enDate(read(enFile));
+    if (!ko || !en) bad(`${base}: 시행일을 읽지 못했습니다 (ko=${ko} en=${en})`);
+    else if (ko !== en) bad(`${base}: 한국어 원문과 시행일 불일치 — ko=${ko}, en=${en} (번역본만 안 고쳤을 가능성)`);
+    else ok(`${base} 시행일 일치: ${en}`);
+  }
 }
 
 // ── 2. notices.json이 유효하고 약관 공지가 약관 시행일과 맞는가 ──

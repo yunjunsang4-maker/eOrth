@@ -32,7 +32,7 @@ import Svg, {
   Rect as SvgRect,
 } from 'react-native-svg';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
+import { privacyPolicyUrl, termsUrl } from '../constants/legalLinks';
 import * as WebBrowser from 'expo-web-browser';
 import { EorthLogo } from '../components/EorthLogo';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -126,7 +126,8 @@ type Props = RootStackScreenProps<'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  // i18n.language는 약관·방침의 한/영 게시본을 고르는 데 쓴다(legalLinks).
+  const { t, i18n } = useTranslation();
   const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
@@ -736,7 +737,7 @@ export default function LoginScreen({ navigation }: Props) {
           <View style={styles.legalBox}>
             <TouchableOpacity
               style={styles.legalRow}
-              onPress={() => openLegal(TERMS_URL)}
+              onPress={() => openLegal(termsUrl(i18n.language))}
               accessibilityRole="link"
               accessibilityLabel={`${t('settings.termsTitle')} ${t('login.legalView')}`}
             >
@@ -749,7 +750,7 @@ export default function LoginScreen({ navigation }: Props) {
             <View style={styles.legalDivider} />
             <TouchableOpacity
               style={styles.legalRow}
-              onPress={() => openLegal(PRIVACY_POLICY_URL)}
+              onPress={() => openLegal(privacyPolicyUrl(i18n.language))}
               accessibilityRole="link"
               accessibilityLabel={`${t('settings.privacyPolicy')} ${t('login.legalView')}`}
             >
