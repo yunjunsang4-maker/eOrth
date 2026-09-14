@@ -80,25 +80,31 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 6건 (2026-08-13 실측 기준 3건 + 2026-09-08 추가 2건 + 2026-09-09 추가 1건; 2026-09-11 추가 1건은 당일 반영 완료)
+## 1. 지금 해야 하는 것 — 0건 (2026-09-14 정리: 이 절의 ⏳ 전부 2026-09-11~14에 반영 완료)
 
-**남은 것은 아래 셋 + 2026-09-08 델타 둘 + 2026-09-09 델타 하나, 합쳐서 6건이다.**
-①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
-②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
-`PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
+**①`birthday`·`gender` 2차 drop도 2026-09-14 실행 완료** — 운영은 REST 프로브로 두 컬럼 42703(없음) 확인, 테스트는 사용자 실행.
+실행 근거: 옛 코드는 8월 중순 이후 OTA로 살아 있는 런타임(1.1.0·1.1.1) 전부에서 교체됐고, 앱·Edge Function 어디에도 두 컬럼 참조가 남아 있지 않았다(grep 확인).
+실행 뒤 `onboarded_at is null` 3행은 **온보딩을 끝내지 않은 가입자**(handle 없음, 8/29·9/10·9/10 가입)라 정상 — 옛 판정에서도 미완료였다.
+②`purge-probe-guard` 잡과 ③`delete-account` 재배포 + `PURGE_SECRET`은 **2026-09-14 운영 반영·실측 완료**
+(`cron.job` 2행 active / sweep 실측 200 `{"ok":true}` / delete-account v8). 1-1절 참조.
 그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
 
 **2026-09-08 삭제 전파 1차(tombstone 도입)는 같은 날 실행·확인 완료됐다 — 바로 아래 ✅.**
 **그 후속(집계 함수 5개 + purge cron)도 2026-09-08 운영·테스트 양쪽 실행·확인 완료 — 그 아래 절.**
-**같은 날의 ⏳ 미반영 2건이 바로 아래에 있다 — ①사용자 간 전파(수락 알림 정리 + 공개 전환 알림),
-②여행 카드 기기 간 동기화(`user_trip_cards` 신규 표).**
-**2026-09-09 추가 ⏳ 1건 — ③댓글 @언급 알림(`mention` 타입 + `notify_on_mention` 트리거).
-이건 `send-push` 재배포도 함께 필요하다.**
+**같은 날의 2건 — ①사용자 간 전파(수락 알림 정리 + 공개 전환 알림) ✅ 2026-09-14 양쪽 실행·확인 쿼리 통과(사용자 실행),
+②여행 카드 기기 간 동기화(`user_trip_cards`) ✅ 반영 완료.**
+**2026-09-09 추가 — ③댓글 @언급 알림 ✅ 2026-09-14 양쪽 SQL 실행·확인 쿼리 1·2·3 통과 + `send-push` 양쪽 재배포(09-13 23:51 UTC).**
+**2026-09-13 추가 — ④푸시 문구 언어 분기(`push_tokens.lang`) ✅ 2026-09-14 양쪽 컬럼 추가(사용자 실행, 운영은 REST 프로브 200 확인).
+⚠️ 순서가 뒤집혀 나갔다 — `send-push` 가 09-13 23:51 UTC 에 **작업 트리의 미커밋 lang 변경을 실은 채** 먼저 배포돼,
+컬럼이 들어간 09-14 아침까지 약 9시간 동안 모든 푸시가 42703 으로 멈춰 있었다. 아래 절 참조.**
 **2026-09-11 추가 → 같은 날 ✅ 반영 완료 — ④기기 간 동기화의 실시간 트리거(`user_sync_signals` 신규 표 +
 `bump_sync_signal` 트리거 3개 + **publication 등재**). 완전 동기화 5단계이고, 앞선 1~4단계와 달리
 이번엔 publication 등재를 빠뜨리면 나머지가 다 맞아도 조용히 아무 일도 일어나지 않는다.**
 
-### ⏳ 미반영(실행 대기) — 사용자 간 전파: 수락 시 신청 알림 정리 + 공개 전환 시 이웃 알림 (2026-09-08 추가)
+### ✅ 반영 완료(2026-09-14 운영·테스트 양쪽, 사용자 실행) — 사용자 간 전파: 수락 시 신청 알림 정리 + 공개 전환 시 이웃 알림 (2026-09-08 추가)
+
+> 2026-09-14 양쪽에서 델타 재실행 + 확인 쿼리(accept_neighbor has_cleanup / friend_post 트리거 2개) 통과를 사용자가 확인.
+> 공개 전환 이웃 알림은 그 전인 09-12 운영 REST 프로브에서 `friend_post` 알림 11건이 이미 쌓여 있어 실동작도 확인됐다.
 
 > **2026-09-09 부분 확인 — 한 프로젝트(어느 쪽인지 사용자 확인 대기)에서 확인 쿼리 2번(가드 true/true)·
 > 3번(트리거 2개) 통과. 1번(`accept_neighbor` has_cleanup)과 다른 쪽 프로젝트, "새 글 → 이웃 알림 도착"
@@ -232,7 +238,10 @@ select policyname, cmd, qual, with_check from pg_policies where tablename='user_
 카드 1장을 upsert → 프로브에 뜨는지 → tombstone이 통과하는지까지 봐야 확정된다
 (posts의 컬럼 권한 함정이 정확히 "객체는 있는데 안 도는" 사례였다).
 
-### ⏳ 미반영(실행 대기) — 댓글 @언급 알림: `mention` 타입 + `notify_on_mention` 트리거 (2026-09-09 추가)
+### ✅ 반영 완료(2026-09-14 운영·테스트 양쪽) — 댓글 @언급 알림: `mention` 타입 + `notify_on_mention` 트리거 (2026-09-09 추가)
+
+> 확인 쿼리 1번(type_check 에 'mention') · 2번(함수 4컬럼 all true) · 3번(comments 트리거 2개) 통과 — 사용자가 붙여준 결과로 확인.
+> `send-push` 는 운영 v5→v6 · 테스트 v2 로 09-13 23:51 UTC 재배포(`functions list` 로 확인). 실기기 눈 확인(@아이디 → 알림·푸시 도착)은 미완.
 
 > **아직 아무 프로젝트에도 실행하지 않았다.** 발췌본:
 > `supabase/migration-2026-09-09-comment-mentions.sql` (schema.sql과 동일 내용).
@@ -318,6 +327,86 @@ select tgname, pg_get_triggerdef(oid) as def
 `exception when others then return null`이 있어 함수 안의 어떤 오류도 **조용히 삼켜진다**
 (댓글 저장은 성공한다). 위 `pg_get_functiondef` 검사는 정의문이 들어갔는지만 보므로
 이 증상을 잡지 못한다. 제외 규칙 ③ 때문에 **글 작성자와 서로이웃인 계정**으로 시험해야 한다.
+
+### ✅ 컬럼 반영 완료(2026-09-14 운영·테스트 양쪽, 사용자 실행) — 푸시 문구 언어 분기: `push_tokens.lang` 컬럼 (2026-09-13 추가)
+
+> **2026-09-14 실행됨** — 운영은 REST 프로브(`push_tokens?select=lang` → 200)로 확인, 테스트는 사용자 확인.
+> ⚠️ **사고 기록:** 아래 "순서가 강제된다" 경고가 실제로 터졌다. 다른 세션이 09-13 16:47 KST 에 작업 트리의 `send-push/index.ts` 에 lang 변경을
+> 넣어 둔 상태에서, @언급 건으로 09-13 23:51 UTC 에 `functions deploy send-push` 가 실행돼 그 미커밋 변경이 함께 올라갔다.
+> `supabase functions deploy` 는 **커밋이 아니라 작업 트리를 배포한다**(`eas update` 와 같다). 컬럼이 없어 `select('token, prefs, lang')` 이
+> 42703 으로 실패 → 09-14 아침 컬럼 추가까지 **모든 푸시 중단**. 앞으로 함수 배포 직전 `git status --porcelain supabase/functions/<fn>` 을
+> 같은 명령 안에서 게이트로 걸 것. 앱 쪽 lang 동기화 OTA 는 아직이며(구 번들은 null → 한국어 폴백) 그건 이 절 소유 세션의 몫이다.
+>
+> (원문 유지) **아직 아무 프로젝트에도 실행하지 않았다.** 발췌본:
+> `supabase/migration-2026-09-13-push-lang.sql` (schema.sql 10-a 절과 동일 내용).
+>
+> ⚠️ **운영(`blweolnunmsxgztmvzfd`)과 테스트(`bqwmxxhtsvfuyywfuswo`) 양쪽 모두에서 실행할 것.**
+> 베타 앱은 테스트 프로젝트를 본다.
+>
+> ⚠️ **`supabase functions deploy send-push` 재배포가 함께 필요하고, 순서가 강제된다 —
+> SQL 먼저, 함수 나중.** 새 함수는 `select('token, prefs, lang')` 으로 조회하므로 컬럼이
+> 없는 프로젝트에 함수만 먼저 배포하면 42703 으로 **푸시가 통째로 멈춘다.**
+> 반대로 SQL 만 먼저 들어가는 것은 완전히 무해하다(아무 변화 없음).
+>
+> ⚠️ **전제(확장·pg_cron) 없다. RLS·권한 변경도 없다** — 아래 "왜 손댈 것이 없나" 참조.
+>
+> ⚠️ **앱 배포 순서 제약 없음.** 컬럼이 null 허용이고 함수가 null 을 한국어로 폴백하므로,
+> 구 번들이 등록한 토큰은 종전대로 한국어를 받는다. 새 번들이 upsert 할 때 값이 채워진다.
+
+**왜 필요한가.** `send-push` 가 알림 문구 8종(+DM 1종)을 전부 한국어로 하드코딩하고 있었다.
+근본 원인은 **서버가 수신자 언어를 알 방법이 없다**는 것 — 앱은 `settingsStore.language` 로
+ko/en 을 알지만 그 값이 서버로 간 적이 없다.
+
+**왜 `profiles` 가 아니라 `push_tokens` 인가.** ① 언어는 계정이 아니라 **기기** 설정이다
+(같은 계정의 아이폰=영어 / 안드로이드=한국어가 실제로 가능하고, 그러면 기기마다 다른 문구로
+가야 맞다). ② 발송 경로 두 곳(`handleDm` · 메인 핸들러)이 **이미** `push_tokens` 를 조회하고
+있어 조인이 늘지 않는다.
+
+실행할 것 — `schema.sql` 10-a 절에 반영돼 있고 재실행 안전(멱등):
+
+| # | 무엇 | schema.sql 위치 | 빠뜨리면 |
+|---|---|---|---|
+| 1 | `alter table public.push_tokens add column if not exists lang text` | 10-a 절(`idx_push_tokens_user` 바로 아래) | 새 `send-push` 의 `select('token, prefs, lang')` 이 42703 으로 실패 → **모든 푸시 중단** |
+
+**왜 손댈 것이 없나(RLS·권한).** 정책이 `push_tokens_all_own` 하나뿐이고
+`for all … using (user_id = auth.uid())` 라 컬럼이 늘어도 그대로 통과한다. `posts` 와 달리
+`push_tokens` 에는 컬럼 단위 `grant update (...)` 가 걸려 있지 않아(`schema.sql` 전체에 없다),
+2026-09-08 삭제 전파에서 겪었던 "권한 목록에 빠져 조용히 permission denied" 함정이
+여기에는 해당되지 않는다. 확인 쿼리 3번이 그 전제를 실제로 검사한다.
+
+앱 쪽 짝(이번 변경에 포함, OTA 필요):
+
+| 파일 | 무엇 |
+|---|---|
+| `src/services/pushToken.ts` | `normalizePushLang()` — `'ko'` 로 시작하면 ko, 그 외 전부 en. `registerPushToken(prefs, lang)` · `syncPushPrefs(prefs, lang)` 가 `lang` 도 함께 쓴다 |
+| `src/components/PushTokenSync.tsx` | `settingsStore.language` 변화도 2초 디바운스 동기화 대상에 추가 |
+| `supabase/functions/send-push/index.ts` | `toLang(row.lang)` — 토큰(=기기) **행마다** 언어를 적용해 메시지를 만든다 |
+
+반영 확인 쿼리:
+```sql
+-- 1번: lang 한 줄. is_nullable 이 YES 여야 한다(구 번들 호환의 전제)
+select column_name, data_type, is_nullable
+  from information_schema.columns
+ where table_schema = 'public' and table_name = 'push_tokens' and column_name = 'lang';
+
+-- 2번: 정책은 push_tokens_all_own 하나, cmd = ALL
+select policyname, cmd, qual, with_check
+  from pg_policies
+ where schemaname = 'public' and tablename = 'push_tokens';
+
+-- 3번: **행이 하나도 안 나와야 한다.** 나오면 컬럼 단위 UPDATE 권한이 걸려 있다는 뜻
+select column_name from information_schema.column_privileges
+ where table_schema = 'public' and table_name = 'push_tokens'
+   and grantee = 'authenticated' and privilege_type = 'UPDATE';
+
+-- 4번: 앱 배포 후 값이 실제로 들어오는지 (배포 전에는 전부 null 이 정상)
+select lang, count(*) from public.push_tokens group by lang order by lang nulls first;
+```
+
+⚠️ **확인 쿼리만으로는 부족하다.** 위 넷이 다 통과해도 "영어 기기에 영어 푸시가 간다"는
+증명되지 않는다 — SQL·함수 재배포·새 앱 번들 셋이 모두 있어야 보인다. 앱 설정에서 언어를
+English 로 바꾸고 2초 이상 기다린 뒤(PushTokenSync 디바운스) 4번 쿼리에 `en` 이 잡히는지,
+그 다음 다른 계정으로 좋아요를 눌러 영어 문구가 오는지 **눈으로** 확인할 것.
 
 ### ✅ 반영 완료(2026-09-11 운영·테스트 양쪽) — 기기 간 동기화의 실시간 트리거: `user_sync_signals` 신규 표
 
@@ -836,7 +925,12 @@ select tablename from pg_publication_tables where pubname = 'supabase_realtime'
 클라이언트 짝(같은 커밋): requestNeighbor 23505 수렴, DM 스레드 시드(재설치 복원),
 fetchMyLikesFor 청크화 — 서버 재실행 없이도 동작하지만 1·4·5의 효과는 재실행이 전제다.
 
-### ⏳ `delete-account` 재배포 + `PURGE_SECRET` 등록 (코드는 커밋됐고 서버 반영만 남음)
+### ✅ 반영 완료(2026-09-14 운영) — `delete-account` 재배포 + `PURGE_SECRET` 등록
+
+> 09-14 실측: `PURGE_SECRET` 함수 등록 + delete-account v8 배포(00:59 UTC) + Vault `purge_secret`(64자, 안전문자만 true) +
+> `cron-setup.sql` 3) 재등록 + 2-a) `purge-probe-guard` 등록(`cron.job` 2행 active) + sweep 실측 **200 `{"ok":true,"purged":0,"failed":0}`**.
+> 첫 시도에서 Vault 값에 자리표시자 문자가 섞여 안전문자 검사가 false 였다 — `delete from vault.secrets where name='purge_secret'` 후 재생성으로 해결.
+> 테스트 프로젝트는 pg_cron 이 없어 대상 아님(폴백 인가로 동작).
 
 sweep 인증을 플랫폼 키(`SUPABASE_SERVICE_ROLE_KEY`)와의 문자열 비교에서 **우리가 정하는
 `PURGE_SECRET`** 으로 옮겼다. 아래 표의 "왜"는 바로 다음 절에 있다.
