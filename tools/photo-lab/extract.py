@@ -115,8 +115,17 @@ def read_exif(path, img):
     return ctime, loc
 
 
-def scan(photo_dir):
-    return sorted(p for p in Path(photo_dir).rglob('*') if p.suffix.lower() in EXTS)
+def scan(photo_dir, exclude_dir=None):
+    """하위 폴더까지. 출력 폴더가 사진 폴더 안(또는 같은 폴더)이면 그 썸네일은 스캔에서 뺀다."""
+    ex = (Path(exclude_dir) / 'thumbs').resolve() if exclude_dir else None
+    out = []
+    for p in Path(photo_dir).rglob('*'):
+        if p.suffix.lower() not in EXTS:
+            continue
+        if ex and ex in p.resolve().parents:
+            continue
+        out.append(p)
+    return sorted(out)
 
 
 def make_thumb(img, out_path):
@@ -224,7 +233,7 @@ def main():
     if not a.force and sig_path.exists():
         cache = json.loads(sig_path.read_text('utf-8')).get('cache', {})
 
-    files = scan(a.photo_dir)
+    files = scan(a.photo_dir, out)
     if not files:
         print(f'사진이 없습니다: {a.photo_dir}', file=sys.stderr)
         sys.exit(1)
