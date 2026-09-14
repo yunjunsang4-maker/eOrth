@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -9,11 +9,13 @@ import {
   PanResponder,
   Platform,
 } from 'react-native';
-import { select } from '../../utils/haptics';
+import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import { select, grab } from '../../utils/haptics';
 import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
-import type { RecordedRange } from '../../utils/recordedDates';
+import { useSettings } from '../../store/settingsStore';
+import { layoutBandRuns, type RecordedRange } from '../../utils/recordedDates';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
 import {
@@ -21,9 +23,7 @@ import {
   isSameDay,
   isBeforeDay,
   buildMonthGrid,
-  daysInMonth as daysInMonthOf,
   shiftMonth,
-  tripLength,
 } from '../../utils/calendarRange';
 
 /**
@@ -41,6 +41,49 @@ const MONTH_KEYS = ['calendar.m1', 'calendar.m2', 'calendar.m3', 'calendar.m4', 
 
 /** 스와이프로 월을 넘길 최소 이동 거리(dp). 이보다 짧으면 탭·세로 스크롤로 본다 */
 const SWIPE_THRESHOLD = 44;
+/** 시트 좌우 여백(dp) — 셀 폭이 여기서 파생된다 */
+const SHEET_PAD_H = 24;
+/** 출발·도착 헤더 알약 높이 */
+const HEADER_H = 48;
+/** 확인 버튼 높이(시안 50) */
+const CONFIRM_H = 50;
+/** 월 다이얼 — 월 제목을 꾹(350ms) 누르면 좌우 드래그로 월이 휠처럼 돈다(통계 탭 원판과 같은 손맛) */
+const DIAL_HOLD_MS = 350;
+const DIAL_SLOT = 72;       // 손가락 72dp = 1개월
+const DIAL_LABEL_W = 140;   // 휠 라벨 한 칸 폭('2026년 12월'·'12/2026'이 들어간다)
+const DIAL_ROT_PER_MONTH = 60; // 역삼각형이 1개월당 도는 각도
+/** 국가 칩 색 — 스킨별 3색 순환(시안 2026-09-14). 오로라만 흰 글씨, 시안·민트는 검정 90% */
+const CHIP_PALETTES: Record<string, { bg: string[]; text: string }> = {
+  aurora: { bg: ['#7C3AED', '#926DFF', '#AC6FFF'], text: '#FFFFFF' },
+  cyan:   { bg: ['#00D8F3', '#C3F8FF', '#86FFF3'], text: 'rgba(0,0,0,0.9)' },
+  mint:   { bg: ['#00F37A', '#86FFBC', '#C3FFCD'], text: 'rgba(0,0,0,0.9)' },
+};
+
+/**
+ * 알약 테두리 그라데이션 — 기존 앱의 유리 알약(BasicInfo 버튼·탭 바)과 같은 값:
+ * #CECFCD → 투명(60% 지점), 위에서 아래로. 폭·높이는 **숫자**로 받는다 — 안드로이드는 Rect의
+ * width="100%"가 폭 변경 뒤 갱신되지 않아 옛 윤곽이 겹쳐 보인다(탭 바 사고). RNSVG는 pointerEvents를
+ * 무시하므로 View(pointerEvents none)로 감싼다.
+ */
+function PillRing({ width, height, radius, strokeWidth = 1 }: { width: number; height: number; radius: number; strokeWidth?: number }) {
+  const id = useId();
+  if (width <= 0 || height <= 0) return null;
+  const half = strokeWidth / 2;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width={width} height={height}>
+        <Defs>
+          <SvgLinearGradient id={id} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+            <Stop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+            <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect x={half} y={half} width={width - strokeWidth} height={height - strokeWidth} rx={radius - half} ry={radius - half}
+          fill="none" stroke={`url(#${id})`} strokeWidth={strokeWidth} />
+      </Svg>
+    </View>
+  );
+}
 
 export function CalendarBottomSheet({
   visible,
@@ -80,11 +123,17 @@ export function CalendarBottomSheet({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const { globeSkin } = useSettings();
+  const chipPalette = CHIP_PALETTES[globeSkin] ?? CHIP_PALETTES.aurora;
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   // 셀 폭은 훅으로 실시간 — 모듈 최상위 stageWidthNow()로 박제하면 접힌 채(360dp) 시작해
   // 펼쳤을 때(시트는 480dp로 클램프) 7열 그리드가 그대로 360dp 폭에 머물러 시트 안에서
   // 왼쪽으로 쏠린 채 약 100dp가 빈다.
-  const CELL_SIZE = Math.floor((useStageWidth() - 32 - 12) / 7);
+  const CELL_SIZE = Math.floor((useStageWidth() - SHEET_PAD_H * 2) / 7);
+  // 시안 색: 확인 버튼·역삼각형은 진보라. aurora가 아닌 스킨은 스킨 강조색으로 대체(칩 색은 CHIP_PALETTES)
+  const ui = skinAccent.ringGradient
+    ? { btn: skinAccent.accentDeep, caret: skinAccent.accent }
+    : { btn: '#7C3AED', caret: '#926DFF' };
   const startLbl = startLabel ?? t('newRecord.departDate');
   const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
@@ -98,6 +147,7 @@ export function CalendarBottomSheet({
   const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
   const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
   const [selectingEnd, setSelectingEnd] = useState(false);
+  const [headerW, setHeaderW] = useState(0); // 헤더 알약 테두리 SVG용 실측 폭
   const translateY = useRef(new Animated.Value(600)).current;
   // 월 전환 연출 — 넘어온 방향에서 미끄러져 들어온다
   const slideX  = useRef(new Animated.Value(0)).current;
@@ -114,6 +164,11 @@ export function CalendarBottomSheet({
       Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
     } else {
       translateY.setValue(600);
+      // 시트가 닫히면 다이얼 관성·타이머도 끊는다 — 닫힌 뒤 setView가 계속 돌면 다음에 열릴 때 엉뚱한 달
+      const d = dial.current;
+      if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+      if (d.raf != null) { cancelAnimationFrame(d.raf); d.raf = null; }
+      d.active = false; setDialActive(false); dialX.setValue(0);
     }
   }, [visible]);
 
@@ -154,13 +209,6 @@ export function CalendarBottomSheet({
   const handlePrevMonth = () => changeMonth(-1);
   const handleNextMonth = () => changeMonth(1);
 
-  const isThisMonth = view.year === today.getFullYear() && view.month === today.getMonth();
-  const goToday = () => {
-    if (isThisMonth) return;
-    const delta = (today.getFullYear() * 12 + today.getMonth()) - (view.year * 12 + view.month);
-    changeMonth(delta);
-  };
-
   const openPicker = () => {
     setPickerYear(view.year);
     setPickerOpen(o => !o);
@@ -171,6 +219,127 @@ export function CalendarBottomSheet({
     setPickerOpen(false);
     if (delta === 0) { select(); return; }
     changeMonth(delta);
+  };
+
+  // ── 월 다이얼 ── 제목을 꾹 누르면 드래그 모드. 슬롯이 바뀔 때만 월을 갱신하고(격자·알약 재계산은
+  // 그때만), 그 사이엔 제목 휠만 움직인다. 놓으면 속도만큼 관성으로 더 돌다 스냅. 짧은 탭은 기존대로 패널.
+  // PanResponder는 첫 렌더에 박제되므로 최신값은 전부 ref 경유.
+  const [dialActive, setDialActive] = useState(false);
+  const dialX   = useRef(new Animated.Value(0)).current; // 휠 스트립 translateX (= -(소수부) × 칸 폭)
+  const dialRot = useRef(new Animated.Value(0)).current; // 누적 개월(소수) — 역삼각형 회전용
+  const dial = useRef({
+    active: false, offset: 0, committed: 0, start: 0,
+    base: { year: initialStart.getFullYear(), month: initialStart.getMonth() },
+    timer: null as ReturnType<typeof setTimeout> | null,
+    raf: null as number | null,
+    lastUpd: 0,
+  });
+  const viewRef = useRef(view); viewRef.current = view;
+  const pickerOpenRef = useRef(pickerOpen); pickerOpenRef.current = pickerOpen;
+  const openPickerRef = useRef(openPicker); openPickerRef.current = openPicker;
+  const applyDial = (offset: number) => {
+    const d = dial.current;
+    d.offset = offset;
+    const committed = Math.round(offset);
+    if (committed !== d.committed) {
+      d.committed = committed;
+      setView(shiftMonth(d.base.year, d.base.month, committed));
+      select();
+    }
+    dialX.setValue(-(offset - committed) * DIAL_LABEL_W);
+    dialRot.setValue(offset);
+  };
+  const stopDialMomentum = () => {
+    if (dial.current.raf != null) { cancelAnimationFrame(dial.current.raf); dial.current.raf = null; }
+  };
+  const snapDial = () => {
+    const d = dial.current;
+    d.offset = d.committed;
+    Animated.parallel([
+      Animated.timing(dialX, { toValue: 0, duration: 160, useNativeDriver: true }),
+      Animated.timing(dialRot, { toValue: d.committed, duration: 160, useNativeDriver: true }),
+    ]).start(() => { d.active = false; setDialActive(false); });
+  };
+  const startDialMomentum = (v0: number) => {
+    stopDialMomentum();
+    let v = v0; // 개월/ms
+    let last = Date.now();
+    const tick = () => {
+      const now = Date.now();
+      const dt = Math.min(now - last, 50);
+      last = now;
+      v *= Math.pow(0.994, dt); // 감쇠(통계 탭과 동일)
+      applyDial(dial.current.offset + v * dt);
+      if (Math.abs(v) < 0.0004) { dial.current.raf = null; snapDial(); return; }
+      dial.current.raf = requestAnimationFrame(tick);
+    };
+    dial.current.raf = requestAnimationFrame(tick);
+  };
+  const dialFns = useRef({ applyDial, stopDialMomentum, snapDial, startDialMomentum });
+  dialFns.current = { applyDial, stopDialMomentum, snapDial, startDialMomentum };
+  useEffect(() => () => { // 언마운트 시 타이머·관성 정리
+    const d = dial.current;
+    if (d.timer) clearTimeout(d.timer);
+    if (d.raf != null) cancelAnimationFrame(d.raf);
+  }, []);
+  const dialPan = useRef(
+    PanResponder.create({
+      // 캡처 단계로 잡아 안쪽 TouchableOpacity가 터치를 못 가져가게 한다(탭은 release에서 직접 처리,
+      // TouchableOpacity의 onPress는 VoiceOver/TalkBack 활성화 경로로만 남는다)
+      onStartShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        const d = dial.current;
+        const wasSpinning = d.raf != null;
+        dialFns.current.stopDialMomentum();
+        if (wasSpinning) { d.start = d.offset; return; } // 관성 중 재터치 — 바로 이어서 드래그(연속 플릭)
+        if (pickerOpenRef.current) return;
+        d.timer = setTimeout(() => {
+          d.timer = null;
+          d.active = true; d.offset = 0; d.committed = 0; d.start = 0;
+          d.base = { ...viewRef.current };
+          dialRot.setValue(0);
+          setDialActive(true);
+          grab();
+        }, DIAL_HOLD_MS);
+      },
+      onPanResponderMove: (_e, g) => {
+        const d = dial.current;
+        if (!d.active) {
+          // 꾹 누르기 전에 손가락이 움직이면 길게 누르기 취소(스크롤·오탭 방지)
+          if (d.timer && (Math.abs(g.dx) > 10 || Math.abs(g.dy) > 10)) { clearTimeout(d.timer); d.timer = null; }
+          return;
+        }
+        const now = Date.now();
+        if (now - d.lastUpd < 16) return; // 프레임 단위 스로틀
+        d.lastUpd = now;
+        dialFns.current.applyDial(d.start - g.dx / DIAL_SLOT); // 왼쪽으로 끌면 다음 달
+      },
+      onPanResponderRelease: (_e, g) => {
+        const d = dial.current;
+        if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+        if (d.active) {
+          const v = Math.max(-0.015, Math.min(0.015, -g.vx / DIAL_SLOT)); // px/ms → 개월/ms
+          if (Math.abs(v) > 0.0015) dialFns.current.startDialMomentum(v);
+          else { dialFns.current.snapDial(); select(); }
+        } else if (Math.abs(g.dx) < 10 && Math.abs(g.dy) < 10) {
+          openPickerRef.current(); // 짧은 탭 = 연·월 패널(기존 동작)
+        }
+      },
+      onPanResponderTerminate: () => {
+        const d = dial.current;
+        if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+        if (d.active) dialFns.current.snapDial();
+      },
+    }),
+  ).current;
+  const dialCaretRotate = dialRot.interpolate({
+    inputRange: [-1000, 1000],
+    outputRange: [`${-1000 * DIAL_ROT_PER_MONTH}deg`, `${1000 * DIAL_ROT_PER_MONTH}deg`],
+  });
+  const monthLabel = (delta: number) => {
+    const v = shiftMonth(view.year, view.month, delta);
+    return t('calendar.yearMonth', { y: v.year, m: v.month + 1 });
   };
 
   const handleDayPress = (date: Date) => {
@@ -207,19 +376,17 @@ export function CalendarBottomSheet({
   };
 
   const grid = buildMonthGrid(view.year, view.month);
-  const daysInViewMonth = daysInMonthOf(view.year, view.month);
+  // 기존 여행 알약은 칸마다 조각내지 않고 행 단위로 한 번에 그린다(utils/recordedDates.layoutBandRuns).
+  // 칸마다 그리면 이음새가 깨지고 칩이 옆 칸에 가려진다 — 9/13~14 다섯 번 재발한 원인.
+  const bandRuns = recordedRanges ? layoutBandRuns(grid, recordedRanges) : [];
+  const PILL_INSET = 3;   // 알약 위·아래 여백(시안: 50 행에 44 알약)
+  const CHIP_H = 18;
+  const CHIP_BOX_W = CELL_SIZE * 2; // 칩 배치 상자(투명) — 칩 자체는 글자 길이대로, 이 상자 안에서 가운데 정렬
   const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBeforeDay(d, tempStart) && !isBeforeDay(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
-
-  // 선택 기간 요약 — 기간 모드에서 양끝이 정해졌을 때만
-  const lengthText = (() => {
-    if (singleDate || !tempStart || !tempEnd) return null;
-    const { nights, days } = tripLength(tempStart, tempEnd);
-    return nights === 0 ? t('calendar.sameDay') : t('calendar.nights', { n: nights, d: days });
-  })();
 
   // 연·월 패널은 그리드 자리를 그대로 차지한다 — 높이를 맞춰야 열고 닫을 때 시트가 출렁이지 않는다
   const GRID_H = CELL_SIZE * 6 + 32;
@@ -232,48 +399,27 @@ export function CalendarBottomSheet({
         {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <Animated.View style={[calS.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
-          <View style={[calS.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
+          <View style={calS.selectedRow} onLayout={(e) => setHeaderW(Math.round(e.nativeEvent.layout.width))}>
+            <PillRing width={headerW} height={HEADER_H} radius={HEADER_H / 2} />
             {singleDate ? (
               // 단일 날짜 — 시작→종료 두 칸 대신 한 칸만
               <View style={calS.selectedItem}>
-                <Text style={calS.selectedLabel}>{startLbl}</Text>
-                <Text style={[calS.selectedDate, calS.selectedDateActive, { color: skinAccent.accent }]}>{fmtSel(tempStart)}</Text>
+                <Text style={calS.selectedLabel} {...andFitText}>{startLbl}</Text>
+                <Text style={[calS.selectedDate, calS.selectedDateActive, { color: skinAccent.accent }]} {...andFitText}>{fmtSel(tempStart)}</Text>
               </View>
             ) : (
               <>
                 <View style={calS.selectedItem}>
-                  <Text style={calS.selectedLabel}>{startLbl}</Text>
-                  <Text style={[calS.selectedDate, !selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
+                  <Text style={calS.selectedLabel} {...andFitText}>{startLbl}</Text>
+                  <Text style={[calS.selectedDate, !selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]} {...andFitText}>{fmtSel(tempStart)}</Text>
                 </View>
-                <Text style={calS.selectedArrow}>→</Text>
+                <Text style={calS.selectedArrow}>›</Text>
                 <View style={calS.selectedItem}>
-                  <Text style={calS.selectedLabel}>{endLbl}</Text>
-                  <Text style={[calS.selectedDate, selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
+                  <Text style={calS.selectedLabel} {...andFitText}>{endLbl}</Text>
+                  <Text style={[calS.selectedDate, selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]} {...andFitText}>{fmtSel(tempEnd)}</Text>
                 </View>
               </>
             )}
-          </View>
-
-          {/* 기간 요약 · 오늘로 이동 — 월 내비게이션의 좌우 대칭을 깨지 않도록 별도 줄에 둔다 */}
-          <View style={calS.toolRow}>
-            {lengthText ? (
-              <View style={[calS.lengthChip, { backgroundColor: skinAccent.tint(0.14) }]}>
-                <Text style={[calS.lengthTxt, { color: skinAccent.accent }]} {...andFitText}>{lengthText}</Text>
-              </View>
-            ) : <View />}
-            <TouchableOpacity
-              onPress={goToday}
-              disabled={isThisMonth}
-              activeOpacity={0.8}
-              style={[calS.todayChip, { borderColor: skinAccent.tint(isThisMonth ? 0.15 : 0.45) }]}
-              accessibilityRole="button"
-              accessibilityLabel={t('calendar.a11yToday')}
-              accessibilityState={{ disabled: isThisMonth }}
-            >
-              <Text style={[calS.todayTxt, { color: isThisMonth ? 'rgba(255,255,255,0.3)' : skinAccent.accent }]} {...andFitText}>
-                {t('calendar.today')}
-              </Text>
-            </TouchableOpacity>
           </View>
 
           <View style={calS.monthNav}>
@@ -285,18 +431,31 @@ export function CalendarBottomSheet({
             >
               <Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text>
             </TouchableOpacity>
-            {/* 월 타이틀 탭 → 연·월 점프. 2년 전 여행을 넣으려고 ‹ 를 24번 누르던 것을 두 번으로 줄인다 */}
-            <TouchableOpacity
-              onPress={openPicker}
-              style={calS.monthTitleBtn}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('calendar.a11yPickMonth')}
-              accessibilityState={{ expanded: pickerOpen }}
-            >
-              <Text style={calS.monthTitle}>{t('calendar.yearMonth', { y: view.year, m: view.month + 1 })}</Text>
-              <Text style={[calS.monthCaret, { color: skinAccent.accent }, pickerOpen && calS.monthCaretOpen]}>▾</Text>
-            </TouchableOpacity>
+            {/* 월 타이틀: 탭 → 연·월 점프, 꾹(350ms) → 다이얼 모드(좌우 드래그로 월 휠 회전). 바깥 View가 캡처 */}
+            <View {...dialPan.panHandlers}>
+              <TouchableOpacity
+                onPress={openPicker}
+                style={calS.monthTitleBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('calendar.a11yPickMonth')}
+                accessibilityState={{ expanded: pickerOpen }}
+              >
+                <View style={calS.monthWheel}>
+                  <Animated.View style={[calS.monthWheelStrip, { transform: [{ translateX: dialX }] }]}>
+                    {dialActive && <Text style={[calS.monthTitle, calS.monthWheelSide, { left: -DIAL_LABEL_W }]}>{monthLabel(-1)}</Text>}
+                    <Text style={[calS.monthTitle, calS.monthWheelCur]}>{monthLabel(0)}</Text>
+                    {dialActive && <Text style={[calS.monthTitle, calS.monthWheelSide, { left: DIAL_LABEL_W }]}>{monthLabel(1)}</Text>}
+                  </Animated.View>
+                </View>
+                {/* 역삼각형(시안 8×7). RNSVG 터치 삼킴 방지로 View(pointerEvents none)에 감싼다. 다이얼 중엔 드래그만큼 회전 */}
+                <Animated.View pointerEvents="none" style={[calS.monthCaret, { transform: [{ rotate: pickerOpen ? '180deg' : dialCaretRotate }] }]}>
+                  <Svg width={8} height={7} viewBox="0 0 8 7" fill="none">
+                    <Path d="M4.46368 6C4.07878 6.66667 3.11653 6.66667 2.73163 6L0.133555 1.5C-0.251345 0.833333 0.22978 0 0.99958 0L6.19573 0C6.96553 0 7.44666 0.833333 7.06176 1.5L4.46368 6Z" fill={ui.caret} />
+                  </Svg>
+                </Animated.View>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity
               onPress={handleNextMonth}
               style={calS.navBtn}
@@ -360,6 +519,40 @@ export function CalendarBottomSheet({
                 ))}
               </View>
               <View style={calS.grid}>
+                {bandRuns.length > 0 && (
+                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    {/* 알약은 시작일 순으로 그려 늦게 시작한 여행이 위에 겹친다(시안: 스페인 위에 포르투갈) */}
+                    {bandRuns.map((run) => {
+                      const w = (run.endCol - run.startCol + 1) * CELL_SIZE;
+                      const h = CELL_SIZE - PILL_INSET * 2;
+                      return (
+                        <View
+                          key={`pill-${run.recordId}-${run.row}`}
+                          style={[calS.pill, { left: run.startCol * CELL_SIZE, width: w, top: run.row * CELL_SIZE + PILL_INSET, height: h, borderRadius: h / 2 }]}
+                        >
+                          <PillRing width={w} height={h} radius={h / 2} />
+                        </View>
+                      );
+                    })}
+                    {/* 칩은 알약을 전부 그린 뒤에 — 어느 알약에도 가려지지 않는다. 조각마다(행마다) 가운데 위 */}
+                    {bandRuns.filter((run) => !!run.countryLabel).map((run) => {
+                      const center = (run.startCol + run.endCol + 1) / 2 * CELL_SIZE;
+                      // 투명 상자를 알약 가운데에 두고 그 안에서 칩을 가운데 정렬 — 글자 길이대로 칩이 커진다('베트남 외 1')
+                      const left = Math.min(Math.max(center - CHIP_BOX_W / 2, 0), 7 * CELL_SIZE - CHIP_BOX_W);
+                      return (
+                        <View
+                          key={`chip-${run.recordId}-${run.row}`}
+                          pointerEvents="none"
+                          style={[calS.countryChipBox, { left, width: CHIP_BOX_W, top: run.row * CELL_SIZE + PILL_INSET - CHIP_H / 2 + 2 }]}
+                        >
+                          <View style={[calS.countryChip, { height: CHIP_H, maxWidth: CHIP_BOX_W, backgroundColor: chipPalette.bg[run.tripIndex % chipPalette.bg.length] }]}>
+                            <Text style={[calS.countryChipText, { color: chipPalette.text }]} numberOfLines={1}>{run.countryLabel}</Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 {grid.map((date, idx) => {
                   if (!date) return <View key={`e-${idx}`} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
                   const dow = date.getDay();
@@ -369,18 +562,7 @@ export function CalendarBottomSheet({
                   const inRange = isInRange(date);
                   const isEdge  = isStart || isEnd;
                   const key = toDateKey(date);
-                  const band = recordedRanges?.get(key);
-                  const isTripStart = !!band && isSameDay(date, band.start);
-                  // 인접일이 같은 여행인지 — Date 생성자가 월 경계를 자동 롤오버하므로 전/다음달 날짜도 정확히 조회된다
-                  const prevSame = !!band && recordedRanges?.get(toDateKey(new Date(view.year, view.month, date.getDate() - 1)))?.recordId === band.recordId;
-                  const nextSame = !!band && recordedRanges?.get(toDateKey(new Date(view.year, view.month, date.getDate() + 1)))?.recordId === band.recordId;
-                  const isMonthFirst = date.getDate() === 1;
-                  const isMonthLast  = date.getDate() === daysInViewMonth;
-                  // 캡(반원)으로 닫는 지점: 옆날이 같은 여행이 아닐 때(시작/끝·다른 여행과 인접)·주 경계·월 경계
-                  const bandLeftRound  = !!band && (!prevSame || dow === 0 || isMonthFirst);
-                  const bandRightRound = !!band && (!nextSame || dow === 6 || isMonthLast);
-                  // 국가 칩: 여행 시작일, 또는 지난달부터 이어진 여행의 이번 달 첫 칸
-                  const showChip = !!band && !!band.countryLabel && (isTripStart || (isMonthFirst && prevSame));
+                  const band = recordedRanges?.get(key); // 접근성 라벨·점 폴백 판정용(그리기는 위 오버레이)
                   const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
                   const a11yDate = t('calendar.a11yDay', { y: date.getFullYear(), m: date.getMonth() + 1, d: date.getDate() });
                   return (
@@ -397,20 +579,6 @@ export function CalendarBottomSheet({
                         isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
                       ]}
                     >
-                      {band && (
-                        <View
-                          pointerEvents="none"
-                          style={[calS.bandSeg, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.55) },
-                            bandLeftRound && calS.bandSegLeft,
-                            bandRightRound && calS.bandSegRight,
-                          ]}
-                        />
-                      )}
-                      {band && showChip && (
-                        <View style={[calS.countryChip, { backgroundColor: skinAccent.accent, maxWidth: CELL_SIZE + 20 }]} pointerEvents="none">
-                          <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
-                        </View>
-                      )}
                       <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                         <Text style={[calS.dayText,
                           isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
@@ -436,11 +604,13 @@ export function CalendarBottomSheet({
             </View>
           )}
           <TouchableOpacity
-            style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
             onPress={handleConfirm}
             activeOpacity={0.85}
+            style={[calS.confirmBtn, { backgroundColor: ui.btn }]}
             accessibilityRole="button"
           >
+            {/* 헤더 알약과 같은 폭(시트 콘텐츠 폭)이라 실측값을 함께 쓴다 */}
+            <PillRing width={headerW} height={CONFIRM_H} radius={CONFIRM_H / 2} />
             <Text style={calS.confirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -468,32 +638,33 @@ const calS = StyleSheet.create({
   // 폴드·태블릿에서 그리드가 왼쪽으로 쏠리지 않는다. overlay(딤 배경)는 전면 유지 —
   // 시트만 좁힌다.
   sheet: {
-    backgroundColor: '#1E1E2E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
+    backgroundColor: '#333338', // 시안: #0A0B0F 위 #D9D9D9 20%
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: SHEET_PAD_H,
     paddingBottom: 36,
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',
   },
   handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
+    width: 47,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#484848',
     alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
+    marginTop: 11,
+    marginBottom: 14,
   },
+  // 출발·도착 알약 헤더 — 유리 질감(흰 10% + 옅은 테두리)
   selectedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(191,133,252,0.08)',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 10,
+    height: HEADER_H,
+    borderRadius: HEADER_H / 2,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 12,
+    marginBottom: 14,
   },
   selectedItem: {
     flex: 1,
@@ -502,23 +673,11 @@ const calS = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  selectedLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  selectedDate:  { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+  selectedLabel: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  selectedDate:  { fontSize: 14, fontWeight: '700', color: '#DADADA' },
   selectedDateActive: { color: '#BF85FC' },
-  selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
+  selectedArrow: { fontSize: 18, color: '#DADADA', marginHorizontal: 4 },
 
-  // 기간 요약(좌) · 오늘(우)
-  toolRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    minHeight: 26,
-  },
-  lengthChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  lengthTxt: { fontSize: 12, fontWeight: '700' },
-  todayChip: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
-  todayTxt: { fontSize: 12, fontWeight: '700' },
 
   monthNav: {
     flexDirection: 'row',
@@ -530,9 +689,13 @@ const calS = StyleSheet.create({
   navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
   monthTitleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 4 },
-  monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  monthCaret: { fontSize: 12, color: '#BF85FC' },
-  monthCaretOpen: { transform: [{ rotate: '180deg' }] },
+  monthTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+  // 월 휠 — 고정 폭 창(overflow hidden) 안에서 스트립이 좌우로 흐른다. 이웃 달은 다이얼 중에만 옅게
+  monthWheel: { width: DIAL_LABEL_W, overflow: 'hidden', alignItems: 'center' },
+  monthWheelStrip: { width: DIAL_LABEL_W, alignItems: 'center' },
+  monthWheelCur: { width: DIAL_LABEL_W, textAlign: 'center' },
+  monthWheelSide: { position: 'absolute', top: 0, width: DIAL_LABEL_W, textAlign: 'center', opacity: 0.35 },
+  monthCaret: { width: 8, height: 7, marginTop: 2, alignItems: 'center', justifyContent: 'center' },
 
   // 연·월 점프 패널
   yearNav: {
@@ -561,11 +724,11 @@ const calS = StyleSheet.create({
     textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(255,255,255,0.85)',
     paddingVertical: 6,
   },
-  sundayText:  { color: '#FF3B30' },
-  saturdayText:{ color: '#5AC8FA' },
+  sundayText:  { color: '#FF0138' },
+  saturdayText:{ color: '#00D8F3' },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { alignItems: 'center', justifyContent: 'center' },
@@ -594,36 +757,29 @@ const calS = StyleSheet.create({
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
   recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
-  // 기존 여행 캡슐 밴드 — 기간을 타원(스타디움)형 테두리로 감싼다.
-  // 중간 셀은 위·아래 선만 이어지고, 시작/끝(또는 주 경계)에서 반원 캡으로 닫힌다.
-  bandSeg: {
-    position: 'absolute', left: 0, right: 0, top: 5, bottom: 5,
-    borderTopWidth: 1.5, borderBottomWidth: 1.5,
+  // 기존 여행 알약 — 행 안에서 이어지는 구간 하나가 View 하나(좌표는 호출부가 CELL_SIZE로 계산).
+  // 유리 질감(흰 10% + PillRing 그라데이션 테두리). 겹치는 날은 두 알약이 그대로 겹친다(시안).
+  pill: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.10)',
   },
-  bandSegLeft: {
-    borderLeftWidth: 1.5,
-    borderTopLeftRadius: 999, borderBottomLeftRadius: 999,
-    marginLeft: 3, // 인접한 다른 여행 캡슐과 시각적으로 분리(양쪽 합 6px 간격)
-  },
-  bandSegRight: {
-    borderRightWidth: 1.5,
-    borderTopRightRadius: 999, borderBottomRightRadius: 999,
-    marginRight: 3,
-  },
-  // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
+  // 국가명 칩 — 알약 조각마다 가운데 위에 얹음(행이 바뀌면 다시). 상자는 투명·절대배치, 칩은 글자 길이대로
+  countryChipBox: { position: 'absolute', alignItems: 'center' },
   countryChip: {
-    position: 'absolute', top: -7, left: 2, zIndex: 5,
-    // maxWidth는 CELL_SIZE에서 파생되므로 호출부에서 인라인으로 준다(스타일시트는 모듈 최상위).
-    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  countryChipText: { fontSize: 9, fontWeight: '700', color: '#0A0A0F' },
+  countryChipText: { fontSize: 10, fontWeight: '700', color: '#FFFFFF' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
   legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
 
   confirmBtn: {
-    backgroundColor: '#6B21A8',
-    borderRadius: 14,
-    paddingVertical: 16,
+    backgroundColor: '#7C3AED',
+    borderRadius: CONFIRM_H / 2,
+    height: CONFIRM_H,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 16,
   },
