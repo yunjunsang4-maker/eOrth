@@ -29,13 +29,26 @@ import { COUNTRIES } from '../constants/countries';
 export default function HomeRegionSheet({
   visible,
   onClose,
+  countryCode,
 }: {
   visible: boolean;
   onClose: () => void;
+  /**
+   * 기준 거주국(ISO2). 주지 않으면 지금처럼 스토어의 `homeCountryCode`를 쓴다.
+   *
+   * 온보딩(BasicInfoScreen)은 거주국을 **스토어에 즉시 쓰지 않는다** — 로컬 state로만 들고
+   * 있다가 [다음]을 눌러야 `setHomeCountryCode`를 부른다. 그래서 그 화면에서 이 시트를
+   * 스토어 기준으로 열면 방금 고른 나라가 아니라 옛 나라의 시·도 목록이 뜬다.
+   * 그런 호출부가 자기 화면의 현재 나라를 넘길 수 있게 뚫어 둔 구멍이다.
+   */
+  countryCode?: string | null;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { homeCountryCode, homeRegion, setHomeRegion } = useSettings();
+  // 이 시트의 거주국 단일 출처. 아래 네 곳(지역 프리셋·국가명·거주국 밖 판정·도시 정규화)이
+  // 전부 이 값을 봐야 한다 — 하나라도 스토어 값을 그대로 보면 나라와 지역이 어긋난 값이 저장된다.
+  const effectiveCountry = countryCode ?? homeCountryCode;
   const translateY = useRef(new Animated.Value(600)).current;
 
   const [mode, setMode] = useState<'choose' | 'pick'>('choose');
@@ -44,10 +57,10 @@ export default function HomeRegionSheet({
   const [typed, setTyped] = useState('');
 
   // 거주국가의 지역 프리셋(KR 17개 시·도 / 지오 수록국 행정구역). 비면 자유 입력 한 줄로 받는다.
-  const regions = useMemo(() => getHomeRegions(homeCountryCode), [homeCountryCode]);
+  const regions = useMemo(() => getHomeRegions(effectiveCountry), [effectiveCountry]);
   const homeCountryName = useMemo(
-    () => COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? homeCountryCode,
-    [homeCountryCode],
+    () => COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (effectiveCountry || '').toUpperCase())?.name ?? effectiveCountry,
+    [effectiveCountry],
   );
 
   useEffect(() => {
@@ -74,19 +87,21 @@ export default function HomeRegionSheet({
     setBusy(true);
     setNotice(null);
     try {
-      const { countryCode, city } = await detectCurrentCountry({ allowPrompt: true });
-      if (!countryCode) {
+      // 측위 결과는 `detected`로 받는다 — 이름을 countryCode로 두면 위의 prop을 가려
+      // 아래 비교가 "자기 자신과 비교"가 되어 거주국 밖 판정이 통째로 죽는다.
+      const { countryCode: detected, city } = await detectCurrentCountry({ allowPrompt: true });
+      if (!detected) {
         // 권한 거부·측위 실패 — 직접 선택으로 유도한다(막다른 길을 만들지 않는다)
         setNotice(t('homeRegion.locationDenied'));
         setMode('pick');
         return;
       }
-      if (countryCode.toUpperCase() !== (homeCountryCode || '').toUpperCase()) {
+      if (detected.toUpperCase() !== (effectiveCountry || '').toUpperCase()) {
         // 여행 중에 눌렀을 수 있다 — 거주국 밖이면 저장하지 않고 안내만 (거주 지역은 거주국 안의 값)
         setNotice(t('homeRegion.outsideHome', { country: homeCountryName }));
         return;
       }
-      const norm = normalizeHomeRegion(homeCountryCode, city);
+      const norm = normalizeHomeRegion(effectiveCountry, city);
       if (norm) { save(norm.name, norm.nameEn); return; }
       // 정규화 실패(프리셋 없는 국가·모르는 도시명) — 도시 원문을 그대로 저장한다.
       // 스냅 저장 쪽도 같은 규칙(정규화 실패 시 원문)이라 문자열이 서로 맞는다.

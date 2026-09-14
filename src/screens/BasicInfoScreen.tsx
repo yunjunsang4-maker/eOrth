@@ -1,5 +1,6 @@
 import { select, warn } from '../utils/haptics';
 import CountryPickerModal from '../components/CountryPickerModal';
+import HomeRegionSheet from '../components/HomeRegionSheet';
 import React, { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -125,6 +126,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     profilePhoto,
     homeCountryCode,
     setHomeCountryCode,
+    homeRegion,
     language: storeLanguage,
     setLanguage: setStoreLanguage,
     handle: storeHandle,
@@ -146,6 +148,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     COUNTRIES.find((c) => codeOf(c) === homeCountryCode) ?? DEFAULT_COUNTRY
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
+  const [regionSheetVisible, setRegionSheetVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
   const [locating, setLocating] = useState(false);
   const [stayOn, setStayOn] = useState(false);
@@ -238,6 +241,20 @@ export default function BasicInfoScreen({ navigation }: Props) {
 
   // 현재 위치로 거주국 자동 입력.
   //
+  // 거주국 변경 단일 통로. 나라가 실제로 달라졌을 때만 이미 고른 거주 지역(시·도)을 비운다 —
+  // KR의 '경기'는 JP에 없는 지역이라, 안 비우면 나라와 지역이 어긋난 채 저장되고 소셜 탭
+  // '일상' 링이 엉뚱한 지역을 기준으로 잡는다(settingsStore가 거주국을 바꿀 때 하는 리셋과 같은 규칙).
+  // 거주국을 바꾸는 경로가 둘(목록에서 선택 · 현재 위치로 자동 입력)이라 한 곳으로 모았다.
+  const changeCountry = (c: Country) => {
+    // 거주국은 고르는 즉시 스토어에도 쓴다. 이 화면만 로컬 state 에 담아 두고 [다음]에서야
+    // 쓰면, 그 사이 거주 지역 시트가 스토어에 지역을 먼저 써서 '나라는 KR인데 지역은 JP' 같은
+    // 어긋난 쌍이 만들어진다(온보딩을 중간에 그만두면 그대로 굳고, 다음 진입 때 되살아난다).
+    // setHomeCountryCode 는 나라가 실제로 달라졌을 때만 homeRegion 을 비우는 래퍼라,
+    // 나라를 바꾸면 이전 지역이 함께 정리된다 — 이 화면이 따로 비울 필요가 없다.
+    setHomeCountryCode(codeOf(c));
+    setSelectedCountry(c);
+  };
+
   // 앱을 통틀어 위치 권한을 얻을 수 있는 경로가 사실상 기록 작성 화면뿐이었다. 감지기 4종은
   // 절대 팝업을 띄우지 않고(snapService.detectCurrentCountry의 기본 무팝업 정책 — 로그인 전
   // 스플래시 위에 위치 팝업이 뜨는 App Store 5.1.1 거부 사유를 막는 설계라 유지한다),
@@ -267,7 +284,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
         Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.locateUnsupported'));
         return;
       }
-      setSelectedCountry(matched);
+      changeCountry(matched);
     } finally {
       setLocating(false);
     }
@@ -316,6 +333,8 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setStoreHandle(h);
     setHandleChosen(true); // 사용자가 온보딩에서 아이디를 확정 → 충돌 시 임의 재생성 금지
     setProfilePhoto(photo);
+    // 거주국은 changeCountry 가 고르는 즉시 이미 써 두었다. 같은 값이면 래퍼의 리셋 조건
+    // (v !== homeCountryCode)이 안 걸리므로 방금 고른 거주 지역이 지워지지 않는다.
     setHomeCountryCode(codeOf(selectedCountry));
     setStoreLanguage(language);
     if (stayOn && stayCountry) startStay(stayCountry.name, stayType);
@@ -504,21 +523,58 @@ export default function BasicInfoScreen({ navigation }: Props) {
           {/* 거주국가 */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.residence')}</Text>
-            <TouchableOpacity
-              style={styles.inputWrapper}
-              activeOpacity={0.8}
-              onPress={() => { setCountrySearch(''); setCountryModalVisible(true); }}
-            >
+            {/* 나라와 지역을 한 줄에 같이 보여준다 — 따로 두면 같은 '거주지'를 묻는 칸이 둘로 보인다.
+                왼쪽부터 [국기·나라][시·도 칩] … [변경] 순.
+                시·도를 나라와 같은 크기의 맨 글자로 두면 '대한민국 경기도'가 한 덩어리로 붙어 읽힌다.
+                이 화면이 이미 쓰는 칩(장기체류 유형)과 같은 재질로 감싸 값의 층위를 나눈다 —
+                고른 값은 마젠타 톤(언어 선택의 '한국어'와 같은 강조), 미설정은 흐린 기본 칩이다.
+                누르는 곳은 셋이다: 나라·'변경'은 국가 모달, 시·도 칩은 거주 지역 시트.
+                그래서 바깥은 TouchableOpacity 가 아니라 View 다(겹치면 칩 탭이 국가 모달까지 연다). */}
+            <View style={styles.inputWrapper}>
               {/* 국기와 국가명을 한 Text에 넣지 말 것 — 삼성 갤럭시 S21+(Android 15)에서
                   [국기 이모지 + 한글]이 한 텍스트 런에 있으면 특정 국가(🇻🇳 베트남·🇵🇹 포르투갈)의
                   한글 글리프가 통째로 안 그려진다(폭은 확보되는데 글자만 사라짐). 6ae35f9와 같은 분리다.
                   Text는 flex 컨테이너가 아니라 gap이 안 먹으므로 공백 한 칸을 별도 Text로 둔다. */}
-              <View style={styles.countryValueRow}>
+              <TouchableOpacity
+                style={styles.residenceCountryTap}
+                activeOpacity={0.8}
+                onPress={() => { setCountrySearch(''); setCountryModalVisible(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('basicInfo.residence')} ${selectedCountry.name}`}
+              >
                 <Text style={styles.countryFlagText}>{selectedCountry.flag}</Text>
-                <Text style={[styles.input, { paddingVertical: 16 }]}>{selectedCountry.name}</Text>
-              </View>
-              <Text style={styles.charCount}>{t('common.change')}</Text>
-            </TouchableOpacity>
+                <Text style={styles.residenceValueTxt} numberOfLines={1}>{selectedCountry.name}</Text>
+              </TouchableOpacity>
+              {/* 거주 지역(시·도) — 소셜 탭 '일상' 링의 기준값. 설정 화면과 같은 공용 시트를 연다.
+                  선택 항목이라 canContinue 에는 넣지 않는다: 고르지 않아도 [다음]이 눌려야 한다.
+                  거주국과 달리 이 값은 시트가 setHomeRegion 으로 스토어에 즉시 쓴다(기존 시트 동작 그대로).
+                  미설정일 때도 칩을 비우지 않는다 — 빈자리면 고를 수 있는 값인 줄 모른다. */}
+              <TouchableOpacity
+                style={[styles.residenceRegionChip, !!homeRegion && styles.stayTypeChipOn]}
+                activeOpacity={0.8}
+                onPress={() => setRegionSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('settings.homeRegion')} ${homeRegion?.name ?? t('settings.homeRegionUnset')}`}
+              >
+                <Text
+                  style={[styles.stayTypeChipTxt, !!homeRegion && styles.stayTypeChipTxtOn]}
+                  numberOfLines={1}
+                >
+                  {homeRegion?.name ?? t('settings.homeRegionUnset')}
+                </Text>
+              </TouchableOpacity>
+              {/* 남는 폭은 빈 공간이 먹어 '변경'을 오른쪽 끝에 고정한다 — 다른 입력 칸과 같은 자리다 */}
+              <View style={styles.residenceSpacer} />
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => { setCountrySearch(''); setCountryModalVisible(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('basicInfo.residenceSelect')}`}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.charCount}>{t('common.change')}</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* 현재 위치로 자동 입력 — 기존 '변경'(국가 모달)은 그대로 두고 보조 수단으로 추가.
                 로딩 표시는 버튼 안 인라인 스피너다. 짧은 수명 로딩 오버레이에 Modal을 쓰면
@@ -607,11 +663,26 @@ export default function BasicInfoScreen({ navigation }: Props) {
       <CountryPickerModal
         visible={countryModalVisible}
         onClose={() => setCountryModalVisible(false)}
-        onSelect={(c) => { setSelectedCountry(c); setCountryModalVisible(false); }}
+        onSelect={(c) => { changeCountry(c); setCountryModalVisible(false); }}
         title={t('basicInfo.residenceSelect')}
         searchPlaceholder={t('basicInfo.residenceSearchPlaceholder')}
         selectedCode={codeOf(selectedCountry)}
       />
+
+      {/* 거주 지역(시·도) 시트 — 설정 화면과 같은 공용 시트.
+          countryCode 는 이 화면이 고른 나라를 명시적으로 넘긴다(스토어를 읽게 두면 나라를
+          바꾼 직후 한 틱 동안 옛 나라의 시·도가 뜰 수 있다).
+          ⚠️ 위치 권한은 시트 안의 '현재 위치로 설정'을 눌렀을 때만 요청된다 — 시트를 여는
+          것만으로 요청하게 만들지 말 것(App Store 5.1.1 방어).
+          ⚠️ 열 때만 마운트한다 — 닫혀 있어도 본문이 돌아, 나라를 고를 때마다 그 나라 지오
+          모듈(캐나다 334KB·미국 242KB)을 렌더 중에 동기 require 해 프레임이 끊긴다. */}
+      {regionSheetVisible && (
+        <HomeRegionSheet
+          visible={regionSheetVisible}
+          onClose={() => setRegionSheetVisible(false)}
+          countryCode={codeOf(selectedCountry)}
+        />
+      )}
 
       <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
         {/* 위 거주국 모달과 동일 — autoFocus 검색창 때문에 KAV가 필요하고, Modal은 루트
@@ -799,6 +870,31 @@ const styles = StyleSheet.create({
   // 국기·국가명을 별도 Text로 나눠 그리므로 가로 배치 + gap으로 원래의 공백 한 칸을 대신한다
   // (6ae35f9의 countryBadge와 같은 구조·같은 gap — 삼성 텍스트 셰이핑 결함 회피).
   // flex: 1은 긴 국가명이 오른쪽 '변경' 라벨을 밀어내지 않게 한다.
+  // 거주지 한 줄 — 나라(왼쪽)와 지역(오른쪽)이 같은 칸 안에 나란히 선다.
+  residenceCountryTap: { flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 1 },
+  // styles.input 을 그대로 쓰면 안 된다 — flex:1 이라 나라 이름이 남는 폭을 전부 먹고
+  // 시·도가 오른쪽 끝으로 밀려나 '경··' 처럼 잘린다. 두 값은 내용만큼만 차지해야 나란히 선다.
+  residenceValueTxt: {
+    color: Colors.textPrimary,
+    fontSize: Typography.fontSize.base,
+    fontFamily: Typography.fontFamily.regular,
+    paddingVertical: 16,
+    flexShrink: 1,
+  },
+  // 장기체류 유형 칩과 같은 재질(같은 화면 안에서 칩 모양이 두 벌 생기지 않게 stayTypeChip 을 편다)
+  residenceRegionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    marginLeft: 10,
+    flexShrink: 1,
+  },
+  residenceSpacer: { flex: 1, minWidth: 8 },
+  // 미설정은 값이 아니라 안내다 — 고른 지역과 같은 강조색으로 두면 이미 고른 줄로 읽힌다
+  residenceRegionUnset: { color: Colors.textMuted },
   countryValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
