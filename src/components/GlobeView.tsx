@@ -58,6 +58,9 @@ interface GlobeViewProps {
   // 갈아 끼울 수 없어 CSS hue-rotate로 돌린다 (constants/globeSkins.ts의 glassBgHue)
   glassBgHue?: number;
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
+  /** 라벨 언어(i18n.language). 'ko'가 아니면 국가·도시 라벨을 영문으로 그린다.
+      HTML에 박지 않고 주입만 하는 이유는 _globeHTML 메모 주석 참고 */
+  lang?: string;
 }
 
 // 지구본 HTML 은 폼(variant)마다 한 벌씩 있는데, 둘 다 three.js·d3·세계 지오를 통째로
@@ -65,11 +68,15 @@ interface GlobeViewProps {
 // **쓰지도 않을 폼까지** 만들어져 앱 수명 내내 메모리에 남았다.
 // 실제로 쓰는 폼만 첫 렌더에서 만들고 이후 재사용한다(폼을 바꾸면 그때 나머지 한 벌이
 // 생기고, 그 뒤로는 둘 다 재사용 — 토글 왕복에 재생성 비용이 없다).
+//
+// ⚠️ 그래서 **라벨 언어를 HTML 문자열에 박지 마라.** 박으면 이 캐시가 언어마다 갈라져
+// 1MB 넘는 번들이 여러 벌 남아 위 메모의 이유가 통째로 무효가 된다. HTML은 언어 중립으로
+// 두고, 언어는 부팅 전 주입(window.__initLang) + setLang 메시지로 넣는다(displayMode와 동일 패턴).
 let _globeHTML: string | null = null;
 function getGlobeHTML(): string {
   if (_globeHTML !== null) return _globeHTML;
   _globeHTML = `<!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -319,6 +326,17 @@ var visitedMap = {};
 // setVisitedCountries 메시지를 기다렸다 바꾸면 첫 텍스처가 비유리(파란 행성) 경로로
 // 구워져 메인탭 진입 때 파란 지구본이 한 프레임 이상 번쩍인다.
 var globeDisplayMode = (typeof window !== 'undefined' && window.__initDisplayMode) || 'flag'; // 'flag' | 'color' | 'photo'
+// 라벨 언어도 같은 자리에서 부팅 전 주입분을 읽는다(HTML은 언어 중립 — TS 쪽 _globeHTML 주석 참고).
+// 이후 변경은 setLang 메시지로 온다.
+var globeLang = (typeof window !== 'undefined' && window.__initLang) || 'ko';
+function labelsEn() { return globeLang !== 'ko'; }
+// ── 표시용 이름 ──
+// ⚠️ 여기서 나오는 값은 **표시 전용**이다. countryTapped의 country 필드처럼 RN이 기록 조회
+//    키로 쓰는 자리에 넣으면 영어 모드에서 탭이 조용히 죽는다(식별자는 언제나 한글 KO_NAMES).
+// 영문명이 비어 있으면 한글로 폴백한다 — 데이터 누락이 빈 라벨로 보이면 안 된다.
+function dispCountry(L) { return labelsEn() ? (L.name || L.ko) : (L.ko || L.name); }
+function dispCity(C) { return labelsEn() ? (C.en || C.n) : C.n; }
+try { document.documentElement.lang = globeLang; } catch (e) {}
 var globeDefaultColor = '#BF85FC';
 // 배경/별밭은 globeDisplayMode가 정해진 뒤에 만든다 — 위쪽에서 부르면 var 호이스팅 탓에
 // isGlass()가 아직 undefined를 보고 항상 false가 된다.
@@ -2337,6 +2355,7 @@ function updateLabels() {
     var px = snapPx(p.x), py = snapPx(p.y);
     if (!occupy(px, py)) continue;
     var a = Math.min(1, (p.facing - 0.3) / 0.25);
+    var lname = dispCountry(L); // 표시 전용 — 아래 6곳이 같은 값을 써야 언어 전환이 한 번에 반영된다
     if (isGlass()) {
       // 유리 지구본: 빛으로 새긴 글자 — 얇은 웨이트 + 자간 + 연보라 글로우.
       // 굵은 흰 글자+진보라 하드 테두리(기존)는 유리의 가벼움과 어긋난다.
@@ -2347,19 +2366,19 @@ function updateLabels() {
         // 위치·크기·자간은 그대로라 손을 뗄 때 글자가 튀지 않는다.
         labelCtx.strokeStyle = 'rgba(15,8,35,' + (0.55 * a) + ')';
         labelCtx.lineWidth = 2.5;
-        labelCtx.strokeText(L.ko, px, py);
+        labelCtx.strokeText(lname, px, py);
         labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
-        labelCtx.fillText(L.ko, px, py);
+        labelCtx.fillText(lname, px, py);
       } else {
         // ① 대비용 짙은 소프트 섀도 — 밝은 사진 조각 위에서도 읽히게
         labelCtx.shadowColor = 'rgba(15,8,35,' + (0.7 * a) + ')';
         labelCtx.shadowBlur = 6;
         labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
-        labelCtx.fillText(L.ko, px, py);
+        labelCtx.fillText(lname, px, py);
         // ② 유리 광 — 연보라 글로우 겹
         labelCtx.shadowColor = 'rgba(214,196,255,' + (0.8 * a) + ')';
         labelCtx.shadowBlur = 10;
-        labelCtx.fillText(L.ko, px, py);
+        labelCtx.fillText(lname, px, py);
         labelCtx.shadowBlur = 0;
       }
       try { labelCtx.letterSpacing = '0px'; } catch (e) {}
@@ -2367,9 +2386,9 @@ function updateLabels() {
       labelCtx.font = '600 ' + fs + 'px sans-serif';
       labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.8 * a) + ')';
       labelCtx.lineWidth = 3;
-      labelCtx.strokeText(L.ko, px, py);
+      labelCtx.strokeText(lname, px, py);
       labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
-      labelCtx.fillText(L.ko, px, py);
+      labelCtx.fillText(lname, px, py);
     }
   }
   // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장.
@@ -2384,15 +2403,16 @@ function updateLabels() {
       var qx = snapPx(q.x), qy = snapPx(q.y);
       if (!occupy(qx, qy)) continue;
       var ca = Math.min(1, (q.facing - 0.42) / 0.22);
+      var cname = dispCity(C); // 표시 전용(도시명은 RN 조회 키로 쓰이지 않는다)
       labelCtx.fillStyle = 'rgba(255,0,183,' + (0.95 * ca) + ')'; // 핀 #FF00B7 (classic은 스킨 미적용 — aurora 기본색)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI * 2); labelCtx.fill();
       labelCtx.font = '500 ' + cfs + 'px sans-serif';
       labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.75 * ca) + ')';
       labelCtx.lineWidth = 2.5;
-      labelCtx.strokeText(C.n, qx, qy + Math.round(cfs * 1.15));
+      labelCtx.strokeText(cname, qx, qy + Math.round(cfs * 1.15));
       labelCtx.fillStyle = 'rgba(240,240,248,' + (0.95 * ca) + ')';
-      labelCtx.fillText(C.n, qx, qy + Math.round(cfs * 1.15));
+      labelCtx.fillText(cname, qx, qy + Math.round(cfs * 1.15));
     }
   }
 }
@@ -2527,6 +2547,16 @@ function applyTheme(t) {
 function handleVisitedMessage(msg) {
   if (msg.type === 'setTheme') {
     applyTheme(msg.theme);
+  } else if (msg.type === 'setLang') {
+    // 라벨 언어 전환. 이미 그려진 라벨은 더티 체크(회전·줌 변화)만 보므로, 그냥 두면
+    // 손을 대기 전까지 옛 언어가 화면에 남는다 → zf를 NaN으로 만들어 다음 그리기를 강제한다.
+    var lg = msg.lang || 'ko';
+    if (lg !== globeLang) {
+      globeLang = lg;
+      try { document.documentElement.lang = lg; } catch (e) {}
+      _lblLast.zf = NaN;
+      updateLabels(); // labelCtx가 아직 없으면(초기화 전) 내부에서 그냥 빠져나간다
+    }
   } else if (msg.type === 'setVisitedCountries' && msg.countries) {
     visitedMap = {};
     msg.countries.forEach(function(c) {
@@ -2725,7 +2755,7 @@ function getNeonGlobeHTML(): string {
   // iOS 는 기존 문자열 그대로라 생성 HTML 이 1바이트도 바뀌지 않는다(파리티 기준).
   const neonPremultAlpha = Platform.OS === 'android' ? '' : `, premultipliedAlpha:false`;
   _neonGlobeHTML = `<!DOCTYPE html>
-<html lang="ko">
+<html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
@@ -2799,6 +2829,16 @@ function getNeonGlobeHTML(): string {
 var NEON_LAND = 'rgba(255,255,255,0.20)';  // 비방문(기본) 대륙 — 흰색 20%(유리: 본체색이 비침)
 var globeDefaultColor = '#BF85FC';     // 방문국 기본 활성화 색 (RN에서 덮어씀)
 var visitedMap = {};                   // nameEn -> { color }
+// 라벨 언어 — HTML은 언어 중립이고(메모 캐시 분열 방지, TS쪽 _neonGlobeHTML 주석 참고)
+// 초기값은 부팅 전 주입(window.__initLang), 이후 변경은 setLang 메시지로 온다.
+var globeLang = (typeof window !== 'undefined' && window.__initLang) || 'ko';
+function labelsEn(){ return globeLang !== 'ko'; }
+// ⚠️ 아래 두 함수의 결과는 **표시 전용**이다. countryTapped의 country 필드처럼 RN이 기록
+//    조회 키로 쓰는 자리에 넣으면 영어 모드에서 탭이 조용히 죽는다(식별자는 언제나 KO_NAMES).
+//    영문명이 비어 있으면 한글로 폴백한다 — 데이터 누락이 빈 라벨로 보이면 안 된다.
+function dispCountry(L){ return labelsEn() ? (L.name || L.ko) : (L.ko || L.name); }
+function dispCity(C){ return labelsEn() ? (C.en || C.n) : C.n; }
+try { document.documentElement.lang = globeLang; } catch(e) {}
 
 // GeoJSON 영문명 → 한글명 (탭 시 RN이 한글명으로 기록을 찾으므로 필요)
 var KO_NAMES = {
@@ -3919,12 +3959,13 @@ function updateLabels(){
     var px=snapPx(p.x), py=snapPx(p.y);
     if(!occupy(px,py)) continue;
     var a=Math.min(1,(p.facing-0.3)/0.25);
+    var lname=dispCountry(L); // 표시 전용(식별자는 KO_NAMES 그대로)
     labelCtx.font='600 '+fs+'px sans-serif';
     labelCtx.strokeStyle=LABEL_HALO+(0.8*a)+')';
     labelCtx.lineWidth=3;
-    labelCtx.strokeText(L.ko, px, py);
+    labelCtx.strokeText(lname, px, py);
     labelCtx.fillStyle='rgba(255,255,255,'+(0.92*a)+')';
-    labelCtx.fillText(L.ko, px, py);
+    labelCtx.fillText(lname, px, py);
   }
   if(zf>=3.2 && typeof CITY_LABELS!=='undefined'){
     var cfs=Math.min(13, Math.round((9+zf*0.35)*2)/2);
@@ -3936,15 +3977,16 @@ function updateLabels(){
       var qx=snapPx(q.x), qy=snapPx(q.y);
       if(!occupy(qx,qy)) continue;
       var ca=Math.min(1,(q.facing-0.42)/0.22);
+      var cname=dispCity(C); // 표시 전용(도시명은 RN 조회 키로 쓰이지 않는다)
       labelCtx.fillStyle=PIN_RGBA+(0.95*ca)+')'; // 스킨별 핀 색(aurora/cyan/mint)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI*2); labelCtx.fill();
       labelCtx.font='500 '+cfs+'px sans-serif';
       labelCtx.strokeStyle=LABEL_HALO+(0.75*ca)+')';
       labelCtx.lineWidth=2.5;
-      labelCtx.strokeText(C.n, qx, qy+Math.round(cfs*1.15));
+      labelCtx.strokeText(cname, qx, qy+Math.round(cfs*1.15));
       labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
-      labelCtx.fillText(C.n, qx, qy+Math.round(cfs*1.15));
+      labelCtx.fillText(cname, qx, qy+Math.round(cfs*1.15));
     }
   }
 }
@@ -3987,6 +4029,16 @@ function handleMsg(msg){
     }
   } else if(msg.type==='setTheme'){
     applyNeonSkin(msg.theme && msg.theme.neon ? msg.theme.neon : null);
+  } else if(msg.type==='setLang'){
+    // 라벨 언어 전환 — 더티 체크(회전·줌)만으론 이미 그려진 라벨이 안 바뀌므로
+    // zf를 NaN으로 만들어 다음 그리기를 강제한다(classic과 동일 이유).
+    var lg=msg.lang||'ko';
+    if(lg!==globeLang){
+      globeLang=lg;
+      try { document.documentElement.lang=lg; } catch(e) {}
+      _lblLast.zf=NaN;
+      updateLabels(); // 초기화 전이면 labelCtx가 없어 내부에서 그냥 빠져나간다
+    }
   } else if(msg.type==='setSponsored'){
     pendingSponsored=msg.items||[];
     if(worldData) buildAdMarkers(pendingSponsored);
@@ -4033,6 +4085,7 @@ export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
   variant = 'aurora', themeOverride, glassBgHue = 0, sponsoredItems = [],
+  lang = 'ko',
 }: GlobeViewProps) {
   const webViewRef = useRef<WebView>(null);
 
@@ -4072,6 +4125,8 @@ export default function GlobeView({
     items: sponsoredItems,
   }), [sponsoredItems]);
 
+  const langPayload = useMemo(() => JSON.stringify({ type: 'setLang', lang }), [lang]);
+
   const themePayload = useMemo(() => JSON.stringify({
     type: 'setTheme',
     // classic은 팔레트 필드(oceanBase 등)를, 네온(aurora)은 neon 필드만 읽는다
@@ -4096,6 +4151,11 @@ export default function GlobeView({
   useEffect(() => {
     webViewRef.current?.postMessage(themePayload);
   }, [themePayload]);
+
+  // 언어 전환 — 이미 떠 있는 지구본의 라벨을 즉시 다시 그리게 한다
+  useEffect(() => {
+    webViewRef.current?.postMessage(langPayload);
+  }, [langPayload]);
 
   // WebView 준비 완료 여부 — globeReady 신호 수신 시 true.
   const readyRef = useRef(false);
@@ -4132,9 +4192,10 @@ export default function GlobeView({
     const wv = webViewRef.current;
     if (!wv) return;
     wv.postMessage(themePayload);
+    wv.postMessage(langPayload); // 부팅 전 주입(__initLang)이 유실된 기기 대비 — 같은 값이면 WebView가 무시한다
     wv.postMessage(payload); // 빈 목록도 전송 (위 effect와 동일 이유)
     wv.postMessage(sponsoredPayload);
-  }, [themePayload, payload, sponsoredPayload]);
+  }, [themePayload, langPayload, payload, sponsoredPayload]);
 
   // WebView → RN 메시지: globeReady면 그 시점에 페이로드 전송, 나머지는 부모로 전달
   const handleMessage = useCallback((e: any) => {
@@ -4197,7 +4258,9 @@ export default function GlobeView({
         source={{ html: variant === 'aurora' ? getNeonGlobeHTML() : getGlobeHTML() }}
         // 표시 모드를 부팅 전에 주입 — 첫 텍스처부터 올바른 경로(유리 등)로 구워
         // 메시지 도착 전까지 파란(비유리) 지구본이 번쩍이는 것을 막는다
-        injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; true;`}
+        // 라벨 언어도 같은 이유로 부팅 전에 주입 — setLang 메시지를 기다리면 첫 프레임의
+        // 라벨이 한글로 한 번 그려졌다 영문으로 바뀌는 깜빡임이 난다.
+        injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; window.__initLang=${JSON.stringify(lang)}; true;`}
         style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
         nestedScrollEnabled={false}

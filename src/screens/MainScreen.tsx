@@ -1659,7 +1659,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
       {viewMode === 'globe' && (
         <View ref={globeRef} collapsable={false} style={StyleSheet.absoluteFill}>
-          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} themeOverride={globeSkinTheme} glassBgHue={glassBgHue} sponsoredItems={sponsoredMarkerItems} />
+          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} themeOverride={globeSkinTheme} glassBgHue={glassBgHue} sponsoredItems={sponsoredMarkerItems} lang={i18n.language} />
         </View>
       )}
 
@@ -1830,6 +1830,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 searchQuery={regionSearch}
                 showPopular={popularActive}
                 accentColor={skinAccent.accent}
+                lang={i18n.language}
                 puzzleImage={puzzleImage}
                 puzzleComplete={!!regionProgress && regionProgress.total > 0 && regionProgress.visited === regionProgress.total}
               />

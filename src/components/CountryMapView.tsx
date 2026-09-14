@@ -49,6 +49,9 @@ interface Props {
   /** 지구본 스킨 강조색(hex) — 경계선·외곽선·방문 테두리 색을 이 색의 밝기 배율로 파생한다.
       기본값은 aurora 보라(기존 하드코딩 값과 동일하게 나온다) */
   accentColor?: string;
+  /** 지역명 표시 언어(i18n.language). 'ko'가 아니면 칩·인셋 라벨을 NAME_1(라틴)으로 그린다.
+      생략하면 이 컴포넌트가 들고 있는 i18n.language를 쓴다. */
+  lang?: string;
 }
 
 export default function CountryMapView({
@@ -66,8 +69,10 @@ export default function CountryMapView({
   puzzleImage,
   puzzleComplete = false,
   accentColor = '#BF85FC',
+  lang: langProp,
 }: Props) {
   const { t, i18n } = useTranslation();
+  const lang = langProp ?? i18n.language;
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
   // WebView 안에는 i18next가 없다 — 문구를 RN에서 번역해 넣고, 언어가 바뀌면 HTML을 다시 만든다
   const labels = useMemo<MapLabels>(() => ({
@@ -85,8 +90,11 @@ export default function CountryMapView({
     const n = m ? parseInt(m[1], 16) : 0xbf85fc;
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }, [accentColor]);
-  // accentRgb가 바뀌면 HTML을 다시 만든다(WebView 리로드) — 스킨 변경은 드물어 허용
-  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE, labels, accentRgb), [countryCode, countryName, chipBottom, labels, accentRgb]);
+  // accentRgb가 바뀌면 HTML을 다시 만든다(WebView 리로드) — 스킨 변경은 드물어 허용.
+  // 언어(lang)도 같다. 지구본(GlobeView)은 HTML을 모듈 스코프에 메모해 두어 언어를 박으면
+  // 캐시가 갈라지지만, 이쪽은 애초에 labels(번역문)를 HTML에 박아 언어마다 다시 만드는
+  // 구조라 그 제약이 없다 — 그래서 여기서는 이 파일의 기존 방식(HTML에 주입)을 따른다.
+  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE, labels, accentRgb, lang), [countryCode, countryName, chipBottom, labels, accentRgb, lang]);
   const webViewRef = useRef<WebView>(null);
 
   // 사진 URI(file://·ph:// 등)를 data URI 로 변환한 캐시 (원본 URI → data URI).
@@ -307,7 +315,7 @@ export interface MapLabels {
   noData: string;
 }
 
-function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels, accentRgb: [number, number, number] = [191, 133, 252]) {
+function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels, accentRgb: [number, number, number] = [191, 133, 252], lang: string = 'ko') {
   const geo = getCountryGeo(code);
   if (!geo) {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>${escapeText(L.noData)}</body></html>`;
@@ -317,8 +325,12 @@ function buildHTML(code: string, countryName: string = '', chipBottom: number = 
   // 도시 표는 이 국가 것만, 그것도 지오의 실제 NAME_1으로 변환해 넣는다 (buildCityProvMap 참고)
   const cityProvJSON = JSON.stringify({ [code]: buildCityProvMap(code, geo) });
 
+  // lang은 i18n.language(예: 'ko', 'en', 'en-US')라 그대로 써도 되지만, 속성에 박히는 값이라
+  // 형식이 어긋나면 마크업이 깨진다 — 영문자·하이픈만 통과시키고 나머지는 'ko'로 떨군다.
+  const htmlLang = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(lang) ? lang : 'ko';
+
   return `<!DOCTYPE html>
-<html><head>
+<html lang="${htmlLang}"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <style>
@@ -400,6 +412,21 @@ var CITY_TO_PROV = ${cityProvJSON};
 var POPULAR_CODES = ${JSON.stringify(buildPopularCodes(code, geo))};
 var showPopular = false; // 앱 기본값(popularActive=false)과 일치 — 초기 깜빡임 방지
 
+// ── 지역명 표시 언어 ──
+// ⚠️ 표시용과 식별자용을 반드시 가른다.
+//    · 기록 매칭 = CODE, 검색 강조 비교 = NAME_1 (아래 getFill/emphStroke 주석 참고) — 그대로 둔다.
+//    · RN으로 올리는 regionTapped.region 은 **한글(NL_NAME_1) 고정**이다. MainScreen이 그 값으로
+//      기존 기록(r.regionName)을 찾고 새 기록의 regionName 으로도 저장하므로, 영문을 넣으면
+//      영어 모드에서만 기록이 안 붙는 조용한 결함이 난다.
+//    dispRegion 은 화면에 보이는 칩·인셋 라벨에만 쓴다.
+var LANG = ${JSON.stringify(lang)};
+var LABELS_EN = LANG !== 'ko';
+function dispRegion(p){
+  if(!p) return '';
+  var ko=p.NL_NAME_1||'', en=p.NAME_1||'';
+  return LABELS_EN ? (en||ko) : (ko||en); // 한쪽이 비면 반대쪽으로 폴백(빈 칩 방지)
+}
+
 // ── 지구본 스킨 강조색 파생 선 색 ──
 // 밝기 배율은 구 하드코딩 보라값(#3E3155·#4A3B66·#7856B0·#4E3D6B)이 aurora 강조색
 // (#BF85FC)의 몇 배 밝기였는지에서 역산 — aurora에서는 기존과 거의 같은 색이 나오고,
@@ -478,8 +505,8 @@ function applyProvince(prov){
   if(!prov) return;
   searchedRegion=prov;
   var nl=prov;
-  for(var i=0;i<(mainFeatures||[]).length;i++){if(mainFeatures[i].properties.NAME_1===prov){nl=mainFeatures[i].properties.NL_NAME_1||prov;break;}}
-  setRegionChip(nl);
+  for(var i=0;i<(mainFeatures||[]).length;i++){if(mainFeatures[i].properties.NAME_1===prov){nl=dispRegion(mainFeatures[i].properties)||prov;break;}}
+  setRegionChip(nl); // 표시 전용 — searchedRegion(강조 비교 키)은 위에서 NAME_1 그대로 뒀다
   zoomToProvince(prov);
   updateMap();
 }
@@ -491,7 +518,7 @@ var geoCache={};
 function geocodeFallback(query){
   if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip(L.noSearchResult); return; }
   var cc=ISO2[COUNTRY_CODE]||'';
-  var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
+  var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language='+(LABELS_EN?'en':'ko')+'&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
   // 8초 타임아웃 — 느린 네트워크에서 무한정 무응답으로 보이지 않게 중단 후 오류 안내
   var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
   var timer=ctrl?setTimeout(function(){try{ctrl.abort();}catch(e){}},8000):null;
@@ -656,9 +683,11 @@ function onRegionClick(ev,d){
     var self=this;
     setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
   }
+  // name은 식별자다 — 한글(NL_NAME_1) 고정. 아래 postMessage의 region 필드로 나가고
+  // MainScreen이 이 값으로 기록을 조회·저장한다(영문화하면 영어 모드에서만 기록이 안 붙는다).
   var name=d.properties.NL_NAME_1||d.properties.NAME_1||'';
   var nameEn=d.properties.CODE||''; // MainScreen이 regionNameEn으로 저장하는 값
-  setRegionChip(name);
+  setRegionChip(dispRegion(d.properties)||name); // 칩(표시)만 언어를 따른다
   if(window.ReactNativeWebView){
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'regionTapped',region:name,regionEn:nameEn,countryCode:COUNTRY_CODE}));
   }
@@ -775,7 +804,7 @@ function render(geo){
       g.append('rect').attr('class','inset-bg').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
         .attr('rx',6).attr('fill','#191920').attr('stroke',LINE_BASE).attr('stroke-width',0.8);
       g.append('text').attr('x',box.x+box.w/2).attr('y',box.y+14).attr('text-anchor','middle')
-        .attr('fill','#A1A1B0').attr('font-size','10px').text(feat[0].properties.NL_NAME_1);
+        .attr('fill','#A1A1B0').attr('font-size','10px').text(dispRegion(feat[0].properties)); // 인셋(알래스카·하와이) 라벨 — 표시 전용
       var grp=drawGroup(g, feat, ipath, box.name);
       insetPathElements[box.name]=grp.fill;
       drawOutline(g, feat, ipath); // 인셋(알래스카·하와이)도 같은 규칙 — 피처 하나면 전체 경계가 외곽선
