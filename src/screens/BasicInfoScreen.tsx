@@ -43,6 +43,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PersonIcon, CameraIcon } from '../components/icons';
 import RequirementList from '../components/RequirementList';
 import { COUNTRIES, type Country } from '../constants/countries';
+import { minimumSignupAge } from '../constants/minimumAge';
 
 // 국가 코드 추출은 공용 것을 쓴다 — 같은 함수를 화면마다 다시 정의하면
 // 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
@@ -139,7 +140,12 @@ export default function BasicInfoScreen({ navigation }: Props) {
   // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능
   const [handle, setHandle] = useState(storeHandle || '');
   const [checkingHandle, setCheckingHandle] = useState(false);
-  const [ageConfirmed, setAgeConfirmed] = useState(false);
+  // 연령 확인은 불리언이 아니라 **사용자가 동의한 나이 자체**를 들고 있는다.
+  // 이 체크박스는 "만 N세 이상입니다"라는 특정 숫자에 대한 자기신고라, 불리언으로 두면
+  // 거주국이 바뀌는 경로마다 체크를 풀어 주는 코드를 달아야 하고 하나라도 빠지면 사용자가
+  // 한 적 없는 진술이 켜진 채 남는다(실제로 GPS 자동 감지가 늦게 해소되는 경로에서 그랬다).
+  // 동의한 나이를 저장하고 현재 기준과 같은지 파생시키면 경로를 셀 필요가 없다.
+  const [confirmedAge, setConfirmedAge] = useState<number | null>(null);
   // 메이트 추천 선택 동의 — 온보딩 단계를 줄이려고 독립 동의 화면을 이 화면으로 흡수했다(그 화면은 삭제됨).
   // 기본값은 반드시 '꺼짐'. 선택 동의는 사전 동의가 원칙이라 미리 체크해 두면 다크패턴이 된다.
   const [mateRecoAgreed, setMateRecoAgreed] = useState(false);
@@ -155,6 +161,16 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const [stayCountry, setStayCountry] = useState<Country | null>(null);
   const [stayType, setStayType] = useState<StayType>('exchange');
   const [stayCountryModalVisible, setStayCountryModalVisible] = useState(false);
+
+  // 가입 최소 연령은 거주국마다 다르다(한국 14 · COPPA 13 · GDPR 제8조 13~16).
+  // 이 화면에서 고른 거주국이 곧 기준이므로 스토어가 아니라 selectedCountry 를 본다 —
+  // 스토어 값은 changeCountry 가 같이 써 두지만, 렌더 시점에 확실히 최신인 쪽은 이쪽이다.
+  const minAge = minimumSignupAge(codeOf(selectedCountry));
+
+  // 동의한 나이가 현재 기준과 같을 때만 '확인됨'이다. 거주국이 14세 나라에서 16세 나라로
+  // 바뀌면 이 값이 저절로 false 가 되어 체크가 풀린다 — 되돌리는 코드가 따로 필요 없다.
+  // 같은 나이로 옮기면(KR 14 → ES 14) 진술이 글자 그대로 같으므로 체크가 유지된다.
+  const ageConfirmed = confirmedAge === minAge;
 
   // 아이디 입력 조건 — 빨간 오류 문구로 뒤늦게 지적하는 대신 조건을 미리 전부 보여주고,
   // 충족되면 밝아진다. 앞 두 줄을 모두 만족하면 곧 HANDLE_RE를 통과한다(정의를 나눠 적은 것).
@@ -253,6 +269,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
     // 나라를 바꾸면 이전 지역이 함께 정리된다 — 이 화면이 따로 비울 필요가 없다.
     setHomeCountryCode(codeOf(c));
     setSelectedCountry(c);
+
+    // 연령 확인 체크는 여기서 건드리지 않는다 — ageConfirmed 가 confirmedAge === minAge
+    // 파생값이라 기준 나이가 달라지면 저절로 풀린다(위 선언부 주석 참고).
   };
 
   // 앱을 통틀어 위치 권한을 얻을 수 있는 경로가 사실상 기록 작성 화면뿐이었다. 감지기 4종은
@@ -317,9 +336,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
       Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.handleInvalid'));
       return;
     }
-    // 만 14세 미만 가입 차단(이용약관 제4조 2항·방침 제11조). 서버 조회 전에 먼저 막는다.
+    // 최소 연령 미만 가입 차단(이용약관 제4조 2항·방침 제11조). 서버 조회 전에 먼저 막는다.
+    // 기준 나이는 거주국마다 다르므로 체크박스 문구와 같은 minAge 를 쓴다 — 문구는 16인데
+    // 차단 안내만 14라고 말하면 어느 쪽이 진짜인지 알 수 없다.
     if (!ageConfirmed) {
-      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.ageConfirmHint'));
+      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.ageConfirmHint', { age: minAge }));
       return;
     }
     // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
@@ -448,12 +469,14 @@ export default function BasicInfoScreen({ navigation }: Props) {
             <Text style={[styles.fieldHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
           </View>
 
-          {/* 만 14세 확인 — 생년월일을 받지 않는 대신 자기 확인으로 연령 방어선을 유지한다
-              (개인정보처리방침 제11조). App Store 5.1.1(v)로 DOB 수집을 폐지했다. */}
+          {/* 최소 연령 확인 — 생년월일을 받지 않는 대신 자기 확인으로 연령 방어선을 유지한다
+              (개인정보처리방침 제11조). App Store 5.1.1(v)로 DOB 수집을 폐지했다.
+              나이는 위에서 고른 거주국 기준(minAge)이며, 기준이 달라지면 ageConfirmed
+              (= confirmedAge === minAge)가 저절로 false 가 되어 체크가 풀린다. */}
           <View style={styles.inputSection}>
             <TouchableOpacity
               style={styles.ageRow}
-              onPress={() => setAgeConfirmed((v) => !v)}
+              onPress={() => setConfirmedAge(ageConfirmed ? null : minAge)}
               activeOpacity={0.8}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: ageConfirmed }}
@@ -466,14 +489,14 @@ export default function BasicInfoScreen({ navigation }: Props) {
                   </Svg>
                 )}
               </View>
-              <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm')}</Text>
+              <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm', { age: minAge })}</Text>
             </TouchableOpacity>
-            <Text style={styles.privacyHint}>{t('basicInfo.ageConfirmHint')}</Text>
+            <Text style={styles.privacyHint}>{t('basicInfo.ageConfirmHint', { age: minAge })}</Text>
           </View>
 
           {/* 메이트 추천 동의(선택) — 온보딩 단계 축소로 독립 동의 화면을 여기로 흡수했다.
               선택 동의라 canContinue 에는 넣지 않는다: 체크하지 않아도 [다음]이 눌려야 한다.
-              스타일은 위 만 14세 확인 블록의 것을 그대로 재사용한다(같은 생김새 = 같은 스타일). */}
+              스타일은 위 최소 연령 확인 블록의 것을 그대로 재사용한다(같은 생김새 = 같은 스타일). */}
           <View style={styles.inputSection}>
             <TouchableOpacity
               style={styles.ageRow}
@@ -936,7 +959,7 @@ const styles = StyleSheet.create({
     marginTop: Spacing[2],
   },
 
-  // 만 14세 확인 체크박스
+  // 최소 연령 확인 체크박스
   ageRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   ageBox: {
     width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: '#A1A1B0',

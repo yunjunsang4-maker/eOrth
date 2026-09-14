@@ -100,12 +100,31 @@ if (notices) {
   }
   if (list.length) ok(`notices.json 항목 ${list.length}개`);
 
-  // 약관 개정 공지의 시행일은 약관 본문의 시행일과 같아야 한다
-  const termsDate = headerEffectiveDate(read('terms.md'));
-  for (const n of list.filter((x) => x?.kind === 'terms' && x.effectiveDate)) {
-    const d = normDate(n.effectiveDate);
-    if (d !== termsDate) bad(`notices.json[${n.id}]: 시행일이 약관과 다름 — 공지=${d}, 약관=${termsDate}`);
-    else ok(`약관 공지 시행일 일치: ${d}`);
+  // 현행 약관 시행일에 대응하는 공지가 있어야 한다.
+  // ⚠️ terms 공지를 '전부' 현행 약관과 대조하면 안 된다 — 약관을 두 번째로 개정하는 순간
+  //    지난 공지가 반드시 실패하고, 그걸 피하려고 과거 기록에서 시행일을 지우게 된다
+  //    (실제로 한 번 그렇게 됐다). 지난 공지의 시행일은 그때의 사실이라 손대지 않는다.
+  // 약관·방침 양쪽을 같은 규칙으로 본다. 예전엔 terms 만 검사해, 방침을 개정하고 공지를
+  // 빠뜨려도 아무도 몰랐다.
+  for (const [kind, file, label] of [
+    ['terms', 'terms.md', '약관'],
+    ['privacy', 'privacy-policy.md', '방침'],
+  ]) {
+    const docDate = headerEffectiveDate(read(file));
+    const notices = list.filter((x) => x?.kind === kind && x.effectiveDate);
+    const current = notices.filter((n) => normDate(n.effectiveDate) === docDate);
+    if (!current.length) {
+      bad(`${label} 시행일 ${docDate}에 대응하는 ${kind} 공지가 없습니다 — 개정했다면 공지를 추가하세요`);
+    } else {
+      ok(`${label} 공지 시행일 일치: ${docDate}`);
+    }
+    // 과거 공지는 현행보다 미래일 수 없다 — 날짜 오타·잘못된 예약 게시를 잡는다
+    for (const n of notices) {
+      const d = normDate(n.effectiveDate);
+      if (d && d > docDate) {
+        bad(`notices.json[${n.id}]: 시행일이 현행 ${label}보다 미래 — 공지=${d}, ${label}=${docDate}`);
+      }
+    }
   }
 }
 

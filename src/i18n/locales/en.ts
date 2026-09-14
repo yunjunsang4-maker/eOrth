@@ -82,8 +82,10 @@ const en = {
     noticeTitle: 'Notice',
     handleInvalid: 'Your ID must be 4–30 characters using letters, numbers, and _.',
     handleTaken: 'That ID is already taken. Please choose another.',
-    ageConfirm: 'I am 14 years of age or older',
-    ageConfirmHint: 'Users under 14 cannot sign up.',
+    // 최소 연령은 거주국마다 다르다(GDPR 제8조는 13~16 사이에서 회원국이 정한다).
+    // 숫자를 문구에 박지 말고 constants/minimumAge.ts 가 계산한 값을 {{age}} 로 받는다.
+    ageConfirm: 'I am {{age}} years of age or older',
+    ageConfirmHint: 'Users under {{age}} cannot sign up.',
     language: 'Language',
     residence: 'Country of residence',
     residenceSelect: 'Select country',

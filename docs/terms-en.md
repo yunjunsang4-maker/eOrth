@@ -3,7 +3,7 @@
 > 게시용 HTML: `docs/terms-en.html` (GitHub Pages — 앱 언어가 영어일 때 설정 > 이용약관에서 열림)
 > 원문은 `docs/terms.md`(한국어)이며 한국어판이 정본입니다. 제13조 제3항 참조.
 
-**Effective date: August 4, 2026**
+**Effective date: October 15, 2026**
 
 ---
 
@@ -28,7 +28,7 @@ These Terms set out the rights, obligations, and responsibilities of the operato
 ## Article 4 (Sign-up and Accounts)
 
 1. You may sign up with an email address or a social account (Google, Apple). The service agreement is formed when you agree to these Terms and to the Privacy Policy.
-2. **Children under the age of 14 may not sign up as members.**
+2. **The minimum age for signing up is the age set by the laws of the country where you reside, and anyone below that age may not sign up as a member (in the Republic of Korea, 14).** The sign-up screen shows the minimum age that applies to your country of residence, and you must confirm that you meet it. On the sign-up screen, changing your country of residence applies that country's minimum age, and you are asked to confirm again if the age is different. Changing your country of residence in Settings after sign-up does not re-evaluate an account that has already been created.
 3. Each user has one unique username (handle), which also serves as the name shown to other users. A username cannot be changed again for a set period (2 weeks) after it is changed.
 4. Users are responsible for managing their own account and password and must not allow a third party to use them. If you suspect your account has been compromised, notify the Operator immediately.
 5. Use of the Service may be restricted where a user has misappropriated another person's information or signed up with false information.
@@ -106,11 +106,8 @@ Users must not engage in any of the following.
 
 ## Addendum
 
-1. These Terms take effect on **August 4, 2026**. (First effective July 10, 2026; amended July 22, 2026, and amended again.)
+1. These Terms take effect on **October 15, 2026**. (First effective July 10, 2026; amended July 22 and August 4, 2026, and amended again.)
 2. Contents of this amendment
-   - Article 9: States that Premium is currently provided free of charge to everyone and that paid billing has not been introduced, and adds an obligation to give advance notice of any future transition to paid service. The previous wording "will transition to an in-app subscription at general release" is deleted (the billing method has not been decided).
-   - Article 2: Corrects the definition of "Premium" so that it is not limited to subscriptions.
-   - Article 10: States that advertisements are shown regardless of Premium use, and that guidance on personalized advertising is in the Privacy Policy.
-   - Article 5: Adds continent and regional maps, importing past trips, and importing from an external blog to the list of services provided.
-3. Contents of the previous amendment (effective July 22, 2026): terminology cleanup for the social connection model (follow → mate), and correction of how content visibility is described.
+   - Article 4: The minimum sign-up age changes from a fixed 14 to **the age set by the laws of the user's country of residence**. It remains 14 in the Republic of Korea (Act on Promotion of Information and Communications Network Utilization), while some countries in the European Economic Area set 15 or 16 under Article 8 of the GDPR, and the United States sets 13 under COPPA. Because the minimum age **rises** above 14 in some countries, this is a change unfavorable to users, so notice is given 30 days before the effective date under Article 3(3).
+3. Contents of the previous amendment (effective August 4, 2026): Article 9 states that Premium is provided free of charge and adds an obligation to give advance notice of any future transition to paid service; Article 2 corrects the definition of "Premium"; Article 10 states that advertisements are shown regardless of Premium use; Article 5 adds newly provided services to the list.
 4. Contact: eorth26@gmail.com

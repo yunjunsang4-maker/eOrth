@@ -85,8 +85,10 @@ const ko = {
     noticeTitle: '알림',
     handleInvalid: '아이디는 영문·숫자·_ 를 사용해 4~30자로 입력해주세요.',
     handleTaken: '이미 사용 중인 아이디예요. 다른 아이디를 입력해주세요.',
-    ageConfirm: '만 14세 이상입니다',
-    ageConfirmHint: '만 14세 미만은 가입할 수 없습니다.',
+    // 최소 연령은 거주국마다 다르다(GDPR 제8조는 13~16 사이에서 회원국이 정한다).
+    // 숫자를 문구에 박지 말고 constants/minimumAge.ts 가 계산한 값을 {{age}} 로 받는다.
+    ageConfirm: '만 {{age}}세 이상입니다',
+    ageConfirmHint: '만 {{age}}세 미만은 가입할 수 없습니다.',
     language: '언어',
     residence: '거주국가',
     residenceSelect: '거주국가 선택',
