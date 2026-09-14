@@ -1,0 +1,286 @@
+# CLIP 제로샷 라벨 어휘 — 한 줄 하나. iOS Vision(VNClassifyImageRequest) 스타일의 소문자 명사를 흉내 낸다.
+# 앱의 labelTaxonomy.ts가 해석하는 키워드와 겹치는 것도, 일부러 안 겹치는 것도 섞어
+# "버려지는 라벨"이 리포트에 드러나게 한다. 표를 넓히면 리포트 해석률이 그대로 반영된다.
+
+# ── 자연 ──
+sunset
+sunrise
+sky
+cloud
+beach
+sea
+ocean
+wave
+island
+coast
+cliff
+mountain
+hill
+valley
+volcano
+lake
+river
+waterfall
+forest
+tree
+bamboo
+flower
+cherry blossom
+autumn leaves
+garden
+park
+field
+meadow
+desert
+snow
+glacier
+fog
+mist
+rain
+rainbow
+star
+moon
+cave
+hot spring
+countryside
+farm
+vineyard
+nature
+
+# ── 도시·거리 ──
+city
+street
+alley
+skyline
+skyscraper
+building
+apartment
+night
+neon
+nightlife
+crowd
+market
+night market
+harbor
+port
+bridge
+plaza
+square
+sidewalk
+crosswalk
+traffic
+tram
+subway
+train station
+airport
+bus stop
+graffiti
+mural
+shop
+storefront
+mall
+convenience store
+rooftop
+view
+cityscape
+
+# ── 랜드마크·문화 ──
+landmark
+castle
+palace
+fortress
+temple
+shrine
+pagoda
+church
+cathedral
+mosque
+monument
+statue
+tower
+observatory
+museum
+gallery
+exhibition
+ruins
+old town
+fountain
+gate
+arch
+lighthouse
+stadium
+theater
+library
+university
+
+# ── 음식·음료 ──
+food
+meal
+dish
+dessert
+cake
+pastry
+bread
+bakery
+coffee
+latte
+tea
+drink
+beer
+wine
+cocktail
+juice
+restaurant
+cafe
+bar
+pub
+sushi
+ramen
+noodle
+rice
+curry
+pizza
+pasta
+burger
+steak
+seafood
+barbecue
+hot pot
+dumpling
+street food
+fruit
+ice cream
+chocolate
+breakfast
+dinner
+buffet
+menu
+table setting
+
+# ── 사람·이벤트 ──
+selfie
+portrait
+people
+couple
+family
+friends
+child
+baby
+smile
+party
+festival
+parade
+concert
+fireworks
+wedding
+dance
+performance
+costume
+crowd of people
+group photo
+
+# ── 활동·레저 ──
+hiking
+trekking
+camping
+swimming
+snorkeling
+diving
+surfing
+kayak
+sailing
+skiing
+snowboard
+cycling
+running
+yoga
+shopping
+amusement park
+roller coaster
+ferris wheel
+ride
+zoo
+aquarium
+theme park
+spa
+picnic
+fishing
+golf
+
+# ── 실내·숙소 ──
+hotel room
+bedroom
+lobby
+bathroom
+pool
+swimming pool
+balcony
+window
+interior
+living room
+kitchen
+hallway
+staircase
+elevator
+
+# ── 사물·문서(제외 대상 포함) ──
+sign
+signboard
+map
+receipt
+document
+screenshot
+ticket
+boarding pass
+passport
+text
+poster
+book
+smartphone
+laptop
+souvenir
+shopping bag
+luggage
+suitcase
+umbrella
+lantern
+illumination
+christmas lights
+flag
+clock
+mirror
+reflection
+silhouette
+shadow
+
+# ── 동물 ──
+dog
+cat
+bird
+seagull
+deer
+horse
+cow
+sheep
+monkey
+fish
+butterfly
+squirrel
+
+# ── 교통 ──
+car
+taxi
+bus
+train
+airplane
+airplane window
+boat
+ferry
+cruise ship
+bicycle
+scooter
+motorcycle
+cable car
+road
+highway
+tunnel

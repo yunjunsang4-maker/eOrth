@@ -10,6 +10,9 @@
 import argparse
 import json
 import os
+
+# Anaconda(MKL)와 torch가 libiomp5md.dll을 각각 실어 "OMP: Error #15"로 죽는다. torch import 전에 허용.
+os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')
 import sys
 import time
 from pathlib import Path
