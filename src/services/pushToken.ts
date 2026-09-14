@@ -3,7 +3,11 @@
  *
  * - registerPushToken: 알림 권한 획득 후 토큰을 push_tokens 테이블에 upsert
  * - unregisterPushToken: 현재 기기 토큰 행 삭제 (계정 전환 시 이전 계정으로 푸시 가는 것 방지)
- * - syncPushPrefs: 등록된 토큰 행의 prefs만 update
+ * - syncPushPrefs: 등록된 토큰 행의 prefs·lang만 update
+ *
+ * (2026-09-13) lang — 푸시 문구 언어. 서버(send-push)는 수신자 언어를 알 방법이 없어
+ * 문구 8종을 전부 한국어로 보내고 있었다. 언어는 계정이 아니라 기기 설정이라 profiles가
+ * 아니라 push_tokens 행에 싣는다(발송 경로 두 곳이 이미 이 표를 읽으므로 조인도 안 는다).
  *
  * expo-device 미설치 → Platform.OS 기반으로만 처리.
  * Expo Go / 시뮬레이터에서 getExpoPushTokenAsync 실패는 try/catch 무해화.
@@ -22,6 +26,26 @@ const UNREGISTER_TIMEOUT_MS = 5000;
 
 // push_tokens 테이블에 저장할 prefs 구조 (Edge Function이 이 키로 필터)
 export type PushPrefs = Partial<Record<NotifPrefKey, boolean>>;
+
+// push_tokens.lang 에 들어갈 수 있는 값. 서버는 이 두 값만 해석한다.
+export type PushLang = 'ko' | 'en';
+
+/**
+ * 푸시 문구 언어 정규화 — 서버에 넣기 직전 단 한 곳.
+ *
+ * ⚠️ i18n.language 는 'en-US'·'ko-KR' 처럼 지역 태그가 붙을 수 있어 그대로 넣으면
+ *    Edge Function 의 비교(=== 'en')가 빗나가 영어 기기에 한국어가 간다.
+ *    'ko' 로 시작하면 한국어, 그 외는 전부 영어로 접는다.
+ *
+ * ⚠️ 서버(send-push 의 toLang)는 반대로 **모르는 값을 한국어**로 떨어뜨린다. 어긋난 게 아니라
+ *    입력이 다르다 — 이쪽 입력은 사용자가 고른 앱 언어(settingsStore.language, 'ko'|'en')라
+ *    "ko 가 아니면 영어를 고른 것"이 맞고, 저쪽 입력은 DB 값이라 null(구 번들 행)이 대다수다.
+ *    한쪽을 다른 쪽에 맞추지 마라 — 서버를 영어 폴백으로 바꾸면 구 번들 사용자 전원에게
+ *    영어가 간다.
+ */
+export function normalizePushLang(raw: string | null | undefined): PushLang {
+  return typeof raw === 'string' && raw.toLowerCase().startsWith('ko') ? 'ko' : 'en';
+}
 
 // 마지막으로 서버에 등록한 토큰 캐시 — 계정 전환 시 getExpoPushTokenAsync가 실패해도
 // (오프라인 등) 이 값으로 이전 계정 토큰 행을 지울 수 있게 한다(감사 H2).
@@ -48,9 +72,15 @@ async function getToken(): Promise<string | null> {
  * 권한 요청은 스냅 감지·알림 설정 화면 등 사용자 인지 시점에서 별도로 처리한다.
  * granted가 아니면 조용히 return하고, AppState 'active' 복귀 시 PushTokenSync가 재시도한다.
  *
+ * lang 은 호출부(PushTokenSync)가 settingsStore.language 를 넘긴다.
+ * ⚠️ 여기서 i18n 인스턴스를 직접 import 하지 않는 이유: 이 모듈은 계정 전환 경로
+ *    (useAccountBoundary)가 부르는 서비스인데, '../i18n' 은 import 시점에 i18next 와
+ *    expo-localization 을 초기화한다. 서비스가 store·i18n 을 런타임 import 하지 않는
+ *    현재 구조(여기서 settingsStore 는 type import 뿐이다)를 깨지 않도록 인자로 받는다.
+ *
  * @returns true: 등록 성공 / false: 권한 미부여 또는 토큰 미발급
  */
-export async function registerPushToken(prefs: PushPrefs): Promise<boolean> {
+export async function registerPushToken(prefs: PushPrefs, lang: string): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) return false;
   try {
     // 권한을 요청(팝업)하지 않고 현재 상태만 확인
@@ -78,6 +108,7 @@ export async function registerPushToken(prefs: PushPrefs): Promise<boolean> {
           token,
           platform: Platform.OS,
           prefs,
+          lang: normalizePushLang(lang),
         },
         { onConflict: 'user_id,token' },
       );
@@ -121,10 +152,10 @@ export async function unregisterPushToken(): Promise<void> {
 }
 
 /**
- * notifPrefs 변경 시 기존 토큰 행의 prefs만 update.
+ * notifPrefs 또는 앱 언어 변경 시 기존 토큰 행의 prefs·lang을 update.
  * 토큰이 등록되지 않은 경우 아무것도 하지 않는다.
  */
-export async function syncPushPrefs(prefs: PushPrefs): Promise<void> {
+export async function syncPushPrefs(prefs: PushPrefs, lang: string): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   try {
     const token = await getToken();
@@ -135,7 +166,7 @@ export async function syncPushPrefs(prefs: PushPrefs): Promise<void> {
 
     await supabase
       .from('push_tokens')
-      .update({ prefs })
+      .update({ prefs, lang: normalizePushLang(lang) })
       .match({ user_id: user.id, token });
   } catch {
     // 오프라인 등 실패 — 무해화

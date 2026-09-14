@@ -2540,16 +2540,37 @@ revoke all on function public.purge_expired_deletion_requests(int) from public, 
 --   PK(user_id, token): 사용자가 여러 기기를 등록할 수 있음.
 --   prefs jsonb: 앱에서 저장한 notifPrefs(master·likes·comments·newFollower·friendTrip·marketing).
 --               없는 키 = 기본값(아래 Edge Function 규칙 참조).
+--   lang text:  푸시 문구 언어('ko' | 'en'). null이면 한국어(아래 2026-09-13 주석 참조).
 -- ============================================================
 create table if not exists public.push_tokens (
   user_id    uuid not null references public.profiles(id) on delete cascade,
   token      text not null,
   platform   text,                        -- 'ios' | 'android'
+  lang       text,                        -- 'ko' | 'en' | null(=한국어)
   prefs      jsonb not null default '{}', -- notifPrefs 사본 (클라이언트가 함께 upsert)
   updated_at timestamptz not null default now(),
   primary key (user_id, token)
 );
 create index if not exists idx_push_tokens_user on public.push_tokens (user_id);
+
+-- (2026-09-13) 푸시 문구 언어. 위 create table 은 `if not exists` 라 기존 DB에는 적용되지
+-- 않으므로 alter 를 함께 둔다(이 파일의 관례).
+--
+-- 왜 profiles 가 아니라 push_tokens 인가:
+--   ① 언어는 계정이 아니라 **기기** 설정이다 — 같은 계정의 아이폰=영어 / 안드로이드=한국어가
+--      실제로 가능하고, 그러면 기기마다 다른 문구로 가야 맞다.
+--   ② send-push 의 두 발송 경로(handleDm · 메인 핸들러)가 이미 이 표를 조회한다 — 조인이
+--      늘지 않는다.
+--
+-- null 허용이 핵심이다. 이 컬럼이 생기기 전에 등록된 토큰 행은 전부 null 이고,
+-- Edge Function 은 null(및 알 수 없는 값)을 한국어로 떨어뜨린다 = 종전 동작 그대로.
+-- 그래서 **앱 배포 순서 제약이 없다**(구 번들은 lang 없이 upsert 할 뿐이다).
+--
+-- ⚠️ RLS·권한 변경은 필요 없다. 정책이 `push_tokens_all_own` 하나뿐이고 `for all` 에
+--    user_id = auth.uid() 만 보므로 컬럼이 늘어도 그대로 통과한다. posts 와 달리
+--    push_tokens 에는 컬럼 단위 `grant update (...)` 가 걸려 있지 않아(이 파일 어디에도 없다)
+--    "권한 목록에 빠져 조용히 permission denied" 함정도 해당되지 않는다.
+alter table public.push_tokens add column if not exists lang text;
 
 drop trigger if exists trg_push_tokens_updated on public.push_tokens;
 create trigger trg_push_tokens_updated before update on public.push_tokens

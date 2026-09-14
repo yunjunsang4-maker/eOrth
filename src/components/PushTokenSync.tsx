@@ -3,7 +3,10 @@
  *
  * - useIsAppEntered: 인증 후 Main 진입 시 1회 registerPushToken
  * - 계정 전환: uid가 변경되면 새 계정의 토큰을 재등록 (registeredForUidRef로 추적)
- * - notifPrefs 변화: 2초 디바운스 후 syncPushPrefs (settingsStore에서 직접 서비스 호출 시 순환 위험 회피)
+ * - notifPrefs·language 변화: 2초 디바운스 후 syncPushPrefs (settingsStore에서 직접 서비스 호출 시 순환 위험 회피)
+ *   → 언어는 서버 푸시 문구(send-push)의 ko/en 분기 기준이라, 바뀌면 토큰 행도 갱신해야 한다.
+ *     감시 대상은 i18n.language가 아니라 settingsStore.language다 — LanguageBridge가
+ *     store → i18n 방향으로만 흘리므로 store 쪽이 원본이고, 여기서 이미 구독 중이다.
  * - AppState 'active' 복귀: 아직 미등록(권한 미부여 등)이면 조용히 재시도
  *   → 사용자가 시스템 설정에서 알림 권한을 나중에 허용하면 다음 포그라운드에 자동 등록
  *
@@ -19,7 +22,7 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 const PREFS_DEBOUNCE_MS = 2000;
 
 export default function PushTokenSync() {
-  const { notifPrefs } = useSettings();
+  const { notifPrefs, language } = useSettings();
   const entered = useIsAppEntered();
   // 등록한 사용자 uid를 기억 (계정 전환 감지용 — uid 변경 시 재등록)
   const registeredForUidRef = useRef<string | null>(null);
@@ -27,6 +30,9 @@ export default function PushTokenSync() {
   // 최신 notifPrefs를 ref로 추적 (디바운스 콜백에서 stale 클로저 방지)
   const notifPrefsRef = useRef(notifPrefs);
   notifPrefsRef.current = notifPrefs;
+  // 최신 language를 ref로 추적 (마운트 1회 등록된 AppState 핸들러의 stale 클로저 방지)
+  const languageRef = useRef(language);
+  languageRef.current = language;
   // entered를 ref로 추적 (AppState 핸들러에서 stale 클로저 방지)
   const enteredRef = useRef(entered);
   enteredRef.current = entered;
@@ -41,7 +47,7 @@ export default function PushTokenSync() {
         if (!uid || registeredForUidRef.current === uid) return;
         // registerPushToken 반환값(true=성공)이 false면 uid 추적을 하지 않아
         // 다음 포그라운드 복귀 시 AppState 핸들러가 재시도하게 둔다
-        const ok = await registerPushToken(notifPrefsRef.current);
+        const ok = await registerPushToken(notifPrefsRef.current, languageRef.current);
         if (ok) registeredForUidRef.current = uid;
       } catch {
         // 비동기 uid 조회 실패 — 무해화
@@ -63,7 +69,7 @@ export default function PushTokenSync() {
         const { data: { user } } = await supabase!.auth.getUser();
         const uid = user?.id ?? null;
         if (!uid) return;
-        const ok = await registerPushToken(notifPrefsRef.current);
+        const ok = await registerPushToken(notifPrefsRef.current, languageRef.current);
         if (ok) registeredForUidRef.current = uid;
       } catch {
         // 포그라운드 재시도 실패 — 무해화
@@ -74,17 +80,17 @@ export default function PushTokenSync() {
     return () => subscription.remove();
   }, []); // 마운트 1회 등록 — ref로 최신값 참조
 
-  // notifPrefs 변경 시 2초 디바운스 후 서버 동기화 (최초 진입 전에도 변경 가능하므로 entered 무관)
+  // notifPrefs·language 변경 시 2초 디바운스 후 서버 동기화 (최초 진입 전에도 변경 가능하므로 entered 무관)
   useEffect(() => {
     if (!isSupabaseConfigured || !registeredForUidRef.current) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      syncPushPrefs(notifPrefsRef.current);
+      syncPushPrefs(notifPrefsRef.current, languageRef.current);
     }, PREFS_DEBOUNCE_MS);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [notifPrefs]);
+  }, [notifPrefs, language]);
 
   return null; // UI 없음
 }

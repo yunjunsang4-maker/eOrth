@@ -36,6 +36,16 @@ function isPushAllowed(prefs: Record<string, unknown>, notifType: string): boole
   return val === undefined || val === true; // 미설정 = 허용
 }
 
+// ── 문구 언어 ───────────────────────────────────────────────────────────────
+// push_tokens.lang 은 앱(normalizePushLang)이 'ko' | 'en' 으로 접어서 넣는다.
+// null = 이 컬럼이 생기기 전(2026-09-13)에 등록된 구 번들 토큰 → 한국어(종전 동작).
+// ⚠️ 알 수 없는 값도 한국어로 떨어뜨린다. 반대로 하면 값이 한 글자만 어긋나도
+//    한국 사용자 전원에게 영어가 간다.
+type PushLang = 'ko' | 'en';
+function toLang(raw: unknown): PushLang {
+  return raw === 'en' ? 'en' : 'ko';
+}
+
 // ── Expo 푸시 메시지 빌더 ───────────────────────────────────────────────────
 interface NotifRecord {
   id: string;
@@ -56,39 +66,56 @@ interface ExpoPushMessage {
   badge?: number;
 }
 
+// ⚠️ 문구에 이모지를 넣지 않는다(이 저장소의 확립된 규칙).
+// ⚠️ 한국어 문구는 기존 값 그대로 — 한 글자도 바꾸지 말 것.
 function buildMessage(
   token: string,
   notif: NotifRecord,
   actorHandle: string,
+  lang: PushLang,
 ): ExpoPushMessage {
-  const name = actorHandle ? `@${actorHandle}` : '누군가';
+  const name = actorHandle ? `@${actorHandle}` : lang === 'en' ? 'Someone' : '누군가';
   let title = 'eOrth';
   let body = '';
 
   switch (notif.type) {
     case 'like':
-      body = `${name}님이 회원님의 여행을 좋아해요`;
+      body = lang === 'en'
+        ? `${name} liked your trip`
+        : `${name}님이 회원님의 여행을 좋아해요`;
       break;
     case 'comment':
-      body = `${name}님이 회원님의 여행에 댓글을 남겼어요`;
+      body = lang === 'en'
+        ? `${name} commented on your trip`
+        : `${name}님이 회원님의 여행에 댓글을 남겼어요`;
       break;
     case 'reply':
-      body = `${name}님이 회원님의 댓글에 답글을 남겼어요`;
+      body = lang === 'en'
+        ? `${name} replied to your comment`
+        : `${name}님이 회원님의 댓글에 답글을 남겼어요`;
       break;
     case 'mention':
-      body = `${name}님이 댓글에서 회원님을 언급했어요`;
+      body = lang === 'en'
+        ? `${name} mentioned you in a comment`
+        : `${name}님이 댓글에서 회원님을 언급했어요`;
       break;
     case 'neighbor_request':
-      body = `${name}님이 메이트 신청을 보냈어요`;
+      body = lang === 'en'
+        ? `${name} sent you a mate request`
+        : `${name}님이 메이트 신청을 보냈어요`;
       break;
     case 'neighbor_accept':
-      body = `${name}님이 메이트 신청을 수락했어요`;
+      body = lang === 'en'
+        ? `${name} accepted your mate request`
+        : `${name}님이 메이트 신청을 수락했어요`;
       break;
     case 'friend_post':
-      body = `${name}님이 새 여행 기록을 올렸어요`;
+      body = lang === 'en'
+        ? `${name} posted a new travel record`
+        : `${name}님이 새 여행 기록을 올렸어요`;
       break;
     default:
-      body = '새 알림이 있어요';
+      body = lang === 'en' ? 'You have a new notification' : '새 알림이 있어요';
   }
 
   return {
@@ -206,23 +233,27 @@ async function handleDm(messageId: string): Promise<Response> {
   // ④ 수신자 토큰 + prefs
   const { data: tokens, error: tokensError } = await admin
     .from('push_tokens')
-    .select('token, prefs')
+    .select('token, prefs, lang')
     .eq('user_id', recipient);
   if (tokensError) return new Response('db_error', { status: 500 });
   if (!tokens || tokens.length === 0) return new Response('no_tokens', { status: 200 });
 
   // ⑤ prefs 게이트 + 내용 숨김 메시지 빌드
-  const name = senderHandle ? `@${senderHandle}` : '누군가';
+  // ⚠️ 같은 계정이라도 기기마다 lang 이 다를 수 있다(아이폰 영어 / 안드로이드 한국어).
+  //    그래서 문구는 루프 밖에서 한 번이 아니라 **토큰 행마다** 만든다.
   const messages: ExpoPushMessage[] = [];
   const validTokens: string[] = [];
   for (const row of tokens) {
     const prefs = (row.prefs as Record<string, unknown>) ?? {};
     if (!isPushAllowed(prefs, 'dm')) continue;
     if (!row.token || !row.token.startsWith('ExponentPushToken[')) continue;
+    const lang = toLang(row.lang);
+    const name = senderHandle ? `@${senderHandle}` : lang === 'en' ? 'Someone' : '누군가';
     messages.push({
       to: row.token,
       title: 'eOrth',
-      body: `${name}님이 메시지를 보냈어요`, // 내용(본문)은 숨김
+      // 내용(본문)은 숨김
+      body: lang === 'en' ? `${name} sent you a message` : `${name}님이 메시지를 보냈어요`,
       sound: 'default',
       data: { type: 'dm', handle: senderHandle },
     });
@@ -337,7 +368,7 @@ Deno.serve(async (req: Request) => {
   // ③ 수신자 push_tokens 조회 (prefs 포함)
   const { data: tokens, error: tokensError } = await admin
     .from('push_tokens')
-    .select('token, prefs')
+    .select('token, prefs, lang')
     .eq('user_id', notif.user_id);
 
   if (tokensError) {
@@ -357,7 +388,8 @@ Deno.serve(async (req: Request) => {
     if (!isPushAllowed(prefs, notif.type)) continue;
     if (!row.token || !row.token.startsWith('ExponentPushToken[')) continue;
 
-    messages.push(buildMessage(row.token, notif, actorHandle));
+    // 토큰(=기기)마다 언어가 다를 수 있어 메시지도 행 단위로 만든다
+    messages.push(buildMessage(row.token, notif, actorHandle, toLang(row.lang)));
     validTokens.push(row.token);
   }
 
