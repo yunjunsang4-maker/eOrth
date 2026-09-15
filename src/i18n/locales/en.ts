@@ -999,7 +999,6 @@ const en = {
     noPhotoSelectedDesc: 'Add at least one photo to continue',
     countryChange: 'Change',
     date: 'Date',
-    dateFirstHint: 'Set the dates first and only photos from that period are shown, so recording takes far less effort.',
     departDate: 'Departure',
     arriveDate: 'Arrival',
     textLabel: 'Text',
