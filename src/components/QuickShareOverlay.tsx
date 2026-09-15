@@ -5,7 +5,7 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
-import { FriendIcon } from './icons';
+import { FriendIcon, PersonIcon } from './icons';
 import { useStageWidth, useStageGutter } from '../utils/stage';
 
 const CIRCLE = 56;
@@ -60,13 +60,14 @@ function TargetCircle({
           },
         ]}
       >
-        {/* 사진 > 제작 아이콘 > 이모지 순. '기타'는 이모지 대신 자체 제작 SVG를 쓴다 */}
+        {/* 사진 > 제작 아이콘('기타') > 사람 실루엣 순. 이모지 폴백은 쓰지 않는다 —
+            profiles.emoji 기본값 '🧳'이 전 계정에 박혀 있어 사진 없는 메이트가 전부 여행가방으로 보였다. */}
         {tg.photo ? (
           <FeedPhoto uri={tg.photo} style={st.targetPhoto} />
         ) : tg.icon ? (
           <FriendIcon size={28} color={skinAccent.accent} />
         ) : (
-          <Text style={st.targetEmoji}>{tg.emoji}</Text>
+          <PersonIcon size={30} color="#A0A0B0" />
         )}
         <Text style={[st.targetLabel, hovered && st.targetLabelHover]} numberOfLines={1}>{tg.label}</Text>
       </Animated.View>
@@ -271,7 +272,6 @@ const st = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6,
   },
   targetHover: { borderColor: '#BF85FC', backgroundColor: '#3A2A55' },
-  targetEmoji: { fontSize: 20 },
   // 원 안을 꽉 채운다 — target 의 borderWidth 2 를 뺀 안쪽 크기
   targetPhoto: { width: CIRCLE - 4, height: CIRCLE - 4, borderRadius: (CIRCLE - 4) / 2, backgroundColor: '#1A1A26' },
   targetLabel: { position: 'absolute', bottom: -17, fontSize: 10, color: '#A1A1B0', width: 68, textAlign: 'center' },

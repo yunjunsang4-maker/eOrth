@@ -331,12 +331,8 @@ function ShareBottomSheet({
                     <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
                       <View style={ss.friendAvatarWrap}>
                         <View style={ss.friendAvatar}>
-                          {/* 프로필 사진이 있으면 사진 아바타 — 빠른공유 원·DM 목록과 같은 규칙 */}
-                          {f.photo ? (
-                            <Image source={{ uri: f.photo }} style={ss.friendAvatarPhoto} />
-                          ) : (
-                            <Text style={ss.friendAvatarEmoji}>{f.emoji}</Text>
-                          )}
+                          {/* 공통 아바타 — 사진 없으면 사람 실루엣(이모지 폴백 금지) */}
+                          <AuthorAvatar photo={f.photo} size={42} />
                         </View>
                         {f.online && <View style={ss.friendOnline} />}
                       </View>
@@ -566,11 +562,7 @@ function CommentBottomSheet({
                 <View key={c.id}>
                   <View style={cs.commentRow}>
                     <View style={cs.commentAvatar}>
-                      {c.photo ? (
-                        <Image source={{ uri: c.photo }} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                      ) : (
-                        <Text style={cs.commentAvatarText}>{c.name.charAt(0)}</Text>
-                      )}
+                      <AuthorAvatar photo={c.photo} size={36} />
                     </View>
                     <View style={cs.commentContent}>
                       <Text style={cs.commentName}>{c.name}</Text>
@@ -589,11 +581,7 @@ function CommentBottomSheet({
                   {(c.replies ?? []).map((r) => (
                     <View key={r.id} style={cs.replyRow}>
                       <View style={cs.replyAvatar}>
-                        {r.photo ? (
-                          <Image source={{ uri: r.photo }} style={{ width: 32, height: 32, borderRadius: 16 }} />
-                        ) : (
-                          <Text style={cs.commentAvatarText}>{r.name.charAt(0)}</Text>
-                        )}
+                        <AuthorAvatar photo={r.photo} size={32} />
                       </View>
                       <View style={cs.commentContent}>
                         <Text style={cs.commentName}>{r.name}</Text>
@@ -3605,11 +3593,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }}>
-                    {f.photo ? (
-                      <Image source={{ uri: f.photo }} style={{ width: 40, height: 40, borderRadius: 20 }} />
-                    ) : (
-                      <Text style={{ fontSize: 18 }}>{f.emoji}</Text>
-                    )}
+                    <AuthorAvatar photo={f.photo} size={40} />
                   </View>
                   <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>{f.name}</Text>
                 </TouchableOpacity>
@@ -4128,11 +4112,6 @@ const cs = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  commentAvatarText: {
-    color: '#BF85FC',
-    fontSize: 14,
-    fontWeight: '700',
-  },
   // 답글 — 상세 화면(PostDetailScreen)과 같은 들여쓰기 42 / 아바타 32 규칙
   replyRow: {
     flexDirection: 'row',
@@ -4411,8 +4390,6 @@ const ss = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  friendAvatarEmoji: { fontSize: 20 },
-  friendAvatarPhoto: { width: 42, height: 42, borderRadius: 21 },
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

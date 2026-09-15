@@ -650,7 +650,7 @@ function SnapViewerModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  viewers?: { handle: string; name: string; time: number; emoji?: string }[];
+  viewers?: { handle: string; name: string; time: number; photo?: string }[];
 }) {
   const { viewerS } = useSheets();
   const { t } = useTranslation();
@@ -671,8 +671,9 @@ function SnapViewerModal({
           )}
           {viewers.map((v, i) => (
             <View key={i} style={viewerS.row}>
+              {/* 공통 아바타 — 사진 없으면 사람 실루엣(이모지 폴백 금지, AuthorAvatar 주석 참조) */}
               <View style={viewerS.avatar}>
-                <Text style={viewerS.avatarText}>{v.emoji}</Text>
+                <AuthorAvatar photo={v.photo} size={44} />
               </View>
               <View style={viewerS.info}>
                 <Text style={viewerS.name}>{v.name}</Text>
@@ -775,7 +776,8 @@ function SnapStoryViewer({
   // 대화량 많은 메이트 순 — 소셜 피드 빠른공유와 동일 기준
   const shareFriends = useMemo(
     () => neighbors
-      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' }))
+      // photo를 같이 넘겨야 시트 아바타에 프로필 사진이 뜬다 (소셜 탭 공유 시트와 같은 규칙)
+      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳', photo: f.photo }))
       .sort((a, b) => (conversations[b.handle]?.length ?? 0) - (conversations[a.handle]?.length ?? 0)),
     [neighbors, conversations]
   );
@@ -1452,7 +1454,7 @@ function SnapStoryViewer({
             <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>
               {shareFriends.map((f) => (
                 <TouchableOpacity key={f.handle} style={shareS.friendRow} activeOpacity={0.7} onPress={() => handleSendToFriend(f)}>
-                  <View style={shareS.friendAvatar}><Text style={{ fontSize: 18 }}>{f.emoji}</Text></View>
+                  <View style={shareS.friendAvatar}><AuthorAvatar photo={f.photo} size={40} /></View>
                   <Text style={shareS.friendName}>{f.name}</Text>
                   <Text style={[shareS.friendSend, { color: skinAccent.accent }]}>{t('postDetail.send')}</Text>
                 </TouchableOpacity>
@@ -1479,7 +1481,8 @@ function SnapStoryViewer({
           name: v.name,
           handle: v.handle,
           time: timeAgo(v.time),
-          emoji: '👤',
+          // 조회자 기록에는 사진이 없다 — 메이트 스토어에서 핸들로 찾는다(메이트가 아니면 실루엣)
+          photo: neighbors.find((n) => n.username === v.handle)?.photo,
         }))}
       />
     </View>
@@ -3674,9 +3677,6 @@ const makeViewerS = (a: string, tint: (alpha: number) => string) => StyleSheet.c
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-  },
-  avatarText: {
-    fontSize: 20,
   },
   info: {
     flex: 1,

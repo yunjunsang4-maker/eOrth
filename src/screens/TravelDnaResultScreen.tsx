@@ -10,7 +10,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Animated,
   Easing,
   InteractionManager,
@@ -25,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { success } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
+import AuthorAvatar from '../components/AuthorAvatar';
 import { IntroAmbient } from './introVisuals';
 import { useSkinAccent } from '../constants/skinTheme';
 import { DNA_AXES, DNA_LABELS, DNA_LABEL_MIN_STRENGTH, DNA_QUESTIONS, type DnaAxisId } from '../constants/travelDna';
@@ -434,10 +434,10 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
                   activeOpacity={0.8}
                   onPress={() => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle })}
                 >
+                  {/* 앱 공통 아바타 — 사진 없으면 사람 실루엣. profiles.emoji 기본값 '🧳'을 폴백으로
+                      쓰면 사진 없는 사용자가 전부 여행가방으로 보여 다른 화면과 어긋났다. */}
                   <View style={st.avatar}>
-                    {m.profilePhoto
-                      ? <Image source={{ uri: m.profilePhoto }} style={st.avatarImg} />
-                      : <Text style={st.avatarText}>{m.emoji || (m.handle || '?').slice(0, 1)}</Text>}
+                    <AuthorAvatar photo={m.profilePhoto ?? undefined} size={40} />
                   </View>
                   <View style={st.mateInfo}>
                     <Text style={st.mateHandle} numberOfLines={1}>@{m.handle}</Text>
@@ -582,8 +582,6 @@ const st = StyleSheet.create({
     width: 40, height: 40, borderRadius: 20, backgroundColor: C.card,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  avatarImg: { width: 40, height: 40 },
-  avatarText: { fontSize: 18, color: '#FFFFFF' },
   mateInfo: { flex: 1 },
   mateHandle: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   mateType: { color: C.dim, fontSize: 12, marginTop: 2 },
