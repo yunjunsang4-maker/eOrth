@@ -1196,7 +1196,7 @@ const en = {
     clearAll: 'Clear all',
     privacyDoneN: 'Hidden from {{count}} people',
     setPublic: 'Set to public (no one hidden)',
-    repPhotoPickBtn: '🖼️ Pick cover photo from device gallery',
+    repPhotoPickBtn: 'Pick cover photo from device gallery',
     repPhotoErrMsg: 'An error occurred while selecting the cover photo.',
     repPhotoTitle: 'Select map cover photo',
     repPhotoDesc: 'This photo appears on the globe and continent map',

@@ -1212,7 +1212,7 @@ const ko = {
     clearAll: '전체 해제',
     privacyDoneN: '{{count}}명 비공개 설정 완료',
     setPublic: '공개로 설정 (비공개 없음)',
-    repPhotoPickBtn: '🖼️ 기기 갤러리에서 대표 사진 선택',
+    repPhotoPickBtn: '기기 갤러리에서 대표 사진 선택',
     repPhotoErrMsg: '대표 사진을 선택하는 중 오류가 발생했습니다.',
     repPhotoTitle: '지도 대표 사진 선택',
     repPhotoDesc: '지구본과 대륙 지도에 이 사진이 노출됩니다',
