@@ -2,6 +2,26 @@
   "_readme": "앱 내 공지. GitHub Pages로 게시되며(https://yunjunsang4-maker.github.io/eOrth/notices.json) 앱이 설정 > 공지사항에서 읽는다. 공지 추가 = 이 파일에 항목을 넣고 커밋. publishedAt이 미래면 그날까지 앱에 안 보인다(예약 게시). id는 한 번 쓰면 바꾸지 말 것 — 바꾸면 이미 읽은 사용자에게 다시 미읽음으로 뜬다.",
   "notices": [
     {
+      "id": "2026-10-15-terms",
+      "kind": "terms",
+      "title": "이용약관 개정 안내 (가입 최소 연령)",
+      "titleEn": "Terms of Service update (minimum sign-up age)",
+      "publishedAt": "2026-09-14",
+      "effectiveDate": "2026-10-15",
+      "body": "이용약관이 2026년 10월 15일부터 개정됩니다.\n\n개정 사유\n· 제4조(회원가입 및 계정): 가입 최소 연령을 \"만 14세\" 고정에서 이용자가 거주하는 국가의 법령이 정한 연령으로 변경했습니다.\n\n거주 국가별 최소 연령\n· 대한민국: 만 14세 (정보통신망법) — 종전과 같습니다.\n· 미국: 만 13세 (COPPA)\n· 유럽경제지역(EEA): GDPR 제8조에 따라 국가별로 만 13~16세 (예: 독일·아일랜드·네덜란드·폴란드 만 16세, 프랑스·그리스·체코 만 15세, 스페인·이탈리아·오스트리아 만 14세, 덴마크·스웨덴·벨기에·포르투갈·핀란드 만 13세)\n· 그 밖의 국가: 만 13세\n\n무엇이 달라지나요\n· 가입 화면의 연령 확인 문구가 선택한 거주 국가에 맞는 나이로 표시됩니다. 생년월일은 수집하지 않으며, 종전과 같이 본인 확인 체크만 합니다.\n· 가입 화면에서 거주 국가를 바꾸면 바뀐 국가의 기준이 적용되며, 최소 연령이 달라지는 경우 연령 확인을 다시 받습니다.\n· 이미 가입하신 분의 계정에는 영향이 없습니다. 가입 후 설정에서 거주 국가를 바꾸어도 이미 완료된 가입의 자격을 다시 판단하지 않습니다.\n\n일부 국가에서는 최소 연령이 만 14세보다 높아져 이용자에게 불리한 변경에 해당하므로, 약관 제3조 3항에 따라 시행 30일 전에 알려 드립니다.\n\n전문은 설정 > 이용약관에서 확인하실 수 있습니다.",
+      "bodyEn": "Our Terms of Service will be updated on October 15, 2026.\n\nWhat changed\n· Article 4 (Sign-up and accounts): The minimum sign-up age changes from a fixed 14 to the age set by the laws of the country where you reside.\n\nMinimum age by country of residence\n· Republic of Korea: 14 (Information and Communications Network Act) — unchanged.\n· United States: 13 (COPPA)\n· European Economic Area: 13 to 16 depending on the country, under Article 8 of the GDPR (for example, 16 in Germany, Ireland, the Netherlands, and Poland; 15 in France, Greece, and Czechia; 14 in Spain, Italy, and Austria; 13 in Denmark, Sweden, Belgium, Portugal, and Finland).\n· All other countries: 13\n\nWhat this means for you\n· The age confirmation on the sign-up screen now shows the age that applies to the country of residence you select. We still do not collect your date of birth — you simply confirm that you meet the age, as before.\n· On the sign-up screen, changing your country of residence applies that country's minimum age, and you are asked to confirm again if the age is different.\n· Existing accounts are not affected. Changing your country of residence in Settings after sign-up does not re-evaluate an account that has already been created.\n\nBecause the minimum age rises above 14 in some countries, this is a change unfavorable to users, so we are giving notice 30 days before the effective date under Article 3(3) of the Terms.\n\nYou can read the full text in Settings > Terms of Service."
+    },
+    {
+      "id": "2026-10-15-privacy",
+      "kind": "privacy",
+      "title": "개인정보처리방침 개정 안내 (가입 최소 연령)",
+      "titleEn": "Privacy Policy update (minimum sign-up age)",
+      "publishedAt": "2026-09-14",
+      "effectiveDate": "2026-10-15",
+      "body": "개인정보처리방침이 2026년 10월 15일부터 개정됩니다.\n\n개정 사유\n· 제11조(최소 연령 미만 아동의 개인정보): 가입 최소 연령을 \"만 14세\" 고정에서 이용자가 거주하는 국가의 법령이 정한 연령으로 변경했습니다. 같은 날 시행되는 이용약관 제4조 개정과 같은 내용입니다.\n\n거주 국가별 최소 연령\n· 대한민국: 만 14세 (정보통신망법) — 종전과 같습니다.\n· 미국: 만 13세 (COPPA)\n· 유럽경제지역(EEA): GDPR 제8조에 따라 국가별로 만 13~16세 (예: 독일·아일랜드·네덜란드·폴란드 만 16세, 프랑스·그리스·체코 만 15세, 스페인·이탈리아·오스트리아 만 14세, 덴마크·스웨덴·벨기에·포르투갈·핀란드 만 13세)\n· 그 밖의 국가: 만 13세\n\n무엇이 달라지나요\n· 생년월일은 종전과 같이 수집하지 않습니다. 가입 화면에서 거주 국가에 해당하는 연령 이상임을 확인하는 체크만 받습니다.\n· 최소 연령 미만 아동의 개인정보를 의도적으로 수집하지 않고, 수집된 사실을 확인하면 지체 없이 파기하는 처리는 종전과 같습니다.\n· 수집 항목·이용 목적·보관 기간이 늘어나는 변경은 없습니다.\n· 이미 가입하신 분의 계정에는 영향이 없습니다. 가입 후 설정에서 거주 국가를 바꾸어도 이미 완료된 가입의 자격을 다시 판단하지 않습니다.\n\n일부 국가에서는 최소 연령이 만 14세보다 높아져 이용자에게 불리한 변경에 해당하므로, 방침 제13조에 따라 시행 30일 전에 알려 드립니다.\n\n전문은 설정 > 개인정보처리방침에서 확인하실 수 있습니다.",
+      "bodyEn": "Our Privacy Policy will be updated on October 15, 2026.\n\nWhat changed\n· Section 11 (Children below the minimum age): The minimum sign-up age changes from a fixed 14 to the age set by the laws of the country where you reside. This mirrors the Article 4 change to the Terms of Service, effective the same day.\n\nMinimum age by country of residence\n· Republic of Korea: 14 (Information and Communications Network Act) — unchanged.\n· United States: 13 (COPPA)\n· European Economic Area: 13 to 16 depending on the country, under Article 8 of the GDPR (for example, 16 in Germany, Ireland, the Netherlands, and Poland; 15 in France, Greece, and Czechia; 14 in Spain, Italy, and Austria; 13 in Denmark, Sweden, Belgium, Portugal, and Finland).\n· All other countries: 13\n\nWhat this means for you\n· We still do not collect your date of birth. At sign-up you simply confirm that you meet the age that applies to your country of residence.\n· As before, we do not knowingly collect personal data from children below the minimum age, and we destroy such data without delay if we become aware of it.\n· Nothing is added to what we collect, why we collect it, or how long we keep it.\n· Existing accounts are not affected. Changing your country of residence in Settings after sign-up does not re-evaluate an account that has already been created.\n\nBecause the minimum age rises above 14 in some countries, this is a change unfavorable to users, so we are giving notice 30 days before the effective date under Section 13 of the policy.\n\nYou can read the full text in Settings > Privacy Policy."
+    },
+    {
       "id": "2026-08-20-privacy",
       "kind": "privacy",
       "title": "개인정보처리방침 개정 안내",
@@ -24,10 +44,10 @@
     {
       "id": "2026-08-04-terms",
       "kind": "terms",
+      "effectiveDate": "2026-08-04",
       "title": "이용약관 개정 안내",
       "titleEn": "Terms of Service update",
       "publishedAt": "2026-07-31",
-      "effectiveDate": "2026-08-04",
       "body": "이용약관이 2026년 8월 4일부터 개정됩니다.\n\n개정 사유\n· 제9조(유료 서비스): 프리미엄 기능이 현재 모든 이용자에게 무료로 제공되고 있으며 유료 결제가 도입되어 있지 않다는 점을 명확히 했습니다. 기존의 \"정식 출시 시 인앱 구독으로 전환\"이라는 문구는 결제 방식이 확정되지 않아 삭제하고, 향후 유료 전환 시 사전에 공지하며 동의 없이 결제되지 않는다는 내용을 넣었습니다.\n· 제2조(정의): \"프리미엄\"을 구독형에 한정하지 않도록 정정했습니다.\n· 제10조(광고): 광고가 프리미엄 이용 여부와 관계없이 표시된다는 점을 명시했습니다. 프리미엄에는 광고 제거가 포함되지 않습니다.\n· 제5조(서비스): 제공 중인 기능 목록에 대륙·지역 지도, 과거 여행 자동 불러오기, 외부 블로그 가져오기를 추가했습니다.\n\n전문은 설정 > 이용약관에서 확인하실 수 있습니다.",
       "bodyEn": "Our Terms of Service will be updated on August 4, 2026.\n\nWhat changed\n· Article 9 (Paid services): Clarified that Premium features are currently free for everyone and that no paid billing exists. The previous wording promising conversion to an in-app subscription at launch was removed, since the payment model is not finalized. Added a commitment to notify you in advance and never charge without your consent.\n· Article 2 (Definitions): \"Premium\" is no longer limited to subscriptions.\n· Article 10 (Ads): Ads are shown regardless of Premium. Premium does not include ad removal.\n· Article 5 (Services): Added the continent/region map, past-trip auto import, and external blog import to the list of provided features.\n\nYou can read the full text in Settings > Terms of Service."
     }
