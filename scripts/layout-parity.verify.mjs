@@ -790,6 +790,7 @@ const ALLOW_SVG_PE = new Map([]);
 //  · 400자 창 안에서만 다음 자식을 본다 — 주석이 길면 놓칠 수 있으나 실측 0건이다.
 rule('규칙 12 Svg 오버레이 View 래퍼 유지');
 const SVG_WRAP = new Map([
+  ['src/components/record/CalendarBottomSheet.tsx', 2],
   ['src/components/CustomTabBar.tsx', 1],
   ['src/components/DetailBox.tsx', 1],
   ['src/components/GlassSurface.tsx', 1],
