@@ -101,6 +101,10 @@ event-report*.local.html
 # CLI의 stdout+stderr가 통째로 들어가므로 참가자 아이디·경로가 섞일 수 있다.
 event-error.local.html
 
+# 부스 실시간 현황판(scripts/event-live.mjs)이 30초마다 다시 쓰는 화면.
+# 미매칭자 인스타 아이디·최근 제출자 이름이 그대로 들어간다 — 리포트와 같은 이유로 커밋 금지.
+event-live.local.html
+
 # 다음 날로 넘길 이월 명단(--slot 2 실행이 만든다). **참가자 행 전체**가 들어 있다 —
 # 이름·인스타 아이디·설문 응답까지 그대로다. 리포트와 같은 이유로 커밋 금지.
 # 날짜별로 갈리므로(event-carry-2026-09-09.local.json) 와일드카드로 둔다.
