@@ -1,12 +1,13 @@
 {
   "branch": "gh-pages",
   "files": {
-    "terms.html": "d1d44637961e2eb9",
-    "privacy-policy.html": "2c8a8f340731b445",
-    "privacy-policy-en.html": "aa88096c50278f1d",
-    "support-en.html": "4c8e29c5ffb2796e",
+    "terms.html": "eadadce891c84d64",
+    "privacy-policy.html": "b1eebcb61657a42b",
+    "privacy-policy-en.html": "204eb5b749c62111",
+    "terms-en.html": "cc31f3af27460b85",
+    "support-en.html": "6399f13fd07d67df",
     "account-deletion.html": "31073ae3d1449f2f",
-    "notices.json": "2f5a2103d4b2f76a",
+    "notices.json": "400587076338d4c2",
     "event-dna.js": "51983c09f20f5ce0",
     "event.html": "93a675e7083ff0f3",
     "draw-core.js": "7677d95e895a249e",
