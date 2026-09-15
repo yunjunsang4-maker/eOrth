@@ -1098,8 +1098,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 전체 비공개/해제 — 목록을 통째로 교체해 개별 메이트 체크 상태까지 즉시 동기화
   const setPrivateFriendsAll = (friends: string[]) => setPrivateFriends(friends);
   // ─── 별점 (0.5 단위) ───
-  const STAR_SIZE = 28;
-  const STAR_GAP = 6;
+  // 시안 치수. STAR_GAP은 st.ratingRow의 gap과 **반드시 같아야** 한다 —
+  // 드래그 히트테스트가 i * (STAR_SIZE + STAR_GAP)로 별 위치를 역산하기 때문.
+  const STAR_SIZE = 20;
+  const STAR_GAP = 8;
   const ratingRowRef = useRef<View>(null);
   const ratingRowPageX = useRef(0);
   // 별점 드래그 중엔 본문 ScrollView를 잠근다 — 별점 행이 본문 안으로 올라오면서
@@ -1144,7 +1146,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       const isHalf = rating >= i - 0.5 && rating < i;
       stars.push(
         <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
-          <Text style={[st.starBase, st.starAbsolute]}>☆</Text>
+          <Text style={[st.starBase, st.starAbsolute]}>★</Text>
           {(isFull || isHalf) && (
             <View style={[st.starFillClip, { width: isHalf ? STAR_SIZE / 2 : STAR_SIZE }]}>
               <Text style={[st.starBase, st.starActive, st.starAbsolute]}>★</Text>
@@ -1298,10 +1300,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const bodyText = blocksToPlainText(blocks);
     const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) { Alert.alert(t('blog.contentTitle'), t('blog.contentMsg')); return; }
-    // 날짜·별점은 본문 위 필수 행에 있다 — 안내 뒤 맨 위로 올려 바로 보이게 한다
+    // 날짜 칩은 본문 맨 위, 별점 행은 태그 섹션 아래 맨 끝이다 — 고쳐야 할 쪽으로 스크롤한다
     if (!startDate || rating <= 0) {
       Alert.alert(t('blog.travelInfoNeededTitle'), t('blog.travelInfoNeededMsg'));
-      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      if (!startDate) scrollRef.current?.scrollTo({ y: 0, animated: true });
+      else scrollRef.current?.scrollToEnd({ animated: true });
       return;
     }
 
@@ -1379,7 +1382,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
         {/* 뒤로가기 — TripDetail 등 다른 화면과 같은 ← 카드형 버튼(통일감) */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-          <Text style={st.backIcon}>←</Text>
+          {/* 사용자 시안 chevron(9×16, 흰 60%) — 다른 화면의 ← 글자와 달리 이 화면만 SVG */}
+          <Svg width={9} height={16} viewBox="0 0 9 16" fill="none">
+            <SvgPath d="M6.73106 0.331257C7.20072 -0.122001 7.94888 -0.108709 8.40214 0.360945C8.8554 0.830599 8.84211 1.57877 8.37245 2.03202L7.55176 1.18164L6.73106 0.331257ZM1.18201 7.54362L0.329289 8.36188C-0.10771 7.90648 -0.109742 7.18807 0.324673 6.7302L1.18201 7.54362ZM8.40448 13.3634C8.8564 13.8343 8.84097 14.5825 8.37002 15.0344C7.89907 15.4863 7.15095 15.4708 6.69903 14.9999L7.55176 14.1816L8.40448 13.3634ZM3.59614 4.99916L2.7388 4.18573L2.75672 4.16685L2.77545 4.14877L3.59614 4.99916ZM1.18201 7.54362L2.03474 6.72536L8.40448 13.3634L7.55176 14.1816L6.69903 14.9999L0.329289 8.36188L1.18201 7.54362ZM7.55176 1.18164L8.37245 2.03202L4.41684 5.84954L3.59614 4.99916L2.77545 4.14877L6.73106 0.331257L7.55176 1.18164ZM3.59614 4.99916L4.45348 5.81258L2.03935 8.35705L1.18201 7.54362L0.324673 6.7302L2.7388 4.18573L3.59614 4.99916Z" fill="#FFFFFF" fillOpacity={0.6} />
+          </Svg>
         </TouchableOpacity>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
@@ -1450,8 +1456,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               handleSave 안의 항목별 Alert이 전부 죽은 코드였다(유저는 "저장이 고장났다"고 인식).
               흐린 스타일은 그대로 둬서 "아직 뭔가 남았다"는 신호만 유지하고,
               disabled는 발행 중일 때만 — onPress도 publishing이면 막아 이중 발행/Alert 재진입을 차단한다. */}
-          <TouchableOpacity onPress={publishing ? undefined : handleSave} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={publishing}>
-            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
+          {/* 테두리 그라데이션 — MainCoachmark 말풍선과 같은 방식(바깥 LinearGradient가 padding만큼 테두리, 안쪽 View가 바탕).
+              색은 스킨의 네온 링, 없으면 버튼 그라데이션(코치마크와 같은 폴백). */}
+          <TouchableOpacity onPress={publishing ? undefined : handleSave} style={st.saveBtnWrap} disabled={publishing}>
+            <LinearGradient colors={skinAccent.ringGradient ?? skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.saveBtnBorder}>
+              <View style={st.saveBtn}>
+                <Text style={st.saveBtnText} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
+              </View>
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -1460,27 +1472,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
           showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEnabled={!ratingDragging}>
 
-          {/* 국가 · 날짜 · 별점 — 필수 3종을 본문 위 한 줄에(좁으면 줄바꿈). 나머지 여행 정보는 선택이라 ✈️ 패널에 남긴다 */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
-              <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
+          {/* 국가 · 날짜 — 시안대로 각각 한 줄(칩 높이 30·알약). 별점은 태그 섹션 아래로 내렸다 */}
+          <View style={st.topChipRow}>
+            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.2) }]} onPress={() => setCountryModalVisible(true)}>
+              <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder} numberOfLines={1}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
-            {/* 날짜 칩 — 국가 칩과 같은 모양, 누르면 달력 */}
-            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, { marginBottom: 0, flexDirection: 'row', alignItems: 'center', gap: 5 }]} onPress={() => setCalendarVisible(true)}>
-              <SvgCalendarIcon size={14} color={startDate ? skinAccent.accent : C.muted} />
-              <Text style={startDate ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
-                {startDate ? (endDate && endDate !== startDate ? `${startDate} ~ ${endDate}` : startDate) : t('blog.date')}
-              </Text>
-            </TouchableOpacity>
-            {/* 별점 — 탭·드래그 모두 기존 ratingPanResponder */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {renderStars()}
-              {rating > 0 && <Text style={[st.ratingScore, { color: skinAccent.accent, marginLeft: 6 }]}>{rating.toFixed(1)}</Text>}
-            </View>
             {/* ✨ 여행 기억 — 기능 플래그로 숨김 */}
             {TRAVEL_MOMENTS_ENABLED && (
               <TouchableOpacity
@@ -1494,6 +1494,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             )}
           </View>
+          {/* 날짜 칩 — 국가 칩과 같은 알약, 누르면 달력 */}
+          <TouchableOpacity style={[st.countryChip, st.dateChip, { backgroundColor: skinAccent.tint(0.2) }]} onPress={() => setCalendarVisible(true)}>
+            <SvgCalendarIcon size={12} color={startDate ? skinAccent.accent : C.muted} />
+            <Text style={startDate ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder} numberOfLines={1}>
+              {startDate ? (endDate && endDate !== startDate ? `${startDate} ~ ${endDate}` : startDate) : t('blog.date')}
+            </Text>
+          </TouchableOpacity>
 
           {/* 제목 */}
           <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
@@ -1527,6 +1534,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 ))}
               </View>
             )}
+          </View>
+
+          {/* 별점 — 시안대로 태그 섹션 아래. 탭·드래그 모두 기존 ratingPanResponder */}
+          <View style={st.ratingRowWrap}>
+            {renderStars()}
+            {rating > 0 && <Text style={[st.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)}</Text>}
           </View>
 
           <View style={{ height: 140 }} />
@@ -2724,9 +2737,8 @@ function RepPhotoModal({
 const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider, zIndex: 10, elevation: 10 },
-  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.toolbarBorder, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 17, color: C.white },
+  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지
+  backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
   // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },
@@ -2748,18 +2760,22 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   lockBtnActive: { backgroundColor: tint(0.4), borderWidth: 1, borderColor: a },
   lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 15, height: 15, alignItems: 'center', justifyContent: 'center' },
   lockBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
-  saveBtn: { backgroundColor: ad, borderRadius: 16, paddingHorizontal: 16, height: 32, justifyContent: 'center', marginRight: 8 }, // 헤더 padding 12 + 8 = 끝에서 20
-  saveBtnDisabled: { backgroundColor: C.muted, opacity: 0.4 },
-  saveBtnText: { color: C.white, fontSize: 15, fontWeight: '700' },
-  saveBtnTextDisabled: { color: C.dim },
+  // 사용자 시안: 70×30 알약(radius 15) — 바탕은 흰 10% 고정, 색은 테두리 그라데이션에만
+  saveBtnWrap: { marginRight: 8 }, // 헤더 padding 12 + 8 = 끝에서 20
+  saveBtnBorder: { borderRadius: 15, padding: 1.4 }, // 그라데이션 테두리 두께
+  // 안쪽 바탕. 높이·반경은 바깥에서 테두리 두께(1.4)를 뺀 값이다 — 두께를 바꾸면 여기도 같이 바꿀 것
+  saveBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 13.6, paddingHorizontal: 20.6, height: 27.2, alignItems: 'center', justifyContent: 'center' },
+  saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '700' },
 
   editor: { flex: 1, backgroundColor: C.editorBg },
-  editorContent: { paddingHorizontal: 20, paddingTop: 12 },
+  editorContent: { paddingHorizontal: 25, paddingTop: 13 },
 
   // 국가
-  countryChip: { alignSelf: 'flex-start', backgroundColor: tint(0.25), borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: tint(0.3), marginBottom: 12 },
-  countryChipText: { color: a, fontSize: 13, fontWeight: '600' },
-  countryChipPlaceholder: { color: C.muted, fontSize: 13 },
+  topChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countryChip: { alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4, height: 30, borderRadius: 15, paddingHorizontal: 22, backgroundColor: tint(0.2) },
+  dateChip: { marginTop: 16 },
+  countryChipText: { color: a, fontSize: 14, fontWeight: '500' },
+  countryChipPlaceholder: { color: C.muted, fontSize: 14 },
   // 미입력 표시 — 골드. 스킨 accent(보라/시안/민트)와 겹치지 않아 '아직 안 채움'이
   // 강조 요소와 구분되고, 빨강처럼 오류로 읽히지도 않는다.
 
@@ -2876,18 +2892,20 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   panelLabel: { color: C.dim, fontSize: 13, fontWeight: '600' },
   reqTag: { color: a, fontSize: 11, fontWeight: '700', marginLeft: 4 },
   // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
-  ratingRow: { flexDirection: 'row' as const, gap: 6, alignItems: 'center' as const },
-  starBase: { fontSize: 24, color: '#3A3A55', textAlign: 'center' as const, lineHeight: 28, width: 28 },
-  starAbsolute: { position: 'absolute' as const, left: 0, top: 0, width: 28 },
-  starFillClip: { position: 'absolute' as const, left: 0, top: 0, height: 28, overflow: 'hidden' as const },
-  starActive: { color: '#FBBF24' },
+  ratingRowWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, marginTop: 24 },
+  ratingRow: { flexDirection: 'row' as const, gap: 8, alignItems: 'center' as const }, // gap = STAR_GAP
+  // 폭·높이 20은 STAR_SIZE와 같은 값이다(makeStyles는 상수를 못 보니 값으로 고정).
+  starBase: { fontSize: 17, color: 'rgba(255,255,255,0.6)', textAlign: 'center' as const, lineHeight: 20, width: 20 },
+  starAbsolute: { position: 'absolute' as const, left: 0, top: 0, width: 20 },
+  starFillClip: { position: 'absolute' as const, left: 0, top: 0, height: 20, overflow: 'hidden' as const },
+  starActive: { color: '#FFBC00' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
   chipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
   chipText: { color: C.dim, fontSize: 13 },
   chipTextActive: { color: a },
   ratingWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
-  ratingScore: { color: a, fontSize: 13, fontWeight: '600' },
+  ratingScore: { color: a, fontSize: 16, fontWeight: '600', marginLeft: 16 },
   ratingScoreEmpty: { color: C.muted, fontSize: 12 },
   optDivider: { height: 1, backgroundColor: C.divider, marginVertical: 8 },
   optNotice: { color: C.muted, fontSize: 11, textAlign: 'center' as const, marginBottom: 14 },
