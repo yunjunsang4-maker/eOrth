@@ -806,7 +806,6 @@ const SVG_WRAP = new Map([
   ['src/screens/BasicInfoScreen.tsx', 3],
   ['src/screens/EditProfileScreen.tsx', 2],
   ['src/screens/introVisuals.tsx', 3],
-  ['src/screens/LoginScreen.tsx', 1],
   ['src/screens/MainScreen.tsx', 2],
   ['src/screens/ProfileScreen.tsx', 4],
   ['src/screens/ProfileTicketScreen.tsx', 1],
