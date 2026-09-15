@@ -16,12 +16,12 @@ import {
   PanResponder,
   Linking,
   Animated,
-  InteractionManager,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
@@ -31,7 +31,6 @@ import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
-import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -528,6 +527,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
+  const [headerToolsVisible, setHeaderToolsVisible] = useState(false); // ⋯ 대표사진·비공개·가져오기 펼침 줄
   const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPrefill?.startDate));
   const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPrefill?.endDate));
 
@@ -1102,6 +1102,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const STAR_GAP = 6;
   const ratingRowRef = useRef<View>(null);
   const ratingRowPageX = useRef(0);
+  // 별점 드래그 중엔 본문 ScrollView를 잠근다 — 별점 행이 본문 안으로 올라오면서
+  // 가로 드래그에 세로 스크롤이 같이 딸려 움직였다. (NewRecordScreen의 scrollEnabled와 같은 처방)
+  const [ratingDragging, setRatingDragging] = useState(false);
 
   const getRatingFromX = (x: number) => {
     let r = 0;
@@ -1117,7 +1120,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
+      // ScrollView가 세로 움직임을 보고 responder를 뺏어가지 못하게 한다
+      onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (evt) => {
+        setRatingDragging(true);
         ratingRowRef.current?.measure((_fx, _fy, _w, _h, px) => {
           ratingRowPageX.current = px;
           setRating(getRatingFromX(evt.nativeEvent.pageX - px));
@@ -1126,6 +1132,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       onPanResponderMove: (evt) => {
         setRating(getRatingFromX(evt.nativeEvent.pageX - ratingRowPageX.current));
       },
+      onPanResponderRelease: () => setRatingDragging(false),
+      onPanResponderTerminate: () => setRatingDragging(false),
     })
   ).current;
 
@@ -1211,7 +1219,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const bodyText = blocksToPlainText(blocks);
     const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) return false;
-    if (companions.length === 0) return false;
+    if (!startDate) return false; // 날짜·별점은 본문 위 필수 행 — 동행자는 선택으로 내려갔다
     if (rating <= 0) return false;
     return true;
   })();
@@ -1284,36 +1292,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
-  // 여행 정보 패널 열기 — 툴바 ✈️ 진입점과 동일하게 인라인 바 4개(사진/폰트/문단/더보기)를 먼저 닫는다.
-  // 넷 다 Modal이 아닌 인라인 View라 겹치지는 않지만, 닫지 않으면 패널을 닫았을 때
-  // 아까 열어둔 바가 그대로 남아 있어 진입 경로마다 상태가 달라진다.
-  const openTravelInfo = () => {
-    setPhotoMenuVisible(false);
-    setFontBarVisible(false);
-    setHeadingBarVisible(false);
-    setMoreMenuVisible(false);
-    // 이 함수는 네이티브 Alert 버튼(handleSave 의 "여행 정보 열기")에서도 불린다.
-    // 안드로이드에서 네이티브 대화상자가 닫히는 프레임에 RN Modal 을 올리면 모달이
-    // 안 뜨거나 터치가 씹힌 사고가 이 저장소에 두 번 있었다(로딩 오버레이 Modal /
-    // Modal 직후 네이티브 시트). 상호작용이 끝난 다음으로 한 박자 미뤄 그 겹침을 없앤다.
-    InteractionManager.runAfterInteractions(() => setTravelInfoVisible(true));
-  };
 
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert(t('blog.countrySelectTitle'), t('blog.selectCountryMsg')); return; }
     const bodyText = blocksToPlainText(blocks);
     const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) { Alert.alert(t('blog.contentTitle'), t('blog.contentMsg')); return; }
-    // 동행자·별점은 하단 ✈️ 여행 정보 패널 안에 있어 유저가 존재 자체를 모른다.
-    // 안내만 하면 "어디서 입력하냐"로 끝나므로 패널을 바로 열어주는 버튼을 함께 준다.
-    // 둘을 한 Alert으로 합친 이유: 여기까지 왔다면 이미 내용은 쓴 상태(위 내용 체크 통과)라
-    // 동행자 → 별점으로 Alert이 두 번 연달아 뜨면 "고쳐도 또 막힌다"로 읽힌다.
-    // 어차피 같은 패널에서 같이 입력하므로 "여행 정보가 빈다" 한 번으로 안내한다.
-    if (companions.length === 0 || rating <= 0) {
-      Alert.alert(t('blog.travelInfoNeededTitle'), t('blog.travelInfoNeededMsg'), [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('blog.travelInfoOpen'), onPress: openTravelInfo },
-      ]);
+    // 날짜·별점은 본문 위 필수 행에 있다 — 안내 뒤 맨 위로 올려 바로 보이게 한다
+    if (!startDate || rating <= 0) {
+      Alert.alert(t('blog.travelInfoNeededTitle'), t('blog.travelInfoNeededMsg'));
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
       return;
     }
 
@@ -1377,10 +1365,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     continent: cont, countries: filteredCountries.filter(c => c.continent === cont),
   })).filter(g => g.countries.length > 0);
 
-  const travelInfoCount = [startDate, endDate, rating > 0 ? 'y' : '', weather, companions.length > 0 ? 'y' : '', budget, flightType].filter(Boolean).length;
+  // ✈️ 패널에 남은 선택 항목만 센다 — 날짜·별점은 본문 위 필수 행으로 올라갔다
+  const travelInfoCount = [weather, companions.length > 0 ? 'y' : '', budget, flightType].filter(Boolean).length;
   // 필수 항목 미입력 체크
-  const travelRequired = !startDate || companions.length === 0 || rating <= 0;
-  const countryRequired = !selectedCountry;
   const atb = activeTextBlock();
   const showFormatBar = !!atb;
 
@@ -1390,8 +1377,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.headerBtnText} {...andFitText}>{t('common.cancel')}</Text>
+        {/* 뒤로가기 — TripDetail 등 다른 화면과 같은 ← 카드형 버튼(통일감) */}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+          <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
@@ -1411,37 +1399,53 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         </View>
         <View style={st.headerRight}>
-          {/* ✨ 여행 기억 버튼은 국가표시 행 오른쪽 끝으로 이동(헤더 제목과 겹침 방지) */}
-          <TouchableOpacity
-            onPress={() => setRepPhotoModalVisible(true)}
-            style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-            activeOpacity={0.7}
-          >
-            {representativePhoto ? (
-              <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
-            ) : (
-              <MapIcon size={13} color={C.dim} />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setPrivacyModalVisible(true)}
-            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-            activeOpacity={0.7}
-          >
-            {privateFriends.length > 0 ? (
-              <LockClosedIcon size={13} color={C.white} />
-            ) : (
-              <LockOpenIcon size={13} color={C.dim} />
-            )}
-            {privateFriends.length > 0 && (
-              <View style={st.lockBadge}>
-                <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+          {/* 대표사진·비공개·가져오기 3개는 ⋯ 하나로 접고, 누르면 ⋯ 바로 아래로 세로 한 줄 펼친다.
+              드롭다운은 ⋯ 래퍼에 절대배치 — 버튼 위치를 따라가므로 저장 버튼 폭과 무관하다. */}
+          <View style={st.toolsToggleWrap}>
+            <TouchableOpacity
+              onPress={() => setHeaderToolsVisible(v => !v)}
+              style={[st.toolsToggleBtn, headerToolsVisible && [st.toolsToggleBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('blog.more')}
+            >
+              <Text style={[st.toolsToggleText, headerToolsVisible && { color: skinAccent.accent }]}>⋯</Text>
+            </TouchableOpacity>
+            {headerToolsVisible && (
+              <View style={st.headerToolsRow}>
+                <TouchableOpacity
+                  onPress={() => setRepPhotoModalVisible(true)}
+                  style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+                  activeOpacity={0.7}
+                >
+                  {representativePhoto ? (
+                    <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
+                  ) : (
+                    <MapIcon size={17} color={C.dim} />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setPrivacyModalVisible(true)}
+                  style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+                  activeOpacity={0.7}
+                >
+                  {privateFriends.length > 0 ? (
+                    <LockClosedIcon size={17} color={C.white} />
+                  ) : (
+                    <LockOpenIcon size={17} color={C.dim} />
+                  )}
+                  {privateFriends.length > 0 && (
+                    <View style={st.lockBadge}>
+                      <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
+                  <Text style={st.naverBtnText}>N</Text>
+                </TouchableOpacity>
               </View>
             )}
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
-            <Text style={st.naverBtnText}>N</Text>
-          </TouchableOpacity>
+          </View>
           {/* 요건 미충족이어도 탭은 받는다 — 예전엔 disabled라 눌러도 무반응이었고
               handleSave 안의 항목별 Alert이 전부 죽은 코드였다(유저는 "저장이 고장났다"고 인식).
               흐린 스타일은 그대로 둬서 "아직 뭔가 남았다"는 신호만 유지하고,
@@ -1454,28 +1458,41 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
-          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEnabled={!ratingDragging}>
 
-          {/* 국가 + 여행 기억(✨) — ✨는 국가표시 열에 맞춰 오른쪽 끝에 배치(헤더 제목 겹침 방지) */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
-            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
+          {/* 국가 · 날짜 · 별점 — 필수 3종을 본문 위 한 줄에(좁으면 줄바꿈). 나머지 여행 정보는 선택이라 ✈️ 패널에 남긴다 */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
-            {countryRequired && <View style={st.requiredDot} />}
-            <View style={{ flex: 1 }} />
-            <TouchableOpacity
-              onPress={() => setMomentSheetVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel={t('moments.sheetTitle')}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ padding: 4 }}
-            >
-              <Text style={{ fontSize: 18 }}>✨</Text>
+            {/* 날짜 칩 — 국가 칩과 같은 모양, 누르면 달력 */}
+            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, { marginBottom: 0, flexDirection: 'row', alignItems: 'center', gap: 5 }]} onPress={() => setCalendarVisible(true)}>
+              <SvgCalendarIcon size={14} color={startDate ? skinAccent.accent : C.muted} />
+              <Text style={startDate ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
+                {startDate ? (endDate && endDate !== startDate ? `${startDate} ~ ${endDate}` : startDate) : t('blog.date')}
+              </Text>
             </TouchableOpacity>
+            {/* 별점 — 탭·드래그 모두 기존 ratingPanResponder */}
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {renderStars()}
+              {rating > 0 && <Text style={[st.ratingScore, { color: skinAccent.accent, marginLeft: 6 }]}>{rating.toFixed(1)}</Text>}
+            </View>
+            {/* ✨ 여행 기억 — 기능 플래그로 숨김 */}
+            {TRAVEL_MOMENTS_ENABLED && (
+              <TouchableOpacity
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ fontSize: 18 }}>✨</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* 제목 */}
@@ -1599,7 +1616,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity style={st.toolBtn} onPress={() => { setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); setTravelInfoVisible(true); }} activeOpacity={0.6}>
               <View style={st.toolIcon}>
                 <SvgPlaneIcon size={22} color="#A1A1B0" />
-                {travelRequired && <View style={st.toolRequiredDot} />}
               </View>
               <Text style={st.toolLabel}>{`${t('blog.travel')}${travelInfoCount > 0 ? ` ${travelInfoCount}` : ''}`}</Text>
             </TouchableOpacity>
@@ -1713,19 +1729,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={st.panelTitle}>{t('blog.travelInfoTitle')}</Text>
 
-              {/* 날짜 */}
-              <PanelRow label="" icon={<SvgCalendarIcon size={18} color={skinAccent.accent} />} labelText={t('blog.date')} required>
-                <DateRangeField
-                  startLabel={t('blog.departDate')}
-                  startValue={startDate || '—'}
-                  endLabel={t('blog.arriveDate')}
-                  endValue={endDate || '—'}
-                  onPress={() => setCalendarVisible(true)}
-                />
-              </PanelRow>
-
-              {/* 동행자 (필수) */}
-              <PanelRow label="" icon={<SvgFriendIcon size={18} color={skinAccent.accent} />} labelText={t('blog.companionSelect')} required>
+              {/* 동행자 (선택) */}
+              <PanelRow label="" icon={<SvgFriendIcon size={18} color={skinAccent.accent} />} labelText={t('blog.companionSelect')}>
                 <View style={st.chipRow}>
                   {COMPANIONS.map(comp => {
                     const isActive = companions.includes(comp);
@@ -1762,16 +1767,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     <View style={[st.addFriendBadge, { backgroundColor: skinAccent.accentDeep }]}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
                   )}
                 </TouchableOpacity>
-              </PanelRow>
-
-              {/* 별점 (필수) */}
-              <PanelRow label="" icon={null} labelText={t('blog.rating')} required>
-                <View style={st.ratingWrap}>
-                  {renderStars()}
-                  {rating > 0
-                    ? <Text style={[st.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)} / 5.0</Text>
-                    : <Text style={st.ratingScoreEmpty}>{t('blog.ratingEmpty')}</Text>}
-                </View>
               </PanelRow>
 
               {/* 공개 범위 */}
@@ -1904,19 +1899,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* 캘린더 — 공용 CalendarBottomSheet. 여행정보 패널이 이미 Modal이라 asOverlay로 렌더 (iOS Modal-in-Modal 회피) */}
-            <CalendarBottomSheet
-              visible={calendarVisible}
-              initialStart={startDateObj}
-              initialEnd={endDateObj}
-              onConfirm={handleCalendarConfirm}
-              onClose={() => setCalendarVisible(false)}
-              recordedDates={recordedDates}
-              recordedRanges={recordedRanges}
-              onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
-              asOverlay
-            />
-
             {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}
             {friendPickerVisible && (
               <View style={st.calOverlay}>
@@ -2013,8 +1995,23 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
 
       {/* 국가 모달 */}
+      {/* 캘린더 — 날짜 칩이 본문 위로 올라와 패널 밖에서 열리므로 화면 최상위에 일반 Modal로 둔다.
+          (예전엔 여행정보 패널 Modal 안에 asOverlay로 있었는데, 패널이 닫혀 있으면 달력이 나타날 곳이 없었다) */}
+      <CalendarBottomSheet
+        visible={calendarVisible}
+        initialStart={startDateObj}
+        initialEnd={endDateObj}
+        onConfirm={handleCalendarConfirm}
+        onClose={() => setCalendarVisible(false)}
+        recordedDates={recordedDates}
+        recordedRanges={recordedRanges}
+        onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
+      />
+
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={closeCountryModal}>
-        <SafeAreaView style={st.modalSafe} accessibilityViewIsModal>
+        {/* 전체화면 Modal은 별도 창이라 SafeAreaView가 안드로이드에서 인셋을 못 받아 상태바·내비바 아래로
+            넘쳤다(BasicInfoScreen 체류국 모달과 같은 결함, b15075c). 화면의 insets를 직접 넣는다. */}
+        <View style={[st.modalSafe, { paddingTop: insets.top, paddingBottom: insets.bottom }]} accessibilityViewIsModal>
           <View style={st.modalHeader}>
             <TouchableOpacity onPress={closeCountryModal}><Text style={[st.modalClose, { color: skinAccent.accent }]}>{t('common.close')}</Text></TouchableOpacity>
             <Text style={st.modalTitle}>{t('blog.countrySelectTitle')}</Text>
@@ -2110,7 +2107,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </View>
             ))}
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
 
@@ -2726,26 +2723,34 @@ function RepPhotoModal({
  */
 const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
-  headerBtn: { paddingHorizontal: 14, paddingVertical: 10 },
-  headerBtnText: { color: C.dim, fontSize: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider, zIndex: 10, elevation: 10 },
+  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.toolbarBorder, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 17, color: C.white },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
   // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },
-  headerTitle: { color: C.white, fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  headerTitle: { color: C.white, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  mapBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  toolsToggleBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  toolsToggleBtnActive: { borderWidth: 1, borderColor: a },
+  toolsToggleText: { color: C.dim, fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  toolsToggleWrap: { zIndex: 20, elevation: 20, marginRight: 8 }, // 저장 버튼과 간격(headerRight gap 6 + 8)
+  // ⋯ 바로 아래 세로 드롭다운(래퍼 기준). 헤더 밖으로 넘치므로 header에 zIndex가 있어야 편집 영역 위에 뜬다
+  // right: -(padding 6 + border 1) → 안쪽 아이콘(32) 중심이 ⋯ 버튼(32) 중심과 일치
+  headerToolsRow: { position: 'absolute', top: 32 + 6, right: -7, flexDirection: 'column', alignItems: 'center', gap: 8, padding: 6, borderRadius: 10, backgroundColor: C.toolbar, borderWidth: 1, borderColor: C.toolbarBorder },
+  mapBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   mapBtnActive: { borderWidth: 1, borderColor: a },
-  mapBtnThumb: { width: '100%', height: '100%', borderRadius: 5 },
-  naverBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: C.naverGreen, alignItems: 'center', justifyContent: 'center' },
-  naverBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  mapBtnThumb: { width: '100%', height: '100%', borderRadius: 7 },
+  naverBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: C.naverGreen, alignItems: 'center', justifyContent: 'center' },
+  naverBtnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  lockBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   lockBtnActive: { backgroundColor: tint(0.4), borderWidth: 1, borderColor: a },
-  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
-  lockBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
-  saveBtn: { backgroundColor: ad, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
+  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 15, height: 15, alignItems: 'center', justifyContent: 'center' },
+  lockBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
+  saveBtn: { backgroundColor: ad, borderRadius: 16, paddingHorizontal: 16, height: 32, justifyContent: 'center', marginRight: 8 }, // 헤더 padding 12 + 8 = 끝에서 20
   saveBtnDisabled: { backgroundColor: C.muted, opacity: 0.4 },
-  saveBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
+  saveBtnText: { color: C.white, fontSize: 15, fontWeight: '700' },
   saveBtnTextDisabled: { color: C.dim },
 
   editor: { flex: 1, backgroundColor: C.editorBg },
@@ -2757,8 +2762,6 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   countryChipPlaceholder: { color: C.muted, fontSize: 13 },
   // 미입력 표시 — 골드. 스킨 accent(보라/시안/민트)와 겹치지 않아 '아직 안 채움'이
   // 강조 요소와 구분되고, 빨강처럼 오류로 읽히지도 않는다.
-  countryChipRequired: { borderColor: C.gold, borderWidth: 1.5 },
-  requiredDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold, marginLeft: 6 },
 
   titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
   subtitleText: { color: '#AA54C1', fontSize: 15, fontWeight: '600', marginTop: 4 },
@@ -2824,13 +2827,11 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   toolBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, minWidth: 52 },
   toolIcon: { alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 2, height: 26 },
   toolLabel: { fontSize: 11, color: C.muted },
-  // 아이콘 위에 겹치는 배지라 툴바색 링을 둘러 아이콘 실루엣과 분리한다.
-  toolRequiredDot: { position: 'absolute' as const, top: -2, right: -6, width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.gold, borderWidth: 1.5, borderColor: C.toolbar },
   toolSep: { width: 1, height: 22, backgroundColor: C.toolbarBorder },
   toolbarSpacer: { flex: 1 },
-  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, borderWidth: 1, borderColor: tint(0.3) },
+  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 12, borderWidth: 1, borderColor: tint(0.3) },
   toolbarDraftText: { color: C.dim, fontSize: 12, fontWeight: '600' },
-  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 4, backgroundColor: tint(0.25) },
+  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 12, backgroundColor: tint(0.25) },
   toolbarDraftListText: { color: a, fontSize: 11, fontWeight: '700' },
   // 서브패널
   subPanel: { backgroundColor: C.toolbar, borderTopWidth: 1, borderTopColor: C.toolbarBorder, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },

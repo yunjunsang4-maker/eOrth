@@ -11,6 +11,7 @@ import { useRecords } from '../store/recordStore';
 import { detectCurrentCountry, isAbroad, requestNotificationPermission, willArrivalNotify } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
 import { postMomentNotification, isMomentNotificationPresented, dismissMomentNotification } from '../services/momentService';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 
 // 위치 재확인은 4시간마다(SnapDetector와 동일)
 const LOCATION_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
@@ -34,8 +35,8 @@ export default function MomentNotifier() {
   }, [activeStayGroup]);
 
   useEffect(() => {
-    if (!notifPrefs.master || !notifPrefs.travelMoment) {
-      // 토글 끄면 즉시 내린다
+    if (!TRAVEL_MOMENTS_ENABLED || !notifPrefs.master || !notifPrefs.travelMoment) {
+      // 토글(또는 기능 플래그) 끄면 즉시 내린다
       dismissMomentNotification();
       abroadRef.current = null;
       countryCodeRef.current = null;

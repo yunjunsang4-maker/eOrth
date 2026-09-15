@@ -20,17 +20,13 @@ import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
-import { useDM } from '../store/dmStore';
 import { emitToast } from '../store/toastStore';
 import { COUNTRIES } from '../constants/countries';
 import type { StayType } from '../utils/stayMachine';
-import { clearPersistedStores } from '../store/persist';
 import { fetchNotices } from '../services/notices';
 import { hasUnreadNotice } from '../utils/noticeFeed';
 import { signOut } from '../services/auth';
-import { deleteAllMyPosts } from '../services/posts';
 import { fetchMateRecoOptin, saveMateRecoOptin } from '../services/profile';
-import { clearTripState } from '../services/tripState';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon,
@@ -51,7 +47,6 @@ import {
   HomeIcon,
   ExitIcon,
   GalleryIcon,
-  TrashIcon,
   StarIcon,
   StickerIcon,
   PaletteIcon,
@@ -170,7 +165,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     stripLogoRemoval, setStripLogoRemoval,
     handle,
     globeSkin, setGlobeSkin,
-    resetSettings,
     resetTutorialsSeen,
     lastSeenNoticeAt,
   } = useSettings();
@@ -209,8 +203,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     }
   };
 
-  const { records, resetRecords, activeStayGroup, startStay, endStay } = useRecords();
-  const { resetConversations } = useDM();
+  const { records, activeStayGroup, startStay, endStay } = useRecords();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
   const [fontModalVisible, setFontModalVisible] = useState(false);
@@ -348,47 +341,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     } else {
       openStayModal();
     }
-  };
-
-  const handleResetData = () => {
-    warn(); // 되돌릴 수 없는 동작을 묻는 중
-    Alert.alert(
-      t('settings.resetTitle'),
-      t('settings.resetMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('settings.resetConfirm'),
-          style: 'destructive',
-          onPress: () => {
-            void (async () => {
-              // 서버 게시물을 먼저 삭제 — 로컬만 지우면 "되돌릴 수 없이 삭제" 안내와 달리
-              // 타인 피드에 글이 계속 노출되고, 다음 복원(pull)이 서버 사본을 되살린다.
-              const ok = await deleteAllMyPosts();
-              if (!ok) {
-                Alert.alert(t('settings.resetTitle'), t('settings.resetFailMsg'));
-                return;
-              }
-              await clearTripState(); // 여행 카드 백업도 제거 (실패는 내부에서 무시)
-              // 영속 스토어를 '먼저' 비운다. 리셋 뒤에 비우면 삭제와 리셋 상태의 디바운스
-              // 저장(400ms)이 경합해, 삭제가 늦게 끝나면 보존한 아이디까지 디스크에서 사라진다.
-              await clearPersistedStores().catch(() => {});
-              resetRecords();
-              // 계정은 그대로 쓰는 '데이터' 초기화 — 아이디·가입수단·언어는 유지한다.
-              // (지우면 ProfileSync가 랜덤 아이디로 서버를 덮고 소셜 가입자가 탈퇴 불가가 된다)
-              resetSettings({ keepIdentity: true });
-              // 같은 이유로 DM도 '나에게만 삭제' 기록(hiddenIds)과 읽음 워터마크(readMarks)는
-              // 남긴다 — 계정이 그대로라 서버 메시지는 살아 있는데, 삭제 기록을 비우면 다음
-              // 따라잡기·loadHistory가 내가 지운 메시지를 되살리고 옛 대화가 전부 안읽음으로 켜진다.
-              // (위에서 clearPersistedStores로 디스크를 먼저 비웠지만, 이 리셋이 만드는 상태 변경이
-              //  usePersistence의 디바운스 저장을 다시 유발해 보존한 두 값이 디스크에 다시 실린다.)
-              resetConversations({ keepHidden: true });
-              Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
-            })();
-          },
-        },
-      ],
-    );
   };
 
   // 개인정보처리방침 — 게시된 웹 페이지를 인앱 브라우저로 열기 (앱 언어에 맞는 번역본)
@@ -600,14 +552,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               onPress: handleOpenPrivacyPolicy,
             },
             { icon: <InfoIcon size={22} />,      label: t('settings.appVersion'), value: 'v1.0.0' },
-          ]}
-        />
-
-        {/* 데이터 */}
-        <Text style={st.groupLabel}>{t('settings.groupData')}</Text>
-        <SettingGroup
-          items={[
-            { icon: <TrashIcon size={22} />, label: t('settings.resetData'), onPress: handleResetData },
           ]}
         />
 

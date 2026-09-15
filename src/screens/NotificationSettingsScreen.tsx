@@ -20,6 +20,7 @@ import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 import { shouldShowLocationBanner } from '../utils/locationDetectorBanner';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -184,7 +185,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
     master: notifPrefs.master,
     arrivalDetect,
     snapEnabled,
-    travelMoment: notifPrefs.travelMoment,
+    travelMoment: TRAVEL_MOMENTS_ENABLED && notifPrefs.travelMoment, // 기능이 꺼져 있으면 MomentNotifier도 위치를 안 읽는다
     returnDetect: notifPrefs.returnDetect,
   });
 
@@ -343,14 +344,16 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             onValueChange={setSnapEnabled}
             disabled={!masterEnabled}
           />
-          <ToggleRow
-            icon={<Text style={{ fontSize: 18 }}>✨</Text>}
-            label={t('moments.settingsLabel')}
-            description={t('moments.settingsDesc')}
-            value={travelMoment}
-            onValueChange={(v) => setNotifPref('travelMoment', v)}
-            disabled={!masterEnabled}
-          />
+          {TRAVEL_MOMENTS_ENABLED && (
+            <ToggleRow
+              icon={<Text style={{ fontSize: 18 }}>✨</Text>}
+              label={t('moments.settingsLabel')}
+              description={t('moments.settingsDesc')}
+              value={travelMoment}
+              onValueChange={(v) => setNotifPref('travelMoment', v)}
+              disabled={!masterEnabled}
+            />
+          )}
           <ToggleRow
             icon={<HomeIcon size={20} />}
             label={t('notifSettings.returnLabel')}

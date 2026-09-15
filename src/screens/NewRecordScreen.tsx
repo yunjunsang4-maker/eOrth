@@ -41,6 +41,7 @@ import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
 import { getMaxRecordPhotos } from '../constants/limits';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { useSettings } from '../store/settingsStore';
@@ -1339,19 +1340,24 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
-          <Text style={s.cancelTxt}>{t('common.cancel')}</Text>
+        {/* 뒤로가기 — TripDetail·블로그와 같은 ← 카드형 버튼(통일감) */}
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+          <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
-        {/* ✨ 여행 기억 — 선택한 국가·날짜에 매칭되는 순간 목록 (참고용) */}
-        <TouchableOpacity
-          style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
-          onPress={() => setMomentSheetVisible(true)}
-          accessibilityRole="button"
-          accessibilityLabel={t('moments.sheetTitle')}
-        >
-          <Text style={{ fontSize: 16 }}>✨</Text>
-        </TouchableOpacity>
+        {/* ✨ 여행 기억 — 선택한 국가·날짜에 매칭되는 순간 목록 (참고용). 기능 꺼짐이면 폭만 남겨 제목 중앙 정렬 유지 */}
+        {TRAVEL_MOMENTS_ENABLED ? (
+          <TouchableOpacity
+            style={{ width: 38, alignItems: 'flex-end', padding: 4 }}
+            onPress={() => setMomentSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('moments.sheetTitle')}
+          >
+            <Text style={{ fontSize: 16 }}>✨</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 38 }} />
+        )}
       </View>
 
       {/* Android: edge-to-edge(SDK54)에서 adjustResize가 무력화될 수 있어 'height'로 스크롤 영역을 직접 축소 */}
@@ -2120,8 +2126,9 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.divider,
   },
-  cancelBtn: { padding: 4 },
-  cancelTxt: { fontSize: 16, color: COLORS.textMuted },
+  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#2E2E3B', borderWidth: 1, borderColor: '#252535', alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 17, color: COLORS.white },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
 
   scroll:   { flex: 1 },

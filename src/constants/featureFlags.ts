@@ -40,6 +40,16 @@ export const FEED_ADS_ENABLED = true;
 export const AFFILIATE_ADS_ENABLED = true;
 
 /**
+ * 여행 기억(순간 메모, ✨) 기능 활성화 여부.
+ *
+ * 2026-09-15 사용자 결정으로 비활성화 — 추후 보강해서 다시 넣기로 했다.
+ * 끄면: 해외 체류 상시 알림(MomentNotifier)·기록/여행 상세 화면의 ✨ 버튼·
+ * 알림 설정 토글·알림 탭 라우팅이 전부 숨겨진다.
+ * 저장된 기억 데이터(momentStore)와 서버 백업 경로는 그대로 유지한다 — 켜면 그대로 돌아온다.
+ */
+export const TRAVEL_MOMENTS_ENABLED = false;
+
+/**
  * AdMob 네이티브 광고 활성화 여부.
  * 실제 단위 ID 발급 완료(2026-07-27)로 활성화. 단, 실제 광고가 나가는 것은
  * production 채널뿐이고 개발·베타 빌드는 adUnits.ts가 테스트 ID로 분기한다.

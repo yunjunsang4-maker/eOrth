@@ -17,6 +17,7 @@ import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
@@ -521,8 +522,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.cancel}>{t('common.cancel')}</Text>
+        {/* 뒤로가기 — TripDetail·블로그와 같은 ← 카드형 버튼(통일감) */}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+          <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
@@ -583,15 +585,17 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               <Text style={[st.req, { color: skinAccent.accent }]}>✱</Text>
               <View style={{ flex: 1 }} />
               {/* ✨ 여행 기억 — 국가표시 열 오른쪽 끝 */}
-              <TouchableOpacity
-                onPress={() => setMomentSheetVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel={t('moments.sheetTitle')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ padding: 4 }}
-              >
-                <Text style={{ fontSize: 18 }}>✨</Text>
-              </TouchableOpacity>
+              {TRAVEL_MOMENTS_ENABLED && (
+                <TouchableOpacity
+                  onPress={() => setMomentSheetVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('moments.sheetTitle')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ padding: 4 }}
+                >
+                  <Text style={{ fontSize: 18 }}>✨</Text>
+                </TouchableOpacity>
+              )}
             </View>
             <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
@@ -1029,7 +1033,9 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
   },
-  cancel: { fontSize: 16, color: C.textDim },
+  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: '#252535', alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 17, color: C.white },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
   // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },

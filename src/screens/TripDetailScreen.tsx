@@ -26,6 +26,7 @@ import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
@@ -595,14 +596,16 @@ export default function TripDetailScreen() {
         ) : (
           <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 6 }]}>
             {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
-            <TouchableOpacity
-              style={s.backBtn}
-              onPress={() => setMomentSheetVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel={t('moments.sheetTitle')}
-            >
-              <Text style={{ fontSize: 16 }}>✨</Text>
-            </TouchableOpacity>
+            {TRAVEL_MOMENTS_ENABLED && (
+              <TouchableOpacity
+                style={s.backBtn}
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+              >
+                <Text style={{ fontSize: 16 }}>✨</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
               <View style={s.menuBars}>
                 <View style={s.menuBar} />

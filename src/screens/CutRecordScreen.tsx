@@ -319,8 +319,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     <SafeAreaView style={st.root}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={handleCancel} hitSlop={8}>
-          <Text style={st.cancel}>{t('common.cancel')}</Text>
+        {/* 뒤로가기 — TripDetail·블로그와 같은 ← 카드형 버튼(통일감). 이탈 확인은 handleCancel 그대로 */}
+        <TouchableOpacity onPress={handleCancel} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+          <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.title}>{t('cut.title')}</Text>
         <TouchableOpacity onPress={goNext} hitSlop={8}>
@@ -613,7 +614,9 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
-  cancel: { fontSize: 16, color: C.dim },
+  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
+  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#2E2E3B', borderWidth: 1, borderColor: '#252535', alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 17, color: C.white },
   title: { fontSize: 17, fontWeight: 'bold', color: C.white },
   save: { fontSize: 16, fontWeight: '700', color: C.purple },
 

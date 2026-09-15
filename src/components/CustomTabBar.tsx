@@ -60,7 +60,7 @@ const BAR_SIDE_MIN = 16;
 
 const PILL_H = 36;         // 가로 알약 높이
 const H_COLLAPSED_W = 48;  // 비활성(아이콘만) 폭
-const H_ACTIVE_W = 90;     // 가로 활성 알약 폭
+const H_ACTIVE_W = 90;     // 가로 활성 알약 최소 폭 — 라벨이 길면(Analysis) 실측 폭만큼 넓어진다
 
 const G_PILL_H = 46;       // Globe 활성 알약 높이 (세로 배치)
 const G_COLLAPSED_W = 48;  // Globe 비활성 폭
@@ -146,8 +146,10 @@ const StatsIcon = ({ active }: { active: boolean }) => {
 // Social: 사람 둘
 const SocialIcon = ({ active }: { active: boolean }) => {
   const color = active ? ACTIVE_COLOR : INACTIVE_COLOR;
+  // 시안 viewBox(21.18 20.7 22.04 16.62)는 도형에 딱 맞춰져 있어 왼쪽 몸 곡선(x 21.15)·
+  // 오른쪽 round cap(x 43.39)·아래 곡선(y 37.36)이 잘렸다. 같은 배율로 사방 여유를 둔다.
   return (
-    <Svg width={22.04} height={16.62} viewBox="21.18 20.7 22.04 16.62" fill="none">
+    <Svg width={23.6} height={18} viewBox="20.4 20.0 23.6 18.0" fill="none">
       <SvgPath d="M27.7402 36.9435C27.7402 33.5193 31.1148 30.7402 35.2586 30.7402C39.4024 30.7402 42.777 33.5193 42.777 36.9435" stroke={color} strokeWidth={1.22} strokeLinecap="round" />
       <SvgPath d="M34.876 21.3506C36.823 21.3507 38.4014 22.929 38.4014 24.876C38.4012 26.8229 36.8229 28.4012 34.876 28.4014C32.929 28.4014 31.3507 26.823 31.3506 24.876C31.3506 22.9289 32.9289 21.3506 34.876 21.3506Z" stroke={color} strokeWidth={1.22} />
       <SvgMask id="socialMask" maskUnits="userSpaceOnUse" x={20} y={17} width={24} height={24}>
@@ -194,11 +196,19 @@ const TabItem: React.FC<{
   const H = isGlobe ? G_PILL_H : PILL_H; // 알약 높이
   const R = H / 2;                       // 알약 모서리 반경
 
+  // 라벨 실측 폭 — 활성 알약 폭 90 고정에 라벨 시작 41이면 'Analysis'(8자)는 오른쪽이 잘려
+  // 한쪽으로 치우쳐 보였다. 실측 폭 + 좌우 여백이 90을 넘으면 그만큼 알약을 넓힌다.
+  const labelW = useSharedValue(0);
+  const hActiveW = () => {
+    'worklet';
+    return Math.max(H_ACTIVE_W, LABEL_LEFT + labelW.value + ICON_LEFT);
+  };
+
   // 알약 폭 모핑 (아이콘만 → 활성)
   const pillStyle = useAnimatedStyle(() => ({
     width: isGlobe
       ? interpolate(progress.value, [0, 1], [G_COLLAPSED_W, G_ACTIVE_W])
-      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]),
+      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, hActiveW()]),
   }));
 
   // 본체(평면 보라 알약)는 활성일 때만 페이드 인
@@ -208,7 +218,7 @@ const TabItem: React.FC<{
   const pillBorderProps = useAnimatedProps(() => {
     const w = isGlobe
       ? interpolate(progress.value, [0, 1], [G_COLLAPSED_W, G_ACTIVE_W])
-      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]);
+      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, hActiveW()]);
     return { width: Math.max(0, w - 1) };
   });
 
@@ -284,7 +294,12 @@ const TabItem: React.FC<{
             style={[isGlobe ? styles.labelBoxGlobe : styles.labelBoxH, labelStyle]}
             pointerEvents="none"
           >
-            <Text style={styles.label} numberOfLines={1} {...andFitText}>{label}</Text>
+            <Text
+              style={styles.label}
+              numberOfLines={1}
+              {...andFitText}
+              onTextLayout={(e) => { const w = e.nativeEvent.lines[0]?.width ?? 0; if (w > 0) labelW.value = Math.ceil(w); }}
+            >{label}</Text>
           </Animated.View>
         </View>
       </Animated.View>

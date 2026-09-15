@@ -42,6 +42,7 @@ import CutTravelInfoScreen from '../screens/CutTravelInfoScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
 import MomentCaptureScreen from '../screens/MomentCaptureScreen';
+import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import AlbumCreateScreen from '../screens/AlbumCreateScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
@@ -231,7 +232,7 @@ export default function AppNavigator() {
           // 스냅 화면이 "알림 후 몇 초 만에 찍었는지"를 표시할 수 있다.
           navigate('SnapRecord', { notifTimestamp: Number(d.timestamp) || undefined });
         } else if (d.type === 'moment') {
-          navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
+          if (TRAVEL_MOMENTS_ENABLED) navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처 (기능 꺼짐이면 무시)
         } else if (d.type === 'arrival') {
           navigate('NewRecord'); // 해외 도착 알림 → 기록 작성
         } else if (d.type === 'returnDetect') {
