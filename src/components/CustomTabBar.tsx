@@ -610,12 +610,14 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         tintColor="#0A0A0F80"
         fallbackTint="rgba(10,10,15,0.38)"
         androidTint="rgba(10,10,15,0.92)"
-        // ⚠️ edgeHighlight 는 iOS 전용. GlassSurface 의 EdgeHighlight 는 Rect 를 width="100%"
-        // 로 그리는데, 안드로이드에서는 이 % 가 폭 변경 후에도 갱신되지 않아 옛 폭(Globe 323dp)
-        // 그대로 남는다. 그래서 바가 348dp 로 늘어나도 323dp 짜리 윤곽이 하나 더 겹쳐 보였고,
-        // 그게 "바가 짧고 좌우가 안 맞는다"의 정체였다(실측: 오른쪽에 스트로크 2개 — x≈900/960).
-        // 탭 바는 자체 테두리 SVG 가 이미 같은 자리를 그리므로 안드로이드에서 빠져도 형태는 같다.
-        edgeHighlight={Platform.OS === 'ios'}
+        // edgeHighlight 를 양 플랫폼에 켠다(2026-09-15). 예전엔 iOS 전용이었다 — 옛 GlassSurface
+        // 장식이 Rect 를 width="100%" 로 그렸는데 안드로이드 RNSVG 는 이 % 를 폭 변경 후 갱신하지
+        // 않아 옛 폭(Globe 323dp) 윤곽이 348dp 바 위에 겹쳐 보였다(실측: 스트로크 2개 x≈900/960).
+        // 지금 GlassSurface 는 안드로이드에서만 onLayout 실측 숫자로 그리고 iOS 는 % 를 쓴다.
+        // 안드로이드 폭은 위 androidSize 가 React 상태로 커밋하므로 onLayout 은 탭 전환당 1회다
+        // (iOS 처럼 프레임마다 돌지 않는다). 유리 장식(두께·림·specular)은 자체 테두리 SVG 안쪽에
+        // 놓이므로 Figma 테두리와 겹치지 않는다.
+        edgeHighlight
       />
 
       {/* 탭 콘텐츠 — 유리 위에 형제로 올림.
