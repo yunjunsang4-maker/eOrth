@@ -124,6 +124,9 @@ def scan(photo_dir, exclude_dir=None):
             continue
         if ex and ex in p.resolve().parents:
             continue
+        # 예전 실행이 남긴 썸네일 폴더(thumbs/ 옆에 signals.json)도 사진으로 세지 않는다
+        if p.parent.name == 'thumbs' and (p.parent.parent / 'signals.json').exists():
+            continue
         out.append(p)
     return sorted(out)
 
@@ -215,40 +218,48 @@ def semantic_signals(M, img, photo):
 
 
 # ─────────────────────────────────────────────
-# CLI
+# 실행 — app.py(창)와 CLI가 같은 함수를 쓴다
 # ─────────────────────────────────────────────
 
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('photo_dir')
-    ap.add_argument('out_dir')
-    ap.add_argument('--force', action='store_true', help='캐시 무시, 전체 재계산')
-    ap.add_argument('--no-model', action='store_true', help='의미 신호 없이 순수 지표만')
-    a = ap.parse_args()
+_MODEL = None  # 프로세스당 1회만 로드 (창에서 여행을 여러 번 분석할 때 재로드 방지)
 
-    out = Path(a.out_dir)
+
+def get_model():
+    global _MODEL
+    if _MODEL is None:
+        _MODEL = load_model()
+    return _MODEL
+
+
+def extract(photo_dir, out_dir, force=False, no_model=False, progress=None):
+    """사진 폴더 → out_dir/signals.json + thumbs/. 반환 {photos, skipped, seconds}.
+    progress(done, total, message)를 사진마다 부른다. 사진이 없으면 ValueError."""
+    out = Path(out_dir)
     (out / 'thumbs').mkdir(parents=True, exist_ok=True)
     sig_path = out / 'signals.json'
     cache = {}
-    if not a.force and sig_path.exists():
+    if not force and sig_path.exists():
         cache = json.loads(sig_path.read_text('utf-8')).get('cache', {})
 
-    files = scan(a.photo_dir, out)
+    files = scan(photo_dir, out)
     if not files:
-        print(f'사진이 없습니다: {a.photo_dir}', file=sys.stderr)
-        sys.exit(1)
+        raise ValueError(f'사진이 없습니다: {photo_dir}')
 
-    model = None if a.no_model else load_model()
+    if progress:
+        progress(0, len(files), '모델 준비 중')
+    model = None if no_model else get_model()
     photos, skipped, new_cache = [], [], {}
     t0 = time.time()
     for i, f in enumerate(files):
-        rel = str(f.relative_to(a.photo_dir)).replace('\\', '/')
+        rel = str(f.relative_to(photo_dir)).replace('\\', '/')
         mtime = f.stat().st_mtime
         hit = cache.get(rel)
         has_semantic = bool(hit) and hit['photo'].get('signal', {}).get('sceneLabels') is not None
-        if hit and hit['mtime'] == mtime and (a.no_model or has_semantic):
+        if hit and hit['mtime'] == mtime and (no_model or has_semantic):
             new_cache[rel] = hit
             photos.append(hit['photo'])
+            if progress:
+                progress(i + 1, len(files), rel)
             continue
         try:
             img = Image.open(f)
@@ -272,18 +283,38 @@ def main():
             semantic_signals(model, img, photo)
         photos.append(photo)
         new_cache[rel] = {'mtime': mtime, 'photo': photo}
-        print(f'\r{i + 1}/{len(files)} {rel[:50]:<50}', end='', file=sys.stderr)
-    print(file=sys.stderr)
+        if progress:
+            progress(i + 1, len(files), rel)
 
     sig_path.write_text(
         json.dumps(
-            {'version': 1, 'sourceDir': str(Path(a.photo_dir).resolve()), 'photos': photos,
+            {'version': 1, 'sourceDir': str(Path(photo_dir).resolve()), 'photos': photos,
              'skipped': skipped, 'cache': new_cache},
             ensure_ascii=False, indent=1,
         ),
         'utf-8',
     )
-    print(f'사진 {len(photos)}장, 건너뜀 {len(skipped)}장, {time.time() - t0:.1f}초 → {sig_path}')
+    return {'photos': len(photos), 'skipped': len(skipped), 'seconds': round(time.time() - t0, 1), 'path': str(sig_path)}
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('photo_dir')
+    ap.add_argument('out_dir')
+    ap.add_argument('--force', action='store_true', help='캐시 무시, 전체 재계산')
+    ap.add_argument('--no-model', action='store_true', help='의미 신호 없이 순수 지표만')
+    a = ap.parse_args()
+
+    def show(done, total, msg):
+        print(f'\r{done}/{total} {msg[:50]:<50}', end='', file=sys.stderr)
+
+    try:
+        r = extract(a.photo_dir, a.out_dir, force=a.force, no_model=a.no_model, progress=show)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+    print(file=sys.stderr)
+    print(f"사진 {r['photos']}장, 건너뜀 {r['skipped']}장, {r['seconds']}초 → {r['path']}")
 
 
 if __name__ == '__main__':

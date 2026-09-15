@@ -7,7 +7,7 @@
  * 여기서 import하는 것은 전부 앱 파일이다(src/services/photoAI/*). 이 도구는 그 파일들을
  * 복제하지 않는다 — 리포트를 보고 고칠 파일이 곧 앱 파일이다.
  */
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { groupPhotosBySpot } from '../../src/services/photoAI/photoGrouping';
 import { filterByQuality } from '../../src/services/photoAI/qualityAssessment';
@@ -25,15 +25,23 @@ const GOLDEN_DIR = join(ROOT, 'src', 'services', 'photoAI', 'goldens');
 /** CUT_FRAMES 기본 카테고리 슬롯 수 — reco-lab.ts·formatReco.verify.ts와 같은 값 */
 const SLOT_COUNTS = [2, 3, 4, 6, 9];
 
+/** 학습된 키워드(teach.py learned.json): [keyword, concept, weight] */
+export type Overlay = [string, RecoConcept, number][];
+/** 사용자 정답: uri → 컨셉 (teach.json의 부분집합) */
+export type TeachMap = Record<string, RecoConcept>;
+
 export interface LabResult {
   photos: PhotoMeta[];
   usable: PhotoMeta[];
   groups: SpotGroup[];
-  concepts: Record<string, ConceptScores>;
+  concepts: Record<string, ConceptScores>;      // 앱 규칙 + 학습 오버레이
+  conceptsBase: Record<string, ConceptScores>;  // 앱 규칙만
   interpreted: Record<string, boolean>;
   candidates: RecoCandidate[];
   cards: RecoCandidate[];
   bestScore: Record<string, number>;
+  /** 가르친 사진 중 최고 컨셉이 정답과 맞은 비율. n=0이면 null */
+  accuracy: { base: number | null; learned: number | null; n: number; wrongBase: string[]; wrongLearned: string[] };
 }
 
 /** KEYWORD_AFFINITY는 labelTaxonomy 내부라 밖에서 못 읽는다 — 라벨 하나만 넣어 역판정 */
@@ -42,10 +50,43 @@ function isLabelInterpreted(label: string): boolean {
   return RECO_CONCEPTS.some((c) => s[c] > 0);
 }
 
-export function runPipeline(photos: PhotoMeta[], groupsHint?: SpotGroup[]): LabResult {
+/**
+ * 앱 규칙 점수 위에 학습 오버레이를 얹는다. 앱 표가 그 라벨을 그 컨셉으로 이미 해석하면 건너뛴다 —
+ * [앱에 반영] 뒤에도 이중 계상이 없고, 어떤 항목이 반영됐는지 상태 파일이 필요 없다.
+ */
+function classifyWithOverlay(p: PhotoMeta, overlay: Overlay): ConceptScores {
+  const base = ruleConceptClassifier(p);
+  if (overlay.length === 0) return base;
+  const out: ConceptScores = { ...base };
+  for (const l of p.signal?.sceneLabels ?? []) {
+    const key = l.label.toLowerCase();
+    for (const [kw, c, w] of overlay) {
+      if (kw !== key) continue;
+      if (conceptAffinityFromLabels([{ label: l.label, confidence: 1 }])[c] > 0) continue;
+      out[c] = Math.min(1, out[c] + w * l.confidence);
+    }
+  }
+  return out;
+}
+
+function accuracyOf(photos: PhotoMeta[], scores: Map<string, ConceptScores>, teach: TeachMap): { rate: number | null; wrong: string[]; n: number } {
+  let n = 0; let hit = 0; const wrong: string[] = [];
+  for (const p of photos) {
+    const ans = teach[p.uri];
+    if (!ans) continue;
+    n++;
+    const s = scores.get(p.id)!;
+    const allZero = RECO_CONCEPTS.every((c) => s[c] === 0);
+    if (!allZero && topOf(s).concept === ans) hit++; else wrong.push(p.id);
+  }
+  return { rate: n ? hit / n : null, wrong, n };
+}
+
+export function runPipeline(photos: PhotoMeta[], groupsHint?: SpotGroup[], overlay: Overlay = [], teach: TeachMap = {}): LabResult {
   const usable = filterByQuality(photos);
   const groups = attachBestCuts(groupsHint ?? groupPhotosBySpot(usable), usable);
-  const conceptMap = new Map(photos.map((p) => [p.id, ruleConceptClassifier(p)]));
+  const baseMap = new Map(photos.map((p) => [p.id, ruleConceptClassifier(p)]));
+  const conceptMap = new Map(photos.map((p) => [p.id, classifyWithOverlay(p, overlay)]));
   const candidates = [
     ...stripCandidates(photos, groups, conceptMap, SLOT_COUNTS),
     ...feedCandidates(photos, conceptMap),
@@ -57,7 +98,14 @@ export function runPipeline(photos: PhotoMeta[], groupsHint?: SpotGroup[]): LabR
     for (const l of p.signal?.sceneLabels ?? []) interpreted[l.label] ??= isLabelInterpreted(l.label);
   }
   const bestScore = Object.fromEntries(photos.map((p) => [p.id, scorePhoto(p)]));
-  return { photos, usable, groups, concepts: Object.fromEntries(conceptMap), interpreted, candidates, cards, bestScore };
+  const accBase = accuracyOf(photos, baseMap, teach);
+  const accLearned = accuracyOf(photos, conceptMap, teach);
+  return {
+    photos, usable, groups,
+    concepts: Object.fromEntries(conceptMap), conceptsBase: Object.fromEntries(baseMap),
+    interpreted, candidates, cards, bestScore,
+    accuracy: { base: accBase.rate, learned: accLearned.rate, n: accBase.n, wrongBase: accBase.wrong, wrongLearned: accLearned.wrong },
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -270,14 +318,28 @@ if (args.includes('--golden-check')) {
 } else {
   const outDir = args[0];
   if (!outDir) {
-    console.error('사용법: report.ts <outDir> [--golden <name>] | --golden-check');
+    console.error('사용법: report.ts <outDir> [--golden <name>] [--json] [--overlay learned.json] [--teach teach.json] | --golden-check');
     process.exit(1);
   }
+  const optVal = (flag: string): string | undefined => {
+    const i = args.indexOf(flag);
+    return i === -1 ? undefined : args[i + 1];
+  };
+  const readJsonIf = (p: string | undefined): unknown => (p && existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : undefined);
+  const overlay = (readJsonIf(optVal('--overlay')) as Overlay | undefined) ?? [];
+  const teachRaw = (readJsonIf(optVal('--teach')) as Record<string, { concept: RecoConcept }> | undefined) ?? {};
+  const teach: TeachMap = Object.fromEntries(Object.entries(teachRaw).map(([uri, e]) => [uri, e.concept]));
+
   const sig = JSON.parse(readFileSync(join(outDir, 'signals.json'), 'utf8'));
-  const r = runPipeline(sig.photos);
-  const html = renderHtml(r, { sourceDir: sig.sourceDir, skipped: sig.skipped ?? [] });
-  writeFileSync(join(outDir, 'report.html'), html, 'utf8');
-  console.log(`리포트: ${join(outDir, 'report.html')}  (사진 ${r.photos.length}, 그룹 ${r.groups.length}, 카드 ${r.cards.length})`);
+  const r = runPipeline(sig.photos, undefined, overlay, teach);
+  const meta = { sourceDir: sig.sourceDir, skipped: sig.skipped ?? [] };
+  if (args.includes('--json')) {
+    writeFileSync(join(outDir, 'result.json'), JSON.stringify({ ...r, meta, overlayCount: overlay.length }), 'utf8');
+    console.log(`result.json: 사진 ${r.photos.length}, 카드 ${r.cards.length}, 정답 ${r.accuracy.n}장`);
+  } else {
+    writeFileSync(join(outDir, 'report.html'), renderHtml(r, meta), 'utf8');
+    console.log(`리포트: ${join(outDir, 'report.html')}  (사진 ${r.photos.length}, 그룹 ${r.groups.length}, 카드 ${r.cards.length})`);
+  }
   const gi = args.indexOf('--golden');
   if (gi !== -1) saveGolden(args[gi + 1] ?? basename(outDir), r, sig.sourceDir);
 }
