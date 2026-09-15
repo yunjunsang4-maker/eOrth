@@ -1444,6 +1444,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               endValue={formatDate(endDate)}
               onPress={() => setCalendarVisible(true)}
             />
+            {/* 날짜를 먼저 정할수록 얻는 게 있다는 걸 알려준다 — selectMedia가 dayRangeMs(startDate,endDate)로
+                기간 사진 격자를 띄워 그 기간 사진만 추린다. 날짜 기반 자동 채움은 이것뿐이라(국가는 GPS 기준,
+                ✨ 여행 기억은 플래그 OFF) 문구를 사진 추림으로만 한정한다 — 넓히면 약속이 지켜지지 않는다. */}
+            <Text style={s.dateFirstHint}>{t('newRecord.dateFirstHint')}</Text>
           </View>
 
           {/* ══════════════════ ③ 박스 B: 필수 여행 정보(국가·별점) ══════════════════ */}
@@ -2684,6 +2688,14 @@ const s = StyleSheet.create({
   kwHint: {
     fontSize: 11,
     color: COLORS.textMuted,
+  },
+  dateFirstHint: {
+    fontSize: 11,
+    // 이 파일의 로컬 COLORS.textMuted(#4A4A59)는 placeholder용 저대비값이라 배경 #0A0A0F 대비 2.27:1로 AA 미달이다.
+    // 항상 보이는 안내 문장은 draggableHelperText와 같은 '텍스트 흐림' #A1A1B0(7.75:1)을 쓴다.
+    color: '#A1A1B0',
+    marginTop: 8,
+    lineHeight: 16,
   },
   kwTag: {
     flexDirection: 'row',
