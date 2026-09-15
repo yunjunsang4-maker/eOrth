@@ -1512,7 +1512,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, refreshPostCounts, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, currentViewer, refreshComments, refreshPostCounts, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -2119,26 +2119,8 @@ export default function PostDetailScreen() {
                 const postDisplayName = isMyPost
                   ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
-                // 작성자 uuid — 메이트 관계 판정은 반드시 uuid 기준
-                const authorId = typeof record.authorId === 'string' && record.authorId ? record.authorId : null;
-                // 메이트 3상태: 메이트 / 신청됨 / 없음 — 스토어 판정 사용
-                const neighborState: 'neighbor' | 'requested' | 'none' = authorId
-                  ? (isNeighbor(authorId) ? 'neighbor' : isNeighborRequested(authorId) ? 'requested' : 'none')
-                  : 'none';
-                const neighborLabel =
-                  neighborState === 'neighbor' ? t('friends.neighborActive')
-                  : neighborState === 'requested' ? t('friends.neighborRequested')
-                  : t('friends.neighborRequest');
-                const neighborA11y =
-                  neighborState === 'none' ? t('friends.neighborRequest') : t('friends.neighborActive');
-                const onNeighborPress = () => {
-                  if (!authorId) return;
-                  tap();
-                  // 없음→신청, 신청됨→취소, 메이트→끊기
-                  if (neighborState === 'neighbor') removeNeighbor(authorId);
-                  else if (neighborState === 'requested') cancelNeighborRequest(authorId);
-                  else requestNeighbor(authorId);
-                };
+                // 메이트 버튼은 제거했다(2026-09-15) — '메이트' 표시를 한 번 누르면 확인 없이 바로
+                // 끊겨 오터치 사고가 잦았다. 메이트 신청·해제는 프로필 화면에서만 한다.
                 return (
                   <Animated.View style={[s.userRow, entUser]}>
                     <TouchableOpacity
@@ -2189,18 +2171,6 @@ export default function PostDetailScreen() {
                         fullColor={skinAccent.accent}
                         emptyColor="rgba(255,255,255,0.18)"
                       />
-                    )}
-                    {!isMyPost && authorId && !record.isExample && (
-                      <TouchableOpacity
-                        style={[s.followBtn, { backgroundColor: skinAccent.accent }, neighborState !== 'none' && s.followingBtn]}
-                        onPress={onNeighborPress}
-                        accessibilityRole="button"
-                        accessibilityLabel={neighborA11y}
-                      >
-                        <Text style={[s.followBtnText, neighborState !== 'none' && s.followingBtnText]}>
-                          {neighborLabel}
-                        </Text>
-                      </TouchableOpacity>
                     )}
                   </Animated.View>
                 );
@@ -2827,10 +2797,6 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
     flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18,
   },
   authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  followBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: a },
-  followBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  followingBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.cardBorder },
-  followingBtnText: { color: C.dim },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: tint(0.12), alignItems: 'center', justifyContent: 'center',
