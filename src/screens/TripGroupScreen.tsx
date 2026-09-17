@@ -16,7 +16,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
-import { TrashIcon } from '../components/icons';
+import { TrashIcon, BackChevronIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
@@ -97,7 +97,7 @@ export default function TripGroupScreen() {
       <View style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-            <Text style={st.backIcon}>←</Text>
+            <BackChevronIcon />
           </TouchableOpacity>
           <Text style={st.headerTitle}>{t('trip.groupNotFound')}</Text>
           <View style={{ width: 36 }} />
@@ -171,7 +171,7 @@ export default function TripGroupScreen() {
       {/* 헤더 */}
       <View style={[st.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-          <Text style={st.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle} numberOfLines={1}>{group.title}</Text>
         <TouchableOpacity onPress={() => setMenuVisible(true)} style={st.menuBtn}>
@@ -314,17 +314,8 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   backBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1E1B33',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: a.tint(0.2),
-  },
-  backIcon: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    lineHeight: 22,
   },
   headerTitle: {
     fontSize: 16,

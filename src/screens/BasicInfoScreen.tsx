@@ -40,7 +40,7 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { detectCurrentCountry } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PersonIcon, CameraIcon } from '../components/icons';
+import { PersonIcon, CameraIcon, BackChevronIcon } from '../components/icons';
 import RequirementList from '../components/RequirementList';
 import { COUNTRIES, type Country } from '../constants/countries';
 import { minimumSignupAge } from '../constants/minimumAge';
@@ -397,7 +397,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel={t('basicInfo.backToLogin')}
           >
-            <Text style={styles.backTxt}>‹</Text>
+            <BackChevronIcon />
           </TouchableOpacity>
 
           {/* Header */}
@@ -768,23 +768,13 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: Spacing[8],
   },
+  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지
   backBtn: {
     width: 38,
     height: 38,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing[4],
-  },
-  backTxt: {
-    color: Colors.textPrimary,
-    fontSize: 22,
-    // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
-    lineHeight: Platform.OS === 'ios' ? 24 : 27,
-    marginTop: -2,
   },
   // 온보딩 step 라벨과 동일한 톤 — 마젠타 액센트
   stepText: {

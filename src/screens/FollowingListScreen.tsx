@@ -12,7 +12,7 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';
-import { PersonIcon } from '../components/icons';
+import { PersonIcon, BackChevronIcon } from '../components/icons';
 import UserActionSheet from '../components/UserActionSheet';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { tap } from '../utils/haptics';
@@ -88,7 +88,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={styles.backBtnText}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 — backBtn 스타일을 쓰면 빈 원이 보인다 */}
@@ -179,14 +179,8 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backBtnText: {
-    fontSize: 20,
-    color: COLORS.white,
   },
   headerTitle: {
     fontSize: 18,

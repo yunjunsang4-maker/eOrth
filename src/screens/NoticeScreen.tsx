@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Text } from '../ui/Text';
+import { BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
@@ -57,7 +58,7 @@ export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notic
     <SafeAreaView style={st.safeArea}>
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <Text style={st.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('notice.title')}</Text>
         <View style={st.headerPlaceholder} />
@@ -104,7 +105,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 6,
   },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { color: COLORS.white, fontSize: 28, marginTop: -2 },
   headerTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
   headerPlaceholder: { width: 44 },
 

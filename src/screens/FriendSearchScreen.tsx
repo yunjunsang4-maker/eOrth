@@ -14,7 +14,7 @@ import { Text, TextInput } from '../ui/Text';
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { GlobeIcon, SearchIcon } from '../components/icons';
+import { GlobeIcon, SearchIcon, BackChevronIcon } from '../components/icons';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
@@ -529,7 +529,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       {/* ── 헤더 ── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={s.backBtn} onPress={handleGoBack} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={s.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('friends.searchTitle')}</Text>
         <View style={s.backBtn} />
@@ -672,12 +672,9 @@ const s = StyleSheet.create({
   },
   backBtn: {
     width: 40,
+    height: 36, // 예전엔 ‹ 글자의 lineHeight 36이 버튼 높이를 만들었다 — 자식이 16px SVG(BackChevronIcon)가 되면서 명시 필요(터치 영역·헤더 높이 유지). 오른쪽 자리표시 View도 같은 스타일이라 대칭 유지
+    justifyContent: 'center',
     alignItems: 'center',
-  },
-  backIcon: {
-    fontSize: 32,
-    color: C.white,
-    lineHeight: 36,
   },
   headerTitle: {
     fontSize: 18,

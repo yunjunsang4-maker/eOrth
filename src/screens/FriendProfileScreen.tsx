@@ -18,7 +18,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
-import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon } from '../components/icons';
+import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
@@ -381,7 +381,7 @@ export default function FriendProfileScreen({
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
         <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={s.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>@{displayUsername}</Text>
         <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.more')}>
@@ -735,7 +735,6 @@ const s = StyleSheet.create({
     width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { fontSize: 28, color: COLORS.white },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white },
   moreIcon: { fontSize: 18, color: COLORS.dim, letterSpacing: 2 },
 

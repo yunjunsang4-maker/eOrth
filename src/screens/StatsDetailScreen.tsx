@@ -10,6 +10,7 @@ import {
   Easing,
 } from 'react-native';
 import { Text } from '../ui/Text';
+import { BackChevronIcon } from '../components/icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
@@ -595,7 +596,7 @@ export default function StatsDetailScreen() {
       {/* 별 배경 — 메인 통계 화면과 동일한 다크 스타필드 (시안) */}
       <StarFieldBackground />
 
-      {/* 헤더 — ‹ + 흰색 굵은 제목 (시안: world travel) */}
+      {/* 헤더 — chevron 뒤로가기 + 흰색 굵은 제목 (시안: world travel) */}
       <Animated.View
         style={[
           s.header,
@@ -609,7 +610,7 @@ export default function StatsDetailScreen() {
         ]}
       >
         <TouchableOpacity onPress={handleBack} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={s.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{content.title}</Text>
       </Animated.View>
@@ -729,7 +730,7 @@ export default function StatsDetailScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0F' },
 
-  // 헤더 — ‹ + 흰색 굵은 제목 (시안: world travel)
+  // 헤더 — chevron 뒤로가기 + 흰색 굵은 제목 (시안: world travel)
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -738,7 +739,6 @@ const s = StyleSheet.create({
     gap: 6,
   },
   backBtn: { width: 30, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 30, color: Colors.textPrimary, lineHeight: 34, fontWeight: '400' },
   headerTitle: {
     fontSize: 26,
     fontFamily: Typography.fontFamily.extraBold,

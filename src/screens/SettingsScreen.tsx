@@ -51,6 +51,7 @@ import {
   StickerIcon,
   PaletteIcon,
   LockClosedIcon as SvgLockClosedIcon,
+  BackChevronIcon,
 } from '../components/icons';
 import HomeRegionSheet from '../components/HomeRegionSheet';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
@@ -384,7 +385,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 상단 헤더 */}
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <Text style={st.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('settings.title')}</Text>
         <View style={st.headerPlaceholder} />
@@ -817,11 +818,6 @@ const st = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 30,
-    color: COLORS.white,
-    lineHeight: 36,
   },
   headerTitle: {
     fontSize: 16,

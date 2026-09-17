@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { CameraIcon, PersonIcon } from '../components/icons';
+import { CameraIcon, PersonIcon, BackChevronIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { fetchCountryVisitors, type CountryVisitor } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -74,7 +74,7 @@ export default function CountryScreen({ navigation, route }: Props) {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={styles.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.countryFlag}>{country.flag}</Text>
@@ -211,14 +211,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.bgCard,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: Colors.textPrimary,
   },
   headerCenter: {
     flex: 1,

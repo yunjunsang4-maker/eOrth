@@ -26,7 +26,7 @@ import Svg, {
   Circle as SvgCircle,
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
-import { BackArrowIcon } from '../components/icons';
+import { BackChevronIcon } from '../components/icons';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
 import * as MediaLibrary from 'expo-media-library';
@@ -1441,7 +1441,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('imports.backToProfile')}
         >
-          <BackArrowIcon size={20} color="#FFFFFF" />
+          <BackChevronIcon />
         </TouchableOpacity>
       )}
 
@@ -1944,7 +1944,8 @@ const styles = StyleSheet.create({
   skipBtn: {
     paddingVertical: 12,
   },
-  // 프로필 재진입 전용 뒤로가기 — FriendsScreen 헤더의 40px 원형 버튼과 같은 규격
+  // 프로필 재진입 전용 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시).
+  // 40 치수는 터치 영역, 절대배치(top은 호출부에서 insets로 준다)는 그대로 유지.
   backBtn: {
     position: 'absolute',
     left: 16,
@@ -1953,10 +1954,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(46,46,59,0.45)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
   // 결과 화면 하단 바 안의 스킵 링크 — 바는 자식을 가로로 늘리므로 여기서 가운데로 모은다
   // (초기·빈 결과 화면의 스킵은 이미 가운데 정렬된 컨테이너 안에 있어 이 보정이 필요 없다)

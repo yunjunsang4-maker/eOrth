@@ -76,6 +76,7 @@ import {
   SnowIcon as SvgSnowIcon,
   PartlyCloudyIcon as SvgPartlyCloudyIcon,
   WindIcon as SvgWindIcon,
+  BackChevronIcon,
 } from '../components/icons';
 
 if (Platform.OS === 'android') {
@@ -1340,9 +1341,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        {/* 뒤로가기 — TripDetail·블로그와 같은 ← 카드형 버튼(통일감) */}
+        {/* 뒤로가기 — 앱 전 화면 공통 chevron(박스 없음) */}
         <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-          <Text style={s.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
         {/* ✨ 여행 기억 — 선택한 국가·날짜에 매칭되는 순간 목록 (참고용). 기능 꺼짐이면 폭만 남겨 제목 중앙 정렬 유지 */}
@@ -2126,9 +2127,8 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.divider,
   },
-  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#2E2E3B', borderWidth: 1, borderColor: '#252535', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 17, color: COLORS.white },
+  // 뒤로가기 — 박스 없이 38×38 터치 영역 가운데 chevron만(앱 전 화면 공통)
+  backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
 
   scroll:   { flex: 1 },

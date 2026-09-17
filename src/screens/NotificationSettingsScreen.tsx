@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
+import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon, BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -219,7 +219,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('notifSettings.back')}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('notifSettings.title')}</Text>
         <View style={{ width: 40 }} />
@@ -435,12 +435,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: COLORS.white,
   },
   headerTitle: {
     fontSize: 17,

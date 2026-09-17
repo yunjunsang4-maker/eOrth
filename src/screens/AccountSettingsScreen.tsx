@@ -19,7 +19,7 @@ import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDel
 import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
 import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
-import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
+import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, BackChevronIcon } from '../components/icons';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
 import RequirementList from '../components/RequirementList';
@@ -372,7 +372,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           accessibilityRole="button"
           accessibilityLabel={t('accountSettings.back')}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('accountSettings.title')}</Text>
         <View style={{ width: 40 }} />
@@ -828,12 +828,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-  },
-  backIcon: {
-    fontSize: 20,
-    color: COLORS.white,
   },
   headerTitle: {
     fontSize: 17,

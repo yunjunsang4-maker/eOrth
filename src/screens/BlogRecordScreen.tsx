@@ -73,6 +73,7 @@ import {
   PaperclipIcon,
   ArchiveIcon as SvgArchiveIcon,
   TrashIcon as SvgTrashIcon,
+  BackChevronIcon,
 } from '../components/icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -1427,12 +1428,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
-        {/* 뒤로가기 — TripDetail 등 다른 화면과 같은 ← 카드형 버튼(통일감) */}
+        {/* 뒤로가기 — 앱 전 화면 공통 chevron(BackChevronIcon, 9×16·흰 60%). 박스·테두리 없음 */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-          {/* 사용자 시안 chevron(9×16, 흰 60%) — 다른 화면의 ← 글자와 달리 이 화면만 SVG */}
-          <Svg width={9} height={16} viewBox="0 0 9 16" fill="none">
-            <SvgPath d="M6.73106 0.331257C7.20072 -0.122001 7.94888 -0.108709 8.40214 0.360945C8.8554 0.830599 8.84211 1.57877 8.37245 2.03202L7.55176 1.18164L6.73106 0.331257ZM1.18201 7.54362L0.329289 8.36188C-0.10771 7.90648 -0.109742 7.18807 0.324673 6.7302L1.18201 7.54362ZM8.40448 13.3634C8.8564 13.8343 8.84097 14.5825 8.37002 15.0344C7.89907 15.4863 7.15095 15.4708 6.69903 14.9999L7.55176 14.1816L8.40448 13.3634ZM3.59614 4.99916L2.7388 4.18573L2.75672 4.16685L2.77545 4.14877L3.59614 4.99916ZM1.18201 7.54362L2.03474 6.72536L8.40448 13.3634L7.55176 14.1816L6.69903 14.9999L0.329289 8.36188L1.18201 7.54362ZM7.55176 1.18164L8.37245 2.03202L4.41684 5.84954L3.59614 4.99916L2.77545 4.14877L6.73106 0.331257L7.55176 1.18164ZM3.59614 4.99916L4.45348 5.81258L2.03935 8.35705L1.18201 7.54362L0.324673 6.7302L2.7388 4.18573L3.59614 4.99916Z" fill="#FFFFFF" fillOpacity={0.6} />
-          </Svg>
+          <BackChevronIcon />
         </TouchableOpacity>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.

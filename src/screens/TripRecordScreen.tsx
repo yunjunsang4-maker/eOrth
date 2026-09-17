@@ -30,7 +30,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
-import { TrashIcon, CommentIcon } from '../components/icons';
+import { TrashIcon, CommentIcon, BackChevronIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
@@ -409,7 +409,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       {/* 상단 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-            <Text style={styles.backIcon}>←</Text>
+            <BackChevronIcon />
           </TouchableOpacity>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
@@ -1015,17 +1015,8 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   backBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1E1B33',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: a.tint(0.2),
-  },
-  backIcon: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    lineHeight: 22,
   },
   headerTitleWrap: {
     flex: 1,

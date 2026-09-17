@@ -26,7 +26,7 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { countryLabel } from '../utils/countryLabel';
 import { saveEnvelope, loadEnvelope, STORE_KEYS } from '../store/persist';
 import AuthorAvatar from '../components/AuthorAvatar';
-import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon } from '../components/icons';
+import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon, BackChevronIcon } from '../components/icons';
 import { useEntranceAnimation } from '../components/LiquidEffects';
 import type { TravelRecord } from '../store/recordStore';
 
@@ -469,7 +469,7 @@ export default function NotificationScreen({ navigation }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={st.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('misc.notifTitle')}</Text>
         {/* 모두 읽음 — 안 읽은 게 있을 때만 노출(자리는 항상 차지해 제목이 안 흔들리게) */}
@@ -562,8 +562,7 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.divider,
   },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card, borderRadius: 20 },
-  backIcon: { fontSize: 20, color: COLORS.white },
+  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
   headerRight: { minWidth: 40, alignItems: 'flex-end' },
   markAll: { fontSize: 12, fontWeight: '700' },

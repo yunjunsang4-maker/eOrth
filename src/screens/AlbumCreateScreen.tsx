@@ -35,7 +35,7 @@ import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../c
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { DateRangeField } from '../components/record/DateRangeField';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
-import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon } from '../components/icons';
+import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
@@ -757,7 +757,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     <LinearGradient colors={['#0A0A0F', '#100620']} style={st.container}>
       <View style={[st.header, { paddingTop: insets.top + 24 }]}>
         <TouchableOpacity style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8}>
-          <Text style={st.closeTxt}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
@@ -1002,7 +1002,7 @@ const st = StyleSheet.create({
 
   header: { paddingHorizontal: 16, paddingBottom: 8 },
   closeBtn: { position: 'absolute', right: 16, padding: 8, zIndex: 2 },
-  backBtn: { position: 'absolute', left: 16, padding: 8, zIndex: 2 },
+  backBtn: { position: 'absolute', left: 16, width: 38, height: 38, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   closeTxt: { color: '#A1A1B0', fontSize: 20, fontWeight: '600' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },

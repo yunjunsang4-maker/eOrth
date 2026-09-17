@@ -35,7 +35,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -1711,7 +1711,7 @@ export default function PostDetailScreen() {
       <View style={s.container}>
         <View style={[s.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
-            <Text style={s.backIcon}>‹</Text>
+            <BackChevronIcon />
           </TouchableOpacity>
           <Text style={s.headerTitle}>{t('postDetail.postTitle')}</Text>
           <View style={{ width: 38 }} />
@@ -2078,7 +2078,7 @@ export default function PostDetailScreen() {
       <View style={[s.header, { paddingTop: insets.top + 8, borderBottomColor: scrolled ? C.cardBorder : 'transparent' }]}>
           <View style={s.headerSide}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
-              <Text style={s.backIcon}>‹</Text>
+              <BackChevronIcon />
             </TouchableOpacity>
           </View>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
@@ -2773,12 +2773,11 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   },
   // 좌(뒤로가기)·우(메뉴) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
   headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지
   backBtn: {
-    width: 38, height: 38, borderRadius: 19,
-    backgroundColor: C.card,
+    width: 38, height: 38,
     alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { fontSize: 22, color: C.white, marginTop: -1 },
   headerTitle: { flexShrink: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.white, marginHorizontal: 8 },
   menuBtn: {
     width: 38, height: 38, borderRadius: 19,

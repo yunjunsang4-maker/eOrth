@@ -11,7 +11,7 @@ import {
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
-import { BlockIcon, PersonIcon } from '../components/icons';
+import { BlockIcon, PersonIcon, BackChevronIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -57,7 +57,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={st.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('friends.blockedTitle')}</Text>
         <View style={st.headerPlaceholder} />
@@ -124,11 +124,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 30,
-    color: COLORS.white,
-    lineHeight: 36,
   },
   headerTitle: {
     fontSize: 16,

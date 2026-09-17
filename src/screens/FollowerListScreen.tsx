@@ -22,7 +22,7 @@ import {
 } from '../services/social';
 import { useRecords } from '../store/recordStore';
 import { tap, warn } from '../utils/haptics';
-import { PersonIcon } from '../components/icons';
+import { PersonIcon, BackChevronIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 
@@ -157,7 +157,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={styles.backBtnText}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 — backBtn 스타일을 쓰면 빈 원이 보인다 */}
@@ -296,14 +296,8 @@ const styles = StyleSheet.create({
   backBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backBtnText: {
-    fontSize: 20,
-    color: COLORS.white,
   },
   headerTitle: {
     fontSize: 18,

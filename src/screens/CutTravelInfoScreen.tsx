@@ -39,6 +39,7 @@ import {
   SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon,
   SunIcon, CloudyIcon, RainIcon, SnowIcon, WindIcon,
   LockClosedIcon, LockOpenIcon,
+  BackChevronIcon,
 } from '../components/icons';
 
 // 디자인 토큰
@@ -522,9 +523,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        {/* 뒤로가기 — TripDetail·블로그와 같은 ← 카드형 버튼(통일감) */}
+        {/* 뒤로가기 — 앱 전 화면 공통 chevron(박스 없음) */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
-          <Text style={st.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
@@ -1033,9 +1034,8 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
   },
-  // 뒤로가기 — TripDetailScreen.backBtn과 같은 치수(38·radius 12·카드색)
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: '#252535', alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 17, color: C.white },
+  // 뒤로가기 — 박스 없이 38×38 터치 영역 가운데 chevron만(앱 전 화면 공통)
+  backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
   // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },

@@ -14,7 +14,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
-import { ArchiveIcon } from '../components/icons';
+import { ArchiveIcon, BackChevronIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 // 소셜탭 피드와 동일한 매거진 카드(DiaryCard)·높이 추정치를 그대로 재사용해 형태를 통일한다.
 import { DiaryCardMemo, estDiaryHeight } from './SocialScreen';
@@ -112,7 +112,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
       {/* 헤더 */}
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={s.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('misc.archivedTitle')}</Text>
         <View style={s.headerPlaceholder} />
@@ -251,11 +251,6 @@ const s = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 30,
-    color: C.white,
-    lineHeight: 36,
   },
   headerTitle: {
     fontSize: 16,

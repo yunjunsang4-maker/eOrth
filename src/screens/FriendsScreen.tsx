@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { SearchIcon, PersonIcon, BackArrowIcon } from '../components/icons';
+import { SearchIcon, PersonIcon, BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
@@ -246,8 +246,9 @@ export default function FriendsScreen({ navigation }: Props) {
         <View style={st.headerSideLeft}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
             {/* 텍스트 글리프 '←' 는 Inter에 없어 안드로이드가 시스템 폰트로 폴백하는데,
-                획이 가늘고 기준선이 달라 원 안에서 좌·하로 치우쳤다 → SVG 아이콘으로 교체 */}
-            <BackArrowIcon size={20} color={C.white} />
+                획이 가늘고 기준선이 달라 좌·하로 치우쳤다 → SVG 아이콘으로 교체.
+                시안 통일(블로그 기록 화면)로 화살표 대신 chevron(9×16, 흰 60%)을 쓴다 */}
+            <BackChevronIcon />
           </TouchableOpacity>
         </View>
         <Text style={st.headerTitle}>{t('friends.title')}</Text>
@@ -505,17 +506,14 @@ const st = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.divider,
   },
+  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 40 치수는 터치 영역으로 유지
   backBtn: {
     width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(46,46,59,0.45)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
   },
-  // (backIcon 텍스트 스타일 제거 — 뒤로 화살표는 BackArrowIcon SVG로 그린다)
+  // (backIcon 텍스트 스타일 제거 — 뒤로가기는 BackChevronIcon SVG로 그린다)
   // 양쪽 사이드는 같은 비율로 — 제목이 좌우 요소 폭과 무관하게 화면 중앙에 놓인다
   headerSideLeft: { flex: 1, alignItems: 'flex-start' },
   headerSideRight: { flex: 1, alignItems: 'flex-end' },

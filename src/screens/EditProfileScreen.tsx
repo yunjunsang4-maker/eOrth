@@ -13,7 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { CameraIcon, PersonIcon, LockClosedIcon } from '../components/icons';
+import { CameraIcon, PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
@@ -275,7 +275,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
       {/* 헤더 */}
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={goBackOnce} accessibilityRole="button" accessibilityLabel={t('editProfile.back')}>
-          <Text style={s.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('editProfile.title')}</Text>
         <TouchableOpacity style={s.saveBtn} activeOpacity={0.7} onPress={handleSave} disabled={saving}>
@@ -439,11 +439,6 @@ const s = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backIcon: {
-    fontSize: 30,
-    color: COLORS.white,
-    lineHeight: 36,
   },
   headerTitle: {
     fontSize: 16,

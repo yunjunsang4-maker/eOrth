@@ -32,7 +32,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
-import { PersonIcon, LockClosedIcon } from '../components/icons';
+import { PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -1960,7 +1960,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               accessibilityRole="button"
               accessibilityLabel={t('friends.back')}
             >
-              <Text style={styles.backIcon}>‹</Text>
+              <BackChevronIcon />
             </TouchableOpacity>
             {/* 우상단 설정 자리 — 비워둠(레이아웃 유지용 플레이스홀더) */}
             <View style={styles.settingBtn} />
@@ -2511,8 +2511,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
-  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: Platform.OS === 'ios' ? 28 : 34 },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {

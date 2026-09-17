@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
+import { BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { submitFeedback } from '../services/feedback';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -58,7 +59,7 @@ export default function FeedbackScreen({ navigation }: RootStackScreenProps<'Fee
       {/* 상단 헤더 — 설정 화면과 동일 패턴 */}
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <Text style={st.backIcon}>‹</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('feedback.title')}</Text>
         <View style={st.headerPlaceholder} />
@@ -120,7 +121,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     borderBottomColor: COLORS.divider,
   },
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 30, color: COLORS.white, lineHeight: 36 },
   headerTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.white },
   headerPlaceholder: { width: 40 },
 

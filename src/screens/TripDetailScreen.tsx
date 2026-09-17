@@ -17,7 +17,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon } from '../components/icons';
+import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import type { TripPrefillParam } from '../navigation/types';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -564,8 +564,8 @@ export default function TripDetailScreen() {
       {/* 헤더 */}
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
         <View style={s.headerSide}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-            <Text style={s.backIcon}>←</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtnPlain} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+            <BackChevronIcon />
           </TouchableOpacity>
         </View>
         <View style={s.headerCenter}>
@@ -1227,7 +1227,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.cardBorder,
     alignItems: 'center', justifyContent: 'center',
   },
-  backIcon: { fontSize: 17, color: COLORS.white },
+  // 뒤로가기만 박스 없이 chevron(앱 전 화면 공통). ☰·✨는 위 backBtn 카드형 유지
+  backBtnPlain: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   // 좌(뒤로가기)·우(✨·☰) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
   headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   headerCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },

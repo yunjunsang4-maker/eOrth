@@ -26,7 +26,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon } from '../components/icons';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon } from '../components/icons';
 import ReportModal from '../components/ReportModal';
 import { handleBlock } from '../utils/reportAndBlock';
 import CameraCaptureModal from '../components/CameraCaptureModal';
@@ -709,7 +709,7 @@ export default function DMScreen({ navigation, route }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={st.backIcon}>←</Text>
+          <BackChevronIcon />
         </TouchableOpacity>
         <TouchableOpacity
           style={st.headerCenter}
@@ -1064,9 +1064,7 @@ const st = StyleSheet.create({
   backBtn: {
     width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: C.card, borderRadius: 20,
   },
-  backIcon: { fontSize: 20, color: C.white },
   headerCenter: {
     flex: 1, flexDirection: 'row', alignItems: 'center',
     marginLeft: 12, gap: 10,
