@@ -1686,7 +1686,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </View>
               <Text style={st.toolLabel}>{`${t('blog.travel')}${travelInfoCount > 0 ? ` ${travelInfoCount}` : ''}`}</Text>
             </TouchableOpacity>
-            <ToolBtn icon="≡" label={t('blog.more')} onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
+            {/* 더보기 — 예전 ≡는 줄 정리(☰)와 겹쳐 보여 사용자 시안 + 아이콘(11×12, stroke 1.7, #A1A1B1)으로 교체 */}
+            <ToolBtn icon={<Svg width={11} height={12} viewBox="0 0 11 12" fill="none"><SvgPath d="M5.51823 10.1834V5.51676M5.51823 5.51676V0.850098M5.51823 5.51676H10.1849M5.51823 5.51676H0.851562" stroke="#A1A1B1" strokeWidth={1.7} strokeLinecap="round" /></Svg>} label={t('blog.more')} onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
             <View style={st.toolbarSpacer} />
             {!isEdit && (
               <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
