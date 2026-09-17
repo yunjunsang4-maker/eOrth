@@ -30,7 +30,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
-import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -46,7 +46,6 @@ import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode, parseDotDate as parseDotDateMatch } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import {
-  CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
   PartlyCloudyIcon as SvgWeatherIcon,
   PlaneIcon as SvgPlaneIcon,
@@ -102,6 +101,41 @@ function SheetCheck() {
   );
 }
 
+/** 부모 알약을 꽉 채우는 투명 층이 자기 크기를 실측해 PillRing(좌상단·우하단 흰색 대각 그라데이션 테두리)을 얹는다.
+ *  알약마다 onLayout+state를 두는 대신 이 한 줄만 알약의 첫 자식으로 넣으면 된다 — PillRing은 Rect width를
+ *  **숫자**로 받아야 하고(안드로이드는 width="100%"가 폭 변경 뒤 갱신되지 않는다), absoluteFill 층의
+ *  레이아웃이 곧 부모 알약의 크기다. 반경은 높이/2(완전 알약)이고, 폭이 글자 길이로 변해도 onLayout이 다시 온다. */
+function AutoPillRing() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        // Math.round는 달력 호출부와 같다 — 서브픽셀 폭이 들어오면 테두리가 반 픽셀 흐려진다
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h })); // 같은 값 setState로 도는 루프 방지
+      }}
+    >
+      {/* 첫 렌더에는 size.w가 0이라 PillRing이 스스로 null을 반환한다.
+          diagonal: 좌상단·우하단이 흰색, 가운데로 갈수록 투명한 대각 대칭(이 화면 알약 6곳 공통) */}
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
+    </View>
+  );
+}
+
+/** 날짜 칩 달력 아이콘 — 시안(선 1.7, round) 그대로. 12×12 박스, 원본 11.67 좌표를 그대로 쓴다.
+ *  채움형 icons/CalendarIcon(96 viewBox)과 달리 시안은 선 아이콘이라 여기서만 따로 그린다.
+ *  stroke 1.7이 0~11.67 경계에 걸쳐 바깥 절반이 잘리는데, 시안도 같은 좌표라 동일하게 둔다. */
+function OutlineCalendarIcon({ size = 12, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+      <SvgPath d="M9.33 1.17H2.33C1.04 1.17 0 2.21 0 3.5V9.33C0 10.62 1.04 11.67 2.33 11.67H9.33C10.62 11.67 11.67 10.62 11.67 9.33V3.5C11.67 2.21 10.62 1.17 9.33 1.17Z" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+      <SvgPath d="M3.5 0V2.33M8.17 0V2.33M0 4.67H11.67" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 const C = {
   bg: '#0A0A0F', editorBg: '#111118', card: '#2E2E3B', cardLight: '#1E1B33',
   toolbar: '#16161F', toolbarBorder: '#252535',
@@ -111,6 +145,11 @@ const C = {
   green: '#34C759', naverGreen: '#03C75A',
   gold: '#FFD700', // 미입력 표시 — 다른 화면(NewRecord/CutTravelInfo)과 같은 값
 };
+
+
+/** 헤더 저장 알약 치수 — 테두리는 AutoPillRing이 실측하므로, 이 값은 st.saveBtn 스타일 전용이다 */
+const SAVE_BTN_H = 30;
+const SAVE_BTN_R = SAVE_BTN_H / 2;
 
 const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
 const WEATHER_OPTIONS = [
@@ -335,6 +374,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
+  // 국가·날짜 칩 색 — Figma 시안 값(rgba(117,26,173,0.2) / #E0C9FF)은 aurora(보라) 전용이라
+  // 그대로 박으면 cyan·mint 스킨에서 보라가 남는다. StatsDetailScreen과 같은 ringGradient 유무로
+  // 커스텀 스킨을 판정해 갈라 쓴다 (aurora만 ringGradient가 null).
+  const customSkin = !!skinAccent.ringGradient;
+  // 칩 바탕은 시안 그대로 평면 20% 틴트. 2026-09-15 GlassSurface(iOS 26 유리)를 깔아 봤으나 유리가 자체 테두리 빛과
+  // 밝은 바탕을 더해 시안보다 밝고 회색기가 돌아 제거(사용자 확정: 유리 제거·#CECFCD 링 유지).
+  const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)'; // 시안 rgba(117,26,173,0.2)
+  const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
   // 아무것도 안 고른 상태의 출발 통화는 거주국 기준 — 'KRW' 고정은 해외 거주자에게 틀린 값이었다.
   // (여행국이 정해지면 아래 자동 추천 useEffect가 덮는다)
@@ -1405,65 +1452,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         </View>
         <View style={st.headerRight}>
-          {/* 대표사진·비공개·가져오기 3개는 ⋯ 하나로 접고, 누르면 ⋯ 바로 아래로 세로 한 줄 펼친다.
-              드롭다운은 ⋯ 래퍼에 절대배치 — 버튼 위치를 따라가므로 저장 버튼 폭과 무관하다. */}
-          <View style={st.toolsToggleWrap}>
-            <TouchableOpacity
-              onPress={() => setHeaderToolsVisible(v => !v)}
-              style={[st.toolsToggleBtn, headerToolsVisible && [st.toolsToggleBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={t('blog.more')}
-            >
-              <Text style={[st.toolsToggleText, headerToolsVisible && { color: skinAccent.accent }]}>⋯</Text>
-            </TouchableOpacity>
-            {headerToolsVisible && (
-              <View style={st.headerToolsRow}>
-                <TouchableOpacity
-                  onPress={() => setRepPhotoModalVisible(true)}
-                  style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-                  activeOpacity={0.7}
-                >
-                  {representativePhoto ? (
-                    <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
-                  ) : (
-                    <MapIcon size={17} color={C.dim} />
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setPrivacyModalVisible(true)}
-                  style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-                  activeOpacity={0.7}
-                >
-                  {privateFriends.length > 0 ? (
-                    <LockClosedIcon size={17} color={C.white} />
-                  ) : (
-                    <LockOpenIcon size={17} color={C.dim} />
-                  )}
-                  {privateFriends.length > 0 && (
-                    <View style={st.lockBadge}>
-                      <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
-                  <Text style={st.naverBtnText}>N</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
           {/* 요건 미충족이어도 탭은 받는다 — 예전엔 disabled라 눌러도 무반응이었고
               handleSave 안의 항목별 Alert이 전부 죽은 코드였다(유저는 "저장이 고장났다"고 인식).
               흐린 스타일은 그대로 둬서 "아직 뭔가 남았다"는 신호만 유지하고,
               disabled는 발행 중일 때만 — onPress도 publishing이면 막아 이중 발행/Alert 재진입을 차단한다. */}
-          {/* 테두리 그라데이션 — MainCoachmark 말풍선과 같은 방식(바깥 LinearGradient가 padding만큼 테두리, 안쪽 View가 바탕).
-              색은 스킨의 네온 링, 없으면 버튼 그라데이션(코치마크와 같은 폴백). */}
+          {/* 링(AutoPillRing 흰색 대각 그라데이션) → 콘텐츠 순. 두 층 다 absoluteFill이라 Text 가운데 정렬도 탭도 건드리지 않고, 폭은 문구('저장'/'저장 중…'/다국어)마다 달라져 AutoPillRing이 스스로 실측한다 */}
           <TouchableOpacity onPress={publishing ? undefined : handleSave} style={st.saveBtnWrap} disabled={publishing}>
-            <LinearGradient colors={skinAccent.ringGradient ?? skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.saveBtnBorder}>
-              <View style={st.saveBtn}>
-                <Text style={st.saveBtnText} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
-              </View>
-            </LinearGradient>
+            <View style={st.saveBtn}>
+              <AutoPillRing />
+              <Text style={st.saveBtnText} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -1474,8 +1472,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
           {/* 국가 · 날짜 — 시안대로 각각 한 줄(칩 높이 30·알약). 별점은 태그 섹션 아래로 내렸다 */}
           <View style={st.topChipRow}>
-            <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.2) }]} onPress={() => setCountryModalVisible(true)}>
-              <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder} numberOfLines={1}>
+            <TouchableOpacity style={[st.countryChip, { backgroundColor: chipBg }]} onPress={() => setCountryModalVisible(true)}>
+              {/* 링(AutoPillRing) → 콘텐츠 순 */}
+              <AutoPillRing />
+              <Text style={selectedCountry ? [st.countryChipText, { color: chipFg }] : st.countryChipPlaceholder} numberOfLines={1}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
@@ -1493,11 +1493,67 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <Text style={{ fontSize: 18 }}>✨</Text>
               </TouchableOpacity>
             )}
+            {/* 대표사진·비공개·가져오기 3개는 ⋯ 하나로 접고, 누르면 ⋯ 바로 아래로 세로 한 줄 펼친다.
+                시안대로 헤더가 아니라 국가 칩과 같은 행의 오른쪽 끝(marginLeft:'auto')에 둔다 — 오른쪽
+                여백은 editorContent의 paddingHorizontal 25가 그대로 시안 값이다.
+                드롭다운은 ⋯ 래퍼에 절대배치 — 버튼 위치를 따라가므로 행의 다른 칩 폭과 무관하다.
+                topChipRow에 zIndex/elevation을 준 이유: ScrollView 콘텐츠 안에서는 뒤 형제(제목 입력)가
+                위에 그려져 드롭다운이 가려진다. */}
+            <View style={st.toolsToggleWrap}>
+              <TouchableOpacity
+                onPress={() => setHeaderToolsVisible(v => !v)}
+                style={st.toolsToggleBtn}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('blog.more')}
+              >
+                {/* 다른 알약과 같은 계층: 링(AutoPillRing) → 콘텐츠 순.
+                    열림 표시를 borderWidth로 주면 AutoPillRing이 부모 border 박스를 실측해 링이 안쪽으로
+                    밀리므로, 열림은 글자색만 바꾼다. */}
+                <AutoPillRing />
+                <Text style={[st.toolsToggleText, headerToolsVisible && { color: skinAccent.accent }]}>⋯</Text>
+              </TouchableOpacity>
+              {headerToolsVisible && (
+                <View style={st.headerToolsRow}>
+                  <TouchableOpacity
+                    onPress={() => setRepPhotoModalVisible(true)}
+                    style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+                    activeOpacity={0.7}
+                  >
+                    {representativePhoto ? (
+                      <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
+                    ) : (
+                      <MapIcon size={17} color={C.dim} />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setPrivacyModalVisible(true)}
+                    style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+                    activeOpacity={0.7}
+                  >
+                    {privateFriends.length > 0 ? (
+                      <LockClosedIcon size={17} color={C.white} />
+                    ) : (
+                      <LockOpenIcon size={17} color={C.dim} />
+                    )}
+                    {privateFriends.length > 0 && (
+                      <View style={st.lockBadge}>
+                        <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
+                    <Text style={st.naverBtnText}>N</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-          {/* 날짜 칩 — 국가 칩과 같은 알약, 누르면 달력 */}
-          <TouchableOpacity style={[st.countryChip, st.dateChip, { backgroundColor: skinAccent.tint(0.2) }]} onPress={() => setCalendarVisible(true)}>
-            <SvgCalendarIcon size={12} color={startDate ? skinAccent.accent : C.muted} />
-            <Text style={startDate ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder} numberOfLines={1}>
+          {/* 날짜 칩 — 국가 칩과 같은 알약(링 → 콘텐츠 순), 누르면 달력 */}
+          <TouchableOpacity style={[st.countryChip, st.dateChip, { backgroundColor: chipBg }]} onPress={() => setCalendarVisible(true)}>
+            <AutoPillRing />
+            <OutlineCalendarIcon size={12} color={startDate ? chipFg : C.muted} />
+            <Text style={startDate ? [st.countryChipText, { color: chipFg }] : st.countryChipPlaceholder} numberOfLines={1}>
               {startDate ? (endDate && endDate !== startDate ? `${startDate} ~ ${endDate}` : startDate) : t('blog.date')}
             </Text>
           </TouchableOpacity>
@@ -1635,12 +1691,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <ToolBtn icon="≡" label={t('blog.more')} onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
             <View style={st.toolbarSpacer} />
             {!isEdit && (
-              <TouchableOpacity style={[st.toolbarDraftBtn, { borderColor: skinAccent.tint(0.3) }]} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
+              <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
+                {/* 링(AutoPillRing) → 콘텐츠 순 */}
+                <AutoPillRing />
                 <Text style={st.toolbarDraftText}>{t('blog.draft')}</Text>
               </TouchableOpacity>
             )}
             {!isEdit && blogDrafts.length > 0 && (
               <TouchableOpacity style={[st.toolbarDraftListBtn, { backgroundColor: skinAccent.tint(0.15) }]} onPress={() => setDraftListVisible(true)} activeOpacity={0.7}>
+                {/* 링(AutoPillRing) → 콘텐츠 순 */}
+                <AutoPillRing />
                 <Text style={[st.toolbarDraftListText, { color: skinAccent.accent }]}>{t('blog.listN', { count: blogDrafts.length })}</Text>
               </TouchableOpacity>
             )}
@@ -2744,13 +2804,13 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },
   headerTitle: { color: C.white, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  toolsToggleBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  toolsToggleBtnActive: { borderWidth: 1, borderColor: a },
-  toolsToggleText: { color: C.dim, fontSize: 20, fontWeight: '800', lineHeight: 22 },
-  toolsToggleWrap: { zIndex: 20, elevation: 20, marginRight: 8 }, // 저장 버튼과 간격(headerRight gap 6 + 8)
-  // ⋯ 바로 아래 세로 드롭다운(래퍼 기준). 헤더 밖으로 넘치므로 header에 zIndex가 있어야 편집 영역 위에 뜬다
-  // right: -(padding 6 + border 1) → 안쪽 아이콘(32) 중심이 ⋯ 버튼(32) 중심과 일치
-  headerToolsRow: { position: 'absolute', top: 32 + 6, right: -7, flexDirection: 'column', alignItems: 'center', gap: 8, padding: 6, borderRadius: 10, backgroundColor: C.toolbar, borderWidth: 1, borderColor: C.toolbarBorder },
+  // 시안: 30×30 원(반경 15) — 바탕 흰 10% 평면. 테두리는 AutoPillRing이 그리므로 borderWidth 0(링 실측이 밀린다).
+  toolsToggleBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  toolsToggleText: { color: '#C3C3C3', fontSize: 20, fontWeight: '800', lineHeight: 22 },
+  toolsToggleWrap: { zIndex: 20, elevation: 20, marginLeft: 'auto' }, // 국가 칩 행의 오른쪽 끝
+  // ⋯ 바로 아래 세로 드롭다운(래퍼 기준). 행 밖으로 넘치므로 topChipRow에 zIndex가 있어야 제목 입력 위에 뜬다
+  // right: -(padding 6 + border 1 + (32-30)/2) → 안쪽 아이콘(32) 중심이 ⋯ 버튼(30) 중심과 일치
+  headerToolsRow: { position: 'absolute', top: 30 + 6, right: -8, flexDirection: 'column', alignItems: 'center', gap: 8, padding: 6, borderRadius: 10, backgroundColor: C.toolbar, borderWidth: 1, borderColor: C.toolbarBorder },
   mapBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   mapBtnActive: { borderWidth: 1, borderColor: a },
   mapBtnThumb: { width: '100%', height: '100%', borderRadius: 7 },
@@ -2760,26 +2820,31 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   lockBtnActive: { backgroundColor: tint(0.4), borderWidth: 1, borderColor: a },
   lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 15, height: 15, alignItems: 'center', justifyContent: 'center' },
   lockBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
-  // 사용자 시안: 70×30 알약(radius 15) — 바탕은 흰 10% 고정, 색은 테두리 그라데이션에만
-  saveBtnWrap: { marginRight: 8 }, // 헤더 padding 12 + 8 = 끝에서 20
-  saveBtnBorder: { borderRadius: 15, padding: 1.4 }, // 그라데이션 테두리 두께
-  // 안쪽 바탕. 높이·반경은 바깥에서 테두리 두께(1.4)를 뺀 값이다 — 두께를 바꾸면 여기도 같이 바꿀 것
-  saveBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 13.6, paddingHorizontal: 20.6, height: 27.2, alignItems: 'center', justifyContent: 'center' },
-  saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '700' },
+  // 사용자 시안: 70×30 알약(radius 15) — 바탕 흰 10%, 좌상단·우하단 흰색 대각 그라데이션 테두리(PillRing diagonal — 달력 알약의 #CECFCD 링과 다름), 글자 #C3C3C3
+  saveBtnWrap: { marginRight: 13 }, // 헤더 padding 12 + 13 = 끝에서 25(시안)
+  // width가 아니라 minWidth인 이유: '저장 중…'이나 다국어 문구는 70을 넘어 고정 width면 잘린다. 시안 기본 상태('저장' 2글자)에서는 70으로 렌더된다
+  saveBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: SAVE_BTN_R, minWidth: 70, height: SAVE_BTN_H, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
 
   editor: { flex: 1, backgroundColor: C.editorBg },
   editorContent: { paddingHorizontal: 25, paddingTop: 13 },
 
   // 국가
-  topChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  countryChip: { alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4, height: 30, borderRadius: 15, paddingHorizontal: 22, backgroundColor: tint(0.2) },
-  dateChip: { marginTop: 16 },
-  countryChipText: { color: a, fontSize: 14, fontWeight: '500' },
+  // zIndex/elevation: 이 행의 ⋯ 드롭다운이 뒤 형제(제목 입력) 위에 뜨게 한다 — ScrollView 콘텐츠는
+  // 뒤에 선언된 형제가 위에 그려지므로 zIndex 없이는 드롭다운이 가려진다
+  topChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 20, elevation: 20 },
+  countryChip: { alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4, height: 30, borderRadius: 15, paddingHorizontal: 22 }, // 바탕색은 스킨별 인라인(chipBg)
+  dateChip: { marginTop: 16, gap: 13 }, // 시안: 아이콘→글자 간격 13(countryChip의 gap 4를 덮는다)
+  // 시안 AppleSDGothicNeoEB00(ExtraBold) = weight 800. iOS는 PostScript 이름을 직접 지정해 숫자·영문(날짜)도
+  // SF Pro가 아니라 Apple SD Gothic Neo 글리프로 그려 시안과 맞춘다(SegmentedToggle 선례). 'AppleSDGothicNeoEB00'은
+  // Figma 파일명이라 iOS가 모르는 이름 — 쓰면 조용히 시스템 폰트로 폴백된다. 안드로이드는 이 폰트가 없고 번들도
+  // 라이선스로 불가 → undefined(기본 한글 폰트 + 800, 800 없는 폰트면 700 폴백 — 약간 얇아지는 것은 허용).
+  countryChipText: { flexShrink: 1, color: a, fontSize: 14, fontWeight: '800', lineHeight: 18, letterSpacing: -0.14, fontFamily: Platform.select({ ios: 'AppleSDGothicNeo-ExtraBold', default: undefined }) },
   countryChipPlaceholder: { color: C.muted, fontSize: 14 },
   // 미입력 표시 — 골드. 스킨 accent(보라/시안/민트)와 겹치지 않아 '아직 안 채움'이
   // 강조 요소와 구분되고, 빨강처럼 오류로 읽히지도 않는다.
 
-  titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
+  titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36, marginTop: 16 }, // 시안: 날짜 칩 아래 약 26pt(padding 4 + 행간 여유 6 + 16)
   subtitleText: { color: '#AA54C1', fontSize: 15, fontWeight: '600', marginTop: 4 },
   titleDivider: { height: 2, backgroundColor: ad, marginTop: 6, marginBottom: 14, width: 36, borderRadius: 1 },
 
@@ -2845,9 +2910,10 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   toolLabel: { fontSize: 11, color: C.muted },
   toolSep: { width: 1, height: 22, backgroundColor: C.toolbarBorder },
   toolbarSpacer: { flex: 1 },
-  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 12, borderWidth: 1, borderColor: tint(0.3) },
-  toolbarDraftText: { color: C.dim, fontSize: 12, fontWeight: '600' },
-  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 12, backgroundColor: tint(0.25) },
+  // 사용자 시안: 69×30 알약(radius 15) — 바탕 흰 10%, 테두리 없음. 헤더 저장 알약과 같은 계열. minWidth인 이유는 영문 'Draft'·긴 번역이 69를 넘을 수 있어서
+  toolbarDraftBtn: { borderRadius: 15, minWidth: 69, height: 30, paddingHorizontal: 10, marginRight: 12, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  toolbarDraftText: { color: '#C3C3C3', fontSize: 12, fontWeight: '600' },
+  toolbarDraftListBtn: { borderRadius: 15, height: 30, paddingHorizontal: 10, marginRight: 12, alignItems: 'center', justifyContent: 'center' },
   toolbarDraftListText: { color: a, fontSize: 11, fontWeight: '700' },
   // 서브패널
   subPanel: { backgroundColor: C.toolbar, borderTopWidth: 1, borderTopColor: C.toolbarBorder, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },

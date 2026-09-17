@@ -61,22 +61,41 @@ const CHIP_PALETTES: Record<string, { bg: string[]; text: string }> = {
 
 /**
  * 알약 테두리 그라데이션 — 기존 앱의 유리 알약(BasicInfo 버튼·탭 바)과 같은 값:
- * #CECFCD → 투명(60% 지점), 위에서 아래로. 폭·높이는 **숫자**로 받는다 — 안드로이드는 Rect의
+ * #CECFCD → 투명(60% 지점), 위에서 아래로. `diagonal`이면 대신 좌상~우하 대각 대칭(양 끝 흰색,
+ * 가운데 투명)으로 그린다 — 블로그 기록 화면 알약 전용이고 달력 알약은 기존 값 그대로다.
+ * 폭·높이는 **숫자**로 받는다 — 안드로이드는 Rect의
  * width="100%"가 폭 변경 뒤 갱신되지 않아 옛 윤곽이 겹쳐 보인다(탭 바 사고). RNSVG는 pointerEvents를
  * 무시하므로 View(pointerEvents none)로 감싼다.
  */
-function PillRing({ width, height, radius, strokeWidth = 1 }: { width: number; height: number; radius: number; strokeWidth?: number }) {
+/** diagonal 링에서 좌상단·우하단 모서리로부터 흰색이 남는 픽셀 거리. 알약 폭과 무관한 절대값이라 국가·날짜 칩처럼
+ *  넓은 알약에서도 모서리만 밝다(비율 단위였을 때는 위 변 40%가 희게 깔려 왼쪽 전체가 밝아 보였다 — 사용자 지적). */
+const CORNER_PX = 20;
+
+export function PillRing({ width, height, radius, strokeWidth = 1, diagonal = false }: { width: number; height: number; radius: number; strokeWidth?: number; diagonal?: boolean }) {
   const id = useId();
   if (width <= 0 || height <= 0) return null;
   const half = strokeWidth / 2;
+  const cornerT = Math.min(0.5, CORNER_PX / (width + height)); // 아주 작은 알약(w+h<40)은 양쪽 흰색이 가운데서 만난다
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg width={width} height={height}>
         <Defs>
-          <SvgLinearGradient id={id} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-            <Stop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-            <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-          </SvgLinearGradient>
+          {/* userSpaceOnUse(픽셀 단위) 45° 축: 점 (x,y)의 진행도 t=(x+y)/(w+h)라 (0,0)=0, (w,h)=1이고 등고선이 진짜 45°다.
+              objectBoundingBox는 가로로 긴 알약에서 축이 눕혀져 흰색이 위 변을 따라 길게 번지므로 쓰지 않는다.
+              흰색은 모서리에서 x+y<CORNER_PX 안쪽만 — 알약이 아무리 넓어도 같은 크기로 남는다. */}
+          {diagonal ? (
+            <SvgLinearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={(width + height) / 2} y2={(width + height) / 2}>
+              <Stop offset={0} stopColor="#FFFFFF" stopOpacity={1} />
+              <Stop offset={cornerT} stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset={1 - cornerT} stopColor="#FFFFFF" stopOpacity={0} />
+              <Stop offset={1} stopColor="#FFFFFF" stopOpacity={1} />
+            </SvgLinearGradient>
+          ) : (
+            <SvgLinearGradient id={id} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+              <Stop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+              <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+            </SvgLinearGradient>
+          )}
         </Defs>
         <Rect x={half} y={half} width={width - strokeWidth} height={height - strokeWidth} rx={radius - half} ry={radius - half}
           fill="none" stroke={`url(#${id})`} strokeWidth={strokeWidth} />
