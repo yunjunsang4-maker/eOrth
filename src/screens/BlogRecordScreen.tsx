@@ -90,7 +90,8 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
-import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { isValidRect } from '../utils/coachRect';
 import { andFitText } from '../utils/fitText';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
@@ -151,6 +152,13 @@ const C = {
 /** 헤더 저장 알약 치수 — 테두리는 AutoPillRing이 실측하므로, 이 값은 st.saveBtn 스타일 전용이다 */
 const SAVE_BTN_H = 30;
 const SAVE_BTN_R = SAVE_BTN_H / 2;
+
+/** ⋯ 드롭다운(st.headerToolsRow)의 바깥 폭 = 안쪽 아이콘 32 + padding 6×2 + borderWidth 1×2.
+ *  화면 루트에서 절대 좌표로 놓기 때문에 가로 중심 정렬에 실제 폭 숫자가 필요하다.
+ *  (예전엔 ⋯ 래퍼 안에 right:-8로 놓아 폭을 몰라도 됐다 — 호출부 주석 참조) */
+const TOOLS_DROPDOWN_W = 32 + 6 * 2 + 1 * 2;
+/** ⋯ 버튼 아래 간격 — 기존 `top: 30 + 6`의 6과 같은 값 */
+const TOOLS_DROPDOWN_GAP = 6;
 
 const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
 const WEATHER_OPTIONS = [
@@ -576,6 +584,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [headerToolsVisible, setHeaderToolsVisible] = useState(false); // ⋯ 대표사진·비공개·가져오기 펼침 줄
+  // ⋯ 드롭다운 앵커(⋯ 래퍼의 **창(window) 절대 좌표**). 드롭다운을 래퍼 안에 절대배치하면
+  // 안드로이드에서 3개 버튼이 전부 무반응이었다 — ViewGroup은 부모 경계(여기선 30×30) 밖으로
+  // 나간 자식에게 터치를 디스패치하지 않고, zIndex/elevation은 그리는 순서만 바꾸지 히트테스트를
+  // 바꾸지 않는다. 그래서 그려지기는 하는데 눌리지 않았다. FriendsScreen 팝업 메뉴와 같은 해법 —
+  // 화면 루트에서 측정 좌표로 렌더한다.
+  // shape가 x/y/width/height인 이유: utils/coachRect의 isValidRect를 그대로 쓰기 위해서다.
+  const toolsAnchorRef = useRef<View>(null);
+  const [toolsAnchor, setToolsAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  // 창 절대 좌표(measureInWindow) → Stage 컬럼 로컬 좌표 변환용. App.tsx가 콘텐츠를
+  // maxWidth STAGE_MAX_W 컬럼으로 가두므로 폴드·태블릿에서는 둘이 다르다(폰은 0).
+  const stageGutter = useStageGutter();
   const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPrefill?.startDate));
   const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPrefill?.endDate));
 
@@ -1466,7 +1485,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
-          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEnabled={!ratingDragging}>
+          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" scrollEnabled={!ratingDragging}
+          // ⋯ 드롭다운은 이제 화면 루트에 고정 좌표로 뜬다 — 스크롤하면 ⋯ 버튼만 올라가고 메뉴는
+          // 제자리에 남아 떠 있게 되므로, 스크롤이 시작되면 닫는다(예전엔 행과 함께 스크롤됐다)
+          onScrollBeginDrag={() => setHeaderToolsVisible(false)}>
 
           {/* 국가 · 날짜 — 시안대로 각각 한 줄(칩 높이 30·알약). 별점은 태그 섹션 아래로 내렸다 */}
           <View style={st.topChipRow}>
@@ -1494,12 +1516,24 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {/* 대표사진·비공개·가져오기 3개는 ⋯ 하나로 접고, 누르면 ⋯ 바로 아래로 세로 한 줄 펼친다.
                 시안대로 헤더가 아니라 국가 칩과 같은 행의 오른쪽 끝(marginLeft:'auto')에 둔다 — 오른쪽
                 여백은 editorContent의 paddingHorizontal 25가 그대로 시안 값이다.
-                드롭다운은 ⋯ 래퍼에 절대배치 — 버튼 위치를 따라가므로 행의 다른 칩 폭과 무관하다.
-                topChipRow에 zIndex/elevation을 준 이유: ScrollView 콘텐츠 안에서는 뒤 형제(제목 입력)가
-                위에 그려져 드롭다운이 가려진다. */}
-            <View style={st.toolsToggleWrap}>
+                드롭다운 자체는 여기(래퍼 안)가 아니라 화면 루트에 있다 — 안드로이드 터치 호환.
+                이 래퍼는 앵커 측정용이며 크기는 ⋯ 버튼과 같은 30×30이다. */}
+            <View style={st.toolsToggleWrap} ref={toolsAnchorRef}>
               <TouchableOpacity
-                onPress={() => setHeaderToolsVisible(v => !v)}
+                onPress={() => {
+                  if (headerToolsVisible) { setHeaderToolsVisible(false); return; }
+                  const node = toolsAnchorRef.current;
+                  // 좌표 측정 실패 시 열지 않는다 — 드롭다운 없이 ⋯ 글자색만 바뀌는 상태 방지(FriendsScreen 선례)
+                  if (!node?.measureInWindow) return;
+                  node.measureInWindow((x, y, width, height) => {
+                    // 0×0(레이아웃 전)·NaN도 막는다 — isValidRect가 정확히 이 판정을 위해 있다.
+                    // 안 막으면 드롭다운이 화면 좌상단에 뜬다.
+                    const rect = { x, y, width, height };
+                    if (!isValidRect(rect)) return;
+                    setToolsAnchor(rect);
+                    setHeaderToolsVisible(true);
+                  });
+                }}
                 style={st.toolsToggleBtn}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -1511,40 +1545,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <AutoPillRing />
                 <Text style={[st.toolsToggleText, headerToolsVisible && { color: skinAccent.accent }]}>⋯</Text>
               </TouchableOpacity>
-              {headerToolsVisible && (
-                <View style={st.headerToolsRow}>
-                  <TouchableOpacity
-                    onPress={() => setRepPhotoModalVisible(true)}
-                    style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-                    activeOpacity={0.7}
-                  >
-                    {representativePhoto ? (
-                      <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
-                    ) : (
-                      <MapIcon size={17} color={C.dim} />
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setPrivacyModalVisible(true)}
-                    style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
-                    activeOpacity={0.7}
-                  >
-                    {privateFriends.length > 0 ? (
-                      <LockClosedIcon size={17} color={C.white} />
-                    ) : (
-                      <LockOpenIcon size={17} color={C.dim} />
-                    )}
-                    {privateFriends.length > 0 && (
-                      <View style={st.lockBadge}>
-                        <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
-                    <Text style={st.naverBtnText}>N</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
           </View>
           {/* 날짜 칩 — 국가 칩과 같은 알약(링 → 콘텐츠 순), 누르면 달력 */}
@@ -1706,6 +1706,68 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* ⋯ 드롭다운 — ⋯ 래퍼 안이 아니라 화면 루트에서 측정 좌표로 렌더한다.
+          안드로이드 ViewGroup은 부모 경계 밖 자식에게 터치를 디스패치하지 않아, 30×30 래퍼 안에
+          top:36으로 놓였던 예전 구조에서는 이 3개 버튼이 그려지기만 하고 전혀 눌리지 않았다
+          (zIndex/elevation은 그리는 순서만 바꾸지 히트테스트를 바꾸지 않는다). FriendsScreen 팝업과 같은 해법.
+
+          ⚠️ 세로에 insets를 빼지 마라(한 번 틀렸던 곳이다).
+          top/left가 **정의된** 절대배치 자식의 기준은 부모의 padding box다 — Yoga는 부모 border만
+          더하고 padding은 더하지 않는다(padding을 더하는 경로는 top/left가 둘 다 없을 때 전용이며,
+          errata 이름도 AbsolutePositionWithoutInsetsExcludesPadding이다). 루트 SafeAreaView는
+          edges 없이 인셋을 **padding**으로 먹으므로 이 자식 좌표에 아무 영향이 없다.
+          insets.top을 빼면 그만큼 위로 떠서(안드로이드 24~48dp, iOS 노치 47~59pt) 높이 126짜리
+          메뉴가 ⋯ 버튼과 국가 칩 행을 덮는다. 같은 구조의 FriendsScreen:377-379도 보정 없이
+          measureInWindow 값을 그대로 쓴다.
+
+          ⚠️ 가로는 반대로 반드시 보정한다.
+          measureInWindow x는 **창 절대 좌표**인데 이 View의 left는 App.tsx가 maxWidth STAGE_MAX_W로
+          가둔 **컬럼 로컬 좌표**다. 빼야 할 값은 insets.left가 아니라 stageGutter다
+          (QuickShareOverlay.tsx:114-116과 같은 규칙). 폰 세로는 0이라 티가 안 나고,
+          폴드 펼침(763dp)에서만 141dp 밀려 컬럼 밖에 그려진다. */}
+      {headerToolsVisible && toolsAnchor && (
+        <View
+          style={[st.headerToolsRow, {
+            // ⋯ 버튼 아래 6 간격 — 예전 `top: 30 + 6`과 같은 자리(세로는 보정 없음)
+            top: toolsAnchor.y + toolsAnchor.height + TOOLS_DROPDOWN_GAP,
+            // 드롭다운(46) 중심 = ⋯ 버튼(30) 중심. 예전 `right: -8`이 만들던 정렬과 같은 결과다:
+            // 래퍼 오른쪽 + 8에 오른쪽 끝을 두면 왼쪽 끝이 래퍼중심 - 23, 즉 폭의 절반만큼 왼쪽.
+            left: toolsAnchor.x - stageGutter + toolsAnchor.width / 2 - TOOLS_DROPDOWN_W / 2,
+          }]}
+        >
+          <TouchableOpacity
+            onPress={() => setRepPhotoModalVisible(true)}
+            style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+            activeOpacity={0.7}
+          >
+            {representativePhoto ? (
+              <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
+            ) : (
+              <MapIcon size={17} color={C.dim} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setPrivacyModalVisible(true)}
+            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
+            activeOpacity={0.7}
+          >
+            {privateFriends.length > 0 ? (
+              <LockClosedIcon size={17} color={C.white} />
+            ) : (
+              <LockOpenIcon size={17} color={C.dim} />
+            )}
+            {privateFriends.length > 0 && (
+              <View style={st.lockBadge}>
+                <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
+            <Text style={st.naverBtnText}>N</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ─── 모달들 ─── */}
 
@@ -2807,9 +2869,10 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   toolsToggleBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
   toolsToggleText: { color: '#C3C3C3', fontSize: 20, fontWeight: '800', lineHeight: 22 },
   toolsToggleWrap: { zIndex: 20, elevation: 20, marginLeft: 'auto' }, // 국가 칩 행의 오른쪽 끝
-  // ⋯ 바로 아래 세로 드롭다운(래퍼 기준). 행 밖으로 넘치므로 topChipRow에 zIndex가 있어야 제목 입력 위에 뜬다
-  // right: -(padding 6 + border 1 + (32-30)/2) → 안쪽 아이콘(32) 중심이 ⋯ 버튼(30) 중심과 일치
-  headerToolsRow: { position: 'absolute', top: 30 + 6, right: -8, flexDirection: 'column', alignItems: 'center', gap: 8, padding: 6, borderRadius: 10, backgroundColor: C.toolbar, borderWidth: 1, borderColor: C.toolbarBorder },
+  // ⋯ 바로 아래 세로 드롭다운. top/left는 호출부가 measureInWindow 결과로 넣는다 —
+  // 래퍼(30×30) 안에 top:30+6 / right:-8로 두면 안드로이드가 터치를 주지 않아 화면 루트로 옮겼다.
+  // 폭은 TOOLS_DROPDOWN_W(= 아이콘 32 + padding 6×2 + border 1×2 = 46)와 반드시 같아야 가로 중심이 맞는다.
+  headerToolsRow: { position: 'absolute', flexDirection: 'column', alignItems: 'center', gap: 8, padding: 6, borderRadius: 10, backgroundColor: C.toolbar, borderWidth: 1, borderColor: C.toolbarBorder },
   mapBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   mapBtnActive: { borderWidth: 1, borderColor: a },
   mapBtnThumb: { width: '100%', height: '100%', borderRadius: 7 },
@@ -2829,8 +2892,9 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   editorContent: { paddingHorizontal: 25, paddingTop: 13 },
 
   // 국가
-  // zIndex/elevation: 이 행의 ⋯ 드롭다운이 뒤 형제(제목 입력) 위에 뜨게 한다 — ScrollView 콘텐츠는
-  // 뒤에 선언된 형제가 위에 그려지므로 zIndex 없이는 드롭다운이 가려진다
+  // zIndex/elevation: 원래는 이 행 안의 ⋯ 드롭다운을 뒤 형제(제목 입력) 위에 띄우려고 넣었다.
+  // 드롭다운이 화면 루트로 나간 뒤로는 필요 없지만, 안드로이드 z-순서를 실기기로 확인하기 전까지
+  // 그대로 둔다(제거해도 되는 후보).
   topChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 20, elevation: 20 },
   countryChip: { alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4, height: 30, borderRadius: 15, paddingHorizontal: 22 }, // 바탕색은 스킨별 인라인(chipBg)
   dateChip: { marginTop: 16, gap: 13 }, // 시안: 아이콘→글자 간격 13(countryChip의 gap 4를 덮는다)
