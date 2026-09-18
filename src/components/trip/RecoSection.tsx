@@ -35,7 +35,7 @@ const THUMB_MAX = 4;
  * 후보 생성기가 `reco.reason.${viewType}_${concept}`로 조립하는 동적 i18n 키.
  * t()가 ko.ts 구조로 엄격히 타입되어 있어 RecoCard.reasonKey(string)를 그대로 넘기면
  * 컴파일되지 않는다. 실제 키 집합은 두 union의 곱이므로 여기서 한 번만 좁혀 쓴다.
- * (ko/en 양쪽에 15조합이 모두 있어야 하며, 빠지면 런타임에 키 문자열이 그대로 노출된다.)
+ * (ko/en 양쪽에 21조합이 모두 있어야 하며, 빠지면 런타임에 키 문자열이 그대로 노출된다.)
  */
 type ReasonKey = `reco.reason.${RecoViewType}_${RecoConcept}`;
 

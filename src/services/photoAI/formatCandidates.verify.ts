@@ -1,5 +1,6 @@
 // src/services/photoAI/formatCandidates.verify.ts
 import { stripCandidates, feedCandidates, blogCandidates, dedupeByDhash } from './formatCandidates';
+import { ZERO_CONCEPT_SCORES } from './labelTaxonomy';
 import type { ConceptScores } from './recoTypes';
 import type { PhotoMeta, SpotGroup } from './types';
 
@@ -21,7 +22,8 @@ function photo(id: string, t: number, over: Partial<PhotoMeta> = {}): PhotoMeta 
   };
 }
 function scores(over: Partial<ConceptScores> = {}): ConceptScores {
-  return { emotional: 0, hip: 0, fun: 0, food: 0, info: 0, ...over };
+  // 컴셉 목록을 여기 다시 적지 않는다 — 컴셉을 늘리면 리터럴이 타입 오류로 깨진다.
+  return { ...ZERO_CONCEPT_SCORES, ...over };
 }
 
 // ── dedupeByDhash: 연사컷 제거 ──

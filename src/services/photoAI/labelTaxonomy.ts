@@ -46,10 +46,34 @@ const KEYWORD_AFFINITY: [string, RecoConcept, number][] = [
   ['museum', 'info', 0.5], ['bridge', 'info', 0.4], ['tower', 'info', 0.4],
   ['statue', 'info', 0.45], ['palace', 'info', 0.5], ['architecture', 'info', 0.4],
   ['building', 'info', 0.25], ['sign', 'info', 0.3], ['map', 'info', 0.3],
+  // ── transit: 여정 — 오가는 길(공항·기차·배·도로·짐) ──
+  // ⚠️ -ing/명사 두 형태를 모두 넣는다. variants()는 단순 복수형만 벗기고 '-ing'은
+  //    벗기지 않아서, 'ski'만 넣으면 라벨 'skiing'을 영영 못 잡는다(activity 구역도 동일).
+  ['airport', 'transit', 0.6], ['airplane', 'transit', 0.55], ['flight', 'transit', 0.45],
+  ['train', 'transit', 0.5], ['railway', 'transit', 0.45], ['station', 'transit', 0.35],
+  ['subway', 'transit', 0.4], ['tram', 'transit', 0.35], ['bus', 'transit', 0.3],
+  ['taxi', 'transit', 0.3], ['car', 'transit', 0.25],
+  ['ferry', 'transit', 0.5], ['cruise', 'transit', 0.5], ['boat', 'transit', 0.35],
+  ['ship', 'transit', 0.35], ['harbor', 'transit', 0.35],
+  ['road', 'transit', 0.35], ['highway', 'transit', 0.4], ['tunnel', 'transit', 0.3],
+  ['luggage', 'transit', 0.55], ['suitcase', 'transit', 0.55],
+  ['scooter', 'transit', 0.3], ['motorcycle', 'transit', 0.3],
+  // ── activity: 액티비티 — 몸으로 하는 것 ──
+  ['hiking', 'activity', 0.55], ['hike', 'activity', 0.5], ['trekking', 'activity', 0.55],
+  ['camping', 'activity', 0.5], ['camp', 'activity', 0.4],
+  ['swimming', 'activity', 0.45], ['swim', 'activity', 0.4],
+  ['snorkeling', 'activity', 0.55], ['diving', 'activity', 0.55], ['dive', 'activity', 0.45],
+  ['surfing', 'activity', 0.55], ['surf', 'activity', 0.5],
+  ['kayak', 'activity', 0.55], ['sailing', 'activity', 0.5],
+  ['skiing', 'activity', 0.55], ['ski', 'activity', 0.5], ['snowboard', 'activity', 0.55],
+  ['cycling', 'activity', 0.5], ['bicycle', 'activity', 0.4],
+  ['climbing', 'activity', 0.5], ['climb', 'activity', 0.4], ['rafting', 'activity', 0.5],
+  ['running', 'activity', 0.35], ['yoga', 'activity', 0.4],
+  ['fishing', 'activity', 0.45], ['golf', 'activity', 0.45], ['picnic', 'activity', 0.4],
 ];
 
 export const ZERO_CONCEPT_SCORES: ConceptScores = {
-  emotional: 0, hip: 0, fun: 0, food: 0, info: 0,
+  emotional: 0, hip: 0, fun: 0, food: 0, info: 0, transit: 0, activity: 0,
 };
 
 /**

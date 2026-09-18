@@ -29,7 +29,9 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 .bar{display:grid;grid-template-columns:34px 1fr 36px;gap:6px;align-items:center;font-size:12px}
 .bt{height:8px;background:var(--line);border-radius:4px;overflow:hidden;position:relative}.bt i{position:absolute;left:0;top:0;height:100%;background:#6f6f85}.bt i.top{background:var(--purple)}.bt i.base{background:transparent;border-right:2px solid #fff8}
 .bv{text-align:right;color:var(--dim)}
-.answers{display:flex;gap:4px;margin:8px 0 4px}.answers button{flex:1;padding:6px 0;font-size:12px;border-radius:6px}.answers button.sel{background:var(--deep);border-color:var(--purple)}
+.answers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 4px}.answers button{flex:1 1 20%;min-width:48px;padding:6px 0;font-size:12px;border-radius:6px}.answers button.sel{background:var(--deep);border-color:var(--purple)}
+.answers button.rej{color:var(--red);border-color:#4a1f1d}.answers button.rej:hover{border-color:var(--red)}.answers button.rej.sel{background:var(--red);border-color:var(--red);color:#fff}
+.photo.rejected{border-color:var(--red);opacity:.72}
 .badges{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.badge{font-size:11px;background:var(--deep);border-radius:4px;padding:1px 6px}
 .q{font-size:12px}
 .card{background:var(--card);border-radius:12px;padding:10px 12px;margin:8px 0}.card .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.card img{height:96px;border-radius:6px}
@@ -63,6 +65,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
   <div class="box">
     <div class="stat">
       <div>가르친 사진 <b id="stTaught">0</b>장</div>
+      <div class="dim">수동 탈락 <b id="stRejected">0</b>장</div>
       <div>배운 키워드 <b id="stLearned">0</b>개</div>
       <div class="dim" id="stModel"></div>
     </div>
@@ -83,6 +86,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
       <div>정답 찍은 사진 <b id="tN"></b>장</div>
       <div>정확도 앱 규칙 <b id="accBase">—</b> → 학습 반영 <b class="green" id="accLearned">—</b></div>
     </div>
+    <div class="dim" id="rejStat"></div>
     <div class="warn">데스크탑 CLIP 대체 모델의 결과입니다. 라벨 어휘가 iOS Vision과 달라 앱 이식 시 실기기에서 다시 확인하세요.</div>
   </div>
 
@@ -95,7 +99,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 
   <h2>사진별 분류 — 카드 아래 버튼으로 정답을 찍으세요</h2>
   <div class="row" style="margin-bottom:10px">
-    <label>보기 <select id="filter"><option value="all">전체</option><option value="untaught">정답 안 찍은 것</option><option value="wrong">학습 반영해도 틀린 것</option><option value="taught">정답 찍은 것</option></select></label>
+    <label>보기 <select id="filter"><option value="all">전체</option><option value="untaught">정답 안 찍은 것</option><option value="wrong">학습 반영해도 틀린 것</option><option value="taught">정답 찍은 것</option><option value="rejected">탈락시킨 것</option></select></label>
     <label>정렬 <select id="sort"><option value="t">촬영순</option><option value="c">컨셉 점수</option><option value="b">베스트컷 점수</option></select></label>
     <span class="dim" id="count"></span>
   </div>
@@ -111,8 +115,10 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 <script>
 (function(){
   // 화면에 넣는 모든 데이터는 esc()로 이스케이프한다 — 출처는 로컬 파이썬 서버(같은 PC)뿐이다.
-  var CONCEPTS=['emotional','hip','fun','food','info'];
-  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'음식',info:'정보'};
+  var CONCEPTS=['emotional','hip','fun','food','info','transit','activity'];
+  // 'info'는 키만 info이고 표시는 '명소'다 — 키를 바꾸면 teach.json에 쌓인 정답이 죽는다(recoTypes.ts 주석)
+  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'음식',info:'명소',transit:'여정',activity:'액티비티'};
+  var REJECT='reject';   // teach.py의 REJECT와 같은 값. 컨셉이 아니라 사람이 찍는 '탈락' 표시다
   var VIEW={feed:'피드',blog:'블로그',cut:'컷'};
   var $=function(id){return document.getElementById(id)};
   var esc=function(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')};
@@ -132,7 +138,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
   function loadState(){
     return api('GET','/api/state').then(function(s){
       state=s; learned=s.learned||[];
-      $('stTaught').textContent=s.taught; $('stLearned').textContent=learned.length;
+      $('stTaught').textContent=s.taught; $('stRejected').textContent=s.rejected||0; $('stLearned').textContent=learned.length;
       $('stModel').textContent=s.modelReady?'모델 준비됨':'모델은 첫 분석 때 로드';
       $('taxPath').textContent=s.taxonomyPath;
       setHtml($('trips'),s.trips.map(function(t){
@@ -189,6 +195,12 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
     var labels=Object.keys(r.interpreted), on=labels.filter(function(l){return r.interpreted[l]}).length;
     $('tPct').textContent=labels.length?Math.round(on/labels.length*100)+'%':'—';$('tPctSub').textContent='(고유 '+labels.length+'개 중 '+on+'개)';
     $('tN').textContent=r.accuracy.n;$('accBase').textContent=pct(r.accuracy.base);$('accLearned').textContent=pct(r.accuracy.learned);
+    // 수동 탈락과 자동 품질 판정의 일치율 — 이 두 줄을 눈으로 대조하는 것이 탈락 기능의 목적이다
+    var rejN=0,rejQ=0;
+    r.photos.forEach(function(p){if(ans[p.uri]===REJECT){rejN++;if((p.quality||{}).passed===false)rejQ++}});
+    $('rejStat').textContent=rejN
+      ?'수동 탈락 '+rejN+'장 중 자동 품질 판정도 걸러낸 것 '+rejQ+'장 (일치율 '+Math.round(rejQ/rejN*100)+'%)'
+      :'수동 탈락 없음 — 흐리거나 무관한 사진을 [탈락]으로 빼면 자동 품질 판정과 대조할 수 있습니다';
     var learnedMap={};learned.forEach(function(e){learnedMap[e[0]]=e});
     $('learnSub').textContent=learned.length?learned.length+'개':'아직 없음 — 같은 라벨이 나오는 사진 2장 이상에 정답을 찍으면 생깁니다';
     setHtml($('learnedChips'),learned.map(function(e){return '<span class="chip learn" title="가중치 '+e[2]+'">'+esc(e[0])+' → '+KO[e[1]]+' '+e[2]+'</span>'}).join(''));
@@ -200,14 +212,17 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
       var badges=[];if((sig.faceCount||0)>0)badges.push('얼굴 '+sig.faceCount);if(sem.isSmiling)badges.push('웃음');if(sem.isFood)badges.push('음식');if(sem.isLandscape)badges.push('풍경');if(sem.isLandmark)badges.push('랜드마크');if(sem.isDocument)badges.push('문서');if(sig.hasText)badges.push('텍스트');
       var chips=(sig.sceneLabels||[]).map(function(l){var k=l.label.toLowerCase();var cls=r.interpreted[l.label]?'on':(learnedMap[k]?'learn':'');return '<span class="chip '+cls+'" title="신뢰도 '+l.confidence.toFixed(2)+(learnedMap[k]?' · 학습: '+KO[learnedMap[k][1]]:'')+'">'+esc(l.label)+'</span>'}).join('');
       var bars=CONCEPTS.map(function(c){return '<div class="bar"><span>'+KO[c]+'</span><span class="bt"><i class="'+(c===top.concept&&!top.allZero?'top':'')+'" style="width:'+Math.round(s[c]*100)+'%"></i>'+(sb[c]!==s[c]?'<i class="base" style="width:'+Math.round(sb[c]*100)+'%"></i>':'')+'</span><span class="bv">'+s[c].toFixed(2)+'</span></div>'}).join('');
-      var judged=a?(!top.allZero&&top.concept===a?'right':'wrong'):'';
+      var rejected=a===REJECT;
+      // 수동 탈락은 컨셉 정답이 아니므로 정/오 판정에서 뺀다(맞다/틀리다가 성립하지 않는다)
+      var judged=(a&&!rejected)?(!top.allZero&&top.concept===a?'right':'wrong'):'';
       var failed=q.passed===false;
-      return '<div class="photo '+judged+(failed?' failed':'')+'" data-uri="'+esc(p.uri)+'" data-t="'+p.creationTime+'" data-c="'+(top.allZero?0:top.score)+'" data-b="'+(r.bestScore[p.id]||0)+'" data-a="'+(a||'')+'" data-j="'+judged+'">'+
+      return '<div class="photo '+judged+(rejected?' rejected':'')+(failed?' failed':'')+'" data-uri="'+esc(p.uri)+'" data-t="'+p.creationTime+'" data-c="'+(top.allZero?0:top.score)+'" data-b="'+(r.bestScore[p.id]||0)+'" data-a="'+(a||'')+'" data-j="'+judged+'">'+
         '<img src="/out/'+encodeURIComponent(trip)+'/'+esc(p.thumbnailUri||'')+'" loading="lazy" alt="">'+
         '<div class="body"><div class="head"><b title="'+esc(p.id)+'">'+esc(p.id)+'</b><span class="dim">'+when(p.creationTime)+'</span></div>'+
-        '<div>'+(top.allZero?'<span class="dim">신호 없음</span>':'판정 <b class="purple">'+KO[top.concept]+'</b> '+top.score.toFixed(2))+(failed?' <span class="red">품질 탈락</span>':'')+(a?' · 정답 <b>'+KO[a]+'</b> '+(judged==='right'?'<span class="green">✓</span>':'<span class="red">✗</span>'):'')+'</div>'+
+        '<div>'+(top.allZero?'<span class="dim">신호 없음</span>':'판정 <b class="purple">'+KO[top.concept]+'</b> '+top.score.toFixed(2))+(failed?' <span class="red">품질 탈락</span>':'')+(rejected?' <span class="red">수동 탈락</span>':'')+(a&&!rejected?' · 정답 <b>'+KO[a]+'</b> '+(judged==='right'?'<span class="green">✓</span>':'<span class="red">✗</span>'):'')+'</div>'+
         bars+
-        '<div class="answers">'+CONCEPTS.map(function(c){return '<button data-c="'+c+'" class="'+(a===c?'sel':'')+'">'+KO[c]+'</button>'}).join('')+'</div>'+
+        '<div class="answers">'+CONCEPTS.map(function(c){return '<button data-c="'+c+'" class="'+(a===c?'sel':'')+'">'+KO[c]+'</button>'}).join('')+
+          '<button data-c="'+REJECT+'" class="rej'+(rejected?' sel':'')+'" title="골든셋에서 뺀다 — 흐림·무관·스크린샷. 다시 누르면 취소">탈락</button></div>'+
         '<div class="chips">'+(chips||'<span class="dim">라벨 없음</span>')+'</div>'+
         '<div class="badges">'+badges.map(function(b){return '<span class="badge">'+b+'</span>'}).join('')+'</div>'+
         '<div class="q dim">블러 '+f2(q.blurScore)+' · 노출 '+f2(q.exposureScore)+' · 미학 '+f2(q.aestheticsScore)+' · 베스트컷 '+f2(r.bestScore[p.id])+'</div></div></div>';
@@ -225,7 +240,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
   function applyView(){
     var grid=$('grid'), cards=Array.prototype.slice.call(grid.children), f=$('filter').value, k=$('sort').value, desc=k!=='t', shown=0;
     cards.sort(function(a,b){var x=+a.dataset[k],y=+b.dataset[k];return desc?y-x:x-y});
-    cards.forEach(function(c){var ok=f==='all'||(f==='untaught'&&!c.dataset.a)||(f==='taught'&&!!c.dataset.a)||(f==='wrong'&&c.dataset.j==='wrong');c.classList.toggle('hide',!ok);if(ok)shown++;grid.appendChild(c)});
+    cards.forEach(function(c){var rej=c.dataset.a===REJECT;var ok=f==='all'||(f==='untaught'&&!c.dataset.a)||(f==='taught'&&!!c.dataset.a&&!rej)||(f==='wrong'&&c.dataset.j==='wrong')||(f==='rejected'&&rej);c.classList.toggle('hide',!ok);if(ok)shown++;grid.appendChild(c)});
     $('count').textContent=shown+'장 표시';
   }
 
@@ -235,9 +250,11 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
     var next=cur===c?null:c;
     card.querySelectorAll('.answers button').forEach(function(x){x.disabled=true});
     api('POST','/api/teach',{trip:trip,uri:uri,concept:next}).then(function(r){
-      result=r.result;learned=r.learned;$('stTaught').textContent=r.taught;$('stLearned').textContent=learned.length;
+      result=r.result;learned=r.learned;$('stTaught').textContent=r.taught;$('stRejected').textContent=r.rejected||0;$('stLearned').textContent=learned.length;
       var y=window.scrollY;renderTrip();window.scrollTo(0,y);
-      toast(next?'정답 "'+KO[next]+'" 저장 · 배운 키워드 '+learned.length+'개':'정답 취소');
+      toast(next===REJECT?'탈락 처리 — 학습에서 제외됩니다'
+        :next?'정답 "'+KO[next]+'" 저장 · 배운 키워드 '+learned.length+'개'
+        :'취소');
     }).catch(function(e){toast('저장 실패: '+e.message);card.querySelectorAll('.answers button').forEach(function(x){x.disabled=false})});
   });
 

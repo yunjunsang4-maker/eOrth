@@ -8,12 +8,22 @@
 
 export type RecoViewType = 'feed' | 'blog' | 'cut';
 
-/** 컨셉(무드) 5종 — 설계 문서 §4 */
-export type RecoConcept = 'emotional' | 'hip' | 'fun' | 'food' | 'info';
+/**
+ * 컨셉(무드) 7종 — 설계 문서 §4 (5종 + transit·activity)
+ *
+ * ⚠️ 키 'info'의 표시 문구는 '명소'(landmark)다. 키를 바꾸지 않는 이유:
+ * photo-lab의 `tools/photo-lab/data/teach.json`에 사용자가 'info'로 찍어둔 정답이
+ * 쌓여 있어, 키를 'landmark'로 갈면 그 정답이 통째로 매칭 불능이 된다.
+ * 표시 문구는 i18n(`reco.reason.*_info`)과 랩 KO 맵에서만 '명소'로 쓴다.
+ *
+ * 새 컨셉은 **배열 끝에 붙인다.** topConcept의 동률 우선순위가 이 순서라,
+ * 중간에 끼우면 기존 사진의 판정이 조용히 바뀐다.
+ */
+export type RecoConcept = 'emotional' | 'hip' | 'fun' | 'food' | 'info' | 'transit' | 'activity';
 
 export type ConceptScores = Record<RecoConcept, number>;
 
-export const RECO_CONCEPTS: RecoConcept[] = ['emotional', 'hip', 'fun', 'food', 'info'];
+export const RECO_CONCEPTS: RecoConcept[] = ['emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity'];
 
 /** 블로그 프리필 씨앗 — 화면에서 createHeadingBlock/createImagesBlock으로 변환 */
 export type RecoBlogSeed =

@@ -1,5 +1,7 @@
 """가르치기 — 사용자가 찍은 정답(사진별 컨셉)에서 라벨→컨셉 키워드를 배우고, 앱 표에 쓴다.
 
+정답은 컨셉 7종 중 하나이거나 REJECT('reject', 수동 탈락)이다. 탈락은 학습에서 제외한다.
+
   python tools/photo-lab/teach.py learn      # data/teach.json → data/learned.json
   python tools/photo-lab/teach.py apply      # learned.json → src/services/photoAI/labelTaxonomy.ts (마커 구간 교체)
 
@@ -22,7 +24,10 @@ TEACH_PATH = DATA / 'teach.json'
 LEARNED_PATH = DATA / 'learned.json'
 TAXONOMY_PATH = LAB.parent.parent / 'src' / 'services' / 'photoAI' / 'labelTaxonomy.ts'
 
-CONCEPTS = ('emotional', 'hip', 'fun', 'food', 'info')
+CONCEPTS = ('emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity')
+# 수동 탈락 — 컴셉이 아니라 "이 사진은 골든셈에 넣지 않는다"는 사람의 표시다.
+# CONCEPTS에 넣지 않는다 — 넣으면 판정 대상 컴셉으로 새어들어간다.
+REJECT = 'reject'
 MIN_PHOTOS = 2
 MIN_RATIO = 0.6
 MARK_START = '  // ── photo-lab 학습 시작 (tools/photo-lab 이 자동 생성 — 손으로 고쳐도 되지만 다음 [앱에 반영] 때 구간 전체가 교체된다) ──'
@@ -49,7 +54,7 @@ def set_answer(teach, uri, concept, labels, dhash, trip):
     if concept is None:
         teach.pop(uri, None)
         return teach
-    if concept not in CONCEPTS:
+    if concept not in CONCEPTS and concept != REJECT:
         raise ValueError(f'모르는 컨셉: {concept}')
     teach[uri] = {
         'uri': uri, 'dhash': dhash, 'concept': concept, 'trip': trip,
@@ -68,6 +73,10 @@ def learn(teach):
     score = defaultdict(lambda: defaultdict(float))
     photos = defaultdict(int)
     for e in teach.values():
+        # 수동 탈락 사진에서 키워드를 배우면 안 된다 — 흐림·무관·스크린샷의 라벨이
+        # 그대로 컨셉 키워드가 되어 앱 표를 오염시킨다.
+        if e.get('concept') == REJECT:
+            continue
         seen = set()
         for l in e.get('labels', []):
             kw = l['label'].strip().lower()
@@ -136,9 +145,12 @@ def apply(ts_path=TAXONOMY_PATH, learned_path=LEARNED_PATH):
 if __name__ == '__main__':
     cmd = sys.argv[1] if len(sys.argv) > 1 else 'learn'
     if cmd == 'learn':
-        learned = learn(load_teach())
+        t = load_teach()
+        learned = learn(t)
         write_learned(learned)
-        print(f'정답 {len(load_teach())}장 → 학습 키워드 {len(learned)}개 → {LEARNED_PATH}')
+        # 탈락은 정답이 아니다 — 같이 세면 '정답 N장'이 부풀려진다(학습에서도 제외된다).
+        rejected = sum(1 for e in t.values() if e.get('concept') == REJECT)
+        print(f'정답 {len(t) - rejected}장(탈락 {rejected}장 제외) → 학습 키워드 {len(learned)}개 → {LEARNED_PATH}')
     elif cmd == 'apply':
         print(f'앱 표에 {apply()}개 항목 반영 → {TAXONOMY_PATH}')
     else:

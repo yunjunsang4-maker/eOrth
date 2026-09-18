@@ -7,8 +7,9 @@
  */
 import { scorePhoto } from './bestCutSelector';
 import { topConcept } from './conceptClassifier';
+import { ZERO_CONCEPT_SCORES } from './labelTaxonomy';
 import type { ConceptScores, RecoBlogSeed, RecoCandidate } from './recoTypes';
-import { dhashHamming } from './recoTypes';
+import { dhashHamming, RECO_CONCEPTS } from './recoTypes';
 import type { PhotoMeta, SpotGroup } from './types';
 
 const FEED_CONCEPT_THRESHOLD = 0.45; // 이 점수 이상 사진만 피드 후보에 포함
@@ -37,7 +38,9 @@ export function dedupeByDhash(photos: PhotoMeta[], maxDistance: number = DHash_D
 
 /** 그룹의 우세 컨셉 (사진 평균) */
 function groupConcept(photoIds: string[], concepts: Map<string, ConceptScores>) {
-  const sum: ConceptScores = { emotional: 0, hip: 0, fun: 0, food: 0, info: 0 };
+  // 컨셉 목록을 여기에 다시 적지 않는다 — 컨셉을 늘릴 때 이 한 줄을 빠뜨리면
+  // 새 컨셉이 그룹 판정에서만 조용히 0이 된다(타입 오류도 안 난다).
+  const sum: ConceptScores = { ...ZERO_CONCEPT_SCORES };
   let n = 0;
   for (const id of photoIds) {
     const c = concepts.get(id);
@@ -105,8 +108,9 @@ export function feedCandidates(
   const pool = dedupeByDhash(usable(photos));
   const out: RecoCandidate[] = [];
 
-  const conceptKeys = ['emotional', 'hip', 'fun', 'food', 'info'] as const;
-  for (const concept of conceptKeys) {
+  // 컨셉 목록의 단일 출처는 RECO_CONCEPTS다. 여기에 배열을 따로 적으면
+  // 컨셉을 늘려도 그 컨셉의 피드 후보가 영영 안 만들어진다.
+  for (const concept of RECO_CONCEPTS) {
     const scored = pool
       .map((p) => ({ p, c: concepts.get(p.id)?.[concept] ?? 0 }))
       .filter((x) => x.c >= FEED_CONCEPT_THRESHOLD)

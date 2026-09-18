@@ -148,7 +148,9 @@ function saveGolden(name: string, r: LabResult, sourceDir: string): void {
 // ─────────────────────────────────────────────
 
 const CONCEPT_KO: Record<RecoConcept, string> = {
-  emotional: '감성', hip: '힙', fun: '유쾌', food: '음식', info: '정보',
+  // 'info'는 키만 info이고 표시는 '명소'다(recoTypes.ts 주석 — teach.json 호환 때문에 키를 못 바꾼다)
+  emotional: '감성', hip: '힙', fun: '유쾌', food: '음식', info: '명소',
+  transit: '여정', activity: '액티비티',
 };
 const VIEW_KO: Record<string, string> = { feed: '피드', blog: '블로그', cut: '컷' };
 
@@ -328,7 +330,13 @@ if (args.includes('--golden-check')) {
   const readJsonIf = (p: string | undefined): unknown => (p && existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : undefined);
   const overlay = (readJsonIf(optVal('--overlay')) as Overlay | undefined) ?? [];
   const teachRaw = (readJsonIf(optVal('--teach')) as Record<string, { concept: RecoConcept }> | undefined) ?? {};
-  const teach: TeachMap = Object.fromEntries(Object.entries(teachRaw).map(([uri, e]) => [uri, e.concept]));
+  // 수동 탈락('reject')은 컨셉이 아니다. 걸러내지 않으면 accuracyOf가 "무조건 틀린 답"으로
+  // 세어 정확도가 탈락 장수만큼 깎인다.
+  const teach: TeachMap = Object.fromEntries(
+    Object.entries(teachRaw)
+      .filter(([, e]) => (RECO_CONCEPTS as string[]).includes(e.concept))
+      .map(([uri, e]) => [uri, e.concept])
+  );
 
   const sig = JSON.parse(readFileSync(join(outDir, 'signals.json'), 'utf8'));
   const r = runPipeline(sig.photos, undefined, overlay, teach);

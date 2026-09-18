@@ -58,5 +58,24 @@ eq(topConcept(info).concept, 'info', '랜드마크+표지판 = info');
 const empty = ruleConceptClassifier(base({}));
 eq(Object.values(empty).every((v) => v === 0), true, '신호 없음 = 전부 0, 안전');
 
+// 공항 + 수하물 → transit
+// 이 두 케이스는 "컨셉을 늘릴 때 판정기(ruleConceptClassifier)를 고칠 필요가 없다"는
+// 설계를 고정한다. 판정기는 RECO_CONCEPTS를 순회할 뿐이고, 새 컨셉의 근거는
+// labelTaxonomy 표 하나뿐이다 — 여기가 깨지면 둘 중 하나가 어긋난 것이다.
+const transit = ruleConceptClassifier(base({
+  signal: {
+    sceneLabels: [{ label: 'airport', confidence: 0.9 }, { label: 'luggage', confidence: 0.7 }],
+  },
+}));
+eq(topConcept(transit).concept, 'transit', '공항+수하물 = transit');
+
+// 하이킹 + 트레킹 → activity
+const activity = ruleConceptClassifier(base({
+  signal: {
+    sceneLabels: [{ label: 'hiking', confidence: 0.9 }, { label: 'trekking', confidence: 0.6 }],
+  },
+}));
+eq(topConcept(activity).concept, 'activity', '하이킹+트레킹 = activity');
+
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

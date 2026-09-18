@@ -85,10 +85,17 @@ def list_trips():
     return trips
 
 
+def taught_counts(t):
+    """(정답 장수, 수동 탈락 장수). 탈락을 정답에 섞어 세면 '정답 N장'이 부풀려진다."""
+    rejected = sum(1 for e in t.values() if e.get('concept') == teach.REJECT)
+    return len(t) - rejected, rejected
+
+
 def state():
     t = teach.load_teach()
     learned = json.loads(teach.LEARNED_PATH.read_text('utf-8')) if teach.LEARNED_PATH.exists() else []
-    return {'trips': list_trips(), 'taught': len(t), 'learned': learned, 'progress': progress,
+    taught, rejected = taught_counts(t)
+    return {'trips': list_trips(), 'taught': taught, 'rejected': rejected, 'learned': learned, 'progress': progress,
             'taxonomyPath': str(teach.TAXONOMY_PATH), 'modelReady': extract._MODEL is not None}
 
 
@@ -210,7 +217,9 @@ class Handler(BaseHTTPRequestHandler):
                 learned = relearn()
                 result = run_pipeline(name)
                 result['answers'] = {u: e['concept'] for u, e in t.items()}
-                return self._send(200, {'result': result, 'learned': learned, 'taught': len(t)})
+                taught, rejected = taught_counts(t)
+                return self._send(200, {'result': result, 'learned': learned,
+                                        'taught': taught, 'rejected': rejected})
             if path == '/api/apply':
                 learned = relearn()
                 n = teach.apply()

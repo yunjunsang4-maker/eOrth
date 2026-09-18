@@ -188,7 +188,10 @@ snorkeling
 diving
 surfing
 kayak
+rafting
 sailing
+climbing
+rock climbing
 skiing
 snowboard
 cycling
@@ -272,6 +275,7 @@ car
 taxi
 bus
 train
+railway
 airplane
 airplane window
 boat

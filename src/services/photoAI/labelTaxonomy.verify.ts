@@ -1,5 +1,8 @@
 // src/services/photoAI/labelTaxonomy.verify.ts
-import { conceptAffinityFromLabels } from './labelTaxonomy';
+import { conceptAffinityFromLabels, ZERO_CONCEPT_SCORES } from './labelTaxonomy';
+
+/** 기대 "전부 0" 객체. 컴셉을 늘릴 때마다 이 파일의 리터럴을 손으로 고치지 않도록 앱 상수를 쓴다 */
+const ZERO = ZERO_CONCEPT_SCORES;
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -33,10 +36,10 @@ const food = conceptAffinityFromLabels([{ label: 'dessert', confidence: 0.9 }]);
 gt(food.food, 0.3, '디저트는 food 강신호');
 
 // ── 방어 ──
-eq(conceptAffinityFromLabels(undefined), { emotional: 0, hip: 0, fun: 0, food: 0, info: 0 }, 'undefined 안전');
-eq(conceptAffinityFromLabels([]), { emotional: 0, hip: 0, fun: 0, food: 0, info: 0 }, '빈 배열 안전');
+eq(conceptAffinityFromLabels(undefined), ZERO, 'undefined 안전');
+eq(conceptAffinityFromLabels([]), ZERO, '빈 배열 안전');
 eq(conceptAffinityFromLabels([{ label: 'zzz-unknown', confidence: 0.9 }]),
-  { emotional: 0, hip: 0, fun: 0, food: 0, info: 0 }, '미등록 라벨은 0');
+  ZERO, '미등록 라벨은 0');
 
 function isZero(actual: number, msg: string) {
   if (actual === 0) console.log(`✓ ${msg}`);
@@ -88,6 +91,49 @@ function isZero(actual: number, msg: string) {
   const seafood = conceptAffinityFromLabels([{ label: 'seafood', confidence: 0.9 }]);
   gt(seafood.food, 0, "'seafood'는 food로 잡힌다");
   isZero(seafood.emotional, "'seafood'가 'sea'에 걸려 emotional을 얻지 않는다");
+}
+
+// ── transit / activity (컨셉 7종 확장, 2026-09-17) ──
+// 표를 넓힌 목적은 iOS Vision 1,300 라벨 중 해석되는 비율을 올리는 것이다.
+{
+  const airport = conceptAffinityFromLabels([{ label: 'airport', confidence: 1 }]);
+  eq(airport.transit, 0.6, "'airport'는 transit 0.6");
+  isZero(airport.info, "공항이 'building'·'sign' 같은 info 키워드를 우연히 얻지 않는다");
+
+  const luggage = conceptAffinityFromLabels([{ label: 'luggage', confidence: 0.8 }]);
+  gt(luggage.transit, 0, "'luggage'는 transit 신호");
+
+  // ⚠️ 핵심 회귀: variants()는 단순 복수형만 벗기고 '-ing'은 벗기지 않는다.
+  //    표에 'ski'만 넣으면 라벨 'skiing'이 영영 안 잡힌다 → 두 형태를 모두 표에 넣어뒀다.
+  const skiing = conceptAffinityFromLabels([{ label: 'skiing', confidence: 1 }]);
+  eq(skiing.activity, 0.55, "'-ing' 라벨 'skiing'이 그대로 잡힌다(원형 'ski'로 안 벗겨짐)");
+  const ski = conceptAffinityFromLabels([{ label: 'ski', confidence: 1 }]);
+  eq(ski.activity, 0.5, "원형 'ski'도 따로 잡힌다");
+
+  const hiking = conceptAffinityFromLabels([{ label: 'hiking', confidence: 1 }]);
+  eq(hiking.activity, 0.55, "'-ing' 라벨 'hiking'이 잡힌다");
+  const hikingTrail = conceptAffinityFromLabels([{ label: 'hiking_trail', confidence: 1 }]);
+  eq(hikingTrail.activity, 0.55, "'hiking_trail'은 토큰이 갈려 hiking만 잡힌다(이중 계상 없음)");
+
+  // 한 사진이 두 컨셉 점수를 함께 받는 건 정상이다(해변 서핑 = emotional + activity).
+  const surfBeach = conceptAffinityFromLabels([
+    { label: 'surfing', confidence: 0.9 },
+    { label: 'beach', confidence: 0.8 },
+  ]);
+  gt(surfBeach.activity, 0, '서핑+해변은 activity 신호');
+  gt(surfBeach.emotional, 0, '서핑+해변은 emotional 신호도 함께 받는다(의도된 겹침)');
+}
+
+// ── 확장이 기존 배치를 흔들지 않았는지 고정 ──
+{
+  // 놀이기구는 '여정'이 아니라 '유쾌'다
+  const ride = conceptAffinityFromLabels([{ label: 'ride', confidence: 1 }]);
+  gt(ride.fun, 0, "'ride'는 fun에 남아 있다");
+  isZero(ride.transit, "'ride'가 transit으로 옮겨가지 않았다");
+  // 다리·탑은 명소(info)다
+  const bridge = conceptAffinityFromLabels([{ label: 'bridge', confidence: 1 }]);
+  gt(bridge.info, 0, "'bridge'는 info에 남아 있다");
+  isZero(bridge.transit, "'bridge'가 transit으로 옮겨가지 않았다");
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

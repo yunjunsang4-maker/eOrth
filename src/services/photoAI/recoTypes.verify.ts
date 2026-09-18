@@ -6,8 +6,10 @@ import {
   isUnavailableRetryDue,
   STALE_PENDING_MS,
   UNAVAILABLE_RETRY_MS,
+  RECO_CONCEPTS,
   type RecoState,
 } from './recoTypes';
+import { ZERO_CONCEPT_SCORES } from './labelTaxonomy';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -79,6 +81,16 @@ eq(isUnavailableRetryDue(baseState({ status: 'pending', updatedAt: 0 }), UNAVAIL
   'pending 상태는 재시도 대상이 아니다(고착 판정은 isPendingStale 몫)');
 eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 1_000 }), 500), false,
   '미래 시각이 저장돼 있어도 재시도하지 않는다(시계 변경 방어 — isPendingStale과 동일)');
+
+// ── RECO_CONCEPTS: 컨셉 목록의 단일 출처 ──
+// formatCandidates가 예전에 컨셉 배열을 두 벌 하드코딩하고 있어서, 컨셉을 늘려도
+// 새 컨셉의 피드 후보가 영영 안 만들어지는 상태였다(2026-09-17 제거).
+// 아래 두 검사는 "출처가 다시 갈라지면 즉시 깨지게" 두는 장치다.
+eq(RECO_CONCEPTS.length, 7, '컨셉 7종(감성·힙·유쾌·음식·명소·여정·액티비티)');
+eq(RECO_CONCEPTS[0], 'emotional',
+  '동률 우선순위 1번은 emotional — 새 컨셉은 배열 끝에 붙여야 기존 사진 판정이 안 흔들린다');
+eq([...Object.keys(ZERO_CONCEPT_SCORES)].sort(), [...RECO_CONCEPTS].sort(),
+  'ZERO_CONCEPT_SCORES 키 = RECO_CONCEPTS (갈라지면 새 컨셉이 타입 오류 없이 조용히 0으로 고정된다)');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
