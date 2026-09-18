@@ -32,12 +32,17 @@ const COLORS = {
 const THUMB_MAX = 4;
 
 /**
- * 후보 생성기가 `reco.reason.${viewType}_${concept}`로 조립하는 동적 i18n 키.
- * t()가 ko.ts 구조로 엄격히 타입되어 있어 RecoCard.reasonKey(string)를 그대로 넘기면
- * 컴파일되지 않는다. 실제 키 집합은 두 union의 곱이므로 여기서 한 번만 좁혀 쓴다.
- * (ko/en 양쪽에 21조합이 모두 있어야 하며, 빠지면 런타임에 키 문자열이 그대로 노출된다.)
+ * 이유 문구의 동적 i18n 키 2종.
+ * t()가 ko.ts 구조로 엄격히 타입되어 있어 문자열을 그대로 넘기면 컴파일되지 않는다.
+ * 좁히는 곳은 아래 reasonText() **한 곳뿐**이다 — 호출부(카드 본문·a11y 라벨)가
+ * 각자 캐스팅하면 키 규칙이 두 벌로 갈라진다.
+ *
+ * 예전에는 viewType×concept를 곱한 완성 키(`reco.reason.cut_food`)를 후보가 들고 있었다.
+ * 컨셉이 17종이 되면서 51키를 ko/en 양쪽에 손으로 적어야 해 3+17키 조립식으로 바꿨다.
+ * ko/en 어느 한쪽에서 conceptNoun 한 줄이 빠지면 런타임에 키 문자열이 그대로 노출된다.
  */
-type ReasonKey = `reco.reason.${RecoViewType}_${RecoConcept}`;
+type ReasonTemplateKey = `reco.reasonTemplate.${RecoViewType}`;
+type ConceptNounKey = `reco.conceptNoun.${RecoConcept}`;
 
 interface Props {
   tripGroupId: string;
@@ -141,6 +146,15 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   const visible = useMemo(
     () => (state ? state.cards.filter((c) => !state.dismissedIds.includes(c.id)) : []),
     [state]
+  );
+
+  /** 이유 문구 = viewType 템플릿 + concept 명사구. 동적 키를 좁히는 유일한 지점이다. */
+  const reasonText = useCallback(
+    (card: RecoCard) => t(`reco.reasonTemplate.${card.viewType}` as ReasonTemplateKey, {
+      c: t(`reco.conceptNoun.${card.concept}` as ConceptNounKey),
+      ...card.reasonParams,
+    }),
+    [t]
   );
 
   // 노출 로그는 렌더 본문이 아니라 effect에서 쏜다 — 새 아키텍처의 동시성 렌더는
@@ -279,7 +293,7 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
               style={st.cardBody}
               onPress={() => onAccept(card)}
               accessibilityRole="button"
-              accessibilityLabel={`${t(card.reasonKey as ReasonKey, card.reasonParams)} — ${t(`reco.make_${card.viewType}`)}`}
+              accessibilityLabel={`${reasonText(card)} — ${t(`reco.make_${card.viewType}`)}`}
             >
               {/*
                 썸네일 줄은 가로 ScrollView가 아니라 고정 행이다.
@@ -299,7 +313,7 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
                   </View>
                 )}
               </View>
-              <Text style={st.reason}>{t(card.reasonKey as ReasonKey, card.reasonParams)}</Text>
+              <Text style={st.reason}>{reasonText(card)}</Text>
               <Text style={st.cta}>→ {t(`reco.make_${card.viewType}`)}</Text>
             </TouchableOpacity>
             <TouchableOpacity

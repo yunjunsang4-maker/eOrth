@@ -1235,8 +1235,10 @@ const ko = {
     recommendCount: '{{total}}장 중 {{best}}장 추천',
   },
   // AI 기록 형식 추천 (TripDetail 추천 섹션).
-  // reason 하위 키는 formatCandidates가 `reco.reason.${viewType}_${concept}`로 조립해 참조하므로
-  // viewType(cut/feed/blog) × concept(emotional/hip/fun/food/info/transit/activity) 21조합이 전부 있어야 한다.
+  // 이유 문구는 조립식이다: RecoSection이 `reco.reasonTemplate.${viewType}`에
+  // `reco.conceptNoun.${concept}`를 {{c}}로 끼워 그린다. 컨셉 17종 × viewType 3종을
+  // 손으로 51키 적으면 컨셉을 늘릴 때마다 ko/en 102줄이 되므로 3 + 17키로 내렸다(2026-09-18).
+  // 컨셉을 늘리면 conceptNoun에 한 줄만 추가하면 된다 — 빠뜨리면 키 문자열이 화면에 그대로 뜬다.
   // 'info'는 키만 info이고 표시는 '명소'다 — 키를 바꾸면 photo-lab에 쌓인 정답이 죽는다(recoTypes.ts 주석).
   reco: {
     sectionTitle: 'AI 추천',
@@ -1247,28 +1249,32 @@ const ko = {
     make_feed: '피드로 남기기',
     make_blog: '블로그로 기록하기',
     make_cut: '스트립으로 만들기',
-    reason: {
-      cut_emotional: '감성적인 순간 {{n}}컷',
-      cut_hip: '힙한 무드 {{n}}컷',
-      cut_fun: '웃음 가득한 순간 {{n}}컷',
-      cut_food: '미식의 순간 {{n}}컷',
-      cut_info: '명소의 순간 {{n}}컷',
-      cut_transit: '여정의 순간 {{n}}컷',
-      cut_activity: '액티비티 {{n}}컷',
-      feed_emotional: '감성 하이라이트 {{n}}장',
-      feed_hip: '힙한 하이라이트 {{n}}장',
-      feed_fun: '유쾌한 순간들 {{n}}장',
-      feed_food: '미식 기록 {{n}}장',
-      feed_info: '명소 하이라이트 {{n}}장',
-      feed_transit: '오가는 길 {{n}}장',
-      feed_activity: '액티비티 하이라이트 {{n}}장',
-      blog_emotional: '감성 여행기 · 스팟 {{spots}}곳 타임라인',
-      blog_hip: '힙한 여행기 · 스팟 {{spots}}곳 타임라인',
-      blog_fun: '즐거운 여행기 · 스팟 {{spots}}곳 타임라인',
-      blog_food: '미식 여행기 · 스팟 {{spots}}곳 타임라인',
-      blog_info: '명소 기록 · 스팟 {{spots}}곳 타임라인',
-      blog_transit: '여정 기록 · 스팟 {{spots}}곳 타임라인',
-      blog_activity: '액티비티 여행기 · 스팟 {{spots}}곳 타임라인',
+    // {{c}} = conceptNoun. '미식 순간 4컷' / '야경 하이라이트 20장' / '스테이 여행기 · 스팟 3곳 타임라인'
+    reasonTemplate: {
+      cut: '{{c}} 순간 {{n}}컷',
+      feed: '{{c}} 하이라이트 {{n}}장',
+      blog: '{{c}} 여행기 · 스팟 {{spots}}곳 타임라인',
+    },
+    // 컨셉 17종의 명사구. 템플릿 3개에 모두 끼워 읽히도록 짧은 명사로 고른다
+    // (food는 '음식'이 아니라 '미식' — '음식 순간 4컷'보다 '미식 순간 4컷'이 읽힌다).
+    conceptNoun: {
+      emotional: '감성',
+      hip: '스트리트',
+      fun: '웃음',
+      food: '미식',
+      info: '명소',
+      transit: '오가는 길',
+      activity: '액티비티',
+      people: '인물',
+      night: '야경',
+      animal: '동물',
+      cafe: '카페',
+      culture: '문화',
+      nature: '자연',
+      stay: '스테이',
+      shopping: '쇼핑',
+      vivid: '컬러',
+      mono: '흑백',
     },
     blogDayHeading: 'DAY {{n}}',
   },

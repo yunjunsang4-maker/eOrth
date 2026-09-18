@@ -12,9 +12,24 @@ import type { ConceptScores, RecoBlogSeed, RecoCandidate } from './recoTypes';
 import { dhashHamming, RECO_CONCEPTS } from './recoTypes';
 import type { PhotoMeta, SpotGroup } from './types';
 
+/**
+ * 피드 후보 임계 0.45 — **conceptClassifier.ts의 톤 컨셉 상한 0.5와 짝이다.**
+ * 톤 3종(emotional·vivid·mono)은 규칙 2개가 다 발화해야 0.5로 이 선을 넘는다.
+ * 한쪽만 고치면 톤 컨셉이 조용히 죽거나(0.4 상한이던 시절 vivid·mono는 피드 후보를
+ * 영원히 못 만들었다 — 2026-09-18 QA) 반대로 라벨 컨셉을 이기기 시작한다.
+ * 이 숫자를 건드릴 때는 conceptClassifier.ts의 톤 구역 주석을 반드시 함께 읽어라.
+ */
 const FEED_CONCEPT_THRESHOLD = 0.45; // 이 점수 이상 사진만 피드 후보에 포함
 const FEED_MAX = 20;                 // MAX_RECORD_PHOTOS와 동일 (피드 상한)
-const FEED_MIN = 3;                  // 3장 미만이면 후보로 안 만듦
+/**
+ * 3장 미만이면 후보로 안 만듦. **컨셉이 7종 → 17종으로 쪼개져 버킷이 얇아졌지만
+ * 이 값은 그대로 둔다(2026-09-18 판단).**
+ * 카페 2장 + 식당 2장처럼 갈리면 food·cafe 양쪽이 다 미달해 **피드 후보가 0개가 되는
+ * 것이 의도된 동작**이다 — 2장짜리 피드 카드는 카드로서 가치가 없다.
+ * 화면이 비지는 않는다: 카드 슬레이트는 rankCandidates가 최대 3장으로 자르고
+ * cut·blog 경로(임계 없음, groupConcept의 topConcept)가 그 자리를 채운다.
+ */
+const FEED_MIN = 3;
 const BLOG_SPOT_TOP = 3;             // 스팟당 대표 사진 수
 const DHash_DUP_MAX = 6;             // 해밍 거리 이하 = 근접 중복
 
@@ -92,7 +107,6 @@ export function stripCandidates(
       concept: tc.concept,
       photoUris: picked.map((x) => x.p.uri),
       score: avgScore * 0.7 + tc.score * 0.3,
-      reasonKey: `reco.reason.cut_${tc.concept}`,
       reasonParams: { n: slot },
     });
   }
@@ -127,7 +141,6 @@ export function feedCandidates(
       concept,
       photoUris: ordered.map((x) => x.p.uri),
       score: avg,
-      reasonKey: `reco.reason.feed_${concept}`,
       reasonParams: { n: ordered.length },
     });
   }
@@ -196,7 +209,6 @@ export function blogCandidates(
     photoUris: allUris,
     blogSeeds: seeds,
     score: 0.5 + tc.score * 0.3 + Math.min(0.2, validGroups.length * 0.03),
-    reasonKey: `reco.reason.blog_${tc.concept}`,
     reasonParams: { spots: validGroups.length },
   }];
 }

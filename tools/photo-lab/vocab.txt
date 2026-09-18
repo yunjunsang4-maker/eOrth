@@ -46,6 +46,8 @@ countryside
 farm
 vineyard
 nature
+trail
+canyon
 
 # ── 도시·거리 ──
 city
@@ -83,6 +85,15 @@ convenience store
 rooftop
 view
 cityscape
+streetlight
+dusk
+twilight
+boutique
+bazaar
+supermarket
+bookstore
+street market
+stall
 
 # ── 랜드마크·문화 ──
 landmark
@@ -112,6 +123,12 @@ stadium
 theater
 library
 university
+art
+sculpture
+opera
+orchestra
+ceremony
+stage
 
 # ── 음식·음료 ──
 food
@@ -156,6 +173,11 @@ dinner
 buffet
 menu
 table setting
+brunch
+teahouse
+espresso
+croissant
+macaron
 
 # ── 사람·이벤트 ──
 selfie
@@ -178,6 +200,10 @@ performance
 costume
 crowd of people
 group photo
+bride
+groom
+hug
+laughing
 
 # ── 활동·레저 ──
 hiking
@@ -225,6 +251,13 @@ kitchen
 hallway
 staircase
 elevator
+hotel
+hostel
+resort
+villa
+guesthouse
+suite
+terrace
 
 # ── 사물·문서(제외 대상 포함) ──
 sign
@@ -255,6 +288,7 @@ mirror
 reflection
 silhouette
 shadow
+candle
 
 # ── 동물 ──
 dog
@@ -269,6 +303,9 @@ monkey
 fish
 butterfly
 squirrel
+wildlife
+penguin
+pet
 
 # ── 교통 ──
 car

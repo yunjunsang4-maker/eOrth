@@ -9,21 +9,40 @@
 export type RecoViewType = 'feed' | 'blog' | 'cut';
 
 /**
- * 컨셉(무드) 7종 — 설계 문서 §4 (5종 + transit·activity)
+ * 컨셉(무드) 17종 — 설계 문서 §4 (7종에서 2026-09-18 세분화)
+ *
+ * 성격이 두 갈래다:
+ *  - **라벨 컨셉 14종** — hip·fun·food·info·transit·activity·people·night·animal·
+ *    cafe·culture·nature·stay·shopping. labelTaxonomy의 키워드 표로 판정된다.
+ *  - **톤 컨셉 3종** — emotional·vivid·mono. 키워드가 **없고** colorStats(채도·대비·
+ *    미학)로만 판정된다. 목적은 "라벨이 하나도 안 잡혀 전부 0점으로 버려지는 사진"을
+ *    색감만으로 건지는 것이다. 그래서 톤 가중치는 낮게 잡아 라벨 신호가 있으면
+ *    라벨 컨셉이 이기게 둔다(conceptClassifier 주석 참고).
  *
  * ⚠️ 키 'info'의 표시 문구는 '명소'(landmark)다. 키를 바꾸지 않는 이유:
- * photo-lab의 `tools/photo-lab/data/teach.json`에 사용자가 'info'로 찍어둔 정답이
- * 쌓여 있어, 키를 'landmark'로 갈면 그 정답이 통째로 매칭 불능이 된다.
- * 표시 문구는 i18n(`reco.reason.*_info`)과 랩 KO 맵에서만 '명소'로 쓴다.
+ * photo-lab이 정답을 **컨셉 키 문자열 그대로** `tools/photo-lab/data/teach.json`에
+ * 적는다 — 키를 'landmark'로 갈면 'info'로 찍힌 정답이 통째로 매칭 불능이 된다
+ * (teach.py의 set_answer가 CONCEPTS 밖 값을 거부한다).
+ * 2026-09-18 현재 teach.json은 없고 learned.json은 비어 있어 지금 갈아도 잃을 것은
+ * 없지만, 실사진 정답이 한 번 쌓이면 되돌릴 수 없어진다. 그래서 키는 고정한다.
+ * 표시 문구는 i18n(`reco.conceptNoun.info`)과 랩 KO 맵에서만 '명소'로 쓴다.
  *
  * 새 컨셉은 **배열 끝에 붙인다.** topConcept의 동률 우선순위가 이 순서라,
  * 중간에 끼우면 기존 사진의 판정이 조용히 바뀐다.
  */
-export type RecoConcept = 'emotional' | 'hip' | 'fun' | 'food' | 'info' | 'transit' | 'activity';
+export type RecoConcept =
+  | 'emotional' | 'hip' | 'fun' | 'food' | 'info' | 'transit' | 'activity'
+  | 'people' | 'night' | 'animal' | 'cafe' | 'culture' | 'nature' | 'stay' | 'shopping'
+  | 'vivid' | 'mono';
 
 export type ConceptScores = Record<RecoConcept, number>;
 
-export const RECO_CONCEPTS: RecoConcept[] = ['emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity'];
+export const RECO_CONCEPTS: RecoConcept[] = [
+  'emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity',
+  // ↓ 2026-09-18 추가. 이 순서 그대로 끝에 붙였다(중간 삽입 금지 — 위 주석)
+  'people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping',
+  'vivid', 'mono',
+];
 
 /** 블로그 프리필 씨앗 — 화면에서 createHeadingBlock/createImagesBlock으로 변환 */
 export type RecoBlogSeed =
@@ -44,7 +63,14 @@ export interface RecoCandidate {
   photoAssetIds?: string[];
   blogSeeds?: RecoBlogSeed[]; // viewType==='blog' 전용
   score: number;              // 0~1+, 재순위 입력
-  reasonKey: string;          // i18n 키: `reco.reason.${viewType}_${concept}`
+  /**
+   * 이유 문구의 치환값만 담는다(n·spots). 문구 자체는 화면에서
+   * `reco.reasonTemplate.${viewType}` × `reco.conceptNoun.${concept}`로 조립한다.
+   *
+   * 예전에는 `reasonKey: 'reco.reason.cut_food'`처럼 완성된 키를 후보가 들고 있었다.
+   * 컨셉이 17종이 되면서 viewType×concept 51키를 ko/en 양쪽에 손으로 적어야 해
+   * 조립식으로 바꿨다(RECO_SCHEMA_VERSION 3 — 옛 카드는 로더가 버린다).
+   */
   reasonParams?: Record<string, string | number>;
 }
 

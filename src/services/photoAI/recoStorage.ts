@@ -15,11 +15,24 @@ function storage() {
 }
 
 /**
- * 스키마 버전 2 (2026-09-01) — 키가 albumRecordId에서 tripGroupId로 바뀌었고
+ * 스키마 버전 3 (2026-09-18) — RecoCandidate에서 `reasonKey`가 사라졌다.
+ * 이유 문구를 `reco.reasonTemplate.${viewType}` × `reco.conceptNoun.${concept}`
+ * 조립식으로 바꿨는데, v2로 저장된 카드는 완성된 reasonKey만 들고 있고 concept은
+ * 옛 7종이다. 버전을 올려 로더가 null을 반환하게 두면(아래 readEnvelope) 안전하게 버려지고
+ * 재분석으로 새 카드가 만들어진다. **이 짝을 빠뜨리면 기존 카드가 이유 문구 없이 뜬다.**
+ *
+ * ⚠️ 버전을 올리면 **사용 로그(`appendRecoLog`/`getRecoLog`, 키 `@photoAI/recoLog`)도
+ *    함께 버려진다** — 상태와 같은 envelope·같은 RECO_SCHEMA_VERSION을 쓰기 때문이다.
+ *    지금은 무해하다(v1은 로그를 소비하지 않고 FORMAT_RECO_ENABLED가 false라 실사용
+ *    데이터가 없다). 하지만 personalRanker.ts의 `conceptHist`가 v2에서 쓸 재료가 바로
+ *    이 로그다 — 로그가 쌓이기 시작한 뒤 버전을 올리면 개인화 학습이 0에서 다시 시작한다.
+ *    그때는 로그를 상태와 다른 envelope로 떼어내거나 버전 무관으로 읽어야 한다.
+ *
+ * 버전 2 (2026-09-01) — 키가 albumRecordId에서 tripGroupId로 바뀌었고
  * mediasFingerprint가 sourceFingerprint로 바뀌었다. v1 항목은 읽히지 않고 버려진다.
  * FORMAT_RECO_ENABLED가 false인 채로만 배포됐으므로 실제 사용자 데이터는 없다.
  */
-export const RECO_SCHEMA_VERSION = 2;
+export const RECO_SCHEMA_VERSION = 3;
 export const RECO_STATE_KEY_PREFIX = '@photoAI/reco/';
 const stateKey = (tripGroupId: string) => `${RECO_STATE_KEY_PREFIX}${tripGroupId}`;
 const LOG_KEY = '@photoAI/recoLog';

@@ -86,9 +86,16 @@ eq(isUnavailableRetryDue(baseState({ status: 'unavailable', updatedAt: 1_000 }),
 // formatCandidates가 예전에 컨셉 배열을 두 벌 하드코딩하고 있어서, 컨셉을 늘려도
 // 새 컨셉의 피드 후보가 영영 안 만들어지는 상태였다(2026-09-17 제거).
 // 아래 두 검사는 "출처가 다시 갈라지면 즉시 깨지게" 두는 장치다.
-eq(RECO_CONCEPTS.length, 7, '컨셉 7종(감성·힙·유쾌·음식·명소·여정·액티비티)');
+eq(RECO_CONCEPTS.length, 17, '컨셉 17종(라벨 14종 + 톤 3종)');
 eq(RECO_CONCEPTS[0], 'emotional',
   '동률 우선순위 1번은 emotional — 새 컨셉은 배열 끝에 붙여야 기존 사진 판정이 안 흔들린다');
+// 앞 7개가 자리를 지켜야 기존 사진의 동률 판정이 그대로다. 중간 삽입을 이 단정이 잡는다.
+eq(RECO_CONCEPTS.slice(0, 7), ['emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity'],
+  '기존 7종의 위치가 그대로 — 중간 삽입은 기존 사진의 동률 판정을 조용히 바꾼다');
+eq(RECO_CONCEPTS.slice(7), ['people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping', 'vivid', 'mono'],
+  '2026-09-18 추가분 10개가 배열 끝에 이 순서로 붙어 있다');
+eq(new Set(RECO_CONCEPTS).size, RECO_CONCEPTS.length,
+  '중복 없음 — 오타로 같은 키가 두 번 들어가면 ZERO 키 집합 비교를 통과해 버린다');
 eq([...Object.keys(ZERO_CONCEPT_SCORES)].sort(), [...RECO_CONCEPTS].sort(),
   'ZERO_CONCEPT_SCORES 키 = RECO_CONCEPTS (갈라지면 새 컨셉이 타입 오류 없이 조용히 0으로 고정된다)');
 

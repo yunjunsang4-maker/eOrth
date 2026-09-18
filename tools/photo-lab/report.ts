@@ -149,8 +149,12 @@ function saveGolden(name: string, r: LabResult, sourceDir: string): void {
 
 const CONCEPT_KO: Record<RecoConcept, string> = {
   // 'info'는 키만 info이고 표시는 '명소'다(recoTypes.ts 주석 — teach.json 호환 때문에 키를 못 바꾼다)
-  emotional: '감성', hip: '힙', fun: '유쾌', food: '음식', info: '명소',
+  // 표기는 앱 i18n(reco.conceptNoun.*)과 같게 맞춘다 — 랩에서 찍은 정답과 앱 문구가 갈리면
+  // 리포트를 보며 가중치를 조정할 때 어느 컨셉인지 헷갈린다.
+  emotional: '감성', hip: '힙', fun: '유쾌', food: '미식', info: '명소',
   transit: '여정', activity: '액티비티',
+  people: '인물', night: '야경', animal: '동물', cafe: '카페', culture: '문화',
+  nature: '자연', stay: '숙소', shopping: '쇼핑', vivid: '선명한 색', mono: '무채색',
 };
 const VIEW_KO: Record<string, string> = { feed: '피드', blog: '블로그', cut: '컷' };
 

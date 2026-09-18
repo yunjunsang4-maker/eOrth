@@ -26,10 +26,22 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 .photo.failed{border-color:var(--red)}.photo.wrong{border-color:#8a2f2a}.photo.right{border-color:#2f6b45}.photo.hide{display:none}
 .photo img{width:100%;aspect-ratio:4/3;object-fit:cover;background:#000}
 .body{padding:10px}.head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar{display:grid;grid-template-columns:34px 1fr 36px;gap:6px;align-items:center;font-size:12px}
-.bt{height:8px;background:var(--line);border-radius:4px;overflow:hidden;position:relative}.bt i{position:absolute;left:0;top:0;height:100%;background:#6f6f85}.bt i.top{background:var(--purple)}.bt i.base{background:transparent;border-right:2px solid #fff8}
+/* 라벨 칸 54px: 최장 라벨 '선명한 색'·'액티비티'가 11px에서 한 줄에 들어간다(34px은 2줄로 접혔다).
+   카드 최소폭 270px − border 4px − body padding 20px = 내부 246px 기준으로
+   54(라벨) + 34(값) + gap 12 = 100px을 빼도 막대 track이 146px 남는다.
+   컨셉이 7 → 17줄로 늘어 카드 세로가 2.4배가 됐으므로 font-size·line-height·막대 높이도
+   함께 줄였다. 헤드리스 실측(270px 카드, 막대 17줄만 있는 카드 기준):
+   HEAD 371.8px / 접힌 라벨 3개(액티비티·선명한 색·무채색) → 248.2px / 접힌 라벨 0개.
+   상위 N개만 그리는 접기는 넣지 않았다 — 정답을 찍는 사람이 "0.00인 컨셉이 정말 0인지"를
+   눈으로 확인하는 것이 이 화면의 용도라, 숨기면 오판을 못 잡는다. */
+.bar{display:grid;grid-template-columns:54px 1fr 34px;gap:6px;align-items:center;font-size:11px;line-height:1.2}
+.bar>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bt{height:7px;background:var(--line);border-radius:4px;overflow:hidden;position:relative}.bt i{position:absolute;left:0;top:0;height:100%;background:#6f6f85}.bt i.top{background:var(--purple)}.bt i.base{background:transparent;border-right:2px solid #fff8}
 .bv{text-align:right;color:var(--dim)}
-.answers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 4px}.answers button{flex:1 1 20%;min-width:48px;padding:6px 0;font-size:12px;border-radius:6px}.answers button.sel{background:var(--deep);border-color:var(--purple)}
+/* 컨셉 17개 + [탈락] 1개 = 18버튼. 카드 최소폭 270px - body padding 20px = 내부 250px 기준으로
+   한 줄 4개가 딱 맞는다: 4*calc(25% - 3px) + gap 3*4px = 250px. 넓은 카드에서는 grow가 채운다.
+   '선명한 색'(11px nowrap ≈ 47px + 좌우 padding 6px)이 최소칸 56px 안에 들어가 잘리지 않는다. */
+.answers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 4px}.answers button{flex:1 1 calc(25% - 3px);min-width:56px;padding:6px 3px;font-size:11px;white-space:nowrap;border-radius:6px}.answers button.sel{background:var(--deep);border-color:var(--purple)}
 .answers button.rej{color:var(--red);border-color:#4a1f1d}.answers button.rej:hover{border-color:var(--red)}.answers button.rej.sel{background:var(--red);border-color:var(--red);color:#fff}
 .photo.rejected{border-color:var(--red);opacity:.72}
 .badges{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.badge{font-size:11px;background:var(--deep);border-radius:4px;padding:1px 6px}
@@ -115,9 +127,14 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 <script>
 (function(){
   // 화면에 넣는 모든 데이터는 esc()로 이스케이프한다 — 출처는 로컬 파이썬 서버(같은 PC)뿐이다.
-  var CONCEPTS=['emotional','hip','fun','food','info','transit','activity'];
+  // 앱 RECO_CONCEPTS 17종과 순서·개수가 같아야 한다(끝에 추가만 — topOf 동률 우선순위가 이 순서다)
+  var CONCEPTS=['emotional','hip','fun','food','info','transit','activity',
+                'people','night','animal','cafe','culture','nature','stay','shopping','vivid','mono'];
   // 'info'는 키만 info이고 표시는 '명소'다 — 키를 바꾸면 teach.json에 쌓인 정답이 죽는다(recoTypes.ts 주석)
-  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'음식',info:'명소',transit:'여정',activity:'액티비티'};
+  // 표기는 앱 i18n(reco.conceptNoun.*)·report.ts의 CONCEPT_KO와 같게 맞춘다
+  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'미식',info:'명소',transit:'여정',activity:'액티비티',
+          people:'인물',night:'야경',animal:'동물',cafe:'카페',culture:'문화',nature:'자연',
+          stay:'숙소',shopping:'쇼핑',vivid:'선명한 색',mono:'무채색'};
   var REJECT='reject';   // teach.py의 REJECT와 같은 값. 컨셉이 아니라 사람이 찍는 '탈락' 표시다
   var VIEW={feed:'피드',blog:'블로그',cut:'컷'};
   var $=function(id){return document.getElementById(id)};

@@ -1,6 +1,6 @@
 {
   "name": "night-city",
-  "expected": { "topViewType": "cut", "topConcept": "hip" },
+  "expected": { "topViewType": "cut", "topConcept": "night" },
   "photos": [
     {
       "id": "d1", "uri": "file:///d1.jpg", "thumbnailUri": null,

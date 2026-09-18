@@ -1,6 +1,6 @@
 """가르치기 — 사용자가 찍은 정답(사진별 컨셉)에서 라벨→컨셉 키워드를 배우고, 앱 표에 쓴다.
 
-정답은 컨셉 7종 중 하나이거나 REJECT('reject', 수동 탈락)이다. 탈락은 학습에서 제외한다.
+정답은 컨셉 17종 중 하나이거나 REJECT('reject', 수동 탈락)이다. 탈락은 학습에서 제외한다.
 
   python tools/photo-lab/teach.py learn      # data/teach.json → data/learned.json
   python tools/photo-lab/teach.py apply      # learned.json → src/services/photoAI/labelTaxonomy.ts (마커 구간 교체)
@@ -24,7 +24,12 @@ TEACH_PATH = DATA / 'teach.json'
 LEARNED_PATH = DATA / 'learned.json'
 TAXONOMY_PATH = LAB.parent.parent / 'src' / 'services' / 'photoAI' / 'labelTaxonomy.ts'
 
-CONCEPTS = ('emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity')
+CONCEPTS = (
+    'emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity',
+    # 2026-09-18 세분화. 앱 RECO_CONCEPTS와 순서·개수가 같아야 한다(끝에 추가만).
+    'people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping',
+    'vivid', 'mono',
+)
 # 수동 탈락 — 컴셉이 아니라 "이 사진은 골든셈에 넣지 않는다"는 사람의 표시다.
 # CONCEPTS에 넣지 않는다 — 넣으면 판정 대상 컴셉으로 새어들어간다.
 REJECT = 'reject'
@@ -112,7 +117,18 @@ _ENTRY_RE = re.compile(r"\[\s*'([^']+)'\s*,\s*'(\w+)'\s*,\s*([0-9.]+)\s*\]")
 
 
 def existing_pairs(ts_text):
-    """앱 표(마커 구간 제외)에 이미 있는 (keyword, concept) 집합."""
+    """앱 표(마커 구간 제외)에 이미 있는 (keyword, concept) 집합.
+
+    ⚠️ **중복 제거 단위가 (키워드, 컨셉) 쌍이다 — 키워드 하나가 아니다.**
+    그래서 컨셉 체계를 쪼갠 뒤에는 옛 정답이 분리를 되돌릴 수 있다:
+    7종 시절 카페 사진을 'food'로 찍어둔 정답이 teach.json에 남아 있으면
+    learn()이 ['coffee', 'food', w]를 내는데, 앱 표에는 ('coffee', 'cafe')만 있어
+    이 집합에 안 걸린다 → [앱에 반영]이 마커 구간에 그대로 써 넣고
+    'coffee' 라벨이 cafe와 food를 **동시에** 얻어 2026-09-18 food↔cafe 분리가 무너진다.
+    (2026-09-18 현재 data/teach.json이 없고 learned.json이 []라 무해하다.
+     코드로 막지 않는 이유: 어떤 정답이 '옛것'인지 기계가 알 수 없다 — 사람이
+     분리 이후에 다시 찍어야 한다. README '한계' 절에도 같은 경고가 있다.)
+    """
     body = ts_text
     if MARK_START in body and MARK_END in body:
         body = body[:body.index(MARK_START)] + body[body.index(MARK_END) + len(MARK_END):]

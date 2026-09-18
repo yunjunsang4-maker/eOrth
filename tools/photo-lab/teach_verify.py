@@ -56,7 +56,24 @@ assert n3 == 0 and 'bakery' not in new3
 # ── 수동 탈락 ──
 # 골든셋에 들어가면 안 되는 사진(흐림·무관·스크린샷)을 사람이 직접 뺀 표시다.
 assert REJECT not in CONCEPTS                              # 컨셉이 아니다 — 판정 대상에 섞이면 안 된다
-assert set(CONCEPTS) == {'emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity'}, CONCEPTS
+# 앱 RECO_CONCEPTS와 같은 17종. 랩 목록이 앱보다 좁으면 사람이 찍을 수 없는 컨셉이 생기고,
+# 넓으면 set_answer가 통과시킨 정답이 앱 표에 반영될 때 컨셉 키가 없어 죽는다.
+#
+# **순서까지 단정한다**(2026-09-18 QA 참고 7). 예전엔 set 동치 + len만 봐서 순서가
+# 무검증이었다. 순서가 중요한 이유 둘:
+#  - ui.html의 버튼 배열 순서가 이 목록 순서 그대로다(사람이 찍는 자리가 바뀐다).
+#  - 앱 topConcept의 동률 우선순위가 RECO_CONCEPTS 순서라, 랩과 앱의 순서가 어긋나면
+#    같은 사진을 랩과 앱이 다르게 판정한다.
+# tuple로 비교하면 순서·개수·중복 오타가 한 줄에 다 걸린다(set+len 두 줄이 필요 없다).
+assert CONCEPTS == (
+    'emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity',
+    'people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping',
+    'vivid', 'mono',
+), CONCEPTS
+assert len(CONCEPTS) == 17, CONCEPTS       # 개수를 문서로 남긴다(위 tuple이 이미 고정한다)
+# 톤 컨셉 3종은 키워드 표가 없다 — 랩에서 찍어도 learn()이 라벨→컨셉을 배울 재료가
+# 없을 뿐이고(라벨이 붙은 사진이면 배운다), 사람이 찍는 것 자체는 막지 않는다.
+set_answer({}, 'tone1', 'mono', L(('sky', 0.5)), 'dtone', 'trip')
 
 t3 = {}
 set_answer(t3, 'r1', 'hip', L(('rooftop', 0.6)), 'd1', 'trip')

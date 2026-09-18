@@ -11,7 +11,7 @@ function eq(actual: unknown, expected: unknown, msg: string) {
 
 const cand = (id: string, viewType: RecoCandidate['viewType'], score: number): RecoCandidate => ({
   id, viewType, concept: 'emotional', photoUris: ['file:///a.jpg', 'file:///b.jpg', 'file:///c.jpg'],
-  score, reasonKey: `reco.reason.${viewType}_emotional`,
+  score,
 });
 
 // ── buildStylePrior ──

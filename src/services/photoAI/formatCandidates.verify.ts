@@ -47,7 +47,10 @@ eq(strips.length >= 1, true, '4장 그룹에서 스트립 후보 생성');
 eq(strips[0].photoUris.length, 4, '슬롯 수 4 채택 (사진 수 이하 최대)');
 eq(strips[0].viewType, 'cut', 'viewType=cut');
 eq(strips[0].concept, 'fun', '그룹 우세 컨셉 채택');
-eq(strips[0].reasonKey, 'reco.reason.cut_fun', 'reasonKey 규칙');
+// reasonKey는 2026-09-18에 사라졌다 — 이유 문구는 화면이 viewType·concept로 조립한다.
+// 후보가 들고 있어야 할 것은 치환값(n·spots)뿐이다.
+eq('reasonKey' in strips[0], false, '후보에 reasonKey가 없다(조립식 문구로 전환)');
+eq(strips[0].reasonParams, { n: 4 }, '컷 후보는 {{n}}만 넘긴다');
 
 // ── stripCandidates: 1장 그룹은 후보 없음 ──
 eq(stripCandidates([photo('x', T0)], [{ id: 's', photoIds: ['x'], startTime: T0, endTime: T0, center: null }], new Map([['x', scores()]]), [2, 3, 4]), [], '1장은 스트립 불가');
@@ -60,6 +63,7 @@ const emoFeed = feeds.find((c) => c.concept === 'emotional');
 eq(emoFeed !== undefined, true, 'emotional 피드 후보 생성');
 eq(emoFeed!.photoUris.length, 20, '피드 20장 상한');
 eq(emoFeed!.viewType, 'feed', 'viewType=feed');
+eq(emoFeed!.reasonParams, { n: 20 }, '피드 후보는 {{n}}=실제 장수를 넘긴다');
 
 // ── feedCandidates: 임계 미달 컨셉은 후보 없음 ──
 const weak = new Map(many.map((p) => [p.id, scores({ hip: 0.2 })]));
@@ -77,6 +81,7 @@ const blogMap = new Map(blogPhotos.map((p) => [p.id, scores({ info: 0.6 })]));
 const blogs = blogCandidates(blogPhotos, blogGroups, blogMap);
 eq(blogs.length, 1, '블로그 후보 1개');
 eq(blogs[0].viewType, 'blog', 'viewType=blog');
+eq(blogs[0].reasonParams, { spots: 2 }, '블로그 후보는 {{spots}}=스팟 수를 넘긴다');
 const seeds = blogs[0].blogSeeds!;
 eq(seeds[0], { kind: 'heading', dayIndex: 1 }, '첫 씨앗 = DAY 1 헤딩');
 eq(seeds.some((sd) => sd.kind === 'heading' && sd.dayIndex === 2), true, '둘째 날 헤딩 존재');
