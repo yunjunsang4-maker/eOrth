@@ -168,6 +168,7 @@ const ko = {
     languageSelectMsg: '사용할 언어를 선택하세요',
     langKo: '한국어',
     langEn: 'English',
+    langJa: '日本語', // 언어 선택지는 각 언어를 자기 언어로 적는다(langKo 와 같은 관례)
     theme: '다크·라이트 모드',
     themeDark: '다크',
     themeTitle: '테마',

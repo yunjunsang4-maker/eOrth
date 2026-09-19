@@ -19,6 +19,7 @@ import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
+import { LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
 import { useRecords } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
 import { COUNTRIES } from '../constants/countries';
@@ -367,17 +368,18 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     });
   };
 
-  // 언어 전환 — 한국어/English 선택 (앱 전체 즉시 반영)
+  // 언어 전환 — 선택 가능한 언어 전부 (앱 전체 즉시 반영).
+  // 목록·표기는 i18n/index.ts 가 단일 출처다(t('settings.lang*') 키를 쓰면 언어를 더할 때마다
+  // 버튼 줄을 손으로 늘려야 하고, 표기는 어차피 번역 대상이 아니라 자기 언어 고정이다).
+  // ⚠️ 안드로이드 Alert 는 버튼을 3개까지만 그린다(RN Alert.js 가 slice(0, 3)) — 언어 3개 + 취소면
+  //    취소가 조용히 잘려 뒤로가기로만 빠져나갈 수 있다. 안드로이드는 취소 버튼을 빼고
+  //    바깥 탭으로 닫히게(cancelable) 한다. iOS 는 버튼 수 제한이 없어 취소를 그대로 둔다.
+  //    언어가 4개 이상 되면 Alert 로는 안 되니 그때는 바텀시트로 바꿀 것.
   const handleLanguageChange = () => {
-    Alert.alert(
-      t('settings.languageChange'),
-      t('settings.languageSelectMsg'),
-      [
-        { text: t('settings.langKo'), onPress: () => setLanguage('ko') },
-        { text: t('settings.langEn'), onPress: () => setLanguage('en') },
-        { text: t('common.cancel'), style: 'cancel' },
-      ],
-    );
+    const langButtons = SELECTABLE_LANGUAGES.map((l) => ({ text: LANGUAGE_LABELS[l], onPress: () => setLanguage(l) }));
+    const cancelButton = { text: t('common.cancel'), style: 'cancel' as const };
+    const buttons = Platform.OS === 'android' && langButtons.length >= 3 ? langButtons : [...langButtons, cancelButton];
+    Alert.alert(t('settings.languageChange'), t('settings.languageSelectMsg'), buttons, { cancelable: true });
   };
 
   return (
@@ -430,7 +432,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <LanguageIcon size={22} />,
               label: t('settings.languageChange'),
-              value: language === 'en' ? t('settings.langEn') : t('settings.langKo'),
+              value: LANGUAGE_LABELS[language],
               onPress: handleLanguageChange,
             },
             {

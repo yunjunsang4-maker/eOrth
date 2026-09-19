@@ -2,6 +2,7 @@
 // 한국 시/도는 koreaRegions에 영문명(nameEn)이 있다. 이 둘을 합쳐 KO→EN 지역명 맵을 만든다.
 import { KOREA_REGIONS } from '../constants/koreaRegions';
 import type { TravelRecord } from '../store/recordStore';
+import { isKoreanLang } from './langKind';
 
 // regionNameEn은 저장 키(지도 색·태깅 매칭용)와 영어 모드 표시 라벨을 겸한다.
 // 지역 키 마이그레이션 이후 이 값은 ISO 코드(`US-NY`)가 되므로, 표시에 그대로 쓰면
@@ -13,7 +14,7 @@ export const isRegionCode = (s: string | undefined | null): boolean =>
   !!s && REGION_CODE_RE.test(s);
 
 /**
- * 영어 모드 지역 표시명. regionNameEn이 코드 형태면 한글 regionName으로 폴백한다.
+ * 비(非)한국어 모드 지역 표시명. regionNameEn이 코드 형태면 한글 regionName으로 폴백한다.
  * (MainScreen·PostDetailScreen·통계 화면이 같은 판정을 쓰도록 여기 한 곳에 둔다)
  */
 export function regionDisplayName(
@@ -22,7 +23,7 @@ export function regionDisplayName(
   lang: string,
 ): string {
   const ko = regionName ?? '';
-  if (lang !== 'en') return ko;
+  if (isKoreanLang(lang)) return ko;
   if (!regionNameEn || isRegionCode(regionNameEn)) return ko;
   return regionNameEn;
 }
@@ -38,9 +39,9 @@ export function buildRegionEnMap(records: TravelRecord[]): Record<string, string
   return m;
 }
 
-/** 한글 지역명 → 현재 언어 표기. lang!=='en'이거나 매핑이 없으면 원본(한글) 그대로. */
+/** 한글 지역명 → 현재 언어 표기. 한국어이거나 매핑이 없으면 원본(한글) 그대로. */
 export function regionLabel(ko: string | undefined | null, lang: string, map: Record<string, string>): string {
   if (!ko) return '';
-  if (lang !== 'en') return ko;
+  if (isKoreanLang(lang)) return ko;
   return map[ko] ?? ko;
 }

@@ -48,7 +48,7 @@ import { minimumSignupAge } from '../constants/minimumAge';
 // 국가 코드 추출은 공용 것을 쓴다 — 같은 함수를 화면마다 다시 정의하면
 // 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
-import { DEVICE_DEFAULT_HOME_COUNTRY } from '../i18n';
+import { DEVICE_DEFAULT_HOME_COUNTRY, LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
 
 // 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
 function GlassButton({ label, onPress, disabled, loading, style }: {
@@ -523,21 +523,24 @@ export default function BasicInfoScreen({ navigation }: Props) {
           {/* 언어 */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.language')}</Text>
+            {/* 목록·표기는 i18n/index.ts 단일 출처. 여기에 손으로 적어 두면 언어를 더할 때
+                설정 화면과 어긋난다(정식 빌드에서 ja 를 감추는 게이트도 그쪽에 있다).
+                languageBtn 은 flex:1 이라 버튼이 셋으로 늘어도 줄이 알아서 3등분된다. */}
             <View style={styles.languageRow}>
-              {([
-                { value: 'ko', label: '한국어' },
-                { value: 'en', label: 'English' },
-              ] as { value: AppLanguage; label: string }[]).map((opt) => {
-                const active = language === opt.value;
+              {SELECTABLE_LANGUAGES.map((value) => {
+                const active = language === value;
                 return (
                   <TouchableOpacity
-                    key={opt.value}
+                    key={value}
                     style={[styles.languageBtn, active && styles.languageBtnActive]}
                     activeOpacity={0.8}
-                    onPress={() => setLanguage(opt.value)}
+                    onPress={() => setLanguage(value)}
                   >
-                    <Text style={[styles.languageText, active && styles.languageTextActive]}>
-                      {opt.label}
+                    <Text
+                      style={[styles.languageText, active && styles.languageTextActive]}
+                      numberOfLines={1}
+                    >
+                      {LANGUAGE_LABELS[value]}
                     </Text>
                   </TouchableOpacity>
                 );

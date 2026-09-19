@@ -5,7 +5,7 @@ import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
-import { DEVICE_DEFAULT_LANGUAGE, DEVICE_DEFAULT_HOME_COUNTRY } from '../i18n';
+import { DEVICE_DEFAULT_LANGUAGE, DEVICE_DEFAULT_HOME_COUNTRY, type AppLanguage } from '../i18n';
 import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
@@ -24,8 +24,10 @@ export type SignUpMethod = 'email' | 'google' | 'apple';
 export type MapDisplayMode = 'flag' | 'color' | 'photo';
 // 지구본 형태: aurora = 보라 발광 행성(디폴트, 색상 표시), classic = 현재 지구본(사진 표시)
 export type GlobeVariant = 'aurora' | 'classic';
-// 앱 언어: 한국어 / 영어
-export type AppLanguage = 'ko' | 'en';
+// 앱 언어 타입은 i18n/index.ts 가 단일 출처다(리소스·라벨·선택 목록이 거기 모여 있다).
+// 여러 화면이 `from '../store/settingsStore'` 로 이 이름을 가져가므로 re-export 로 남긴다 —
+// 지우면 BasicInfoScreen 등이 깨진다.
+export type { AppLanguage };
 
 /**
  * 튜토리얼(코치마크)이 붙는 탭. 계정당 탭별 처음 들어갈 때 1회만 자동으로 뜬다.
@@ -802,7 +804,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.snapEnabled === 'boolean') setSnapEnabled(v.snapEnabled);
     if (typeof v.hapticsEnabled === 'boolean') setHapticsEnabled(v.hapticsEnabled);
     if (typeof v.diaryCardMode === 'string') setDiaryCardMode(v.diaryCardMode);
-    if (v.language === 'ko' || v.language === 'en') setLanguage(v.language);
+    // 백업 복원은 SELECTABLE_LANGUAGES(정식 빌드에서 ja 를 감추는 노출 게이트)가 아니라
+    // AppLanguage 전체 집합으로 판정한다 — 저장된 ja 를 정식 빌드에서 버리면
+    // 같은 계정의 다른 기기에서 언어가 조용히 되돌아간다.
+    if (v.language === 'ko' || v.language === 'en' || v.language === 'ja') setLanguage(v.language);
     if (typeof v.arrivalDetect === 'boolean') setArrivalDetect(v.arrivalDetect);
     if (typeof v.globeVariant === 'string') setGlobeVariant(v.globeVariant);
     if (typeof v.globeSkin === 'string') { applyIconPalette(v.globeSkin); setGlobeSkin(v.globeSkin); }

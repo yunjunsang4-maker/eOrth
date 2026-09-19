@@ -39,6 +39,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
+import { isKoreanLang } from '../utils/langKind';
 import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
@@ -2786,7 +2787,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
         // 여행 DNA 유형 — 서버가 공개하는 건 type_key뿐(축 점수는 비공개, 설계 §9).
         // 해석 불가(미완료·미지의 키)면 labelFromKey가 null을 주고, 그때는 줄 자체를 뺀다.
         const dnaLabel = labelFromKey(m.dnaTypeKey);
-        const dnaText = dnaLabel ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : null;
+        const dnaText = dnaLabel ? (isKoreanLang(i18n.language) ? dnaLabel.ko : dnaLabel.en) : null; // ja는 영문 라벨
         return (
           <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
             <View style={[s.mateCardAvatarRing, { borderColor: skinAccent.tint(0.5) }]}>

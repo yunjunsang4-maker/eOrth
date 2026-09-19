@@ -162,6 +162,7 @@ const en = {
     languageSelectMsg: 'Choose your language',
     langKo: '한국어',
     langEn: 'English',
+    langJa: '日本語', // 언어 선택지는 각 언어를 자기 언어로 적는다(langKo 와 같은 관례)
     theme: 'Dark / Light mode',
     themeDark: 'Dark',
     themeTitle: 'Theme',

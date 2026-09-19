@@ -1,4 +1,5 @@
 // 네컷/컷사진 — 레이아웃 사양 + 프레임 카탈로그 (정적 데이터)
+import { isKoreanLang } from '../utils/langKind';
 
 export type CutLayout = 'two-h' | 'two-v' | 'three-v' | 'four' | 'nine' | 'four-v' | 'four-h' | 'six-v' | 'film' | 'film-h' | 'four-compact' | 'four-stagger';
 
@@ -289,8 +290,8 @@ const FRAME_NAME_EN: Record<string, string> = {
   '모노 필름 (세로)': 'Mono Film (V)', '나이트 콘택트': 'Night Contact',
 };
 
-/** 프레임 이름 → 현재 언어 표기. lang!=='en'이면 원본(한글) 그대로. */
+/** 프레임 이름 → 현재 언어 표기. 한국어면 원본(한글), 그 외 언어는 영문. */
 export function frameLabel(name: string, lang: string): string {
-  if (lang !== 'en' || !name) return name;
+  if (!name || isKoreanLang(lang)) return name;
   return FRAME_NAME_EN[name] ?? name;
 }

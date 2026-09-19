@@ -18,6 +18,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
+import { isKoreanLang } from '../utils/langKind';
 import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -419,7 +420,7 @@ export default function FriendProfileScreen({
                   >
                     <Text style={[s.dnaChipMark, { color: skinAccent.accent }]}>✦</Text>
                     <Text style={[s.dnaChipText, { color: skinAccent.accent }]} numberOfLines={1}>
-                      {i18n.language.startsWith('en') ? friendDnaLabel.en : friendDnaLabel.ko}
+                      {isKoreanLang(i18n.language) ? friendDnaLabel.ko : friendDnaLabel.en}
                     </Text>
                   </View>
                 )}

@@ -10,6 +10,7 @@
  * 읽음 여부는 서버가 아니라 기기에 남긴다(마지막으로 본 공지의 게시 시각). 공지는
  * 개인화된 정보가 아니라 전체 고지라, 누가 읽었는지 서버가 알 필요가 없다.
  */
+import { isKoreanLang } from './langKind';
 
 export interface Notice {
   id: string;
@@ -62,7 +63,8 @@ export function parseNotices(raw: unknown, lang: string): Notice[] {
     const id = str(r.id);
     const publishedAt = toMs(r.publishedAt);
     if (!id || publishedAt == null || seen.has(id)) continue;
-    const en = lang === 'en';
+    // 한국어가 아니면 전부 영문 공지를 쓴다(ja 전용 공지 필드는 없다 — 있으면 여기 한 곳에 추가).
+    const en = !isKoreanLang(lang);
     const title = (en && str(r.titleEn)) || str(r.title);
     const body = (en && str(r.bodyEn)) || str(r.body);
     if (!title) continue; // 제목 없는 공지는 목록에서 의미가 없다

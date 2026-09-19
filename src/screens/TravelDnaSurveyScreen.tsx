@@ -10,6 +10,7 @@ import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { select, warn } from '../utils/haptics';
+import { isKoreanLang } from '../utils/langKind';
 import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
@@ -75,7 +76,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const [answers, setAnswers] = useState<DnaAnswers>(saved);
   const [saving, setSaving] = useState(false);
   const q = questions[idx];
-  const text = i18n.language.startsWith('en') ? q.en : q.ko;
+  const text = isKoreanLang(i18n.language) ? q.ko : q.en; // 문항은 ko/en 두 벌뿐 — ja는 영문
 
   // 진행 바 — 인덱스가 바뀔 때마다 목표 비율로 슬라이드. width는 레이아웃 속성이라
   // 네이티브 드라이버로 못 돌린다(scaleX 변환으로 우회할 수도 있지만, 이 애니메이션은

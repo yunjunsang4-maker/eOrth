@@ -10,6 +10,7 @@
  * 지오 조회 자체는 순수하지 않지만(모듈 require), 판정 로직은 전부 여기 모아
  * regionGeoLookup.verify.ts가 실제 지오 데이터로 검증한다.
  */
+import { isKoreanLang } from './langKind';
 import { getCountryGeo } from '../data/countryGeo';
 
 interface RegionProps {
@@ -38,14 +39,15 @@ function codeMap(iso3: string): Record<string, RegionProps> {
 }
 
 /**
- * 지역 코드로 표시명을 찾는다. lang이 'en'이면 영문명, 아니면 한글명.
+ * 지역 코드로 표시명을 찾는다. 한국어면 한글명(NL_NAME_1), 그 외 언어는 영문명(NAME_1).
+ * (지오에는 한/영 두 이름만 있다 — ja 등 나머지 언어는 영문으로 간다)
  * 지오에 없는 코드(수록되지 않은 국가·오래된 코드)면 null — 호출부가 스스로 폴백한다.
  */
 export function regionNameByCode(iso3: string, code: string, lang: string): string | null {
   if (!iso3 || !code) return null;
   const p = codeMap(iso3)[code];
   if (!p) return null;
-  const name = lang === 'en' ? p.NAME_1 : p.NL_NAME_1;
+  const name = isKoreanLang(lang) ? p.NL_NAME_1 : p.NAME_1;
   return name?.trim() || null;
 }
 

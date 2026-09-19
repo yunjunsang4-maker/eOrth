@@ -7,6 +7,8 @@
  * 게시는 gh-pages 브랜치다 — docs/ 에 커밋하는 것만으로는 반영되지 않고
  * `npm run pages:publish` 를 거쳐야 이 URL이 갱신된다.
  */
+import { isKoreanLang } from '../utils/langKind';
+
 export const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
 export const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
 
@@ -18,18 +20,19 @@ export const PRIVACY_POLICY_URL_EN = 'https://yunjunsang4-maker.github.io/eOrth/
 export const TERMS_URL_EN = 'https://yunjunsang4-maker.github.io/eOrth/terms-en.html';
 
 /**
- * 앱 언어에 맞는 문서 주소를 고른다. 인자는 i18n.language('ko' | 'en').
+ * 앱 언어에 맞는 문서 주소를 고른다. 인자는 i18n.language.
  *
- * 영어로 판정되는 경우에만 번역본을 주고, 그 외에는 한국어 정본으로 떨어뜨린다.
- * (i18n이 'en-US' 같은 지역 태그를 주더라도 영문이 나가도록 접두 비교를 쓴다.
- *  반대로 알 수 없는 값이 오면 정본이 나가는 편이 법적으로 안전하다.)
+ * ⚠️ 법적 문서는 **ko 정본 + en 편의본 2종뿐**이다. 일본어판은 없다(만들면 번역본도
+ * 법적 고지가 되어 검수 대상이 된다). 따라서 한국어가 아닌 모든 언어는 영문을 본다 —
+ * 판정을 "en인가"가 아니라 "ko인가"로 뒤집은 이유다(ja 사용자에게 한국어 약관이 가면
+ * 아예 못 읽는다). 새 언어가 붙어도 여기는 자동으로 영문 쪽이다.
+ * (초기화 전 undefined 는 isKoreanLang 규약대로 ko → 정본이 나간다.)
  */
-const isEnglish = (language?: string) => String(language ?? '').toLowerCase().startsWith('en');
 
 export const privacyPolicyUrl = (language?: string) =>
-  isEnglish(language) ? PRIVACY_POLICY_URL_EN : PRIVACY_POLICY_URL;
+  isKoreanLang(language) ? PRIVACY_POLICY_URL : PRIVACY_POLICY_URL_EN;
 
-export const termsUrl = (language?: string) => (isEnglish(language) ? TERMS_URL_EN : TERMS_URL);
+export const termsUrl = (language?: string) => (isKoreanLang(language) ? TERMS_URL : TERMS_URL_EN);
 
 /**
  * 외부(카카오톡·인스타 등)로 내보내는 공유 링크 — 앱 스토어 페이지.

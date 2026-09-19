@@ -21,6 +21,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
+import { isKoreanLang } from '../utils/langKind';
 import { COUNTRIES } from '../constants/countries';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
@@ -207,7 +208,7 @@ function FriendItem({
   // 상대의 여행 DNA 유형 — 서버가 공개하는 건 type_key뿐(축 점수는 비공개, 설계 §9).
   // 키가 없거나(설문 미완료) 해석 불가면 labelFromKey가 null을 주고, 그때는 줄 자체를 뺀다.
   const dnaLabel = labelFromKey(item.dnaTypeKey);
-  const dnaText = dnaLabel ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : null;
+  const dnaText = dnaLabel ? (isKoreanLang(i18n.language) ? dnaLabel.ko : dnaLabel.en) : null; // ja는 영문 라벨
 
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>

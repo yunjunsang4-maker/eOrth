@@ -19,6 +19,7 @@ import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { andFitText } from '../utils/fitText';
+import { isKoreanLang } from '../utils/langKind';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
 import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
@@ -491,10 +492,11 @@ export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested, getCountryPhoto } = useRecords();
-  // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
-  // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
+  // 기록의 지역/국가명 현지화 — 한국어가 아니면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
+  // 한글 국가명 → 영어. MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
+  // (판정이 "en인가"가 아닌 "ko인가"인 이유는 utils/langKind.ts 주석 — ja도 영문 국가명을 본다)
   const countryEn = (ko: string): string => {
-    if (i18n.language !== 'en' || !ko) return ko;
+    if (!ko || isKoreanLang(i18n.language)) return ko;
     if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
     return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
   };

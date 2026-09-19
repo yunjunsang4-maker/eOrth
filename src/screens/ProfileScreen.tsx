@@ -32,6 +32,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
+import { isKoreanLang } from '../utils/langKind';
 import { PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -2093,7 +2094,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               >
                 <Text style={[styles.dnaChipMark, { color: skinAccent.accent }]}>✦</Text>
                 <Text style={[styles.dnaChipText, { color: skinAccent.accent }]} numberOfLines={1}>
-                  {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
+                  {dnaComplete ? (isKoreanLang(i18n.language) ? dnaLabel.ko : dnaLabel.en) : t('dna.startSurvey')}
                 </Text>
               </TouchableOpacity>
               </Animated.View>

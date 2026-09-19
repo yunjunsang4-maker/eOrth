@@ -8,7 +8,7 @@ function assert(cond: boolean, msg: string) {
   else { failures++; console.error('  ✗ ' + msg); }
 }
 
-// nowTimeString — 언어별 오전/오후 위치가 다르다(ko: 앞, en: 뒤)
+// nowTimeString — 언어별 오전/오후 위치가 다르다(ko·ja: 앞, 그 외: 뒤)
 {
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ko') === '오전 9:05', 'ko 오전 시간 포맷');
   assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'ko') === '오후 2:30', 'ko 오후 시간 포맷');
@@ -22,9 +22,18 @@ function assert(cond: boolean, msg: string) {
   // 'en-US' 같은 지역 태그도 영어로 잡혀야 한다 (i18n.language가 항상 2글자는 아니다)
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'en-US') === '9:05 AM', 'en-US도 영어 포맷');
 
-  // 미지의 언어는 ko로 떨어진다. 검증은 노드에서 i18next 초기화 없이 돌므로
-  // 인자를 생략한 호출도 같은 ko 폴백을 탄다.
-  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'fr') === '오전 9:05', '미지의 언어 → ko 폴백');
+  // ja는 자기 표기가 있다(午前/午後 + 반각 공백 하나). ko와 같은 자리, 글자만 다르다.
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ja') === '午前 9:05', 'ja 오전 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'ja') === '午後 2:30', 'ja 오후 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'ja') === '午前 12:00', 'ja 자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'ja') === '午後 12:00', 'ja 정오 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ja-JP') === '午前 9:05', 'ja-JP 지역 태그도 일본어 포맷');
+
+  // ⚠️ 미지의 언어는 ko가 아니라 영어로 떨어진다(2026-09 3개 국어 배선에서 뒤집힘).
+  // 언어가 늘어날 때 "en이 아니면 한국어"가 일본어 사용자에게 한글을 내보냈기 때문이다.
+  // 단, 인자 생략(= i18next 초기화 전)은 여전히 ko다 — 앱 기본 언어가 ko이므로.
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'fr') === '9:05 AM', '미지의 언어 → 영어 폴백');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), '') === '오전 9:05', '빈 문자열 → 초기화 전으로 보고 ko');
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5)) === '오전 9:05', 'lang 생략 — 초기화 전이면 ko');
 }
 

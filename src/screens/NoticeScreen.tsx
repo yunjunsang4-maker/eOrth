@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
 import { visibleNotices, latestPublishedAt, type Notice } from '../utils/noticeFeed';
+import { isKoreanLang, isJapaneseLang } from '../utils/langKind';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 설정 > 공지사항 — 운영자 공지 목록.
@@ -89,13 +90,16 @@ export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notic
   );
 }
 
-// 게시일 표기 — 로케일 차이로 깨지지 않게 직접 조립한다
+// 게시일 표기 — 로케일 차이로 깨지지 않게 직접 조립한다.
+// 날짜는 언어마다 관용 표기가 달라 여기만 3분기다(ko/ja는 각자 표기, 나머지는 숫자 점 표기).
 function formatDate(ms: number, lang: string): string {
   const d = new Date(ms);
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
   const day = d.getDate();
-  return lang === 'en' ? `${y}.${String(m).padStart(2, '0')}.${String(day).padStart(2, '0')}` : `${y}년 ${m}월 ${day}일`;
+  if (isKoreanLang(lang)) return `${y}년 ${m}월 ${day}일`;
+  if (isJapaneseLang(lang)) return `${y}年${m}月${day}日`; // 일본어는 사이를 띄우지 않는다
+  return `${y}.${String(m).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
 }
 
 const makeStyles = (a: SkinAccent) => StyleSheet.create({

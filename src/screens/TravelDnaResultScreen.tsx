@@ -22,6 +22,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { success } from '../utils/haptics';
+import { isKoreanLang } from '../utils/langKind';
 import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -96,7 +97,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
   const { scores, label, answered, isFull, isComplete, refresh } = useTravelDna();
   const { records, tripGroups } = useRecords();
   const fromOnboarding = route.params?.from === 'onboarding';
-  const en = i18n.language.startsWith('en');
+  const en = !isKoreanLang(i18n.language); // DNA 라벨은 ko/en 두 벌뿐 — ja는 영문 라벨을 본다
   const percent = Math.round((answered / DNA_QUESTIONS.length) * 100);
 
   // 계정 전환 시 스토어는 인메모리 clear()만 되고 재조회는 안 된다(다음 계정 데이터를

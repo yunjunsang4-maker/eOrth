@@ -1,6 +1,7 @@
 import i18n from 'i18next';
 import type { TravelRecord } from './recordStore';
 import type { SharedRecord, Message, Friend } from './dmTypes';
+import { isKoreanLang, isJapaneseLang } from '../utils/langKind';
 
 /**
  * 메시지에 저장되는 시각 문자열.
@@ -11,6 +12,7 @@ import type { SharedRecord, Message, Friend } from './dmTypes';
  * 저장 구조는 그대로 두어 박제 문제를 키우지 않는다.
  *
  * · `src/i18n` 을 import 하지 않는다 — expo-localization 이 딸려와 tsx 검증(순수 노드 실행)이 죽는다.
+ *   (utils/langKind 는 import 0 인 순수 파일이라 그대로 가져와도 안전하다)
  *   i18next 싱글턴만 참조하고, 초기화 전이면 language 가 undefined 라 ko 로 떨어진다.
  * · t() 대신 직접 조립한다. 언어별 오전/오후 위치가 다르다는 규칙(time.ampm 키)은 같다.
  */
@@ -18,9 +20,10 @@ export function nowTimeString(d: Date = new Date(), lang: string = i18n.language
   const hour = d.getHours();
   const min = String(d.getMinutes()).padStart(2, '0');
   const h12 = hour % 12 || 12;
-  return lang.startsWith('en')
-    ? `${h12}:${min} ${hour < 12 ? 'AM' : 'PM'}`
-    : `${hour < 12 ? '오전' : '오후'} ${h12}:${min}`;
+  // 오전/오후 위치가 언어마다 다르다: ko·ja는 앞, 나머지(en 계열 포함)는 뒤.
+  if (isKoreanLang(lang)) return `${hour < 12 ? '오전' : '오후'} ${h12}:${min}`;
+  if (isJapaneseLang(lang)) return `${hour < 12 ? '午前' : '午後'} ${h12}:${min}`; // 구분은 반각 공백 하나
+  return `${h12}:${min} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
 export function buildSharedRecord(r: TravelRecord): SharedRecord {
