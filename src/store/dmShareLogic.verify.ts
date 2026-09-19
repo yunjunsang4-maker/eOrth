@@ -8,7 +8,7 @@ function assert(cond: boolean, msg: string) {
   else { failures++; console.error('  ✗ ' + msg); }
 }
 
-// nowTimeString — 언어별 오전/오후 위치가 다르다(ko·ja: 앞, 그 외: 뒤)
+// nowTimeString — 언어별 오전/오후 위치가 다르다(ko·ja·zh-Hant: 앞, 그 외: 뒤)
 {
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ko') === '오전 9:05', 'ko 오전 시간 포맷');
   assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'ko') === '오후 2:30', 'ko 오후 시간 포맷');
@@ -28,6 +28,15 @@ function assert(cond: boolean, msg: string) {
   assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'ja') === '午前 12:00', 'ja 자정 12시');
   assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'ja') === '午後 12:00', 'ja 정오 12시');
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ja-JP') === '午前 9:05', 'ja-JP 지역 태그도 일본어 포맷');
+
+  // zh-Hant도 자기 표기가 있다(上午/下午 + 반각 공백 하나). 자리는 ja와 같고 글자만 다르다.
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'zh-Hant') === '上午 9:05', 'zh-Hant 오전 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'zh-Hant') === '下午 2:30', 'zh-Hant 오후 시간 포맷');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'zh-Hant') === '上午 12:00', 'zh-Hant 자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'zh-Hant') === '下午 12:00', 'zh-Hant 정오 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'zh-TW') === '上午 9:05', 'zh-TW 지역 태그도 번체 포맷');
+  // ⚠️ 간체(zh-CN)는 아직 미지원이라 영어로 떨어진다 — 번체를 내보내면 안 된다
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'zh-CN') === '9:05 AM', 'zh-CN(간체) → 영어 폴백');
 
   // ⚠️ 미지의 언어는 ko가 아니라 영어로 떨어진다(2026-09 3개 국어 배선에서 뒤집힘).
   // 언어가 늘어날 때 "en이 아니면 한국어"가 일본어 사용자에게 한글을 내보냈기 때문이다.

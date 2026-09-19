@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { warn } from '../utils/haptics';
-import { isKoreanLang, isJapaneseLang } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from '../utils/langKind';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -379,8 +379,12 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 <Text style={s.lockNotice}>
                   {t('editProfile.lockNotice', {
                     date: new Date(handleLastChanged! + TWO_WEEKS_MS).toLocaleDateString(
-                      // 날짜만큼은 ja 전용 로케일이 있다(Intl이 '2026年9月19日'로 조립해 준다)
-                      isKoreanLang(i18n.language) ? 'ko-KR' : isJapaneseLang(i18n.language) ? 'ja-JP' : 'en-US',
+                      // 날짜만큼은 언어별 로케일이 있다(Intl이 '2026年9月19日'로 조립해 준다).
+                      // zh-Hant 는 대만 표기가 기준이라 'zh-TW'(zh-Hant.STYLE.md 서두).
+                      isKoreanLang(i18n.language) ? 'ko-KR'
+                        : isJapaneseLang(i18n.language) ? 'ja-JP'
+                        : isTraditionalChineseLang(i18n.language) ? 'zh-TW'
+                        : 'en-US',
                       { year: 'numeric', month: 'long', day: 'numeric' }
                     ),
                   })}

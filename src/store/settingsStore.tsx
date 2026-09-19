@@ -804,10 +804,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.snapEnabled === 'boolean') setSnapEnabled(v.snapEnabled);
     if (typeof v.hapticsEnabled === 'boolean') setHapticsEnabled(v.hapticsEnabled);
     if (typeof v.diaryCardMode === 'string') setDiaryCardMode(v.diaryCardMode);
-    // 백업 복원은 SELECTABLE_LANGUAGES(정식 빌드에서 ja 를 감추는 노출 게이트)가 아니라
-    // AppLanguage 전체 집합으로 판정한다 — 저장된 ja 를 정식 빌드에서 버리면
+    // 백업 복원은 SELECTABLE_LANGUAGES(정식 빌드에서 부분 번역 언어를 감추는 노출 게이트)가
+    // 아니라 AppLanguage 전체 집합으로 판정한다 — 저장된 ja/zh-Hant 를 정식 빌드에서 버리면
     // 같은 계정의 다른 기기에서 언어가 조용히 되돌아간다.
-    if (v.language === 'ko' || v.language === 'en' || v.language === 'ja') setLanguage(v.language);
+    // ⚠️ 리터럴 목록이라 AppLanguage 에 언어를 더할 때 여기도 같이 늘려야 한다
+    //    (타입이 안 잡아 준다 — 빠뜨리면 그 언어만 백업에서 조용히 사라진다).
+    if (v.language === 'ko' || v.language === 'en' || v.language === 'ja' || v.language === 'zh-Hant') setLanguage(v.language);
     if (typeof v.arrivalDetect === 'boolean') setArrivalDetect(v.arrivalDetect);
     if (typeof v.globeVariant === 'string') setGlobeVariant(v.globeVariant);
     if (typeof v.globeSkin === 'string') { applyIconPalette(v.globeSkin); setGlobeSkin(v.globeSkin); }

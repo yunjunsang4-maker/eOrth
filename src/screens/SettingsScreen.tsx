@@ -19,7 +19,7 @@ import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
-import { LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
+import { LANGUAGE_LABELS } from '../i18n';
 import { useRecords } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
 import { COUNTRIES } from '../constants/countries';
@@ -55,6 +55,7 @@ import {
   BackChevronIcon,
 } from '../components/icons';
 import HomeRegionSheet from '../components/HomeRegionSheet';
+import LanguageSheet from '../components/LanguageSheet';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
@@ -228,6 +229,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   //  국가만 고를 수 있어 그 경로 자체가 사라졌다.)
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 거주 지역 설정 시트
+  const [languageSheetVisible, setLanguageSheetVisible] = useState(false); // 언어 선택 시트
   const openCountryModal = () => setCountryModalVisible(true);
 
   // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
@@ -368,19 +370,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     });
   };
 
-  // 언어 전환 — 선택 가능한 언어 전부 (앱 전체 즉시 반영).
-  // 목록·표기는 i18n/index.ts 가 단일 출처다(t('settings.lang*') 키를 쓰면 언어를 더할 때마다
-  // 버튼 줄을 손으로 늘려야 하고, 표기는 어차피 번역 대상이 아니라 자기 언어 고정이다).
-  // ⚠️ 안드로이드 Alert 는 버튼을 3개까지만 그린다(RN Alert.js 가 slice(0, 3)) — 언어 3개 + 취소면
-  //    취소가 조용히 잘려 뒤로가기로만 빠져나갈 수 있다. 안드로이드는 취소 버튼을 빼고
-  //    바깥 탭으로 닫히게(cancelable) 한다. iOS 는 버튼 수 제한이 없어 취소를 그대로 둔다.
-  //    언어가 4개 이상 되면 Alert 로는 안 되니 그때는 바텀시트로 바꿀 것.
-  const handleLanguageChange = () => {
-    const langButtons = SELECTABLE_LANGUAGES.map((l) => ({ text: LANGUAGE_LABELS[l], onPress: () => setLanguage(l) }));
-    const cancelButton = { text: t('common.cancel'), style: 'cancel' as const };
-    const buttons = Platform.OS === 'android' && langButtons.length >= 3 ? langButtons : [...langButtons, cancelButton];
-    Alert.alert(t('settings.languageChange'), t('settings.languageSelectMsg'), buttons, { cancelable: true });
-  };
+  // 언어 전환 — 목록·표기는 i18n/index.ts 가 단일 출처이고, 화면은 LanguageSheet 가 그린다.
+  // ⚠️ Alert 로 되돌리지 말 것: 안드로이드 Alert 는 버튼을 3개까지만 그려서
+  //    (RN Alert.js 의 `buttons.slice(0, 3)`) 언어 4개 + 취소가 담기지 않는다.
+  const handleLanguageChange = () => setLanguageSheetVisible(true);
 
   return (
     <SafeAreaView style={st.safeArea}>
@@ -604,6 +597,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
       {/* 거주 지역(시·도) 설정 — '현재 위치로 설정'(주) / '직접 선택'(보조) */}
       <HomeRegionSheet visible={regionSheetVisible} onClose={() => setRegionSheetVisible(false)} />
+
+      {/* 언어 선택 — 안드로이드 Alert 3버튼 제한 때문에 바텀시트다(LanguageSheet 주석 참고) */}
+      <LanguageSheet
+        visible={languageSheetVisible}
+        current={language}
+        onSelect={setLanguage}
+        onClose={() => setLanguageSheetVisible(false)}
+      />
 
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
       <Modal

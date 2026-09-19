@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
 import { visibleNotices, latestPublishedAt, type Notice } from '../utils/noticeFeed';
-import { isKoreanLang, isJapaneseLang } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from '../utils/langKind';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 설정 > 공지사항 — 운영자 공지 목록.
@@ -91,14 +91,15 @@ export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notic
 }
 
 // 게시일 표기 — 로케일 차이로 깨지지 않게 직접 조립한다.
-// 날짜는 언어마다 관용 표기가 달라 여기만 3분기다(ko/ja는 각자 표기, 나머지는 숫자 점 표기).
+// 날짜는 언어마다 관용 표기가 달라 여기만 4분기다(ko/ja/zh-Hant는 각자 표기, 나머지는 숫자 점 표기).
 function formatDate(ms: number, lang: string): string {
   const d = new Date(ms);
   const y = d.getFullYear();
   const m = d.getMonth() + 1;
   const day = d.getDate();
   if (isKoreanLang(lang)) return `${y}년 ${m}월 ${day}일`;
-  if (isJapaneseLang(lang)) return `${y}年${m}月${day}日`; // 일본어는 사이를 띄우지 않는다
+  // 일본어·번체 중국어는 표기가 같다(사이를 띄우지 않는다 — zh-Hant.STYLE.md 2절의 날짜 예외).
+  if (isJapaneseLang(lang) || isTraditionalChineseLang(lang)) return `${y}年${m}月${day}日`;
   return `${y}.${String(m).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
 }
 

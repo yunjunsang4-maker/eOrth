@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import type { TravelRecord } from './recordStore';
 import type { SharedRecord, Message, Friend } from './dmTypes';
-import { isKoreanLang, isJapaneseLang } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from '../utils/langKind';
 
 /**
  * 메시지에 저장되는 시각 문자열.
@@ -20,9 +20,11 @@ export function nowTimeString(d: Date = new Date(), lang: string = i18n.language
   const hour = d.getHours();
   const min = String(d.getMinutes()).padStart(2, '0');
   const h12 = hour % 12 || 12;
-  // 오전/오후 위치가 언어마다 다르다: ko·ja는 앞, 나머지(en 계열 포함)는 뒤.
+  // 오전/오후 위치가 언어마다 다르다: ko·ja·zh-Hant는 앞, 나머지(en 계열 포함)는 뒤.
   if (isKoreanLang(lang)) return `${hour < 12 ? '오전' : '오후'} ${h12}:${min}`;
   if (isJapaneseLang(lang)) return `${hour < 12 ? '午前' : '午後'} ${h12}:${min}`; // 구분은 반각 공백 하나
+  // 번체 중국어는 글자만 다르고 자리·공백은 ja와 같다(zh-Hant.STYLE.md 2절 「上午 9:05」).
+  if (isTraditionalChineseLang(lang)) return `${hour < 12 ? '上午' : '下午'} ${h12}:${min}`;
   return `${h12}:${min} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 

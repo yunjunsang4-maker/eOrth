@@ -20,3 +20,21 @@ export const isKoreanLang = (lang?: string | null): boolean =>
  */
 export const isJapaneseLang = (lang?: string | null): boolean =>
   !!lang && String(lang).toLowerCase().startsWith('ja');
+
+/**
+ * 번체 중국어(대만·홍콩·마카오) 계열인지. `'zh-Hant'`가 앱의 언어 코드이고,
+ * 기기·서버에서 `'zh-TW'`/`'zh-HK'`/`'zh-Hant-TW'` 같은 변형이 들어와도 같게 본다.
+ *
+ * ⚠️ 간체(`'zh'`·`'zh-CN'`·`'zh-Hans'`·`'zh-SG'`)는 **false**다. 번체와 간체는 글자와 어휘가
+ *    모두 달라 별도 언어로 다루며(zh-Hant.STYLE.md 2절), 간체는 아직 지원하지 않는다.
+ *    여기서 간체까지 true 로 잡으면 간체 사용자에게 번체가 나간다.
+ *    지역 태그 없는 맨 `'zh'` 도 번체로 단정할 수 없어 false 쪽(= 영어 경로)에 둔다.
+ */
+export const isTraditionalChineseLang = (lang?: string | null): boolean => {
+  if (!lang) return false;
+  const l = String(lang).toLowerCase();
+  if (!l.startsWith('zh')) return false;
+  if (l.includes('hans')) return false; // zh-Hans, zh-Hans-CN — 간체 명시
+  // 번체를 쓰는 지역: 대만·홍콩·마카오. 'zh-Hant' 는 스크립트 태그로 직접 번체를 지정한다.
+  return l.includes('hant') || /\b(tw|hk|mo)\b/.test(l.replace(/-/g, ' '));
+};

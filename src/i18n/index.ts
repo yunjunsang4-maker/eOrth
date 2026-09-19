@@ -6,34 +6,45 @@ import { getLocales } from 'expo-localization';
 import ko from './locales/ko';
 import en from './locales/en';
 import ja from './locales/ja';
+import zhHant from './locales/zh-Hant';
 import { COUNTRIES } from '../constants/countries';
 
-export type AppLanguage = 'ko' | 'en' | 'ja';
+export type AppLanguage = 'ko' | 'en' | 'ja' | 'zh-Hant';
 
-// ja.ts 는 `DeepPartial<typeof ko>` 라 값이 `string | undefined` 인 선택적 키를 갖는다.
+// ja.ts / zh-Hant.ts 는 `DeepPartial<typeof ko>` 라 값이 `string | undefined` 인 선택적 키를 갖는다.
 // i18next 의 ResourceKey 는 undefined 를 받지 않아 그대로는 안 들어간다. resources 전체를
 // i18next `Resource` 로 캐스팅하면 ko/en 의 키 타입까지 같이 풀려 오타를 못 잡으므로,
-// **ja 한 칸만** 완역본 모양으로 단언한다(빠진 키는 fallbackLng 가 런타임에 메운다).
+// **부분 번역 언어 칸만** 완역본 모양으로 단언한다(빠진 키는 fallbackLng 가 런타임에 메운다).
+//
+// ⚠️ 'zh-Hant' 키는 이 철자 그대로 써야 한다. i18next 는 '-' 가 든 코드를
+//    `Intl.getCanonicalLocales()` 로 정규화하는데(languageUtils.formatLanguageCode),
+//    'zh-Hant' 의 정본 표기가 정확히 'zh-Hant' 라 소문자화·변형이 일어나지 않는다
+//    (lowerCaseLng/cleanCode 를 켜지 않았다). 노드에서 실측 확인함.
 const resources = {
   ko: { translation: ko },
   en: { translation: en },
   ja: { translation: ja as typeof ko },
+  'zh-Hant': { translation: zhHant as typeof ko },
 } as const;
 
-// 설정 화면에 노출할 언어 목록. ja 는 아직 부분 번역이라 정식 빌드에서는 감춘다
-// (완역 + 검수가 끝나면 이 __DEV__ 게이트를 지운다. 설정 화면의 Alert 는 안드로이드 3버튼 제한을
-//  이미 처리했지만, 4번째 언어부터는 Alert 가 아니라 바텀시트가 필요하다).
-// 게이트는 "고를 수 있는가"만 막는다 — 이미 ja 로 저장된 값·백업 복원은 정식에서도 살아난다.
+// 설정 화면에 노출할 언어 목록. ja·zh-Hant 는 아직 부분 번역이라 정식 빌드에서는 감춘다
+// (완역 + 검수가 끝나면 이 __DEV__ 게이트를 지운다).
+// 게이트는 "고를 수 있는가"만 막는다 — 이미 저장된 값·백업 복원은 정식에서도 살아난다.
+// 언어 선택 UI 는 components/LanguageSheet.tsx(바텀시트)다. 안드로이드 Alert 는 버튼을
+// 3개까지만 그려서(RN Alert.js 의 slice(0, 3)) 언어 4개 + 취소를 담을 수 없었다.
 export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
   ko: '한국어',
   en: 'English',
   ja: '日本語',
+  'zh-Hant': '繁體中文',
 }; // 각 언어를 자기 언어로 적는 것이 관례다(번역하지 말 것)
 
-export const SELECTABLE_LANGUAGES: AppLanguage[] = __DEV__ ? ['ko', 'en', 'ja'] : ['ko', 'en'];
+export const SELECTABLE_LANGUAGES: AppLanguage[] = __DEV__
+  ? ['ko', 'en', 'ja', 'zh-Hant']
+  : ['ko', 'en'];
 
 // 기기 언어 기반 기본 언어 — 한국어 기기만 ko, 그 외는 전부 en (사용자 확정 2026-07-30).
-// ⚠️ 일본어 기기도 아직 en 이다 — ja 완역 전까지는 기기 언어로 ja 를 자동 선택하지 않는다.
+// ⚠️ 일본어·번체 중국어 기기도 아직 en 이다 — 완역 전까지는 기기 언어로 자동 선택하지 않는다.
 // settingsStore의 첫 실행 기본값도 이 값을 쓴다. 저장된 언어가 있으면 hydrate가 덮으므로
 // 사용자가 직접 고른 언어는 기기 언어와 무관하게 유지된다.
 export const DEVICE_DEFAULT_LANGUAGE: AppLanguage =
@@ -65,9 +76,9 @@ if (!i18n.isInitialized) {
     // "새 기능에 영어 키를 빠뜨리면 영어 UI에 한글이 샌다"는 위험은 런타임 폴백이 아니라
     // 빌드 시점 검사로 막는다 → src/i18n/localeParity.verify.ts (npm test 에 포함).
     //
-    // ja 는 부분 번역이라 en → ko 순으로 떨어진다(없는 키는 영어, 영어에도 없으면 한국어).
+    // ja·zh-Hant 는 부분 번역이라 en → ko 순으로 떨어진다(없는 키는 영어, 영어에도 없으면 한국어).
     // default 가 'ko' 로 남아 있으므로 위 badge 폴백 논리는 그대로 성립한다.
-    fallbackLng: { ja: ['en', 'ko'], default: ['ko'] },
+    fallbackLng: { ja: ['en', 'ko'], 'zh-Hant': ['en', 'ko'], default: ['ko'] },
     interpolation: { escapeValue: false }, // RN은 XSS 이스케이프 불필요
     returnNull: false,
     compatibilityJSON: 'v4',

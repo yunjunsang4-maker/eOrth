@@ -524,8 +524,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.language')}</Text>
             {/* 목록·표기는 i18n/index.ts 단일 출처. 여기에 손으로 적어 두면 언어를 더할 때
-                설정 화면과 어긋난다(정식 빌드에서 ja 를 감추는 게이트도 그쪽에 있다).
-                languageBtn 은 flex:1 이라 버튼이 셋으로 늘어도 줄이 알아서 3등분된다. */}
+                설정 화면과 어긋난다(정식 빌드에서 부분 번역 언어를 감추는 게이트도 그쪽에 있다).
+                ⚠️ 한 줄 n등분(flex:1)은 4개부터 깨진다 — 최장 라벨이 '繁體中文'(CJK 4자 ≈ 60px)인데
+                   4등분 내부 폭은 320dp 기기에서 57px, 280dp에서 47px 밖에 안 된다.
+                   그래서 languageBtn 을 flexBasis 47% + wrap 으로 흘려 2개씩 줄바꿈시킨다
+                   (언어 2개인 정식 빌드에서는 지금처럼 한 줄 2등분 그대로다). */}
             <View style={styles.languageRow}>
               {SELECTABLE_LANGUAGES.map((value) => {
                 const active = language === value;
@@ -966,10 +969,14 @@ const styles = StyleSheet.create({
   // 언어 선택
   languageRow: {
     flexDirection: 'row',
-    gap: Spacing[3],
+    flexWrap: 'wrap', // 언어 4개부터 두 줄로 흐른다(위 주석의 폭 계산)
+    gap: Spacing[3], // RN의 gap은 행·열 간격 모두에 걸려 줄바꿈 간격도 같이 잡힌다
   },
   languageBtn: {
-    flex: 1,
+    // flex:1 이 아니라 basis 47% — 47%×3 > 100% 이라 한 줄에 최대 2개만 들어가고,
+    // grow:1 이 남는 폭을 채워 두 개가 정확히 반반이 된다.
+    flexGrow: 1,
+    flexBasis: '47%',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
