@@ -5,7 +5,7 @@ import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
-import { DEVICE_DEFAULT_LANGUAGE } from '../i18n';
+import { DEVICE_DEFAULT_LANGUAGE, DEVICE_DEFAULT_HOME_COUNTRY } from '../i18n';
 import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
@@ -306,7 +306,8 @@ const SettingsContext = createContext<SettingsContextType | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [showCounts, setShowCounts] = useState(true);
-  const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
+  // 기본 거주국: 기기 지역(ISO2)이 국가 목록에 있으면 그 나라, 아니면 KR — 저장된 값이 있으면 hydrate가 덮는다
+  const [homeCountryCode, setHomeCountryCode] = useState(DEVICE_DEFAULT_HOME_COUNTRY);
   const [homeRegion, setHomeRegion] = useState<HomeRegionPref | null>(null); // 거주지 시·도(미설정)
   const [homeRegionPromptShown, setHomeRegionPromptShown] = useState(false); // 제안 시트 1회 노출용
   // 거주 국가가 바뀌면 거주 지역은 의미를 잃는다 — KR의 '경기'는 JP에 없는 지역이고,
@@ -330,7 +331,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpMethod, setSignUpMethod] = useState<SignUpMethod>('email');
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
-  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
+  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState(DEVICE_DEFAULT_HOME_COUNTRY); // 여행국가: 기본값은 거주국가와 동일 → 실제 여행 감지 전엔 거주국가 표시
   const [verifiedNaverBlogIds, setVerifiedNaverBlogIds] = useState<string[]>([]); // 소유권 인증된 네이버 블로그 ID
   const addVerifiedNaverBlogId = useCallback((blogId: string) => {
     const id = blogId.trim().toLowerCase();
@@ -706,7 +707,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const resetSettings = (opts?: { keepIdentity?: boolean }) => {
     const keepIdentity = opts?.keepIdentity === true;
     setShowCounts(true);
-    setHomeCountryCode('KR');
+    setHomeCountryCode(DEVICE_DEFAULT_HOME_COUNTRY);
     setHomeRegion(null);
     // 제안 시트 1회 플래그도 되돌린다 — 거주 지역이 비워졌으니 다시 물어봐야 한다
     setHomeRegionPromptShown(false);
@@ -724,7 +725,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail('user@eorth.app');
     }
     setArrivalDetect(true);
-    setCurrentVisitedCountryCode('KR');
+    setCurrentVisitedCountryCode(DEVICE_DEFAULT_HOME_COUNTRY);
     setVerifiedNaverBlogIds([]);
     setGlobeVariant('aurora');
     applyIconPalette('aurora'); // 아이콘 팔레트도 함께 복원 (원시 setter라 테마드 경로를 안 타므로 직접)

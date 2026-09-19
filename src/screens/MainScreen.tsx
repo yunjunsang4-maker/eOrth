@@ -69,7 +69,7 @@ import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
-import { getCountryRegionOptions } from '../constants/homeRegions';
+import { getCountryRegionOptions, ISO2_TO_GEO } from '../constants/homeRegions';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
 import type { RegionGlobalMode } from '../utils/regionModeMigration';
 import { regionNameByCode, totalRegionCount, visitedRegionCount } from '../utils/regionGeoLookup';
@@ -714,6 +714,7 @@ export default function MainScreen({ navigation, route }: Props) {
     skinColorStore, setSkinColorStore,
     tutorialsSeen, markTutorialSeen,
     handle,
+    homeCountryCode,
   } = useSettings();
 
   // 트리거 2 — 계정당 1회: 메인 탭에 처음 들어왔을 때 자동 시작.
@@ -921,7 +922,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 순서로 보충한다(이미 즐겨찾기에 든 나라는 중복 제외). 즐겨찾기가 하나도 없으면 결과가
   // 도입 전 `REGION_COUNTRIES.slice(0, 7)`과 정확히 같다 — 기본 동작을 바꾸지 않기 위한 설계다.
   // 8개 이상 켜는 것 자체는 막지 않고(사용자 확정), 앞 7개만 여기 나온 뒤 시트가 그 사실을 알린다.
-  // 거주국(KOR) 특별 취급 없음.
+  // 거주국은 **보충 목록의 첫 자리**일 뿐이다 — 즐겨찾기가 여전히 앞을 채우고, 거주국이
+  // 즐겨찾기에 이미 들어 있으면 여기서는 아무 일도 안 일어난다. REGION_COUNTRIES 자체의
+  // 순서(KOR 맨 앞)는 건드리지 않는다(regionGeoSync.verify.ts가 코드 집합을 대조한다).
   const gridCountries = useMemo(() => {
     const byCode = new Map(REGION_COUNTRIES.map((c) => [c.code, c]));
     // 저장본에 낯선 코드가 섞여 있어도(구·신 버전 백업 교차) 조용히 건너뛴다
@@ -929,8 +932,14 @@ export default function MainScreen({ navigation, route }: Props) {
       .map((code) => byCode.get(code))
       .filter((c): c is (typeof REGION_COUNTRIES)[number] => c != null);
     const picked = new Set(favs.map((c) => c.code));
-    return [...favs, ...REGION_COUNTRIES.filter((c) => !picked.has(c.code))].slice(0, 7);
-  }, [regionFavoriteCodes]);
+    const rest = REGION_COUNTRIES.filter((c) => !picked.has(c.code));
+    // 대륙 국가 목록의 키는 ISO3라 거주국(ISO2)을 변환해서 맞춘다. 변환표에 없는 나라(대륙
+    // 지도 미지원국)면 -1이라 기본 순서 그대로다.
+    const homeGeo = homeCountryCode ? ISO2_TO_GEO[homeCountryCode.toUpperCase()] : undefined;
+    const hi = homeGeo ? rest.findIndex((c) => c.code === homeGeo) : -1;
+    const restHomeFirst = hi > 0 ? [rest[hi], ...rest.slice(0, hi), ...rest.slice(hi + 1)] : rest;
+    return [...favs, ...restHomeFirst].slice(0, 7);
+  }, [regionFavoriteCodes, homeCountryCode]);
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
     () => visitedCountries.map(c => {

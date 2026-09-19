@@ -1763,9 +1763,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
-            <Text style={st.naverBtnText}>N</Text>
-          </TouchableOpacity>
+          {/* 네이버 블로그 가져오기 — 한국 전용 서비스라 거주국이 KR일 때만 노출한다.
+              언어(ko)가 아니라 거주국 기준인 이유: 한국 거주 외국인은 앱을 영어로 쓰면서도
+              네이버 블로그를 쓰고, 반대로 해외 거주 한국인은 앱이 한국어여도 대개 안 쓴다. */}
+          {homeCountryCode?.toUpperCase() === 'KR' && (
+            <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
+              <Text style={st.naverBtnText}>N</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 

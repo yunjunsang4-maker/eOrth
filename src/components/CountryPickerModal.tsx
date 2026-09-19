@@ -3,7 +3,8 @@ import { View, Modal, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Text, TextInput } from '../ui/Text';
-import { COUNTRIES, type Country } from '../constants/countries';
+import { COUNTRIES, countriesHomeFirst, type Country } from '../constants/countries';
+import { useSettings } from '../store/settingsStore';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { STAGE_MAX_W } from '../utils/stage';
 import { select } from '../utils/haptics';
@@ -42,16 +43,23 @@ export default function CountryPickerModal({
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { homeCountryCode } = useSettings();
   const [search, setSearch] = useState('');
 
   const data = useMemo(() => {
     const ex = new Set((excludeCodes ?? []).map((c) => c.toUpperCase()));
-    const base = ex.size ? COUNTRIES.filter((c) => !ex.has(countryCodeOf(c))) : COUNTRIES;
+    // 거주국을 맨 앞으로 — COUNTRIES 순서는 '한국인의 여행 빈도순' 고정이라 해외 사용자는
+    // 정작 자기 나라가 목록 한참 아래에 있었다(체류국 선택처럼 거주국이 제외된 목록이면
+    // 해당 항목이 없어 아무 일도 안 일어난다).
+    const base = countriesHomeFirst(
+      ex.size ? COUNTRIES.filter((c) => !ex.has(countryCodeOf(c))) : COUNTRIES,
+      homeCountryCode,
+    );
     const q = search.trim();
     if (!q) return base;
     // 한글 이름과 term(코드+영문명) 양쪽으로 찾는다 — 'kr'·'korea'·'대한'이 모두 걸린다
     return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()));
-  }, [search, excludeCodes]);
+  }, [search, excludeCodes, homeCountryCode]);
 
   const close = () => { setSearch(''); onClose(); };
 

@@ -203,6 +203,19 @@ export const COUNTRIES: Country[] = [
   { term: 'nr 나우루 nauru', flag: '🇳🇷', name: '나우루', continent: '오세아니아' },
 ];
 
+// ─── 거주국 우선 정렬 ───
+// COUNTRIES의 순서는 '한국인의 여행 빈도순'으로 고정돼 있어, 해외 거주자는 국가 선택 목록에서
+// 자기 나라를 한참 스크롤해야 찾았다. 데이터 순서(다른 소비처·검증이 기대하는 값)는 그대로 두고
+// 소비처에서 거주국 하나만 맨 앞으로 끌어올린다.
+// 이 파일은 expo 모듈을 import하지 않는 순수 상수 파일이라, 거주국 값은 호출부가 넘긴다.
+export const countriesHomeFirst = (list: Country[], homeCode?: string | null): Country[] => {
+  const code = homeCode?.trim().toUpperCase();
+  if (!code) return list;
+  const i = list.findIndex((c) => c.term.split(' ')[0].toUpperCase() === code);
+  if (i <= 0) return list; // 목록에 없거나(-1) 이미 맨 앞(0)이면 원본 그대로 — 새 배열도 안 만든다
+  return [list[i], ...list.slice(0, i), ...list.slice(i + 1)];
+};
+
 // ─── 국가 한글명 → 영어 표기 (블로그 카드 등 영문 라벨용) ───
 // term은 "코드 한글명 영문명 [검색 별칭...]" 형태 — 별칭이 섞인 국가는 예외 표로 정확한 표기를 지정
 const EN_NAME_OVERRIDES: Record<string, string> = {

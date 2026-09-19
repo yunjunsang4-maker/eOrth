@@ -17,6 +17,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { NUDGE_KEYS } from '../store/persist';
 import { COUNTRIES } from '../constants/countries';
+import { DEVICE_DEFAULT_HOME_COUNTRY } from '../i18n';
 
 // 안내 1회 플래그 — 문자열 자체는 store/persist.ts의 NUDGE_KEYS가 유일한 정의처다.
 // 여기 복붙해 두면 clearPersistedStores(데이터 초기화·계정 전환)가 지우는 키와 갈라져
@@ -39,7 +40,7 @@ export default function ReturnDetectNudge() {
     if (notifPrefs.returnDetect) return; // 이미 켜짐
     if (triedRef.current) return; // 이번 세션 이미 시도
 
-    const home = (homeCountryCode || 'KR').toUpperCase();
+    const home = (homeCountryCode || DEVICE_DEFAULT_HOME_COUNTRY).toUpperCase();
     const hasForeign = records.some((r) => {
       if (r.isMyPost === false) return false; // 타인 기록 제외
       const code = codeOf(r.countryName);

@@ -2,6 +2,7 @@
 // 로직/그룹핑은 항상 한글 원본을 쓰고, 표시 지점에서만 이 헬퍼를 통과시킨다.
 import { KO_TO_EN } from '../screens/MainScreen';
 import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
+import { countryEnglishName } from '../constants/countries';
 
 // 대륙 한글명 → 영문 (국가 선택 목록의 대륙 그룹 헤더 등). CONTINENT_ORDER의 6개 + 통합 '아메리카' 포함.
 const CONTINENT_EN: Record<string, string> = {
@@ -21,7 +22,11 @@ export function countryLabel(ko: string | undefined | null, lang: string): strin
   if (!ko) return '';
   if (lang !== 'en') return ko;
   if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
-  return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
+  if (ko === '대한민국') return 'South Korea';
+  // KO_TO_EN(지구본 GeoJSON 이름 브리지)에 없어도 COUNTRIES의 term에서 영문을 뽑는다 —
+  // 두 표가 어긋난 국가가 생겨도 영어 모드에 한글 국가명이 그대로 새지 않게 하는 안전망.
+  // countryEnglishName은 COUNTRIES에 없는 값이면 입력을 그대로 돌려주므로 마지막 폴백은 ko와 같다.
+  return KO_TO_EN[ko] ?? countryEnglishName(ko);
 }
 
 /**

@@ -48,6 +48,7 @@ import { minimumSignupAge } from '../constants/minimumAge';
 // 국가 코드 추출은 공용 것을 쓴다 — 같은 함수를 화면마다 다시 정의하면
 // 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
+import { DEVICE_DEFAULT_HOME_COUNTRY } from '../i18n';
 
 // 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
 function GlassButton({ label, onPress, disabled, loading, style }: {
@@ -106,8 +107,9 @@ const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 // 짧으면 글자마다 요청이 나가고, 길면 결과가 늦어 "확인 중"만 오래 보인다.
 const HANDLE_CHECK_DEBOUNCE_MS = 500;
 
+// 기기 지역 기반 기본 거주국 — 'KR' 고정이면 해외 사용자는 온보딩 첫 화면부터 남의 나라를 본다
 const DEFAULT_COUNTRY: Country =
-  COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
+  COUNTRIES.find((c) => codeOf(c) === DEVICE_DEFAULT_HOME_COUNTRY) ?? COUNTRIES[0];
 
 const STAY_TYPES: { value: StayType; key: string }[] = [
   { value: 'exchange', key: 'stay.typeExchange' },

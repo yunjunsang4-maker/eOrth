@@ -5,6 +5,7 @@ import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
 import ko from './locales/ko';
 import en from './locales/en';
+import { COUNTRIES } from '../constants/countries';
 
 export type AppLanguage = 'ko' | 'en';
 
@@ -18,6 +19,20 @@ const resources = {
 // 사용자가 직접 고른 언어는 기기 언어와 무관하게 유지된다.
 export const DEVICE_DEFAULT_LANGUAGE: AppLanguage =
   getLocales()[0]?.languageCode === 'ko' ? 'ko' : 'en';
+
+// 기기 지역(regionCode, ISO2) 기반 기본 거주국 — 'KR' 하드코딩을 대체한다.
+// 언어와 같은 규칙: settingsStore의 첫 실행 기본값이며, **저장본이 있으면 hydrate가 덮는다**.
+// 목록에 있는 코드일 때만 채택하는 이유: regionCode에는 ISO2가 아닌 값(EU 등)이 오거나 아예
+// 없는 기기가 있고, COUNTRIES에 없는 코드를 거주국으로 넣으면 국가명·국기·통화 조회가 전부
+// 빈손이 되면서 화면이 조용히 비어 버린다.
+// 폴백이 'KR'인 이유: 거주국은 통화 기본값·귀국 감지·'일상' 링 판정의 기준이라 비워 둘 수
+// 없고, 현재 사용자 기반이 한국이라 가장 덜 틀리는 값이다(사용자가 온보딩에서 바로 바꾼다).
+export const DEVICE_DEFAULT_HOME_COUNTRY: string = (() => {
+  const region = getLocales()[0]?.regionCode?.toUpperCase();
+  if (!region) return 'KR';
+  // COUNTRIES의 코드는 term의 첫 토큰(대문자화) — constants/countries.ts 규약
+  return COUNTRIES.some((c) => c.term.split(' ')[0].toUpperCase() === region) ? region : 'KR';
+})();
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
