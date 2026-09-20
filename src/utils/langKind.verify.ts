@@ -4,7 +4,7 @@
 // 이 두 함수가 뒤집히면 국가명·지역명·프레임명·약관 링크가 통째로 반대 언어로 나간다.
 // 특히 널 계열이 ko로 떨어지는 규약이 중요하다 — i18next 초기화 전에는 language가
 // undefined이고, 그때 영어로 떨어지면 한국어 사용자가 첫 프레임에 영문을 본다.
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from './langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from './langKind';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -72,10 +72,43 @@ eq(isTraditionalChineseLang(''), false, 'isTraditionalChineseLang: 빈 문자열
 eq(isTraditionalChineseLang(undefined), false, 'isTraditionalChineseLang: undefined → false');
 eq(isTraditionalChineseLang(null), false, 'isTraditionalChineseLang: null → false');
 
-// 세 함수가 동시에 true인 값은 없어야 한다(4분기 코드의 전제)
-for (const l of ['ko', 'ko-KR', 'en', 'ja', 'ja-JP', 'zh-Hant', 'zh-TW', 'zh-CN', '', 'fr']) {
-  const hits = [isKoreanLang(l), isJapaneseLang(l), isTraditionalChineseLang(l)].filter(Boolean).length;
-  eq(hits <= 1, true, `배타성: '${l}'은 ko·ja·zh-Hant 중 둘 이상 참이 아님`);
+
+// ─── spanishVariant ───
+// 앱의 두 언어 코드. 이 둘이 뒤집히면 스페인 사용자가 12시간 표기를, 중남미 사용자가 24시간을 본다
+eq(spanishVariant('es-ES'), 'ES', "spanishVariant: es-ES → 'ES' (앱 언어 코드 · 스페인식)");
+eq(spanishVariant('es-419'), '419', "spanishVariant: es-419 → '419' (앱 언어 코드 · 중남미 중립형)");
+// 표기 흔들림 — 저장본·서버 값이 소문자/대문자로 올 수 있다
+eq(spanishVariant('es-es'), 'ES', "spanishVariant: es-es → 'ES' (소문자 흔들림)");
+eq(spanishVariant('ES-ES'), 'ES', "spanishVariant: ES-ES → 'ES' (대문자 흔들림)");
+eq(spanishVariant('ES-419'), '419', "spanishVariant: ES-419 → '419' (대문자 흔들림)");
+// 스크립트 서브태그가 끼어도 지역이 ES 면 스페인식
+eq(spanishVariant('es-Latn-ES'), 'ES', "spanishVariant: es-Latn-ES → 'ES' (스크립트 끼움)");
+
+// ⚠️ 기본값은 '419'다 — es.ts(중남미 중립형)가 공통 기반이라 리소스 계층과 같은 방향이다.
+// 여기가 'ES'로 뒤집히면 지역 없는 'es' 사용자 전원이 24시간 표기를 본다
+eq(spanishVariant('es'), '419', "spanishVariant: es → '419' (지역 없음 = 공통 기반)");
+eq(spanishVariant('es-MX'), '419', "spanishVariant: es-MX → '419' (멕시코)");
+eq(spanishVariant('es-AR'), '419', "spanishVariant: es-AR → '419' (아르헨티나)");
+eq(spanishVariant('es-US'), '419', "spanishVariant: es-US → '419' (미국 내 스페인어)");
+
+// 스페인어가 아니면 null. 기본값('419')으로 떨어지면 영어 사용자가 스페인어 표기를 본다
+eq(spanishVariant('ko'), null, 'spanishVariant: ko → null');
+eq(spanishVariant('en'), null, 'spanishVariant: en → null');
+eq(spanishVariant('en-ES'), null, 'spanishVariant: en-ES → null (스페인에서 쓰는 영어)');
+// 첫 서브태그가 정확히 'es'일 때만 — startsWith('es')로 적으면 이것들이 스페인어로 잡힌다
+eq(spanishVariant('est'), null, "spanishVariant: est → null (startsWith('es') 오탐 방지)");
+eq(spanishVariant('eo'), null, 'spanishVariant: eo → null (에스페란토)');
+// 널 계열 — ko 기본이므로 스페인어가 아니다(isJapaneseLang 과 같은 쪽)
+eq(spanishVariant(''), null, 'spanishVariant: 빈 문자열 → null');
+eq(spanishVariant(undefined), null, 'spanishVariant: undefined → null');
+eq(spanishVariant(null), null, 'spanishVariant: null → null');
+
+// 네 판정이 동시에 걸리는 값은 없어야 한다(다분기 코드의 전제).
+// spanishVariant 는 boolean 이 아니라 null 여부로 센다.
+for (const l of ['ko', 'ko-KR', 'en', 'ja', 'ja-JP', 'zh-Hant', 'zh-TW', 'zh-CN', 'es-419', 'es-ES', '', 'fr']) {
+  const hits = [isKoreanLang(l), isJapaneseLang(l), isTraditionalChineseLang(l), spanishVariant(l) !== null]
+    .filter(Boolean).length;
+  eq(hits <= 1, true, `배타성: '${l}'은 ko·ja·zh-Hant·es 중 둘 이상 참이 아님`);
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

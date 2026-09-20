@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -37,7 +39,20 @@ export default function LanguageSheet({
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  const { height: winH } = useWindowDimensions();
   const translateY = useRef(new Animated.Value(500)).current;
+
+  // 옵션 목록 높이 상한 — 언어가 6개가 되면서 작은 기기에서 시트가 화면을 넘길 수 있다.
+  // 실측 계산(행 하나 = 위아래 17 + 글자줄): 640dp 기기 + 안드로이드 글꼴 배율 상한 1.2 +
+  // 3버튼 내비에서 총 높이가 ≈635dp라 여유가 5dp까지 줄고, **iOS 는 글꼴 배율 상한이 없어서**
+  // (ui/Text.tsx 의 FONT_SCALE_CAP 은 안드로이드 전용) 큰 글씨 설정에서는 실제로 넘친다.
+  // 넘치면 취소 버튼과 마지막 언어에 손이 닿지 않는다 — 목록만 스크롤시켜 막는다.
+  // 상한 밖일 때만 스크롤이 생기므로 평소에는 지금과 똑같이 전부 펼쳐진다.
+  //
+  // ⚠️ `maxHeight: '55%'` 같은 퍼센트는 여기서 안 먹는다 — 부모(optionsCard)의 높이가 auto 라
+  //    Yoga 가 기준으로 삼을 확정 높이가 없다(다른 시트들이 % 를 시트 컨테이너에 주는 이유).
+  const CHROME_H = 250; // 핸들 16 + 머리글 ~115 + 카드 아래 여백 10 + 취소 카드 ~61 + 하단 여백·여유 48
+  const optionsMaxH = Math.max(180, winH - insets.top - insets.bottom - CHROME_H);
 
   useEffect(() => {
     if (visible) {
@@ -79,6 +94,7 @@ export default function LanguageSheet({
 
             {/* 저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant 등)이어도 자기 언어 행은 보여야 한다 —
                 없으면 강조도 없고 되돌아올 길도 없다. 현재 언어를 목록에 합쳐 그린다. */}
+            <ScrollView style={{ maxHeight: optionsMaxH }} bounces={false} showsVerticalScrollIndicator={false}>
             {(SELECTABLE_LANGUAGES.includes(current) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, current]).map((lang, i) => {
               const selected = lang === current;
               return (
@@ -100,6 +116,7 @@ export default function LanguageSheet({
                 </React.Fragment>
               );
             })}
+            </ScrollView>
           </View>
 
           <TouchableOpacity style={styles.cancelCard} activeOpacity={0.8} onPress={onClose} accessibilityRole="button">

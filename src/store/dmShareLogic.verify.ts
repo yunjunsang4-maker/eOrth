@@ -9,6 +9,7 @@ function assert(cond: boolean, msg: string) {
 }
 
 // nowTimeString — 언어별 오전/오후 위치가 다르다(ko·ja·zh-Hant: 앞, 그 외: 뒤)
+// 스페인어는 한 발 더 나가서 **변형끼리 시간 체계가 다르다**(es-419 12시간 / es-ES 24시간)
 {
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'ko') === '오전 9:05', 'ko 오전 시간 포맷');
   assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'ko') === '오후 2:30', 'ko 오후 시간 포맷');
@@ -37,6 +38,24 @@ function assert(cond: boolean, msg: string) {
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'zh-TW') === '上午 9:05', 'zh-TW 지역 태그도 번체 포맷');
   // ⚠️ 간체(zh-CN)는 아직 미지원이라 영어로 떨어진다 — 번체를 내보내면 안 된다
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'zh-CN') === '9:05 AM', 'zh-CN(간체) → 영어 폴백');
+
+  // es-419(중남미)는 12시간 + RAE 표기 「a. m.」 — 소문자, 점 둘, a 와 m 사이 반각 공백 하나.
+  // 이 공백이나 점이 빠지면 RAE 표기가 아니라 영어식 축약이 된다(es.STYLE.md 2절).
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'es-419') === '9:05 a. m.', 'es-419 오전 — RAE 표기 a. m.');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es-419') === '2:30 p. m.', 'es-419 오후 — 12시간제로 접힘');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'es-419') === '12:00 a. m.', 'es-419 자정 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'es-419') === '12:00 p. m.', 'es-419 정오 12시');
+
+  // es-ES(스페인)는 24시간 + 0 패딩 없음. 여기가 12시간으로 새면 스페인 사용자가 중남미 표기를 본다
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'es-ES') === '9:05', 'es-ES 오전 — 24시간·오전/오후 표시 없음');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es-ES') === '14:30', 'es-ES 오후 — 14시로 그대로');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'es-ES') === '0:00', 'es-ES 자정 — 0시(0 패딩 없음)');
+  assert(nowTimeString(new Date(2025, 0, 1, 12, 0), 'es-ES') === '12:00', 'es-ES 정오 12시');
+  assert(nowTimeString(new Date(2025, 0, 1, 23, 59), 'es-ES') === '23:59', 'es-ES 23시 59분');
+
+  // 지역이 스페인이 아닌/없는 es 코드는 전부 중남미 중립형으로 접힌다(es.ts가 공통 기반이라 같은 방향)
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es-MX') === '2:30 p. m.', 'es-MX → 중남미 표기');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es') === '2:30 p. m.', "지역 없는 'es' → 중남미 표기");
 
   // ⚠️ 미지의 언어는 ko가 아니라 영어로 떨어진다(2026-09 3개 국어 배선에서 뒤집힘).
   // 언어가 늘어날 때 "en이 아니면 한국어"가 일본어 사용자에게 한글을 내보냈기 때문이다.

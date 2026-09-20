@@ -7,9 +7,13 @@ import ko from './locales/ko';
 import en from './locales/en';
 import ja from './locales/ja';
 import zhHant from './locales/zh-Hant';
+import es from './locales/es';
+import esES from './locales/es-ES';
 import { COUNTRIES } from '../constants/countries';
 
-export type AppLanguage = 'ko' | 'en' | 'ja' | 'zh-Hant';
+// 사용자가 고를 수 있는 언어 코드. 스페인어만 변형이 둘이다(중남미 중립형 / 스페인식).
+// ⚠️ 'es' 자체는 여기 없다 — 리소스 키이자 두 변형의 공통 기반이고, 사용자가 고르는 코드가 아니다.
+export type AppLanguage = 'ko' | 'en' | 'ja' | 'zh-Hant' | 'es-419' | 'es-ES';
 
 // ja.ts / zh-Hant.ts 는 `DeepPartial<typeof ko>` 라 값이 `string | undefined` 인 선택적 키를 갖는다.
 // i18next 의 ResourceKey 는 undefined 를 받지 않아 그대로는 안 들어간다. resources 전체를
@@ -20,14 +24,22 @@ export type AppLanguage = 'ko' | 'en' | 'ja' | 'zh-Hant';
 //    `Intl.getCanonicalLocales()` 로 정규화하는데(languageUtils.formatLanguageCode),
 //    'zh-Hant' 의 정본 표기가 정확히 'zh-Hant' 라 소문자화·변형이 일어나지 않는다
 //    (lowerCaseLng/cleanCode 를 켜지 않았다). 노드에서 실측 확인함.
+//
+// ⚠️ 스페인어는 **리소스가 두 개뿐**이다: 공통 기반 `es` 와 스페인식 덮어쓰기 `'es-ES'`.
+//    'es-419' 리소스는 일부러 등록하지 않는다 — i18next 해석 계층이
+//    toResolveHierarchy('es-419') = ['es-419','es','en','ko'] 라(노드 실측) 리소스가 없는
+//    'es-419' 를 그냥 비껴가고 바로 기반 `es` 를 집는다. 중남미 본문을 두 곳에 복사하지 않는 방법이다.
+//    ('es-ES' 도 계층이 ['es-ES','es','en','ko'] 라 es-ES.ts 에 없는 키는 자동으로 es.ts 가 메운다.)
 const resources = {
   ko: { translation: ko },
   en: { translation: en },
   ja: { translation: ja as typeof ko },
   'zh-Hant': { translation: zhHant as typeof ko },
+  es: { translation: es as unknown as typeof ko },
+  'es-ES': { translation: esES as unknown as typeof ko },
 } as const;
 
-// 설정 화면에 노출할 언어 목록. ja·zh-Hant 는 아직 부분 번역이라 정식 빌드에서는 감춘다
+// 설정 화면에 노출할 언어 목록. ja·zh-Hant·es 2종 은 아직 부분 번역이라 정식 빌드에서는 감춘다
 // (완역 + 검수가 끝나면 이 __DEV__ 게이트를 지운다).
 // 게이트는 "고를 수 있는가"만 막는다 — 이미 저장된 값·백업 복원은 정식에서도 살아난다.
 // 언어 선택 UI 는 components/LanguageSheet.tsx(바텀시트)다. 안드로이드 Alert 는 버튼을
@@ -37,14 +49,18 @@ export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
   en: 'English',
   ja: '日本語',
   'zh-Hant': '繁體中文',
+  'es-419': 'Español (Latinoamérica)',
+  'es-ES': 'Español (España)',
 }; // 각 언어를 자기 언어로 적는 것이 관례다(번역하지 말 것)
 
 export const SELECTABLE_LANGUAGES: AppLanguage[] = __DEV__
-  ? ['ko', 'en', 'ja', 'zh-Hant']
+  ? ['ko', 'en', 'ja', 'zh-Hant', 'es-419', 'es-ES']
   : ['ko', 'en'];
 
 // 기기 언어 기반 기본 언어 — 한국어 기기만 ko, 그 외는 전부 en (사용자 확정 2026-07-30).
-// ⚠️ 일본어·번체 중국어 기기도 아직 en 이다 — 완역 전까지는 기기 언어로 자동 선택하지 않는다.
+// ⚠️ 일본어·번체 중국어·스페인어 기기도 아직 en 이다 — 완역 전까지는 기기 언어로 자동 선택하지 않는다.
+//    (켤 때는 반드시 AppLanguage 코드로 정규화할 것 — 'es'/'es-MX' 를 그대로 넣으면
+//     fallbackLng 항목이 없어 default: ['ko'] 로 떨어져 한국어가 나간다. zh-TW 때와 같은 함정.)
 // settingsStore의 첫 실행 기본값도 이 값을 쓴다. 저장된 언어가 있으면 hydrate가 덮으므로
 // 사용자가 직접 고른 언어는 기기 언어와 무관하게 유지된다.
 export const DEVICE_DEFAULT_LANGUAGE: AppLanguage =
@@ -76,9 +92,19 @@ if (!i18n.isInitialized) {
     // "새 기능에 영어 키를 빠뜨리면 영어 UI에 한글이 샌다"는 위험은 런타임 폴백이 아니라
     // 빌드 시점 검사로 막는다 → src/i18n/localeParity.verify.ts (npm test 에 포함).
     //
-    // ja·zh-Hant 는 부분 번역이라 en → ko 순으로 떨어진다(없는 키는 영어, 영어에도 없으면 한국어).
+    // ja·zh-Hant·es 계열 은 부분 번역이라 en → ko 순으로 떨어진다(없는 키는 영어, 영어에도 없으면 한국어).
     // default 가 'ko' 로 남아 있으므로 위 badge 폴백 논리는 그대로 성립한다.
-    fallbackLng: { ja: ['en', 'ko'], 'zh-Hant': ['en', 'ko'], default: ['ko'] },
+    // 'es' 는 사용자가 고르는 코드가 아니지만, 계층(es-419 → es)의 중간 단계로 실제 조회에 쓰이므로
+    // 항목을 함께 둔다 — es-419·es-ES 에는 기여하지 않는다(i18next 는 요청 코드 자신의 항목만 본다, 실측).
+    // 'es'·'es-MX' 같은 미등록 코드로 changeLanguage 되는 경우에만 default: ['ko'] 대신 영어를 준다.
+    fallbackLng: {
+      ja: ['en', 'ko'],
+      'zh-Hant': ['en', 'ko'],
+      'es-419': ['en', 'ko'],
+      'es-ES': ['en', 'ko'],
+      es: ['en', 'ko'],
+      default: ['ko'],
+    },
     interpolation: { escapeValue: false }, // RN은 XSS 이스케이프 불필요
     returnNull: false,
     compatibilityJSON: 'v4',

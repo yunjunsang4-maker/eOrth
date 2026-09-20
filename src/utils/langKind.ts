@@ -38,3 +38,24 @@ export const isTraditionalChineseLang = (lang?: string | null): boolean => {
   // 번체를 쓰는 지역: 대만·홍콩·마카오. 'zh-Hant' 는 스크립트 태그로 직접 번체를 지정한다.
   return l.includes('hant') || /\b(tw|hk|mo)\b/.test(l.replace(/-/g, ' '));
 };
+
+/**
+ * 스페인어 변형 판정 — 스페인식('ES')인가 중남미 중립형('419')인가, 아니면 스페인어가 아닌가(null).
+ *
+ * 앱의 언어 코드는 `'es-419'`(중남미 중립형)와 `'es-ES'`(스페인식) 둘이고, 리소스는
+ * 공통 기반 `es.ts` + 스페인식 덮어쓰기 `es-ES.ts` 두 벌이다(i18n/index.ts 주석).
+ * 표기가 갈리는 곳(시각 12/24시간 등)은 이 함수 하나로 판정한다.
+ *
+ * ⚠️ **기본값은 '419'다.** `'es'`·`'es-MX'`·`'es-AR'` 처럼 지역이 스페인이 아니거나 없는 코드는
+ *    전부 중남미 중립형으로 본다 — es.ts 가 공통 기반이라 그게 리소스 계층과 같은 방향이다.
+ *    ES 쪽을 기본으로 두면 중남미 사용자가 「9:05」(24시간)를 보게 된다.
+ * ⚠️ 첫 서브태그가 정확히 'es' 일 때만 스페인어다. `startsWith('es')` 로 적으면
+ *    에스페란토('eo' 는 아니지만 'est' 같은 오탈자)나 미지의 코드가 스페인어로 잡힌다.
+ */
+export const spanishVariant = (lang?: string | null): 'ES' | '419' | null => {
+  if (!lang) return null;
+  const parts = String(lang).toLowerCase().split('-');
+  if (parts[0] !== 'es') return null;
+  // 지역 서브태그가 'es'(스페인)면 스페인식. 'es-Latn-ES' 같은 스크립트 끼움도 같게 본다.
+  return parts.slice(1).includes('es') ? 'ES' : '419';
+};

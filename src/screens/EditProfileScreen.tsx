@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { warn } from '../utils/haptics';
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from '../utils/langKind';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -381,9 +381,13 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                     date: new Date(handleLastChanged! + TWO_WEEKS_MS).toLocaleDateString(
                       // 날짜만큼은 언어별 로케일이 있다(Intl이 '2026年9月19日'로 조립해 준다).
                       // zh-Hant 는 대만 표기가 기준이라 'zh-TW'(zh-Hant.STYLE.md 서두).
+                      // 스페인어는 앱 언어 코드를 그대로 Intl 에 넘긴다 — 'es-419'·'es-ES' 둘 다
+                      // 유효한 BCP-47 이고 노드 ICU 에서 「19 de septiembre de 2026」로 나오는 것을 확인했다.
                       isKoreanLang(i18n.language) ? 'ko-KR'
                         : isJapaneseLang(i18n.language) ? 'ja-JP'
                         : isTraditionalChineseLang(i18n.language) ? 'zh-TW'
+                        : spanishVariant(i18n.language) === 'ES' ? 'es-ES'
+                        : spanishVariant(i18n.language) === '419' ? 'es-419'
                         : 'en-US',
                       { year: 'numeric', month: 'long', day: 'numeric' }
                     ),

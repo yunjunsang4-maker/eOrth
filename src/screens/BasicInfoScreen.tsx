@@ -28,6 +28,7 @@ import Svg, {
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 import { IntroAmbient } from './introVisuals';
 import { useRecords } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
@@ -528,9 +529,18 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 ⚠️ 한 줄 n등분(flex:1)은 4개부터 깨진다 — 최장 라벨이 '繁體中文'(CJK 4자 ≈ 60px)인데
                    4등분 내부 폭은 320dp 기기에서 57px, 280dp에서 47px 밖에 안 된다.
                    그래서 languageBtn 을 flexBasis 47% + wrap 으로 흘려 2개씩 줄바꿈시킨다
-                   (언어 2개인 정식 빌드에서는 지금처럼 한 줄 2등분 그대로다). */}
+                   (언어 2개인 정식 빌드에서는 지금처럼 한 줄 2등분 그대로다 — 폭 수식이 같다).
+                ⚠️ 언어 6개(스페인어 2변형)가 되면서 최장 라벨이 'Español (Latinoamérica)'로 바뀌었다.
+                   15px Inter Medium 실측 173.2px 인데 2등분 내부 폭은 393dp 기기에서 164.5px,
+                   360dp 148px, 320dp 128px 라 **어디서도 안 들어간다.** 그래서 라벨에
+                   저장소 관례인 andFitText(안드로이드 전용 자동 축소·1줄 고정)를 붙인다.
+                   iOS 는 andFitText 가 no-op 이라(utils/fitText.ts: iOS 렌더링 불변 원칙)
+                   numberOfLines={1} 의 말줄임이 남는다 — 게이트 밖 언어는 정식 빌드에서 자기 버튼 하나만
+                   추가로 보이므로(아래) 최악이 3개 행이다.
+                저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant·es 등)이어도 자기 버튼은 보여야 활성 표시가
+                붙는다 — LanguageSheet 와 같은 규칙으로 목록에 합쳐 그린다. */}
             <View style={styles.languageRow}>
-              {SELECTABLE_LANGUAGES.map((value) => {
+              {(SELECTABLE_LANGUAGES.includes(language) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, language]).map((value) => {
                 const active = language === value;
                 return (
                   <TouchableOpacity
@@ -542,6 +552,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
                     <Text
                       style={[styles.languageText, active && styles.languageTextActive]}
                       numberOfLines={1}
+                      {...andFitText}
                     >
                       {LANGUAGE_LABELS[value]}
                     </Text>

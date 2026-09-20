@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import type { TravelRecord } from './recordStore';
 import type { SharedRecord, Message, Friend } from './dmTypes';
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from '../utils/langKind';
 
 /**
  * 메시지에 저장되는 시각 문자열.
@@ -25,6 +25,12 @@ export function nowTimeString(d: Date = new Date(), lang: string = i18n.language
   if (isJapaneseLang(lang)) return `${hour < 12 ? '午前' : '午後'} ${h12}:${min}`; // 구분은 반각 공백 하나
   // 번체 중국어는 글자만 다르고 자리·공백은 ja와 같다(zh-Hant.STYLE.md 2절 「上午 9:05」).
   if (isTraditionalChineseLang(lang)) return `${hour < 12 ? '上午' : '下午'} ${h12}:${min}`;
+  // 스페인어는 변형끼리 체계가 다르다(es.STYLE.md 2절):
+  //  · es-419 — 12시간 「9:05 a. m.」. RAE 표기라 소문자 + 점 + **반각 공백** 하나가 a 와 m 사이에 들어간다.
+  //  · es-ES  — 24시간 「9:05」. h12 가 아니라 hour 를 그대로 쓰고 0 패딩도 하지 않는다.
+  const esv = spanishVariant(lang);
+  if (esv === 'ES') return `${hour}:${min}`;
+  if (esv === '419') return `${h12}:${min} ${hour < 12 ? 'a. m.' : 'p. m.'}`;
   return `${h12}:${min} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 
