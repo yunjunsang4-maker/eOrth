@@ -479,6 +479,12 @@ check(
 rule('규칙 9 컬럼 안에서 창 폭 사용 금지');
 const WINDOW_W_READ = /(?:Dimensions\.get\(\s*['"]window['"]\s*\)|useWindowDimensions\(\))/;
 const ALLOW_WINDOW_W = new Map([
+  ['src/components/QuickShareOverlay.tsx', {
+    count: 1,
+    why: 'iOS는 react-native-screens FullWindowOverlay(창 최상위 UIWindow 레벨)에 그린다(2026-09-20, 네이티브 '
+       + 'UITabBar 위에 오게). 그 레이어는 Stage 컬럼 밖 창 전체라 로컬 좌표계 = 창 좌표계다. '
+       + 'Android는 컬럼 안 그대로라 같은 줄에서 플랫폼으로 갈라 useStageWidth 값을 쓴다.',
+  }],
   ['src/utils/stage.ts', {
     count: 3,
     why: 'Stage API 자신. 창 폭을 읽어 clamp/gutter로 바꿔 주는 단일 출처라 여기서만 창 폭을 읽는 게 맞다.',

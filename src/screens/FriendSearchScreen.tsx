@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Share,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 
@@ -31,6 +32,7 @@ import { labelFromKey } from '../utils/travelDnaScore';
 import { tap } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
+import { GlassSurface } from '../components/GlassSurface';
 import { useTravelDna } from '../store/travelDnaStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -47,6 +49,12 @@ const C = {
   divider: '#1A1A26',
   gray: '#3A3A4A',
 };
+
+/** 취소 캡슐의 둥근 정도 — 검색창 높이(패딩 10+10 + 15pt 한 줄 ≈ 40)의 절반.
+ *  실측이 아니라 상수인 이유: GlassSurface(iOS)는 borderRadius를 숫자로만 받는데,
+ *  이 한 값 때문에 onLayout → setState 를 붙이면 키 입력마다 도는 행에 재렌더가 얹힌다.
+ *  높이가 이보다 낮은 기기에서는 네이티브가 알아서 절반으로 깎아 그린다(완전 둥근형 유지). */
+const CANCEL_R = 20;
 
 // 딥링크 생성은 utils/appLinks의 profileLink만 사용한다(핸들 인코딩·스킴 소문자 규칙 포함).
 
@@ -538,7 +546,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
-      {/* ── 검색창 ── */}
+      {/* ── 검색창 + 취소 캡슐 ── */}
+      <View style={s.searchRow}>
       <View style={s.searchWrap}>
         <SearchIcon size={16} color="#A1A1B0" />
         <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
@@ -557,6 +566,39 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             <Text style={s.clearBtn}>✕</Text>
           </TouchableOpacity>
         )}
+      </View>
+
+      {/* 취소 — 입력 중이면 비우기, 이미 비어 있으면 화면을 닫는다(iOS 검색 관례).
+          iOS만 유리 캡슐(GlassSurface가 iOS26 GlassView / 구형 BlurView를 알아서 고른다).
+          Android는 유리 대신 아웃라인 — dimezis 블러가 이 크기에선 비용 대비 얻는 게 없다.
+          ⚠️ 이 버튼 자체에는 borderWidth·overflow를 주지 않는다(iOS 경로) — 유리 표면 위에
+             부모 테두리가 겹치면 둥근 모서리가 이중으로 깎인다. */}
+      <TouchableOpacity
+        style={s.cancelBtn}
+        activeOpacity={0.8}
+        onPress={() => {
+          if (query.length > 0) {
+            setQuery('');
+            Keyboard.dismiss();
+          } else {
+            handleGoBack();
+          }
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.cancel')}
+      >
+        {Platform.OS === 'ios' && (
+          <GlassSurface
+            style={StyleSheet.absoluteFill}
+            borderRadius={CANCEL_R}
+            tintColor="#2E2E3B80"
+            fallbackTint="rgba(46,46,59,0.6)"
+            androidTint="#2E2E3B"
+            edgeHighlight
+          />
+        )}
+        <Text style={s.cancelText}>{t('common.cancel')}</Text>
+      </TouchableOpacity>
       </View>
 
       {/* ── 메이트 리스트 ── */}
@@ -683,17 +725,42 @@ const s = StyleSheet.create({
     color: C.white,
   },
 
+  // 검색창 행 — 검색창(flex:1) + 취소 캡슐.
+  // 바깥 여백은 searchWrap에서 이 행으로 올렸다(검색창 혼자 16을 들고 있으면 캡슐이 그 밖에 선다).
+  // alignItems:'stretch' 라 캡슐 높이가 검색창을 따라간다 — 한쪽에 고정 높이를 박지 않는다.
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginHorizontal: 16,
+    marginBottom: 20,
+    gap: 8,
+  },
   // 검색창
   searchWrap: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: C.card,
     borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 20,
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 8,
+  },
+  // 취소 캡슐 — iOS는 GlassSurface가 배경을 깔고, Android는 아웃라인만.
+  cancelBtn: {
+    paddingHorizontal: 14,
+    borderRadius: CANCEL_R,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      android: { borderWidth: 1, borderColor: C.card },
+      default: {},
+    }),
+  },
+  cancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: C.white,
   },
   searchInput: {
     flex: 1,

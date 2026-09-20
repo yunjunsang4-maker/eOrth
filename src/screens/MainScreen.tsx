@@ -23,6 +23,9 @@ import { isKoreanLang } from '../utils/langKind';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
 import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
+// iOS 전용 — 네이티브 탭 바에는 CustomTabBar 오버레이가 없어 이 화면이 직접 FAB를 그린다.
+import { RecordFab } from '../components/RecordFab';
+import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT } from '../utils/tabBar';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
 import { stageWidthNow, useStageWidth, clampStageWidth, STAGE_MAX_W } from '../utils/stage';
@@ -112,9 +115,11 @@ const COUNTRY_SHEET_MAX_H = height * 0.65;
 // 튜토리얼 앵커와 하단 오버레이가 같은 값을 알아야 겹치지 않는다.
 // 예전엔 각자 상수를 들고 있어, 대륙 모드의 '방문 지역 추가하기' 칩이 스냅 버튼 아래에
 // 깔려 닫기(✕) 버튼이 눌리지 않았다(스냅·FAB가 앞 레이어).
-const SNAP_BTN = { right: 46, bottom: 129, size: 60 };
-/** 스냅 버튼 위에 얹는 오버레이의 bottom (insets.bottom 제외) */
-const ABOVE_SNAP = SNAP_BTN.bottom + SNAP_BTN.size + 10;
+// bottom은 상수가 아니다 — iOS 네이티브 바 실측 높이에 따라 달라지므로 useRecordFabBottom()
+// + SNAP_ABOVE_FAB(utils/tabBar 단일 출처)로 컴포넌트 안에서 구한다(snapBottom).
+const SNAP_BTN = { right: 46, size: 60 };
+/** 스냅 버튼 위에 얹는 오버레이가 스냅 바닥에서 더 올라가는 높이 (snapBottom에 더한다) */
+const ABOVE_SNAP_GAP = SNAP_BTN.size + 10;
 
 // ─── 대륙 모드 국가 목록 ─── (src/constants/regionCountries.ts로 이전, 지오 검증 스크립트가 import)
 
@@ -490,6 +495,8 @@ function deletePuzzleFile(uri?: string) {
 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
+  // 스냅 버튼 바닥(안전영역 포함 절대값) — RecordFab이 그리는 좌표와 같은 훅에서 나온다.
+  const snapBottom = useRecordFabBottom() + SNAP_ABOVE_FAB;
   const { t, i18n } = useTranslation();
   const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested, getCountryPhoto } = useRecords();
   // 기록의 지역/국가명 현지화 — 한국어가 아니면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
@@ -558,7 +565,7 @@ export default function MainScreen({ navigation, route }: Props) {
         // 가장자리 기준이다. 창 좌표로 옮기려면 컬럼 시작점(GUTTER)을 더해야 한다.
         // 창 폭 그대로 쓰면 폴드·태블릿에서 강조 구멍이 gutter만큼 오른쪽으로 빗나간다.
         x: GUTTER + STAGE_W - 46 - SNAP_BTN, // 컬럼 우측 (오른쪽 모서리 46px 안쪽)
-        y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
+        y: height - snapBottom - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,
       };
@@ -571,9 +578,11 @@ export default function MainScreen({ navigation, route }: Props) {
         // FAB는 컬럼 중앙 정렬(RecordFab fabWrap: left0/right0 + alignItems:'center')이고
         // 컬럼 자체가 창 중앙에 있어 GUTTER + STAGE_W/2 === WIN_W/2 (항등식)다.
         // 즉 gutter 보정을 더해도 값이 같다. 오른쪽 정렬인 snap.x만 보정이 필요하다.
-        x: WIN_W / 2 - FAB_BTN / 2,
+        // iOS(2026-09-20)는 FAB가 스냅 바로 아래 같은 우측 세로선(right IOS_FAB_RIGHT)이라 snap.x처럼 컬럼 기준.
+        x: Platform.OS === 'ios' ? GUTTER + STAGE_W - IOS_FAB_RIGHT - FAB_BTN : WIN_W / 2 - FAB_BTN / 2,
+        // fabTop − snapTop = SNAP_ABOVE_FAB + (60 − 56). Android 56 → +60(옛 값), iOS 66 → +70.
         y: snapMeasured
-          ? snapMeasured.y + 60
+          ? snapMeasured.y + SNAP_ABOVE_FAB + (SNAP_BTN - FAB_BTN)
           : height - ((insets.bottom || 0) + 73) - FAB_BTN, // 하단 중앙, 탭 바 위 겹침
         width: FAB_BTN,
         height: FAB_BTN,
@@ -1664,7 +1673,7 @@ export default function MainScreen({ navigation, route }: Props) {
         ref={snapAnchorRef}
         collapsable={false}
         pointerEvents="none"
-        style={{ position: 'absolute', right: SNAP_BTN.right, bottom: (insets.bottom || 0) + SNAP_BTN.bottom, width: SNAP_BTN.size, height: SNAP_BTN.size, opacity: 0 }}
+        style={{ position: 'absolute', right: SNAP_BTN.right, bottom: snapBottom, width: SNAP_BTN.size, height: SNAP_BTN.size, opacity: 0 }}
       />
 
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
@@ -1851,7 +1860,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 모른다. 실제로 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
                 하나의 스택에 넣고 스냅 버튼 위(ABOVE_SNAP)에 앵커해 겹침을 구조적으로 막는다.
                 아래(스냅 버튼 쪽)부터 진행도 → 칩 순으로 쌓이도록 column-reverse를 쓴다. */}
-            <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: (insets.bottom || 0) + ABOVE_SNAP }]}>
+            <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: snapBottom + ABOVE_SNAP_GAP }]}>
               {regionProgress && (
                 // 진행도 유리 칩 — 국가·인기명소 칩과 같은 재질(베벨 그라데이션 테두리 + 스킨
                 // 어두운 배경). 맨 텍스트만 떠 있던 것을 지도 위 오버레이 재질로 통일하고,
@@ -2810,7 +2819,10 @@ export default function MainScreen({ navigation, route }: Props) {
         ) : null}
       </Modal>
 
-      {/* FAB(기록 추가)는 CustomTabBar 레이어의 RecordFab 로 렌더 (탭 바 위 겹침) */}
+      {/* FAB(기록 추가) — Android는 CustomTabBar 레이어에서 렌더(탭 바 위 겹침).
+          iOS는 하단 바가 네이티브 UITabBar라 CustomTabBar 자체가 없으므로 여기서 직접 그린다.
+          코치마크(MainCoachmark)보다 **앞**에 둬야 튜토리얼 딤·말풍선이 FAB 위로 온다. */}
+      {Platform.OS === 'ios' && <RecordFab navigation={navigation} />}
 
       {/* ── 튜토리얼 코치마크 ── */}
       <MainCoachmark

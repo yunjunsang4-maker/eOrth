@@ -13,6 +13,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { DETECTOR_KEYS } from '../store/persist';
 import { FORMAT_RECO_ENABLED } from '../constants/featureFlags';
 import { shouldHighlightAlbum } from '../utils/fabHighlight';
+import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT } from '../utils/tabBar';
 
 const FORMAT_LABEL_KEY: Record<string, string> = {
   feed: 'main.formatFeed', blog: 'main.formatBlog', cut: 'main.formatCut', album: 'main.formatAlbum',
@@ -23,8 +24,17 @@ const COACH_DIM = 'rgba(0,0,0,0.78)'; // 코치마크 딤과 동일한 어둠
 /**
  * 기록 추가 FAB 클러스터 — 네온 "+" 버튼 + 형식 4개 부채꼴 메뉴 + 딤 오버레이.
  *
- * 탭 바보다 위(같은 네비게이터 오버레이 레이어)에 떠서 겹치도록 CustomTabBar 에서 렌더한다.
- * (화면 안에 두면 탭 바가 위에 그려져 FAB 아래쪽이 가려지므로)
+ * 렌더 위치가 플랫폼마다 다르다.
+ *  · Android — CustomTabBar 안. JS 플로팅 바와 같은 네비게이터 오버레이 레이어에 떠야
+ *    겹칠 수 있다(화면 안에 두면 탭 바가 위에 그려져 FAB 아래쪽이 가려진다).
+ *  · iOS — MainScreen 안. 하단 바가 네이티브 UITabBar라 CustomTabBar 자체가 렌더되지
+ *    않는다. 네이티브 바는 화면 **바깥**(UITabBarController)에 있어 겹칠 일이 없으므로
+ *    씬 안에서 그려도 z-order 문제가 생기지 않는다.
+ *
+ * 바닥 좌표는 utils/tabBar의 useRecordFabBottom()이 단일 출처다 — Android는 insets.bottom + 73,
+ * iOS는 네이티브 바 실측 높이 + 6(바 바로 위). 스냅은 그 위 SNAP_ABOVE_FAB(56).
+ * MainScreen의 튜토리얼 스냅 앵커·대륙 모드 스택이 같은 훅을 읽으므로 여기만 바꾸면 코치마크
+ * 링이 버튼에서 빗나간다. iOS도 씬 안에 그린다(창 최상위 레이어는 탭 전환 시 늦게 사라져 폐기).
  */
 
 const FAB_SZ = 24;
@@ -76,13 +86,18 @@ const CutIcon = () => (
   </View>
 );
 
-// 중앙 FAB 기준 위쪽 부채꼴 펼침 타깃 (반경 ~96)
+// 중앙 FAB 기준 위쪽 부채꼴 펼침 타깃 (반경 ~96) — Android
 const FAN_TARGETS = [
   { x: -83, y: -48 },
   { x: -33, y: -90 },
   { x: 33, y: -90 },
   { x: 83, y: -48 },
 ];
+// iOS(2026-09-20): FAB가 스냅 아래 우측 세로선에 있으므로 형식 버튼은 FAB **왼쪽으로 가로** 전개.
+// 첫 버튼 중심 = FAB 반지름 28 + 틈 14 + 버튼 반지름 26, 이후 버튼 지름 52 + 틈 12 간격.
+const ROW_TARGETS = [0, 1, 2, 3].map((i) => ({ x: -(28 + 14 + 26) - i * (52 + 12), y: 0 }));
+const IS_IOS = Platform.OS === 'ios';
+const TARGETS = IS_IOS ? ROW_TARGETS : FAN_TARGETS;
 
 const FORMATS: { type: string; icon: React.ReactNode; name: string; screen: string }[] = [
   { type: 'feed', icon: <FeedIcon />, name: '피드', screen: 'NewRecord' },
@@ -98,6 +113,9 @@ interface RecordFabProps {
 export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  // 바닥 좌표는 utils/tabBar 단일 출처 — MainScreen의 코치마크 앵커가 같은 훅을 읽는다.
+  const fabBottom = useRecordFabBottom();
+  const snapBottom = fabBottom + SNAP_ABOVE_FAB;
   const skinAccent = useSkinAccent(); // 포맷 버튼 테두리·글로우를 스킨 강조색으로
   // 튜토리얼 중에는 강조 중인 버튼만 밝게, 나머지는 어둡게.
   const { active: coachActive, bright: coachBright } = useCoachOverlay();
@@ -124,8 +142,8 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
         Animated.sequence([
           Animated.delay(i * 40),
           Animated.parallel([
-            Animated.spring(anim.translateX, { toValue: FAN_TARGETS[i].x, useNativeDriver: true, tension: 80, friction: 9 }),
-            Animated.spring(anim.translateY, { toValue: FAN_TARGETS[i].y, useNativeDriver: true, tension: 80, friction: 9 }),
+            Animated.spring(anim.translateX, { toValue: TARGETS[i].x, useNativeDriver: true, tension: 80, friction: 9 }),
+            Animated.spring(anim.translateY, { toValue: TARGETS[i].y, useNativeDriver: true, tension: 80, friction: 9 }),
             Animated.timing(anim.opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
           ]),
         ])
@@ -182,13 +200,13 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
     return () => { cancelled = true; };
   }, [fabOpen]);
 
-  return (
+  const body = (
     // zIndex/elevation 으로 탭 바(elevation 8)보다 위에 그려지게
     <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="box-none">
       {/* 스냅 버튼 (우측, 탭 바 위에 겹치지 않고 떠 있음) */}
       <SnapButton
         onPress={() => navigation.navigate('SnapRecord')}
-        style={[styles.snap, { bottom: insets.bottom + 129 }]}
+        style={[styles.snap, { bottom: snapBottom }]}
       />
       {/* 튜토리얼 오버레이 — 강조 단계가 아니면 어둡게, 강조 단계면 투명.
           어느 쪽이든 터치는 차단한다(pointerEvents auto): 코치마크의 터치 차단막은 화면 '안'에
@@ -197,7 +215,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
       {coachActive && (
         <View
           pointerEvents="auto"
-          style={[styles.snap, { bottom: insets.bottom + 129, width: SNAP_SIZE, height: SNAP_SIZE, borderRadius: SNAP_SIZE / 2, backgroundColor: dimSnap ? COACH_DIM : 'transparent' }]}
+          style={[styles.snap, { bottom: snapBottom, width: SNAP_SIZE, height: SNAP_SIZE, borderRadius: SNAP_SIZE / 2, backgroundColor: dimSnap ? COACH_DIM : 'transparent' }]}
         />
       )}
 
@@ -208,14 +226,15 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
         </Animated.View>
       )}
 
-      {/* FAB (중앙) — 탭 바 위에 떠서 겹침 */}
-      <View style={[styles.fabWrap, { bottom: insets.bottom + 73 }]} pointerEvents="box-none">
+      {/* FAB — Android는 중앙, iOS는 스냅 바로 아래(같은 우측 세로선). 탭 바 위에 떠서 겹침 */}
+      <View style={[styles.fabWrap, { bottom: fabBottom }, IS_IOS && styles.fabWrapIos]} pointerEvents="box-none">
         {/* 형식 버튼 4개 (부채꼴) */}
         {FORMATS.map((fmt, i) => (
           <Animated.View
             key={fmt.type}
             style={[
               styles.fabFormatWrap,
+              IS_IOS && styles.fabFormatWrapIos,
               {
                 transform: [
                   { translateX: fabAnims[i].translateX },
@@ -277,7 +296,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
             어느 쪽이든 + 버튼 터치는 차단(스냅 오버레이와 동일한 이유). 래퍼는 box-none으로 두고
             원(circle)만 auto — 전폭 스트립이 주변 터치까지 삼키지 않게 한다. */}
         {coachActive && (
-          <View pointerEvents="box-none" style={styles.fabDimWrap}>
+          <View pointerEvents="box-none" style={[styles.fabDimWrap, IS_IOS && styles.fabWrapIos]}>
             <View
               pointerEvents="auto"
               style={{ width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: dimFab ? COACH_DIM : 'transparent' }}
@@ -287,6 +306,11 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
       </View>
     </View>
   );
+  // ⚠️ iOS도 씬 안에 그린다(FullWindowOverlay 금지). 창 최상위에 올렸더니 탭을 바꿔도 JS가 포커스
+  //    변경을 받아 지울 때까지 FAB·스냅이 남았다(새 탭 렌더에 JS가 막혀 체감 지연, 2026-09-20 신고).
+  //    씬 안이면 네이티브가 탭을 바꾸는 순간 같이 사라진다. 대신 바와 겹치면 유리 뒤로 숨으므로
+  //    좌표를 바 윗면 위(useRecordFabBottom = 실측 높이 + FAB_GAP)로 둔다.
+  return body;
 };
 
 const styles = StyleSheet.create({
@@ -325,6 +349,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
+  },
+  // iOS: FAB를 스냅 중심선(right 46 + (60−56)/2)에 우측 정렬
+  fabWrapIos: {
+    alignItems: 'flex-end',
+    paddingRight: IOS_FAB_RIGHT,
+  },
+  // iOS: 형식 버튼 래퍼를 FAB 폭(56)만큼만 잡아 FAB 중심에 앵커 → translateX가 FAB 기준 왼쪽으로 간다
+  fabFormatWrapIos: {
+    left: undefined,
+    right: IOS_FAB_RIGHT,
+    width: FAB_SIZE,
   },
   fabFormatWrap: {
     position: 'absolute',

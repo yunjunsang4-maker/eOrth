@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import FeedPhoto from './FeedPhoto';
-import { View, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image, Platform } from 'react-native';
+import { FullWindowOverlay } from 'react-native-screens';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
@@ -102,7 +103,7 @@ export default function QuickShareOverlay({
   // 세로는 Stage 클램프 대상이 아니라(폭만 가둔다) 창 높이가 정답이고, cardRect.y도
   // 창 절대 좌표라 아래 비교(SCREEN_H * 0.6 등)와 좌표계가 맞는다.
   // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
-  const { height: SCREEN_H } = useWindowDimensions();
+  const { height: SCREEN_H, width: WINDOW_W } = useWindowDimensions();
   // 이 오버레이는 RN Modal이 아니라 App.tsx의 클램프된 Stage 컬럼 안에서 렌더된다
   // (SocialScreen이 일반 탭 화면 트리 안에서 그린다). 이 컴포넌트의 루트(absoluteFill,
   // 194행)는 그 컬럼의 자식이라, 안에서 쓰는 left/translateX는 전부 "컬럼 로컬 좌표"
@@ -114,8 +115,19 @@ export default function QuickShareOverlay({
   // 창 좌표를 로컬 좌표로 바꾸려면 이 값을 "빼야" 한다(windowX - stageOffsetX).
   // gutter 공식은 stage.ts 한 곳에만 둔다 — 예전엔 여기와 SocialScreen에 각각 사본이
   // 있었고, 그중 하나가 박제된 폭을 써서 60dp 어긋났다.
-  const stageW = useStageWidth();
-  const stageOffsetX = useStageGutter();
+  const stageWCol = useStageWidth();
+  const stageGutter = useStageGutter();
+  // iOS(2026-09-20~)는 하단 바가 네이티브 UITabBar라 RN 화면 안에 그린 오버레이가 그 **아래**에
+  // 깔려, 카드를 끌면 딤·타깃 원이 탭바와 겹쳐 보였다. 그래서 iOS는 창 최상위 레이어
+  // (react-native-screens FullWindowOverlay = 별도 UIWindow 레벨 뷰)에 올린다 — 네이티브
+  // 탭바·헤더보다 항상 위다. 그 레이어는 Stage 컬럼이 아니라 **창 전체**라 로컬 좌표계가
+  // 곧 창 좌표계다: 오프셋 0, 폭은 창 폭(layout-parity 규칙 9 예외 등록). 폰에서는 어차피
+  // 같지만 폴드·태블릿에서 갈린다. 진행 중인 카드 드래그(RNGH Pan)는 UIKit이 첫 터치 뷰로
+  // 계속 전달하므로 위에 새 뷰가 생겨도 끊기지 않고, 드롭 판정은 좌표(measureInWindow)로
+  // 하니 터치를 가로챌 일도 없다.
+  const windowLevel = Platform.OS === 'ios';
+  const stageW = windowLevel ? WINDOW_W : stageWCol;
+  const stageOffsetX = windowLevel ? 0 : stageGutter;
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;
@@ -205,7 +217,7 @@ export default function QuickShareOverlay({
   const clampX = (x: number) => Math.max(8, Math.min(x, stageW - CIRCLE - 8));
   coords = coords.map((c) => ({ x: clampX(c.x), y: c.y }));
 
-  return (
+  const body = (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* 어두운 배경 (탭/취소) — 페이드 인 */}
       <Animated.View style={[StyleSheet.absoluteFill, st.dim, { opacity: dimAnim }]}>
@@ -256,6 +268,8 @@ export default function QuickShareOverlay({
       </Animated.View>
     </View>
   );
+  // visible이 아닐 때는 위에서 null을 돌려보내므로 FullWindowOverlay는 드래그 중에만 마운트된다.
+  return windowLevel ? <FullWindowOverlay>{body}</FullWindowOverlay> : body;
 }
 
 const st = StyleSheet.create({

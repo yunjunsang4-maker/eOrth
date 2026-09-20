@@ -2995,8 +2995,12 @@ function FriendsTab({ navigation }: { navigation: any }) {
     quickActiveRef.current = true;
     setQuick({ active: true, item, cardRect, side });
     setQuickHover(null);
-    // 드래그 동안 하단 탭 바 잠시 숨김 — 드롭 영역·딤을 가리지 않게
-    setTabBarHidden(true);
+    // 드래그 동안 하단 탭 바 잠시 숨김 — 드롭 영역·딤을 가리지 않게.
+    // ⚠️ iOS는 숨기지 않는다(2026-09-20). iOS 하단 바는 네이티브 UITabBar라 숨기면 탭
+    //    컨테이너가 재배치되고, 그 순간 진행 중인 길게 누르기 드래그(Gesture.Pan)가 취소돼
+    //    카드를 집자마자 놓쳐 버렸다. 네이티브 바는 어차피 JS 딤으로 덮을 수 없으니
+    //    보이는 채로 둔다(드롭 영역은 화면 안이라 겹치지 않는다).
+    if (Platform.OS !== 'ios') setTabBarHidden(true);
     // 카드가 '집힌' 순간의 촉각 피드백
     grab();
   };
