@@ -1955,7 +1955,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   onPress={() => setRegionTagSheetVisible(false)}
                 />
                 {/* width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다 */}
-                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
+                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 16, paddingBottom: insets.bottom + 16, maxHeight: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
                   <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
                   <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
                   <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
@@ -2890,7 +2890,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingBottom: Spacing[3],
   },
   headerIcon: {
@@ -2962,7 +2962,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 7,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   regionChipBorder: {
     borderRadius: 15.5,
@@ -3108,7 +3108,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingTop: Spacing[4],
     paddingBottom: Spacing[3],
   },
@@ -3123,7 +3123,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   sheetList: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
   },
 
   // ── 나라 행
@@ -3184,7 +3184,7 @@ const styles = StyleSheet.create({
   countrySheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingTop: Spacing[2],
     paddingBottom: Spacing[4],
     gap: Spacing[3],
@@ -3214,7 +3214,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.3)',
   },
   countryRecordList: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingTop: Spacing[4],
     gap: Spacing[3],
   },
@@ -3264,7 +3264,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     // paddingBottom은 인라인으로 insets.bottom + 20 — 제스처 바 높이가 기기마다 다르다
     paddingTop: Spacing[3],
     backgroundColor: 'rgba(30,30,46,0.95)',
@@ -3410,7 +3410,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   countryGridTitle: {
     color: '#fff',

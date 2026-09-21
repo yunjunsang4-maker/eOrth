@@ -230,7 +230,7 @@ export default function TripDetailScreen() {
   const SCREEN_WIDTH = useStageWidth();
   const CARD_ASPECT = (SCREEN_WIDTH - 40) / CARD_H;
   const SWIPE_CARD_W = SCREEN_WIDTH - 52;
-  const thumbCellSize = (SCREEN_WIDTH - 40 - 16) / 3;
+  const thumbCellSize = (SCREEN_WIDTH - 32 - 16) / 3; // 시트 좌우 16×2 + gap 8×2
   const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
   // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 right:20으로 붙는다 — 폴드·태블릿에서
   // 창 오른쪽 끝에 붙어 버튼과 어긋나므로 레터박스 폭만큼 안쪽으로 민다
@@ -1218,7 +1218,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
   },
   backBtn: {
@@ -1336,10 +1336,10 @@ const s = StyleSheet.create({
   thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   // thumbSheet는 콘텐츠 래퍼. RN Modal이라 루트 클램프 밖이고 thumbCellSize가 Stage 폭(≤480)
   // 기준이라, 시트를 같은 폭으로 가두고 중앙에 둬야 썸네일 3열이 시트 폭과 맞는다.
-  // (padding 20*2 + gap 8*2 = 40+16이 thumbCellSize 계산의 전제다)
+  // (padding 16*2 + gap 8*2 = 32+16이 thumbCellSize 계산의 전제다)
   thumbSheet: {
     backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 40,
+    paddingVertical: 20, paddingHorizontal: 16, paddingBottom: 40, // 좌우는 화면 gutter 16
     width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
   },
   thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },

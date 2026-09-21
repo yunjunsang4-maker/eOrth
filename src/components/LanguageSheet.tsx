@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
   handle: {
     width: 40,

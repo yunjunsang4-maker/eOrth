@@ -90,7 +90,7 @@ export default function MateRecoConsentBanner() {
 
 const st = StyleSheet.create({
   wrap: {
-    marginHorizontal: 12, marginTop: 12, padding: 14,
+    marginHorizontal: 16, marginTop: 12, padding: 14,
     backgroundColor: C.card, borderRadius: 14,
     borderWidth: 1, borderColor: C.divider,
   },

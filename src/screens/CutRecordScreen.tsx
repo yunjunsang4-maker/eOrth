@@ -646,7 +646,7 @@ const st = StyleSheet.create({
   paletteScroll: { flexGrow: 0, marginBottom: 14 },
   palette: {
     flexDirection: 'row', alignItems: 'center',
-    gap: 10, paddingHorizontal: 20,
+    gap: 10, paddingHorizontal: 16,
   },
   swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   swatchOn: { borderWidth: 3, borderColor: C.purple },

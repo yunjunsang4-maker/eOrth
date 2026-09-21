@@ -1126,7 +1126,7 @@ const st = StyleSheet.create({
   // 대화 내 검색 바
   searchBar: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 8,
+    paddingHorizontal: 16, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   searchInput: {
@@ -1153,7 +1153,7 @@ const st = StyleSheet.create({
   // 액션 시트 (롱프레스/헤더 메뉴 공용)
   sheet: {
     backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingBottom: 34, paddingTop: 8, paddingHorizontal: 12,
+    paddingBottom: 34, paddingTop: 8, paddingHorizontal: 16,
   },
   // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
   // left/right로 붙이면 폴드에서 창 폭 전체로 늘어난다. 절대배치라도 left/right가
@@ -1208,7 +1208,7 @@ const st = StyleSheet.create({
   // 입력창 위 답글 미리보기 바
   replyBar: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 14, paddingVertical: 8, gap: 10,
+    paddingHorizontal: 16, paddingVertical: 8, gap: 10,
     borderTopWidth: 1, borderTopColor: C.divider,
   },
   replyBarLine: { width: 3, alignSelf: 'stretch', borderRadius: 2, backgroundColor: C.accent },
@@ -1237,7 +1237,7 @@ const st = StyleSheet.create({
   // 입력 바
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end',
-    paddingHorizontal: 12, paddingVertical: 10,
+    paddingHorizontal: 16, paddingVertical: 10,
     borderTopWidth: 1, borderTopColor: C.divider, gap: 8,
   },
   attachBtn: {
@@ -1270,7 +1270,7 @@ const st = StyleSheet.create({
   },
   pickerHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
+    paddingHorizontal: 16, paddingVertical: 16,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   pickerTitle: { fontSize: 16, fontWeight: '700', color: C.white },

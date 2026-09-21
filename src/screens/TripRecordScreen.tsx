@@ -924,13 +924,13 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   albumCount: {
     fontSize: 12,
     color: '#A1A1B0',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 10,
   },
   albumHint: {
     fontSize: 11,
     color: '#5A5A6E',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 3,
   },
   commentItem: {
@@ -1072,7 +1072,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   },
   menuItem: {
     paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   menuItemText: {
     fontSize: 16,

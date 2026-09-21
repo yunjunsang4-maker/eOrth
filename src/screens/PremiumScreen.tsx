@@ -184,7 +184,7 @@ const st = StyleSheet.create({
   headerPlaceholder: { width: 40 },
 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingBottom: 40 },
+  content: { paddingHorizontal: 16, paddingBottom: 40 },
 
   hero: { alignItems: 'center', marginTop: 8, marginBottom: 24 },
   heroIconWrap: {

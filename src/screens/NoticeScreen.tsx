@@ -109,7 +109,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 8, paddingVertical: 6,
+    paddingHorizontal: 16, paddingVertical: 6,
   },
   backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },

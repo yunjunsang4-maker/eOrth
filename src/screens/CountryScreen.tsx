@@ -228,7 +228,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
 
   statsRow: {
     flexDirection: 'row',
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     gap: Spacing[3],
     marginBottom: Spacing[6],
   },
@@ -253,7 +253,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     color: Colors.textSecondary,
   },
 
-  visitorsSection: { marginTop: 8, marginBottom: Spacing[6], paddingHorizontal: Spacing[6] },
+  visitorsSection: { marginTop: 8, marginBottom: Spacing[6], paddingHorizontal: Spacing[4] },
   visitorsTitle: {
     fontSize: 14,
     fontFamily: Typography.fontFamily.bold,
@@ -329,7 +329,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   },
 
   recordsSection: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
   },
   sectionTitle: {
     fontSize: Typography.fontSize.lg,
@@ -385,7 +385,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingBottom: 40,
     paddingTop: Spacing[3],
     backgroundColor: 'rgba(10,1,24,0.9)',

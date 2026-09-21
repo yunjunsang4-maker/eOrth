@@ -77,7 +77,7 @@ const fmtRange = (start: Date, end: Date | null): string => {
 const enName = (ko: string) => (SHORT_COUNTRY_EN[ko] ?? (ko === '대한민국' ? 'South Korea' : KO_TO_EN[ko] ?? ko));
 
 const SCREEN_W = stageWidthNow();
-const TICKET_MARGIN = 14;
+const TICKET_MARGIN = 16; // 화면 좌우 gutter 16(앱 공통) — TICKET_W·노치 좌표가 전부 여기서 파생된다
 const BACKDROP = '#0A0B0F'; // 탭(공유 버튼 노출) 시 채우는 검은 배경 — 공유하기 가시성 확보
 const PURPLE = '#7C3AED';
 const LILAC = '#CA82FF';

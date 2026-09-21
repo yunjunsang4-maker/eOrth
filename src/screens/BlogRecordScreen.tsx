@@ -1515,7 +1515,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             )}
             {/* 대표사진·비공개·가져오기 3개는 ⋯ 하나로 접고, 누르면 ⋯ 바로 아래로 세로 한 줄 펼친다.
                 시안대로 헤더가 아니라 국가 칩과 같은 행의 오른쪽 끝(marginLeft:'auto')에 둔다 — 오른쪽
-                여백은 editorContent의 paddingHorizontal 25가 그대로 시안 값이다.
+                여백은 editorContent의 paddingHorizontal 16(앱 공통 gutter)이 그대로 값이다.
                 드롭다운 자체는 여기(래퍼 안)가 아니라 화면 루트에 있다 — 안드로이드 터치 호환.
                 이 래퍼는 앵커 측정용이며 크기는 ⋯ 버튼과 같은 30×30이다. */}
             <View style={st.toolsToggleWrap} ref={toolsAnchorRef}>
@@ -2457,8 +2457,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         const imb = block as ImagesBlock;
         const isSlide = imb.layout === 'slide';
         const cols = imb.layout === 'grid3' ? 3 : 2;
-        const imgW = (SCREEN_W - 48 - (cols - 1) * 4) / cols;
-        const slideW = SCREEN_W - 48;
+        const imgW = (SCREEN_W - 32 - (cols - 1) * 4) / cols;
+        const slideW = SCREEN_W - 32;
         return (
           <View key={block.id} style={st.imagesBlock}>
             {isSlide ? (
@@ -2862,7 +2862,7 @@ function RepPhotoModal({
  */
 const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider, zIndex: 10, elevation: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider, zIndex: 10, elevation: 10 },
   // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지
   backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
@@ -2894,7 +2894,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
 
   editor: { flex: 1, backgroundColor: C.editorBg },
-  editorContent: { paddingHorizontal: 25, paddingTop: 13 },
+  editorContent: { paddingHorizontal: 16, paddingTop: 13 }, // 좌우 16 = 앱 공통 gutter. 이미지 블록 폭 계산(SCREEN_W - 32)과 짝이다
 
   // 국가
   // zIndex/elevation: 원래는 이 행 안의 ⋯ 드롭다운을 뒤 형제(제목 입력) 위에 띄우려고 넣었다.
@@ -3019,7 +3019,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   // 여행정보 패널
   // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
   // left/right로 붙이면 폴드·태블릿에서 창 폭 전체로 늘어난다
-  travelPanel: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  travelPanel: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
   panelTitle: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 16 },
   panelRow: { marginBottom: 18, gap: 8 },
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
@@ -3101,7 +3101,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
     width: '100%' as const, maxWidth: STAGE_MAX_W, alignSelf: 'center' as const,
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 18, paddingBottom: Platform.OS === 'ios' ? 30 : 18, maxHeight: '78%',
+    paddingHorizontal: 16, paddingBottom: Platform.OS === 'ios' ? 30 : 18, maxHeight: '78%',
   },
   dlHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center' as const, marginTop: 10, marginBottom: 18 },
   dlHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 14 },
@@ -3141,7 +3141,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   calOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 10 },
 
   // 통화 모달
-  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
+  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
   currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   currModalCode: { color: a, fontSize: 14, fontWeight: '700' as const, width: 44 },
@@ -3156,7 +3156,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   addFriendTxt: { color: a, fontSize: 13, fontWeight: '600' as const },
   addFriendBadge: { backgroundColor: ad, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
+  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center' as const, justifyContent: 'center' as const },
   friendPickerAvatarTxt: { color: C.white, fontSize: 15, fontWeight: '700' as const },
@@ -3187,7 +3187,7 @@ const rpm = StyleSheet.create({
   sheet: {
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 18, paddingBottom: 30, maxHeight: '82%',
+    paddingHorizontal: 16, paddingBottom: 30, maxHeight: '82%',
     width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 10, marginBottom: 18 },

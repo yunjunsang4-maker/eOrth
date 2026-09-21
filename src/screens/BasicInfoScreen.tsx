@@ -781,7 +781,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0B0F' }, // 온보딩·로그인과 동일 배경
   keyboardView: { flex: 1 },
   scroll: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingBottom: 120,
   },
   header: {
@@ -1026,7 +1026,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingBottom: 48,
     paddingTop: Spacing[4],
     backgroundColor: 'rgba(10,11,15,0.95)',
@@ -1037,11 +1037,11 @@ const styles = StyleSheet.create({
   modalRoot: { flex: 1, backgroundColor: '#0A0B0F', paddingTop: 60 },
   // 국가 선택 모달 콘텐츠 폭 클램프. 배경이 없는 순수 폭 제한 래퍼라 딤 배경이 아니다.
   modalClamp: { flex: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingBottom: Spacing[4] },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[4], paddingBottom: Spacing[4] },
   modalTitle: { fontSize: Typography.fontSize.lg, fontFamily: Typography.fontFamily.bold, color: Colors.textPrimary },
   modalClose: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontFamily: Typography.fontFamily.medium },
-  modalSearch: { marginHorizontal: Spacing[6], marginBottom: Spacing[3], backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: Colors.textPrimary, paddingHorizontal: Spacing[4], paddingVertical: 12, fontSize: Typography.fontSize.base },
-  modalItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  modalSearch: { marginHorizontal: Spacing[4], marginBottom: Spacing[3], backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: Colors.textPrimary, paddingHorizontal: Spacing[4], paddingVertical: 12, fontSize: Typography.fontSize.base },
+  modalItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[4], paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   modalItemText: { fontSize: Typography.fontSize.base, color: Colors.textPrimary, fontFamily: Typography.fontFamily.regular },
   modalItemCheck: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontWeight: 'bold' },
 });

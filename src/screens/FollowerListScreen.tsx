@@ -13,7 +13,6 @@ import {
 import { Text } from '../ui/Text';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import Svg, { Path as SvgPath } from 'react-native-svg';
 import {
   fetchNeighbors,
   fetchIncomingNeighborRequests,
@@ -22,24 +21,13 @@ import {
 } from '../services/social';
 import { useRecords } from '../store/recordStore';
 import { tap, warn } from '../utils/haptics';
-import { PersonIcon, BackChevronIcon } from '../components/icons';
+import { PersonIcon, BackChevronIcon, CommentIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 
-// DM 말풍선 아이콘 — CLAUDE.md 아이콘 규칙(SVG 말풍선, scaleX -1)
+// DM 말풍선 아이콘 — 앱 공용 CommentIcon(CLAUDE.md 아이콘 규칙, 단일 출처)
 function DmBubbleIcon({ size = 17, color = '#A1A1B0' }: { size?: number; color?: string }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" style={{ transform: [{ scaleX: -1 }] }}>
-      <SvgPath
-        d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </Svg>
-  );
+  return <CommentIcon size={size} color={color} />;
 }
 
 const COLORS = {

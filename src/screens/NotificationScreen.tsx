@@ -568,7 +568,7 @@ const st = StyleSheet.create({
   markAll: { fontSize: 12, fontWeight: '700' },
 
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 18, paddingTop: 16 },
+  content: { paddingHorizontal: 16, paddingTop: 16 },
 
   // 표지
   cover: { alignItems: 'center' },

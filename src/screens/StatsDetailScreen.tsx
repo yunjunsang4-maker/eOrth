@@ -618,7 +618,7 @@ export default function StatsDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
         {/* 히어로 — 모든 카테고리 지구본 문양 동일 (world만 대표 수치 ‹ ›순환) */}
-        <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }], marginHorizontal: -20 }}>
+        <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }], marginHorizontal: -16 }}>
             <View style={{ height: HERO_GLOBE_H }}>
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Svg width={SW} height={HERO_GLOBE_H}>
@@ -734,7 +734,7 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 8,
     gap: 6,
   },
@@ -746,7 +746,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
-  scroll: { paddingHorizontal: 20, paddingBottom: 20 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 20 },
 
   // ── 지구본 히어로 ──
   heroOverlay: {

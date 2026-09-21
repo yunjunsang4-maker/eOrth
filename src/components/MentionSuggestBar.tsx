@@ -75,7 +75,7 @@ export default function MentionSuggestBar({
 
 const s = StyleSheet.create({
   wrap: { paddingVertical: 6 },
-  row: { paddingHorizontal: 12, gap: 8, alignItems: 'center' },
+  row: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

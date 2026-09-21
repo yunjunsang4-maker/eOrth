@@ -2132,7 +2132,7 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
 
   scroll:   { flex: 1 },
-  content:  { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 },
+  content:  { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 20 },
 
   // ── 섹션 라벨 ──
   sectionLabel: {
@@ -2165,7 +2165,7 @@ const s = StyleSheet.create({
 
   // ── 하단 고정 저장 바 ──
   saveBar: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     paddingBottom: 24,
     backgroundColor: COLORS.bg,
@@ -2416,7 +2416,7 @@ const s = StyleSheet.create({
     color: COLORS.textMuted,
   },
   hintToast: {
-    marginHorizontal: 20,
+    marginHorizontal: 16,
     marginBottom: 8,
     backgroundColor: 'rgba(191,133,252,0.15)',
     borderWidth: 1,

@@ -99,7 +99,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const stageW = useStageWidth();
   const CELL = Math.floor((stageW - 16 * 2 - 8 * (COL - 1)) / COL);
   // 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
-  const CARD_W = stageW - 40; // 시트 좌우 패딩 20×2
+  const CARD_W = stageW - 32; // 시트(pvSheet) 좌우 패딩 16×2
   const CARD_ASPECT = CARD_W / CARD_H;
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
@@ -1129,7 +1129,7 @@ const st = StyleSheet.create({
   // 전면 유지 — 시트만 좁힌다.
   pvSheet: {
     backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 40,
+    paddingVertical: 20, paddingHorizontal: 16, paddingBottom: 40, // 좌우는 화면 gutter 16 (CARD_W = stageW - 32와 짝)
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',

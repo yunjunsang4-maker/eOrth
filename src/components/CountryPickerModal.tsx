@@ -125,11 +125,11 @@ export default function CountryPickerModal({
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0A0B0F', paddingTop: 60 },
   clamp: { flex: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingBottom: Spacing[4] },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[4], paddingBottom: Spacing[4] },
   title: { fontSize: Typography.fontSize.lg, fontFamily: Typography.fontFamily.bold, color: Colors.textPrimary },
   close: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontFamily: Typography.fontFamily.medium },
   search: {
-    marginHorizontal: Spacing[6], marginBottom: Spacing[3],
+    marginHorizontal: Spacing[4], marginBottom: Spacing[3],
     backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: BorderRadius.lg,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     color: Colors.textPrimary, paddingHorizontal: Spacing[4], paddingVertical: 12,
@@ -137,7 +137,7 @@ const s = StyleSheet.create({
   },
   item: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing[6], paddingVertical: 14,
+    paddingHorizontal: Spacing[4], paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1 },

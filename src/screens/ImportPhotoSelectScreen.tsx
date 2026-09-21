@@ -133,7 +133,7 @@ const PhotoCell = React.memo(function PhotoCell({ uri, assetId, order, onToggle 
 export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
   const CELL = useCellSize();
   const stageW = useStageWidth();
-  const CARD_W = stageW - 40; // 시트 좌우 패딩 20×2
+  const CARD_W = stageW - 32; // 시트(pvSheet) 좌우 패딩 16×2
   const CARD_ASPECT = CARD_W / CARD_H;
   // 스와이프와 함께 하드웨어 뒤로가기도 막는다 — 그냥 두면 고른 사진이 확인창 없이 통째로 날아간다.
   // 나가는 길은 화면 안 '이전' 버튼이며, 첫 단계에서는 확인 후 결과 목록으로 돌아간다(goPrev).
@@ -800,7 +800,7 @@ const st = StyleSheet.create({
   // 전면 유지 — 시트만 좁힌다.
   pvSheet: {
     backgroundColor: '#141019', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 40,
+    paddingVertical: 20, paddingHorizontal: 16, paddingBottom: 40, // 좌우는 화면 gutter 16 (CARD_W = stageW - 32와 짝)
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',

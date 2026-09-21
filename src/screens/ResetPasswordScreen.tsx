@@ -143,7 +143,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { flexGrow: 1, paddingHorizontal: Spacing[6], paddingBottom: 48 },
+  scroll: { flexGrow: 1, paddingHorizontal: Spacing[4], paddingBottom: 48 },
   title: {
     fontSize: Typography.fontSize.xl,
     fontFamily: Typography.fontFamily.bold,

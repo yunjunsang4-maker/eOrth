@@ -334,7 +334,7 @@ const styles = StyleSheet.create({
   // 텍스트 블록 (시안 규격)
   textBlock: {
     width: '100%',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
   stepLabel: {
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     height: 170,
   },
   bottomArea: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 10,
     width: '100%',
     flexDirection: 'row',

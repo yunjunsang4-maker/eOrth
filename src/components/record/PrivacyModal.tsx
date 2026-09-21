@@ -194,7 +194,7 @@ const pm = StyleSheet.create({
     borderTopRightRadius: 26,
     borderTopWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingBottom: 30,
     maxHeight: '82%',
   },

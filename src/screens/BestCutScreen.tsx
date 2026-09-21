@@ -168,14 +168,14 @@ export default function BestCutScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgDeep },
-  header: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 },
+  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 8 },
   title: { color: Colors.textPrimary, fontSize: 26, fontWeight: '700' },
   subtitle: { color: Colors.textSecondary, fontSize: 13, marginTop: 4 },
   controls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
   },
@@ -192,8 +192,8 @@ const styles = StyleSheet.create({
   analyzeBtnText: { color: Colors.white, fontWeight: '700', fontSize: 15 },
   bgToggle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   bgToggleLabel: { color: Colors.textSecondary, fontSize: 13 },
-  notice: { color: Colors.primaryLight, fontSize: 13, paddingHorizontal: 20, paddingBottom: 4 },
-  errorText: { color: '#FF6B6B', fontSize: 13, paddingHorizontal: 20, paddingBottom: 4 },
+  notice: { color: Colors.primaryLight, fontSize: 13, paddingHorizontal: 16, paddingBottom: 4 },
+  errorText: { color: '#FF6B6B', fontSize: 13, paddingHorizontal: 16, paddingBottom: 4 },
   list: { paddingHorizontal: 16, paddingBottom: 24 },
   card: {
     backgroundColor: Colors.bgCard,

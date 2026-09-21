@@ -211,7 +211,7 @@ type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 // 궤도와 지구본이 동심원: 중심 (167.5, 196.2), 궤도 R=160.2, 지구본 R≈108.
 // 모든 좌표는 시안(335px 폭) 기준 → 실제 폭으로 배율 환산.
 const WIN_W = stageWidthNow();
-const ARC_W = WIN_W - Spacing[6] * 2; // scroll 좌우 패딩과 동일
+const ARC_W = WIN_W - Spacing[4] * 2; // scroll 좌우 패딩(Spacing[4]=16)과 동일
 const OS = ARC_W / 335;               // 시안 배율(orbit scale)
 const ORBIT_H = Math.ceil(312 * OS);
 const ORBIT_CX = ARC_W / 2;
@@ -1100,7 +1100,7 @@ const styles = StyleSheet.create({
     paddingRight: Spacing[6],
     paddingBottom: Spacing[3],
   },
-  scroll: { paddingHorizontal: Spacing[6], paddingBottom: 20 },
+  scroll: { paddingHorizontal: Spacing[4], paddingBottom: 20 },
 
   statsRow: {
     flexDirection: 'row',

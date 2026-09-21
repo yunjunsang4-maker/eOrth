@@ -149,7 +149,7 @@ const s = StyleSheet.create({
     left: 0,
     right: 0,
     paddingBottom: 24,
-    paddingHorizontal: 32,
+    paddingHorizontal: 16, // SnapRecord 셔터 행과 동일(앱 공통 gutter 16)
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

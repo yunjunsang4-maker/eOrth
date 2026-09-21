@@ -158,7 +158,7 @@ export default function StayTripSuggestBanner({ onCreated }: Props) {
 
 const st = StyleSheet.create({
   wrap: {
-    marginHorizontal: 12, marginTop: 4, padding: 14,
+    marginHorizontal: 16, marginTop: 4, padding: 14,
     backgroundColor: C.card, borderRadius: 14,
     borderWidth: 1, borderColor: C.divider,
     zIndex: 6, // 지구본 토글(zIndex 5)보다 위

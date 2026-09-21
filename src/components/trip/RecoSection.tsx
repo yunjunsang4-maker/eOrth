@@ -345,7 +345,7 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
 }
 
 const st = StyleSheet.create({
-  wrap: { paddingHorizontal: 20, paddingTop: 16 },
+  wrap: { paddingHorizontal: 16, paddingTop: 16 },
   title: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginBottom: 10 },
   analyzing: { color: COLORS.dim, fontSize: 13 },
   card: {

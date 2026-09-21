@@ -463,7 +463,7 @@ const st = StyleSheet.create({
   // ─── STEP 1: URL 입력 ───
   inputContainer: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingTop: 40,
     alignItems: 'center',
   },
@@ -580,7 +580,7 @@ const st = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   loadingText: {
     color: C.white,
@@ -619,7 +619,7 @@ const st = StyleSheet.create({
   // ─── STEP 3: 미리보기 ───
   previewContainer: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     paddingTop: 30,
   },
   previewHeader: {

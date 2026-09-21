@@ -860,7 +860,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   bottomBar: {
     position: 'absolute', bottom: Platform.OS === 'ios' ? 50 : 30, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
-    paddingHorizontal: 40,
+    paddingHorizontal: 16,
   },
   // 셔터 버튼 (Group 2085664476 디자인) — 시안 네온 글로우.
   // SVG는 원판 주위 여백이 있어(원판=프레임의 ~72%) 원래 외곽 ~80px에 맞추려 112로 렌더한다.
@@ -893,7 +893,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   // 권한 화면
   permScreen: {
     flex: 1, backgroundColor: C.bg,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16,
   },
   permEmoji: { fontSize: 60, marginBottom: 20 },
   permTitle: { color: C.white, fontSize: 20, fontWeight: '700', marginBottom: 10 },
@@ -952,7 +952,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
 
   // 캡션 — 구분선 없이 심리스 (iPhone 17-59)
   captionArea: {
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
   },
   captionInput: {
     color: C.white, fontSize: 16, lineHeight: 22,
@@ -964,7 +964,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
 
   // 액션 버튼
   actionRow: {
-    flexDirection: 'row', paddingHorizontal: 20, gap: 12,
+    flexDirection: 'row', paddingHorizontal: 16, gap: 12,
     paddingBottom: 8,
   },
   retakeBtn: {

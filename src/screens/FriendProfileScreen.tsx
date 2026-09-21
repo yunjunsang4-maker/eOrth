@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
-import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
+import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, WarningIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
@@ -366,7 +366,7 @@ export default function FriendProfileScreen({
         }, t);
       },
     },
-    { key: 'report', icon: <MegaphoneIcon size={MENU_ICON} color={COLORS.red} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
+    { key: 'report', icon: <WarningIcon size={MENU_ICON} color={COLORS.red} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
   // 내 프로필(내 게시물의 아이디 탭)이면 실제 프로필 탭 컴포넌트를 그대로 렌더한다 —
@@ -725,7 +725,7 @@ const s = StyleSheet.create({
   // ── 헤더 ──
   header: {
     height: 56,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

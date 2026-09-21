@@ -707,7 +707,7 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -776,7 +776,7 @@ const s = StyleSheet.create({
 
   // 스크롤
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
 
   // 받은 신청 배너

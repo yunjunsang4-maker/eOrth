@@ -489,6 +489,11 @@ const ALLOW_WINDOW_W = new Map([
     count: 3,
     why: 'Stage API 자신. 창 폭을 읽어 clamp/gutter로 바꿔 주는 단일 출처라 여기서만 창 폭을 읽는 게 맞다.',
   }],
+  ['src/screens/PostDetailScreen.tsx', {
+    count: 1,
+    why: '댓글 꾹 누르기 팝오버(2026-09-20)가 RN <Modal transparent> 안에 그려진다 — 모달은 루트 클램프 밖 창 루트라 '
+       + 'measureInWindow 로 잰 댓글 행 좌표와 같은 창 좌표계여야 팝오버가 행 아래에 정확히 붙는다. 그 계산 한 곳뿐.',
+  }],
   ['src/components/CutPhotoAdjustModal.tsx', {
     count: 1,
     why: 'RN <Modal transparent>(186행) 안에서만 쓰인다 — 모달은 루트 클램프 밖 창 루트에 그려지므로 '

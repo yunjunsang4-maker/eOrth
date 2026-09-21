@@ -113,7 +113,7 @@ const fp = StyleSheet.create({
     backgroundColor: '#1A1A28',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 36,
     maxHeight: '65%',
   },

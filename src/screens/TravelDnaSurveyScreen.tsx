@@ -215,7 +215,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   skip: { color: C.dim, fontSize: 14 },
   progress: { color: C.dim, fontSize: 13, fontWeight: '600' },

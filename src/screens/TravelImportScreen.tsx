@@ -1816,7 +1816,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0B0F',
   },
   scroll: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
   },
   header: {
     marginBottom: 0,
@@ -1979,17 +1979,17 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.semiBold,
     marginBottom: Spacing[4],
   },
-  /* 칩 줄 — 가로 슬라이드. 부모(scroll)의 좌우 패딩 24 밖까지 넓혀 화면 끝까지 흐르게 하고,
+  /* 칩 줄 — 가로 슬라이드. 부모(scroll)의 좌우 패딩 16 밖까지 넓혀 화면 끝까지 흐르게 하고,
      대신 같은 값을 contentContainer 패딩으로 되돌려 정지 상태의 좌우 여백은 그대로 둔다. */
   periodSlider: {
     alignSelf: 'stretch',
-    marginHorizontal: -Spacing[6],
+    marginHorizontal: -Spacing[4],
   },
   periodSliderContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     // 칩이 화면에 다 들어오면(첫 스캔 3개) 종전처럼 가운데 정렬, 넘치면 왼쪽부터 스크롤
     flexGrow: 1,
     justifyContent: 'center',
@@ -2196,7 +2196,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#16121F',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 16, // 전체 폭 시트 — 화면 좌우 gutter 16
     paddingBottom: 40,
   },
   mgTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
@@ -2337,7 +2338,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingBottom: 48,
     paddingTop: Spacing[4],
     backgroundColor: 'rgba(10,11,15,0.95)',

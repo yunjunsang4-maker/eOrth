@@ -216,7 +216,7 @@ export default function SocialExploreScreen() {
 // 스타일
 // ─────────────────────────────────────────────
 const CARD_GAP = 10;
-const SMALL_CARD_WIDTH = (width - Spacing[6] * 2 - CARD_GAP) / 2;
+const SMALL_CARD_WIDTH = (width - Spacing[4] * 2 - CARD_GAP) / 2; // exploreScroll paddingHorizontal(Spacing[4]=16)과 짝
 
 // 스킨 강조색으로 스타일을 만든다 — 팔레트 C의 accent 계열을 여기로 옮겼다
 function useSt() {
@@ -232,10 +232,10 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
 
   // 탐색
   explorePadding: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
   },
   exploreScroll: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingTop: Spacing[2],
   },
   sectionTitle: {
@@ -250,7 +250,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   adBanner: {
     marginTop: Spacing[4],
     marginBottom: Spacing[1],
-    marginHorizontal: 32,
+    marginHorizontal: 16,
     height: 56,
     borderRadius: 12,
     borderWidth: 1,
@@ -294,7 +294,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     flexShrink: 0,
   },
   creatorList: {
-    paddingLeft: 32,
+    paddingLeft: 16,
     paddingRight: 16,
     gap: 16,
   },

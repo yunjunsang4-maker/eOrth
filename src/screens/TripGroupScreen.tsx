@@ -465,7 +465,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   },
   menuItem: {
     paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   menuItemText: {
     fontSize: 16,
@@ -491,7 +491,7 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     borderTopWidth: 1,
     borderTopColor: a.tint(0.2),
   },

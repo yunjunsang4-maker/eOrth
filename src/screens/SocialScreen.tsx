@@ -32,7 +32,7 @@ import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon, PlusIcon, HomeIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon, HomeIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords, countTotalComments } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
@@ -922,7 +922,7 @@ function FeedCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <MegaphoneIcon size={16} color="#FF3B30" />
+                  <WarningIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.report')}</Text>
                 </TouchableOpacity>
               </View>
@@ -1396,7 +1396,7 @@ function BlogCard({
                     }}
                     activeOpacity={0.7}
                   >
-                    <MegaphoneIcon size={16} color="#FF3B30" />
+                    <WarningIcon size={16} color="#FF3B30" />
                     <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -1716,7 +1716,7 @@ function AlbumCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <MegaphoneIcon size={16} color="#FF3B30" />
+                  <WarningIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
               </View>
@@ -2271,7 +2271,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     : [
         { key: 'share', icon: <ShareSvgIcon size={18} color="#fff" />, label: t('social.share'), onPress: handleShare },
         { key: 'block', icon: <BlockIcon size={18} color="#FF3B30" />, label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
-        { key: 'report', icon: <MegaphoneIcon size={18} color="#FF3B30" />, label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
+        { key: 'report', icon: <WarningIcon size={18} color="#FF3B30" />, label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
   const meta = mode === 'full'
@@ -2301,7 +2301,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         let correctedW = w;
         let correctedH = h;
 
-        if (correctedW <= 0) correctedW = (SCREEN_W_SOCIAL - 48 - 10) / 2;
+        if (correctedW <= 0) correctedW = (SCREEN_W_SOCIAL - 32 - 10) / 2;
         if (correctedH <= 0) correctedH = 220;
 
         // x는 measureInWindow의 창 절대 좌표라, 유효성 검사도 같은 좌표계(실제 창 폭)로 해야
@@ -2309,10 +2309,10 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         // 창 중앙에 있어 stageOffsetX만큼 떨어진 값)까지 '무효'로 오판해 폴백 좌표로 덮어쓴다.
         const windowW = Dimensions.get('window').width;
         if (correctedX <= 0 || correctedX > windowW) {
-          // 폴백값(24, 24+correctedW+10)은 컬럼 로컬 좌표(friendsScroll 좌패딩 기준)다 —
+          // 폴백값(16, 16+correctedW+10)은 컬럼 로컬 좌표(friendsScroll 좌패딩 기준)다 —
           // correctedX는 창 절대 좌표라는 계약(QuickShareOverlay의 cardLocalX 변환·위 유효성
           // 검사와 동일)을 지키려면 gutter를 더해 창 좌표로 옮겨야 한다.
-          correctedX = cardStageGutter + (columnIndex === 0 ? 24 : 24 + correctedW + 10);
+          correctedX = cardStageGutter + (columnIndex === 0 ? 16 : 16 + correctedW + 10);
         }
 
         if (correctedY <= 0 || correctedY > e.absoluteY || (correctedY + correctedH) < e.absoluteY) {
@@ -3697,7 +3697,7 @@ const s = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
   storyScroll: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     gap: 14,
   },
   storyItem: {
@@ -3771,7 +3771,7 @@ const s = StyleSheet.create({
 
   // 메이트 피드
   friendsScroll: {
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
     paddingTop: Spacing[4],
   },
   feedCard: {
@@ -3948,7 +3948,7 @@ const s = StyleSheet.create({
   },
   // 빈 피드 기본 콘텐츠 (추천 메이트 + CTA)
   emptyWrap: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
   emptySuggestTitle: {
@@ -4088,7 +4088,7 @@ const cs = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
   },
   sheetTitle: {
@@ -4101,7 +4101,7 @@ const cs = StyleSheet.create({
     fontSize: 18,
   },
   commentList: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     maxHeight: 300,
   },
   commentRow: {
@@ -4269,7 +4269,7 @@ const ss = StyleSheet.create({
   optionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 16,
   },
   optionItem: {
@@ -4398,14 +4398,14 @@ const ss = StyleSheet.create({
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    marginHorizontal: 20, marginTop: 4, paddingVertical: 14,
+    marginHorizontal: 16, marginTop: 4, paddingVertical: 14,
     borderRadius: 14, backgroundColor: '#2E2E3B',
     borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)',
   },
   otherShareBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   otherSectionLabel: {
     color: '#A1A1B0', fontSize: 12, fontWeight: '600',
-    paddingHorizontal: 20, marginTop: 16, marginBottom: 6,
+    paddingHorizontal: 16, marginTop: 16, marginBottom: 6,
   },
   friendOnline: {
     position: 'absolute',

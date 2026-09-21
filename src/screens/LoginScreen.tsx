@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     justifyContent: 'space-between', // 로고는 위·버튼 묶음은 아래, 가운데는 비운다
-    paddingHorizontal: Spacing[6],
+    paddingHorizontal: Spacing[4],
   },
   bottomGroup: {
     // 짧은 화면에서 로고와 붙어버리지 않도록 최소 간격만 보장 — 나머지는 space-between이 채운다.

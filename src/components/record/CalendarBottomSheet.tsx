@@ -42,7 +42,7 @@ const MONTH_KEYS = ['calendar.m1', 'calendar.m2', 'calendar.m3', 'calendar.m4', 
 /** 스와이프로 월을 넘길 최소 이동 거리(dp). 이보다 짧으면 탭·세로 스크롤로 본다 */
 const SWIPE_THRESHOLD = 44;
 /** 시트 좌우 여백(dp) — 셀 폭이 여기서 파생된다 */
-const SHEET_PAD_H = 24;
+const SHEET_PAD_H = 24; // 달력 시안 확정값(CELL_SIZE 파생) — 앱 공통 gutter 16 통일에서 의도적으로 제외
 /** 출발·도착 헤더 알약 높이 */
 const HEADER_H = 48;
 /** 확인 버튼 높이(시안 50) */

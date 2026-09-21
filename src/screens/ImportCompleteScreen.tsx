@@ -174,7 +174,7 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
 
 const st = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0B0F' },
-  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
   checkWrap: {
     width: 140,
     height: 140,
@@ -233,5 +233,5 @@ const st = StyleSheet.create({
   flagChipEmoji: { fontSize: 15 },
   flagChipName: { color: '#FFFFFF', fontSize: 12, fontWeight: '500', maxWidth: 120 },
 
-  bottom: { paddingHorizontal: 24 },
+  bottom: { paddingHorizontal: 16 },
 });

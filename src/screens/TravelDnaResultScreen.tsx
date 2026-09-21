@@ -519,7 +519,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24 },
+  container: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 16 },
   // 타이틀은 스크롤과 함께 사라지지 않게 고정 — 축 카드가 길어 스크롤하면 화면 상단이 비어 보였다
   title: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', marginBottom: 18 },
   // 타이틀·푸터가 ScrollView 밖 형제라, 스크롤 영역이 남은 높이를 차지해야 푸터가 하단에 붙는다
