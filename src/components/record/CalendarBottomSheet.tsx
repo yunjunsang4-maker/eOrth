@@ -398,6 +398,11 @@ export function CalendarBottomSheet({
   // 기존 여행 알약은 칸마다 조각내지 않고 행 단위로 한 번에 그린다(utils/recordedDates.layoutBandRuns).
   // 칸마다 그리면 이음새가 깨지고 칩이 옆 칸에 가려진다 — 9/13~14 다섯 번 재발한 원인.
   const bandRuns = recordedRanges ? layoutBandRuns(grid, recordedRanges) : [];
+  // 선택 구간(출발~도착)도 같은 행 단위 둥근 띠로 그린다 — 칸마다 사각으로 칠하면 여행 알약 밑에
+  // 모서리 각진 보라 블록이 깔려 시안과 어긋난다(9/21). 양 끝 원은 칸 쪽(edgeCircle)이 그대로 그린다.
+  const selRuns = tempStart && tempEnd
+    ? layoutBandRuns(grid, new Map([['sel', { start: tempStart, end: tempEnd, recordId: 'sel', countryLabel: '' }]]))
+    : [];
   const PILL_INSET = 3;   // 알약 위·아래 여백(시안: 50 행에 44 알약)
   const CHIP_H = 18;
   const CHIP_BOX_W = CELL_SIZE * 2; // 칩 배치 상자(투명) — 칩 자체는 글자 길이대로, 이 상자 안에서 가운데 정렬
@@ -538,8 +543,18 @@ export function CalendarBottomSheet({
                 ))}
               </View>
               <View style={calS.grid}>
-                {bandRuns.length > 0 && (
+                {(bandRuns.length > 0 || selRuns.length > 0) && (
                   <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    {selRuns.map((run) => {
+                      const w = (run.endCol - run.startCol + 1) * CELL_SIZE;
+                      const h = CELL_SIZE - PILL_INSET * 2;
+                      return (
+                        <View
+                          key={`sel-${run.row}`}
+                          style={[calS.pill, { backgroundColor: skinAccent.tint(0.18), left: run.startCol * CELL_SIZE, width: w, top: run.row * CELL_SIZE + PILL_INSET, height: h, borderRadius: h / 2 }]}
+                        />
+                      );
+                    })}
                     {/* 알약은 시작일 순으로 그려 늦게 시작한 여행이 위에 겹친다(시안: 스페인 위에 포르투갈) */}
                     {bandRuns.map((run) => {
                       const w = (run.endCol - run.startCol + 1) * CELL_SIZE;
@@ -592,11 +607,7 @@ export function CalendarBottomSheet({
                       accessibilityRole="button"
                       accessibilityLabel={band || hasDot ? `${a11yDate}, ${t('calendar.a11yRecorded')}` : a11yDate}
                       accessibilityState={{ selected: isEdge || inRange }}
-                      style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
-                        inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
-                        isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
-                        isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
-                      ]}
+                      style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE }]}
                     >
                       <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                         <Text style={[calS.dayText,
@@ -761,17 +772,6 @@ const calS = StyleSheet.create({
   dayText:     { fontSize: 14, color: '#FFFFFF' },
   todayText:   { color: '#BF85FC', fontWeight: '700' },
 
-  inRange: { backgroundColor: 'rgba(191,133,252,0.18)' },
-  rangeStartCell: {
-    backgroundColor: 'rgba(191,133,252,0.18)',
-    borderTopLeftRadius: 17,
-    borderBottomLeftRadius: 17,
-  },
-  rangeEndCell: {
-    backgroundColor: 'rgba(191,133,252,0.18)',
-    borderTopRightRadius: 17,
-    borderBottomRightRadius: 17,
-  },
   edgeCircle: { backgroundColor: '#BF85FC' },
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
