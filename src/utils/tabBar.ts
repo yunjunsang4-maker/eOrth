@@ -74,9 +74,16 @@ export function useTabBarClearance(extra = 0): number {
  *  iOS는 FAB가 스냅 **바로 아래** 같은 세로선에 놓이므로(2026-09-20) FAB 높이 56 + 틈 10 = 66.
  *  Android는 FAB가 중앙·스냅이 우측이라 겹칠 일이 없어 옛 값 그대로. */
 export const SNAP_ABOVE_FAB = Platform.OS === 'ios' ? 66 : 56;
-/** iOS 전용: FAB(+)의 right — 스냅(right 46, 지름 60) 중심선에 FAB(지름 56)를 맞춘 값 = 46 + (60−56)/2.
- *  RecordFab(그리는 쪽)과 MainScreen(코치마크 FAB 사각형)이 같이 읽는다. Android는 FAB가 컬럼 중앙이라 안 쓴다. */
-export const IOS_FAB_RIGHT = 48;
+/** iOS 전용: 스냅·FAB 세로열의 공통 중심선 — 컬럼 오른쪽 가장자리에서 안쪽으로 이 값(pt).
+ *  프로필 탭 아이콘(4탭 중 4번째) 중심과 맞추는 것이 목표(2026-09-20 사용자 지시). 네이티브 바의
+ *  아이템 프레임은 JS로 못 재므로 iOS 26 4탭 캡슐 기하(양쪽 여백 ≈16~24, 아이템 균등 분할)로
+ *  추정(64)했다가 실기기 스크린샷 실측으로 72로 확정 — 조정은 **이 숫자 하나만**. 스냅(지름 60)·FAB(지름 56)·
+ *  MainScreen 코치마크 앵커가 전부 여기서 파생된다. */
+export const IOS_STACK_CENTER_RIGHT = 72; // 2026-09-20 iPhone 실기기 스크린샷 실측: 프로필 아이콘 중심 = 우측에서 ≈72pt
+/** iOS 전용: 스냅 버튼 right (Android는 RecordFab/MainScreen의 46 그대로) */
+export const IOS_SNAP_RIGHT = IOS_STACK_CENTER_RIGHT - 30;
+/** iOS 전용: FAB(+) right — 같은 중심선. RecordFab(그리는 쪽)과 MainScreen(코치마크 FAB 사각형)이 같이 읽는다. */
+export const IOS_FAB_RIGHT = IOS_STACK_CENTER_RIGHT - 28;
 /** iOS 네이티브 바 프레임 윗면 기준 FAB 바닥 오프셋(음수 = 프레임 안으로 파묻힘).
  *  씬 안에 그리므로 바 캡슐과 겹치는 부분은 유리 뒤로 들어간다 — 프레임 위쪽의 캡슐 밖 투명 여백만큼은
  *  내려도 보이므로, "캡슐 윗선에 닿아 보이는" 정도를 실기기로 맞춘다. 창 최상위 레이어로 올려 진짜로

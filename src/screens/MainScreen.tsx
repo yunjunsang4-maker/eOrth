@@ -25,7 +25,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 // iOS 전용 — 네이티브 탭 바에는 CustomTabBar 오버레이가 없어 이 화면이 직접 FAB를 그린다.
 import { RecordFab } from '../components/RecordFab';
-import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT } from '../utils/tabBar';
+import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT, IOS_SNAP_RIGHT } from '../utils/tabBar';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
 import { stageWidthNow, useStageWidth, clampStageWidth, STAGE_MAX_W } from '../utils/stage';
@@ -117,7 +117,8 @@ const COUNTRY_SHEET_MAX_H = height * 0.65;
 // 깔려 닫기(✕) 버튼이 눌리지 않았다(스냅·FAB가 앞 레이어).
 // bottom은 상수가 아니다 — iOS 네이티브 바 실측 높이에 따라 달라지므로 useRecordFabBottom()
 // + SNAP_ABOVE_FAB(utils/tabBar 단일 출처)로 컴포넌트 안에서 구한다(snapBottom).
-const SNAP_BTN = { right: 46, size: 60 };
+// right: iOS는 프로필 탭 아이콘 중심선(utils/tabBar IOS_STACK_CENTER_RIGHT) 파생값, Android는 시안 46.
+const SNAP_BTN = { right: Platform.OS === 'ios' ? IOS_SNAP_RIGHT : 46, size: 60 };
 /** 스냅 버튼 위에 얹는 오버레이가 스냅 바닥에서 더 올라가는 높이 (snapBottom에 더한다) */
 const ABOVE_SNAP_GAP = SNAP_BTN.size + 10;
 
@@ -564,7 +565,7 @@ export default function MainScreen({ navigation, route }: Props) {
         // 스냅 버튼(RecordFab styles.snap)은 right:46 — 창이 아니라 "컬럼" 오른쪽
         // 가장자리 기준이다. 창 좌표로 옮기려면 컬럼 시작점(GUTTER)을 더해야 한다.
         // 창 폭 그대로 쓰면 폴드·태블릿에서 강조 구멍이 gutter만큼 오른쪽으로 빗나간다.
-        x: GUTTER + STAGE_W - 46 - SNAP_BTN, // 컬럼 우측 (오른쪽 모서리 46px 안쪽)
+        x: GUTTER + STAGE_W - (Platform.OS === 'ios' ? IOS_SNAP_RIGHT : 46) - SNAP_BTN, // 컬럼 우측 (플랫폼별 right 안쪽)
         y: height - snapBottom - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,

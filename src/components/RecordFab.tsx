@@ -13,7 +13,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { DETECTOR_KEYS } from '../store/persist';
 import { FORMAT_RECO_ENABLED } from '../constants/featureFlags';
 import { shouldHighlightAlbum } from '../utils/fabHighlight';
-import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT } from '../utils/tabBar';
+import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT, IOS_SNAP_RIGHT } from '../utils/tabBar';
 
 const FORMAT_LABEL_KEY: Record<string, string> = {
   feed: 'main.formatFeed', blog: 'main.formatBlog', cut: 'main.formatCut', album: 'main.formatAlbum',
@@ -321,7 +321,8 @@ const styles = StyleSheet.create({
   // 스냅 버튼 (우측, 원 오른쪽 모서리가 화면 우측에서 ~46px 안쪽)
   snap: {
     position: 'absolute',
-    right: 46,
+    // iOS는 프로필 탭 아이콘 중심선(IOS_STACK_CENTER_RIGHT) 기준, Android는 시안 값 46
+    right: IS_IOS ? IOS_SNAP_RIGHT : 46,
   },
   fabOverlay: {
     position: 'absolute',
@@ -350,7 +351,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
   },
-  // iOS: FAB를 스냅 중심선(right 46 + (60−56)/2)에 우측 정렬
+  // iOS: FAB를 스냅과 같은 중심선(IOS_STACK_CENTER_RIGHT)에 우측 정렬
   fabWrapIos: {
     alignItems: 'flex-end',
     paddingRight: IOS_FAB_RIGHT,
