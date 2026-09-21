@@ -23,8 +23,11 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BlurView } from 'expo-blur';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import { useTranslation } from 'react-i18next';
-import { countryLabel, countryTagLabel } from '../utils/countryLabel';
+import { countryLabel } from '../utils/countryLabel';
 import { WebView } from 'react-native-webview';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
@@ -34,8 +37,8 @@ import Reanimated, {
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon } from '../components/icons';
+import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
+import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -43,7 +46,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import WeatherIcon, { normalizeWeather } from '../components/WeatherIcon';
 import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
-import RatingStars from '../components/RatingStars';
+// RatingStars는 2026-09-20 시안 적용으로 이 화면에서 링 배지(RatingRingBadge)로 대체되어 제거.
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -78,7 +81,9 @@ import { regionDisplayName } from '../utils/regionLabel';
 // 네컷(스트립) 미리보기를 프레임 규격(가로/세로 비율)에 딱 맞게 — 레터박스(여백) 제거
 const cutFitStyle = (layout: import('../constants/cutFrames').CutLayout | undefined, SCREEN_W: number, SCREEN_H: number) => {
   const aspect = (layout && CUT_LAYOUTS[layout]?.aspect) || 3 / 4; // width / height
-  const maxW = SCREEN_W - 40;
+  // 40이 아니라 32 — 본문 좌우 패딩이 20+20에서 16+16으로 좁아졌다(2026-09-20 시안).
+  // 이 숫자는 "좌우 패딩 합"이라는 한 가지 뜻이므로 scrollContent.paddingHorizontal과 항상 같이 움직인다.
+  const maxW = SCREEN_W - 32;
   const maxH = SCREEN_H * 0.7;
   let w = maxW;
   let h = maxW / aspect;
@@ -119,124 +124,135 @@ const currencySymbol = (code: string): string => {
 
 
 
-// ─── 동행자 아이콘 ───
-const IC = C.dim;
-const ISZ = 14;
-
-const SoloIcon = () => (
-  <View style={{ width: ISZ, height: ISZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ position: 'absolute', top: 0, width: 5, height: 5, borderRadius: 2.5, backgroundColor: IC }} />
-    <View style={{ position: 'absolute', bottom: 0, width: 7, height: 4, borderTopLeftRadius: 3.5, borderTopRightRadius: 3.5, backgroundColor: IC }} />
-    <View style={{ position: 'absolute', top: 1, right: 1, width: 1.5, height: 6, borderRadius: 1, backgroundColor: IC, transform: [{ rotate: '-20deg' }] }} />
-  </View>
-);
-
-const FriendIcon = () => (
-  <View style={{ width: ISZ, height: ISZ, alignItems: 'center', justifyContent: 'flex-end' }}>
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 1 }}>
-      <View style={{ alignItems: 'center' }}>
-        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-        <View style={{ width: 6, height: 3.5, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: IC }} />
-      </View>
-      <View style={{ alignItems: 'center' }}>
-        <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-        <View style={{ width: 6, height: 3.5, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: IC }} />
-      </View>
-    </View>
-  </View>
-);
-
-const CoupleIcon = () => (
-  <View style={{ width: ISZ, height: ISZ }}>
-    <View style={{ position: 'absolute', left: 0, bottom: 0, alignItems: 'center' }}>
-      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 6, height: 3.5, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: IC }} />
-    </View>
-    <View style={{ position: 'absolute', right: 0, bottom: 0, alignItems: 'center' }}>
-      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 6, height: 3.5, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: IC }} />
-    </View>
-    <View style={{ position: 'absolute', top: 0, left: ISZ / 2 - 3.5, width: 7, height: 6 }}>
-      <View style={{ position: 'absolute', top: 0, left: 0, width: 4, height: 4, borderRadius: 2, backgroundColor: IC }} />
-      <View style={{ position: 'absolute', top: 0, right: 0, width: 4, height: 4, borderRadius: 2, backgroundColor: IC }} />
-      <View style={{ position: 'absolute', bottom: 0, left: 1, width: 5, height: 4, backgroundColor: IC, transform: [{ rotate: '45deg' }] }} />
-    </View>
-  </View>
-);
-
-const FamilyIcon = () => (
-  <View style={{ width: ISZ, height: ISZ, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 1 }}>
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 5, height: 4, borderTopLeftRadius: 2.5, borderTopRightRadius: 2.5, backgroundColor: IC }} />
-    </View>
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 4, height: 2.5, borderTopLeftRadius: 2, borderTopRightRadius: 2, backgroundColor: IC }} />
-    </View>
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 5, height: 4, borderTopLeftRadius: 2.5, borderTopRightRadius: 2.5, backgroundColor: IC }} />
-    </View>
-  </View>
-);
-
-const ParentIcon = () => (
-  <View style={{ width: ISZ, height: ISZ, alignItems: 'center', justifyContent: 'flex-end' }}>
-    <View style={{ position: 'absolute', top: 0, width: 5, height: 5, borderRadius: 2.5, backgroundColor: IC }} />
-    <View style={{ width: 8, height: 4, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: IC }} />
-    <View style={{ position: 'absolute', right: 0, bottom: 0, width: 1.5, height: 9, borderRadius: 1, backgroundColor: IC, opacity: 0.6 }} />
-  </View>
-);
-
-const SiblingIcon = () => (
-  <View style={{ width: ISZ, height: ISZ, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 1 }}>
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 6, height: 4, borderTopLeftRadius: 3, borderTopRightRadius: 3, backgroundColor: IC }} />
-    </View>
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ width: 3.5, height: 3.5, borderRadius: 1.75, backgroundColor: IC, marginBottom: 1 }} />
-      <View style={{ width: 5, height: 3, borderTopLeftRadius: 2.5, borderTopRightRadius: 2.5, backgroundColor: IC }} />
-    </View>
-  </View>
-);
-
-const companionIcon = (name: string): React.ReactNode => {
+// ─── 동행자 아이콘 — 기록하기 화면(NewRecordScreen)과 같은 공용 SVG 세트(size 16). 옛 View 조립 아이콘은 모양이 달라 폐기(2026-09-20) ───
+const companionIcon = (name: string, color = '#FFFFFF'): React.ReactNode => {
   const map: Record<string, React.ReactNode> = {
-    '혼자': <SoloIcon />,
-    '친구': <FriendIcon />,
-    '연인': <CoupleIcon />,
-    '가족': <FamilyIcon />,
-    '부모님': <ParentIcon />,
-    '형제': <SiblingIcon />,
+    '혼자': <SoloIcon size={16} color={color} />,
+    '친구': <FriendIcon size={16} color={color} />,
+    '연인': <CoupleIcon size={16} color={color} />,
+    '가족': <FamilyIcon size={16} color={color} />,
+    '부모님': <ParentIcon size={16} color={color} />,
+    '형제': <SiblingIcon size={16} color={color} />,
   };
-  return map[name] || <FriendIcon />;
+  return map[name] || <FriendIcon size={16} color={color} />;
 };
 
 // ─── 좋아요 하트 (SVG) ───
 // 텍스트 글리프(♥/♡)는 폰트에 따라 모양·크기가 흔들려 SVG로 그린다.
-const HeartSvg = ({ filled, size = 22, color }: { filled: boolean; size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24">
+// 2026-09-20 시안 적용: 피그마 heart.svg 원본 path로 교체.
+// ⚠️ viewBox가 정사각이 아니다(24×21, 2026-09-21 시안 heart.svg). size는 **가로**이고 높이는 비율로 따라온다 —
+//    size를 높이로 착각해 정사각으로 그리면 하트가 세로로 눌린다.
+// 채움색은 color를 안 주면 **스킨 강조색**(useSkinAccent)을 따른다 — 시안 원색 #A47DE9는 aurora 스킨값.
+const HEART_W = 24;
+const HEART_H = 21;
+const HeartSvg = ({ filled, size = HEART_W, color, strokeWidth = 2 }: { filled: boolean; size?: number; color?: string; strokeWidth?: number }) => {
+  const skin = useSkinAccent();
+  const fillColor = color ?? skin.accent;
+  return (
+  <Svg width={size} height={size * (HEART_H / HEART_W)} viewBox={`0 0 ${HEART_W} ${HEART_H}`}>
     <SvgPath
-      d="M12 21c-.4 0-.8-.14-1.1-.4C5.9 16.3 2 12.8 2 8.9 2 5.9 4.4 3.5 7.4 3.5c1.7 0 3.4.8 4.6 2.2 1.2-1.4 2.9-2.2 4.6-2.2 3 0 5.4 2.4 5.4 5.4 0 3.9-3.9 7.4-8.9 11.7-.3.26-.7.4-1.1.4z"
-      fill={filled ? (color ?? C.red) : 'none'}
-      stroke={filled ? (color ?? C.red) : C.dim}
-      strokeWidth={1.7}
+      d="M21.3036 2.60712C20.766 2.09762 20.1278 1.69344 19.4253 1.41769C18.7228 1.14193 17.9699 1 17.2095 1C16.4491 1 15.6961 1.14193 14.9936 1.41769C14.2912 1.69344 13.6529 2.09762 13.1153 2.60712L11.9997 3.66403L10.8841 2.60712C9.79827 1.57844 8.32556 1.00053 6.78997 1.00053C5.25437 1.00053 3.78167 1.57844 2.69584 2.60712C1.61001 3.6358 1 5.03099 1 6.48577C1 7.94054 1.61001 9.33573 2.69584 10.3644L3.81147 11.4213L11.9997 19.1786L20.188 11.4213L21.3036 10.3644C21.8414 9.85515 22.268 9.25049 22.5591 8.58498C22.8502 7.91947 23 7.20615 23 6.48577C23 5.76539 22.8502 5.05207 22.5591 4.38656C22.268 3.72105 21.8414 3.11639 21.3036 2.60712Z"
+      fill={filled ? fillColor : 'none'}
+      stroke={filled ? fillColor : (color ?? C.white)}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+  );
+};
+
+// ─── 달력 (선형, 시안 calendar.svg) ───
+// 공용 CalendarIcon은 '채움형'이라 시안의 선형 달력과 다르다 — 이 화면 날짜 알약 전용.
+const CalendarLineIcon = ({ size = 13.3667, color = C.white }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 13.3667 13.3667">
+    <SvgPath
+      d="M10.1833 2.01667H3.18333C1.89467 2.01667 0.85 3.06134 0.85 4.35V10.1833C0.85 11.472 1.89467 12.5167 3.18333 12.5167H10.1833C11.472 12.5167 12.5167 11.472 12.5167 10.1833V4.35C12.5167 3.06134 11.472 2.01667 10.1833 2.01667Z"
+      stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" fill="none"
+    />
+    <SvgPath
+      d="M4.35 0.85V3.18333M9.01667 0.85V3.18333M0.85 5.51667H12.5167"
+      stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" fill="none"
     />
   </Svg>
 );
 
+// ─── 알약 유리 테두리 — 블로그 기록 화면 알약과 같은 좌상단·우하단 흰색 대각 그라데이션 링(PillRing diagonal) ───
+// 부모 알약의 첫 자식으로 넣으면 absoluteFill 층이 제 크기를 실측해 링을 얹는다(폭이 글자마다 달라도 됨).
+// ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 이중 테두리가 된다(블로그 알약 규칙).
+const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h }));
+      }}
+    >
+      <PillRing width={size.w} height={size.h} radius={radius ?? size.h / 2} diagonal />
+    </View>
+  );
+};
+
+// ─── 별점 링 배지 (시안 ring.svg + star.svg) ───
+// ring.svg의 C자는 **오른쪽**이 열려 있다. 90° 돌려 열린 쪽을 아래로 보내고 그 틈에 별을 놓는다.
+// ⚠️ 회전은 래퍼 View가 맡는다 — Svg에 transform/pointerEvents 같은 RN prop을 직접 주면
+//    안드로이드 새 아키텍처에서 리플렉션으로 처리되어 조용히 무시된다(layout-parity 규칙 11·13).
+// 링 색 #A47DE9는 시안 고정값이라 스킨색을 따르지 않는다.
+// 2026-09-21 게이지화: 링을 흰색으로 깔고, 같은 경로로 클립한 보라 원호를 점수/5만큼만 그린다(빈 부분 = 흰색).
+// 경로 실측: 중심 (21,21), 바깥 r 21, 안쪽 r 17.2, C자 양 끝 캡 중심은 열린 쪽 기준 ±36°.
+// 원호는 3시에서 시계방향으로 시작하므로 dashoffset으로 시작점을 +36°(열린 쪽 아래 끝)로 민다 — 래퍼가 90° 돌리면 좌하단에서 시작해 시계방향으로 찬다.
+// 양 끝 둥근 캡까지 덮이도록 6°씩 여유를 두고 클립이 넘친 부분을 잘라낸다.
+const RING_D = "M37.0322 10.6244C37.9147 10.0533 38.1736 8.86852 37.5249 8.04133C35.1169 4.97045 31.8916 2.6207 28.2023 1.2737C23.9149 -0.291657 19.2343 -0.417609 14.869 0.914905C10.5037 2.24742 6.69135 4.96585 4.00907 8.65868C1.32679 12.3515 -0.0793663 16.8177 0.00346007 21.3811C0.0862864 25.9445 1.65359 30.3567 4.4681 33.9498C7.28262 37.5428 11.1911 40.1211 15.6019 41.2943C20.0127 42.4676 24.6857 42.1719 28.9134 40.452C32.5514 38.972 35.6892 36.5067 37.9843 33.3505C38.6025 32.5003 38.3008 31.3257 37.3981 30.787C36.4955 30.2482 35.335 30.5511 34.6999 31.3887C32.8409 33.8401 30.3502 35.7578 27.4789 36.9259C24.0176 38.334 20.1917 38.5761 16.5804 37.6156C12.9692 36.655 9.76919 34.5441 7.46486 31.6023C5.16053 28.6606 3.87734 25.0482 3.80953 21.312C3.74171 17.5758 4.89298 13.9192 7.08903 10.8958C9.28509 7.87238 12.4064 5.64672 15.9804 4.55575C19.5544 3.46478 23.3866 3.5679 26.8967 4.8495C29.8085 5.91262 32.3672 7.73864 34.3138 10.121C34.979 10.935 36.1497 11.1956 37.0322 10.6244Z";
+const RING_CX = 21, RING_CY = 21, RING_R = 19.1, RING_END_DEG = 36, RING_CAP_DEG = 6;
+const RING_CIRC = 2 * Math.PI * RING_R;
+const RatingRingBadge = ({ score }: { score: number }) => {
+  const frac = Math.max(0, Math.min(1, score / 5));
+  const RING_ARC_DEG = 360 - RING_END_DEG * 2; // 보이는 C자 원호 = 288°
+  // 시작 캡 6° + 점수 비율 × 288° (+ 만점이면 끝 캡 6°). 클립이 캡 밖 넘침을 잘라낸다
+  const fillLen = frac === 0 ? 0 : RING_CIRC * (RING_CAP_DEG + frac * RING_ARC_DEG + (frac === 1 ? RING_CAP_DEG : 0)) / 360;
+  const startLen = RING_CIRC * (RING_END_DEG - RING_CAP_DEG) / 360;
+  return (
+  <View style={{ width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ transform: [{ rotate: '90deg' }] }}>
+      <Svg width={38.3092} height={42} viewBox="0 0 38.3092 42">
+        <SvgDefs><SvgClipPath id="ratingRingClip"><SvgPath d={RING_D} /></SvgClipPath></SvgDefs>
+        <SvgPath d={RING_D} fill={C.white} />
+        {fillLen > 0 && (
+          <SvgG clipPath="url(#ratingRingClip)">
+            <SvgCircle cx={RING_CX} cy={RING_CY} r={RING_R} fill="none" stroke="#A47DE9" strokeWidth={8}
+              strokeDasharray={[fillLen, RING_CIRC]} strokeDashoffset={-startLen} />
+          </SvgG>
+        )}
+      </Svg>
+    </View>
+    <Text style={{ position: 'absolute', top: 0, height: 42, left: 0, right: 0, textAlign: 'center', textAlignVertical: 'center', lineHeight: 42, includeFontPadding: false, fontSize: 14, fontWeight: '700', letterSpacing: 0.42, color: C.white }}>
+      {score.toFixed(1)}
+    </Text>
+    <View style={{ position: 'absolute', top: 31, left: 0, right: 0, alignItems: 'center' }}>
+      <Svg width={10.6954} height={10.2149} viewBox="0 0 10.6954 10.2149">
+        <SvgPath
+          d="M5.34746 8.55755L2.7552 10.1191C2.64069 10.192 2.52096 10.2233 2.39604 10.2128C2.27111 10.2024 2.1618 10.1608 2.0681 10.0879C1.97441 10.015 1.90153 9.92405 1.84948 9.81495C1.79742 9.70585 1.78701 9.58342 1.81825 9.44766L2.50535 6.49624L0.209801 4.51302C0.105695 4.41932 0.0407322 4.31251 0.0149137 4.19258C-0.0109047 4.07264 -0.00320081 3.95563 0.0380253 3.84153C0.0792515 3.72743 0.141715 3.63373 0.225417 3.56044C0.309119 3.48715 0.423636 3.4403 0.568968 3.4199L3.59847 3.15443L4.76966 0.374783C4.82172 0.249856 4.9025 0.15616 5.01202 0.0936957C5.12154 0.0312318 5.23335 0 5.34746 0C5.46156 0 5.57337 0.0312318 5.68289 0.0936957C5.79241 0.15616 5.87319 0.249856 5.92525 0.374783L7.09644 3.15443L10.1259 3.4199C10.2717 3.44072 10.3862 3.48757 10.4695 3.56044C10.5528 3.63332 10.6152 3.72701 10.6569 3.84153C10.6985 3.95605 10.7064 4.07327 10.6806 4.1932C10.6548 4.31313 10.5896 4.41974 10.4851 4.51302L8.18956 6.49624L8.87666 9.44766C8.9079 9.583 8.89749 9.70543 8.84543 9.81495C8.79338 9.92447 8.7205 10.0155 8.62681 10.0879C8.53311 10.1604 8.4238 10.202 8.29887 10.2128C8.17395 10.2237 8.05422 10.1924 7.93971 10.1191L5.34746 8.55755Z"
+          fill={C.white}
+        />
+      </Svg>
+    </View>
+  </View>
+  );
+};
+
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
 // frame: 피드 프레임(게시물 단위). 있으면 높이를 비율로 고정하고 사진을 contain + 채움색으로 넣는다.
 // 없으면(블로그 블록·옛 글) 사진마다 원본 비율을 읽어 그리는 기존 동작.
+const DOT_ACTIVE = '#8741FF'; // 시안 dots.svg 고정값 — 스킨색을 따르지 않는다(사용자 지정)
 const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed, frame }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[]; fullBleed?: boolean; frame?: PhotoFrame }) => {
-  const skinAccent = useSkinAccent();
   const SCREEN_W = useStageWidth(); // 슬라이드 폭 = 페이징 오프셋. 실시간이어야 한다.
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
-  // fullBleed: 화면 폭 가득(엣지-투-엣지, 모서리 각지게) / 기본: 본문 좌우 패딩(20+20)과 일치
-  const slideW = fullBleed ? SCREEN_W : SCREEN_W - 40;
+  // fullBleed: 화면 폭 가득(엣지-투-엣지, 모서리 각지게) / 기본: 본문 좌우 패딩(16+16)과 일치
+  const slideW = fullBleed ? SCREEN_W : SCREEN_W - 32;
   const imgRadius = fullBleed ? 0 : 8;
   // 각 사진의 원본 비율을 읽어 박스를 맞춤 (크롭 방지).
   // 전부 읽은 뒤 한 번에 반영한다 — 장마다 도착 순서대로 반영하면 컨테이너 높이가
@@ -268,16 +284,18 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed, fram
   const containerH = fixedH ?? Math.max(slideW * 0.75, ...items.map((_, i) => heightFor(i)));
   const fillColor = framed && frame ? frameFillColor(frame.fill) : undefined;
   return (
-    <View style={{ marginBottom: 14 }}>
+    <View style={{ marginBottom: 17 }}>
       <ScrollView
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          // 오버스크롤/빠른 스와이프로 범위 밖 인덱스가 되면 인디케이터·사진별 글이 꺼진다 — 클램프
+        // 스크롤 중에 바로 갱신한다 — onMomentumScrollEnd는 감속이 끝나야 불려 활성 점이 한 박자 늦었다.
+        // 오버스크롤/빠른 스와이프로 범위 밖 인덱스가 되면 인디케이터·사진별 글이 꺼진다 — 클램프
+        onScroll={(e) => {
           const idx = Math.min(items.length - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / slideW)));
-          setActiveIdx(idx);
+          setActiveIdx((prev) => (prev === idx ? prev : idx));
         }}
+        scrollEventThrottle={16}
         style={{ width: slideW, height: containerH }}
       >
         {items.map((item, i) => (
@@ -308,16 +326,27 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed, fram
       {items.length > 1 && (
         <>
           {/* 몇 번째 사진인지 — 점만으로는 5장 이상에서 위치가 안 읽힌다 */}
-          <View style={{ position: 'absolute', top: 10, right: 10, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.55)' }}>
-            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{activeIdx + 1}/{items.length}</Text>
+          <View style={{ position: 'absolute', top: 12, right: 14, width: 41, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>{activeIdx + 1}/{items.length}</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 8, gap: 5 }}>
-            {items.map((_, i) => (
-              <View key={i} style={{
-                width: i === activeIdx ? 16 : 6, height: 6, borderRadius: 3,
-                backgroundColor: i === activeIdx ? skinAccent.accent : '#4A4A59',
-              }} />
-            ))}
+          {/* 시안 dots.svg: 점은 항상 최대 5개(활성 점을 가운데 두는 창), 활성에서 멀수록 작아진다
+              (거리 0~2 = r3, 3 = r2.5, 4 = r2). 중심 간격 14는 고정이라 작은 점도 자리를 그대로 차지한다. */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingTop: 13 }}>
+            {(() => {
+              const shown = Math.min(5, items.length);
+              const start = Math.max(0, Math.min(activeIdx - 2, items.length - shown));
+              return Array.from({ length: shown }, (_, k) => start + k).map((i) => {
+                const r = 3 - Math.max(0, Math.abs(i - activeIdx) - 2) * 0.5;
+                return (
+                  <View key={i} style={{ width: 14, height: 6, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{
+                      width: r * 2, height: r * 2, borderRadius: r,
+                      backgroundColor: i === activeIdx ? DOT_ACTIVE : 'rgba(195,195,195,0.6)',
+                    }} />
+                  </View>
+                );
+              });
+            })()}
           </View>
         </>
       )}
@@ -769,7 +798,7 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments, blockUser } = useRecords();
   // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
@@ -1182,7 +1211,7 @@ function SnapStoryViewer({
                 <View style={{ flex: 1 }} />
                 {!s.isExample && (
                   <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                    <CommentSvg size={22} color="#fff" />
+                    <CommentIcon size={22} color="#fff" />
                     {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                   </TouchableOpacity>
                 )}
@@ -1193,7 +1222,7 @@ function SnapStoryViewer({
                 )}
                 {!s.isExample && (
                   <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
-                    <SendPlaneSvg size={22} />
+                    <ShareIcon size={22} color="#FFFFFF" />
                   </TouchableOpacity>
                 )}
               </>
@@ -1207,7 +1236,7 @@ function SnapStoryViewer({
                 )}
                 {!s.isExample && (
                   <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                    <CommentSvg size={22} color="#fff" />
+                    <CommentIcon size={22} color="#fff" />
                     {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                   </TouchableOpacity>
                 )}
@@ -1218,7 +1247,7 @@ function SnapStoryViewer({
                   </TouchableOpacity>
                 )}
                 {!s.isExample && (
-                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
+                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><ShareIcon size={22} color="#FFFFFF" /></TouchableOpacity>
                 )}
               </>
             )}
@@ -1272,14 +1301,17 @@ function SnapStoryViewer({
     ]);
   };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
+  // 타인 스냅 차단 — 본문 화면 handleBlockAuthor와 동일 UX(confirmBlock Alert + 토스트 + goBack)
+  const handleBlockAuthor = () => {
+    setMenuVisible(false);
+    const authorUser = { name: currentSnap.user.name, emoji: currentSnap.user.emoji ?? '🧳', handle: currentSnap.user.handle, id: typeof currentSnap.authorId === 'string' ? currentSnap.authorId : undefined };
+    confirmBlock(authorUser.handle ?? authorUser.name, () => {
+      blockUser(authorUser);
+      setToastMsg(t('social.blockedToast'));
+      setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1200);
+    }, t);
+  };
 
-  // 시안(Group.svg): 두 줄 텍스트가 든 말풍선 아웃라인 — 스냅 스토리 전용 댓글 아이콘
-  const CommentSvg = ({ size = 20, color = '#fff' }: { size?: number; color?: string }) => (
-    <Svg width={size * (25 / 23)} height={size} viewBox="0 0 25 23" fill="none">
-      <SvgPath d="M2.77778 7.68154C2.77778 6.54653 2.77778 5.77572 2.83056 5.17974C2.87917 4.59965 2.96944 4.30166 3.08055 4.09506L0.605556 2.8925C0.2625 3.53483 0.125 4.21955 0.061111 4.96387C-1.24176e-07 5.69229 0 6.59023 0 7.68154H2.77778ZM2.77778 10.5952V7.68154H0V10.5952H2.77778ZM0 10.5952V17.2172H2.77778V10.5952H0ZM0 17.2172V21.0766H2.77778V17.2172H0ZM0 21.0766C0 22.7864 2.16944 23.6433 3.4375 22.4341L1.47361 20.5614C1.58044 20.4594 1.71658 20.39 1.86479 20.3619C2.013 20.3338 2.16664 20.3482 2.30625 20.4034C2.44586 20.4585 2.56519 20.5519 2.64912 20.6717C2.73305 20.7916 2.77783 20.9325 2.77778 21.0766H0ZM3.4375 22.4341L7.52083 18.5417L5.55555 16.6689L1.47361 20.5614L3.4375 22.4341ZM16.9444 15.8928H7.51944V18.5417H16.9444V15.8928ZM20.7056 15.6041C20.4889 15.7101 20.1778 15.7962 19.5681 15.8425C18.9431 15.8915 18.1347 15.8928 16.9444 15.8928V18.5417C18.0889 18.5417 19.0292 18.5417 19.7944 18.4834C20.575 18.4225 21.2931 18.2913 21.9667 17.9642L20.7056 15.6041ZM21.9194 14.4466C21.6531 14.945 21.2282 15.3502 20.7056 15.6041L21.9667 17.9642C23.012 17.4563 23.8618 16.6459 24.3944 15.6492L21.9194 14.4466ZM22.2222 10.8601C22.2222 11.9951 22.2222 12.7659 22.1694 13.3619C22.1208 13.942 22.0306 14.24 21.9194 14.4466L24.3944 15.6492C24.7375 15.0068 24.875 14.3221 24.9389 13.5778C25.0014 12.8494 25 11.9514 25 10.8601H22.2222ZM22.2222 7.68154V10.8601H25V7.68154H22.2222ZM21.9194 4.09506C22.0306 4.30166 22.1208 4.59833 22.1694 5.17974C22.2222 5.77572 22.2222 6.54653 22.2222 7.68154H25C25 6.59023 25 5.69361 24.9389 4.96387C24.875 4.21955 24.7375 3.53483 24.3944 2.8925L21.9194 4.09506ZM20.7056 2.93753C21.2282 3.19147 21.6531 3.59667 21.9194 4.09506L24.3944 2.8925C23.8618 1.89573 23.012 1.08533 21.9667 0.57744L20.7056 2.93753ZM16.9444 2.64881C18.1347 2.64881 18.9431 2.64881 19.5681 2.69914C20.1764 2.74549 20.4889 2.83158 20.7056 2.93753L21.9667 0.57744C21.2931 0.250312 20.575 0.119197 19.7944 0.058274C19.0306 1.95844e-07 18.0889 0 16.9444 0V2.64881ZM8.05555 2.64881H16.9444V0H8.05555V2.64881ZM4.29444 2.93753C4.51111 2.83158 4.82222 2.74549 5.43194 2.69914C6.05694 2.64881 6.86528 2.64881 8.05555 2.64881V0C6.91111 0 5.97083 1.95844e-07 5.20555 0.058274C4.425 0.119197 3.70694 0.250312 3.03333 0.57744L4.29444 2.93753ZM3.08055 4.09506C3.34687 3.59667 3.77179 3.19147 4.29444 2.93753L3.03333 0.57744C1.98803 1.08533 1.13818 1.89573 0.605556 2.8925L3.08055 4.09506ZM7.51944 18.5417V15.8928C6.78279 15.893 6.07637 16.1722 5.55555 16.6689L7.51944 18.5417Z" fill={color} />
-      <SvgPath d="M7.66699 6.6665H18.3337M7.66699 11.9998H14.3337" stroke={color} strokeWidth={1.98} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
   // 디자인 시안(iPhone 17 - 63) 화이트 아웃라인 아이콘 — 조회(👀)·공유(종이비행기)
   const EyesSvg = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
     <Svg width={size * 1.5} height={size} viewBox="0 0 36 24" fill="none">
@@ -1289,13 +1321,6 @@ function SnapStoryViewer({
       <SvgCircle cx={27.5} cy={14.5} r={3} fill={color} />
     </Svg>
   );
-  // 시안(akar-icons_paper-airplane.svg): 종이비행기 아웃라인 — 스냅 스토리 전용 공유 아이콘
-  const SendPlaneSvg = ({ size = 22, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
-      <SvgPath d="M11.0531 18.6664L21.7643 22.4978C21.9442 22.5625 22.1364 22.5861 22.3266 22.567C22.5169 22.5479 22.7005 22.4865 22.864 22.3873C23.0275 22.2881 23.1667 22.1536 23.2716 21.9937C23.3764 21.8338 23.4442 21.6524 23.4699 21.4629L25.6551 4.94528C25.7881 3.93962 24.7463 3.18945 23.8269 3.62695L3.06145 13.5389C2.03478 14.0289 2.11178 15.5106 3.18511 15.8921L6.03178 16.9048L7.58345 17.4496M15.1668 20.1364L12.8451 24.0168C12.0868 24.9595 10.5596 24.4263 10.5596 23.2199V20.1131C10.5597 19.5268 10.7804 18.962 11.1779 18.5311L20.5624 9.62473" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-
   return (
     <View style={storyS.container}>
       <GestureDetector gesture={dismissGesture}>
@@ -1422,8 +1447,9 @@ function SnapStoryViewer({
       <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={[s.menuOverlay, { paddingRight: 20 + stageGutter }]} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={s.menuCard}>
+            <AutoPillRing radius={10} />
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
-              <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
+              <LinkIcon size={13} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             {isMyPost ? (
               <><View style={s.menuDivider} />
@@ -1437,7 +1463,12 @@ function SnapStoryViewer({
             ) : (
               <><View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={() => { setMenuVisible(false); setReportVisible(true); }} activeOpacity={0.7}>
-                <MegaphoneIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
+                {/* 스냅 변형 — 아이콘·크기는 본문 메뉴와 동일(링크 13·신고 14·차단 14) */}
+                <WarningIcon size={14} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
+              </TouchableOpacity>
+              <View style={s.menuDivider} />
+              <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
+                <BlockIcon size={14} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
               </TouchableOpacity></>
             )}
           </View>
@@ -1500,7 +1531,7 @@ export default function PostDetailScreen() {
   const SCREEN_W = useStageWidth();
   // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 오른쪽 끝에 붙는다 — 레터박스만큼 안쪽으로
   const stageGutter = useStageGutter();
-  const { height: SCREEN_H } = useWindowDimensions();
+  const { height: SCREEN_H, width: winW } = useWindowDimensions(); // winW: Modal(창 좌표) 안 팝오버 배치용
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
@@ -1553,7 +1584,31 @@ export default function PostDetailScreen() {
   // 신고할 댓글 id (모달 대상) — 게시물 신고와 모달은 같고 대상만 다르다
   const [commentReportId, setCommentReportId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
-  const [showCompanions, setShowCompanions] = useState(false);
+  // 날짜 알약을 누르면 선택정보(항공·날씨·예산·동행자)가 **다른 요소 위에** 떠오른다(2026-09-20):
+  // 나머지는 흐리고(댓글 팝오버와 같은 연출) 날짜 알약 + 선택정보 줄만 제자리에 다시 그린다. 다시 누르면 닫힌다.
+  // 알약 위치는 measureInWindow — Modal은 Stage 클램프 밖(창 좌표)이라 창 기준 좌표가 맞다.
+  const [datePillRect, setDatePillRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const datePillRef = useRef<any>(null);
+  const dpAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!datePillRect) return;
+    dpAnim.setValue(0);
+    Animated.spring(dpAnim, { toValue: 1, useNativeDriver: true, tension: 140, friction: 11 }).start();
+  }, [datePillRect, dpAnim]);
+  const openDatePill = () => {
+    tap();
+    const fallback = { x: 16, y: SCREEN_H * 0.5, w: 229, h: 30 };
+    const node = datePillRef.current;
+    if (node && typeof node.measureInWindow === 'function') {
+      node.measureInWindow((x: number, y: number, w: number, h: number) => {
+        setDatePillRect([x, y, w, h].every((v) => typeof v === 'number') ? { x, y, w, h } : fallback);
+      });
+    } else setDatePillRect(fallback);
+  };
+  const closeDatePill = () => {
+    Animated.timing(dpAnim, { toValue: 0, duration: 170, easing: Easing.out(Easing.quad), useNativeDriver: true })
+      .start(() => setDatePillRect(null));
+  };
   // null = 자동: 채워진 항목이 2개 이하면 접을 이유가 없어 펼쳐서 시작, 3개 이상이면 접힘
   const [travelInfoPref, setTravelInfoPref] = useState<boolean | null>(null);
   const [heartBurst, setHeartBurst] = useState(false);
@@ -1703,8 +1758,14 @@ export default function PostDetailScreen() {
   const entUser = useEntranceAnimation(0);
   const entMedia = useEntranceAnimation(70);
   const entInfo = useEntranceAnimation(140);
-  // 스크롤 시작 후에만 헤더 구분선 표시 — 맨 위에서는 콘텐츠와 한 면처럼 떠 있게
-  const [scrolled, setScrolled] = useState(false);
+  // 헤더 구분선은 **항상** 표시한다(2026-09-20 시안) — 스크롤 여부로 켜고 끄던 로직 제거.
+  //
+  // ⋯ 메뉴 카드 위치. blog는 헤더의 ⋯를 쓰므로 앵커 없음(=110 고정),
+  // feed·cut은 날짜 알약 행으로 내려간 ⋯ 버튼의 아래쪽 y를 눌린 시점에 실측해 넣는다
+  // (스타일에 110을 박아 두면 카드가 화면 위쪽 엉뚱한 곳에 뜬다).
+  const [menuAnchorY, setMenuAnchorY] = useState<number | null>(null);
+  const [menuCardH, setMenuCardH] = useState(0); // 카드 실측 높이 (0 = 아직 못 쟀음 → 추정치 사용)
+  const moreBtnRef = useRef<View>(null);
 
   if (!record) {
     return (
@@ -1730,8 +1791,9 @@ export default function PostDetailScreen() {
     viewType === 'album' ? t('postDetail.typeAlbum') :
     viewType === 'cut' ? t('postDetail.typeCut') :
     viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
+  // 헤더 제목도 국기 없이 나라 이름만(2026-09-20 사용자 지시 — 시안 "대한민국")
   const headerTitleText = record.countryName
-    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${countryLabel(record.countryName, i18n.language)}`
+    ? countryLabel(record.countryName, i18n.language)
     : typeLabel;
   // 여행정보 펼침 여부 — 사용자가 토글했으면 그 값, 아니면 항목 수 기준 자동
   const travelInfoCount = [record.startDate, record.weather, record.flightType, record.budget].filter(Boolean).length;
@@ -1742,6 +1804,27 @@ export default function PostDetailScreen() {
     ? ''
     : (record.memo || record.content || '');
   const bodyLong = bodyText.trim().length > 150;
+  // 블로그는 본문 블록·목차·A 버튼·여행정보 토글을 그대로 쓴다(시안은 feed·cut 공통부만 바꾼다).
+  const isBlogLayout = viewType === 'blog' && !!record.blogBlocks && record.blogBlocks.length > 0;
+  // 2026-09-20 시안이 실제로 다시 그리는 경로 = feed·cut. 여기서만
+  //   · 날짜 알약 행(+ ⋯ 이동)이 '여행정보' 토글을 대체하고
+  //   · 본문 글이 미디어 아래가 아니라 액션 행 아래 '캡션'으로 내려간다.
+  // blog·album은 시안 범위 밖이라 ⋯도 본문도 기존 자리를 지킨다.
+  const isFeedLayout = viewType === 'feed' || viewType === 'cut';
+  // 작성자 표시 이름 — 유저 행과 캡션 두 곳이 같은 값을 써야 해서 여기서 한 번만 만든다.
+  const authorIsMe = record.isMyPost === true || record.user.handle === globalHandle;
+  // 아이디는 @ 없이 표시한다(2026-09-20 사용자 지시). 캡션·작성자 행 공용.
+  const postDisplayName = authorIsMe
+    ? globalHandle
+    : (record.user.name ? record.user.name : record.user.handle);
+  const authorFontStyle = handleFontStyle(authorIsMe ? (myPremium ? myHandleFont : null) : record.user.font);
+  // 게시 시간의 **오른쪽 끝** = 아이디의 오른쪽 끝(2026-09-20 사용자 지시). 아이디·국가·시간 폭을 실측해
+  // 시간의 marginLeft로 밀어 넣는다: 시간 x = 아이디 끝 − 시간 폭. 국가 뒤 6보다 왼쪽이면(아이디가 짧으면) 국가 뒤 6에서 시작.
+  const [handleW, setHandleW] = useState(0);
+  const [countryW, setCountryW] = useState(0);
+  const [timeW, setTimeW] = useState(0);
+  const hasCountryLine = !!(record.countries?.length || record.country);
+  const timeMarginLeft = Math.max(0, handleW - timeW - (hasCountryLine ? countryW + 6 : 0)); // 국가가 없으면 시간이 첫 항목이라 gap 6이 없다
 
   const addComment = () => {
     // 연타 가드 — 위 스토리 댓글과 같은 이유(서버 멱등키 없음)
@@ -1819,10 +1902,95 @@ export default function PostDetailScreen() {
     ]);
   };
 
+  // ── 답글 숨기기(2026-09-20): 댓글 행의 두 번째 액션 '숨기기'는 **그 댓글 아래 답글들**을 접는다(댓글 자체는 남는다).
+  //    접힌 상태는 이 기기에서만 기억한다(서버 전파 없음). 접히면 라벨이 "답글 N개 보기"로 바뀐다.
+  //    답글 행에는 접을 것이 없어 액션이 없다. 삭제·신고는 댓글을 꾹 눌러 나오는 메뉴로 옮겼다.
+  const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(() => new Set());
+  const hiddenKey = `postDetail.hiddenComments:${postId}`;
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(hiddenKey)
+      .then((raw) => { if (alive && raw) setHiddenCommentIds(new Set(JSON.parse(raw) as string[])); })
+      .catch(() => { /* 읽기 실패는 숨김 없음으로 — 부가 기능이라 조용히 빠진다 */ });
+    return () => { alive = false; };
+  }, [hiddenKey]);
+  const setCommentHidden = (id: string, hidden: boolean) => {
+    tap();
+    setHiddenCommentIds((prev) => {
+      const next = new Set(prev);
+      if (hidden) next.add(id); else next.delete(id);
+      AsyncStorage.setItem(hiddenKey, JSON.stringify([...next])).catch(() => {});
+      return next;
+    });
+  };
+  // 꾹 누르면(인스타식): 배경을 흐리고 누른 댓글만 카드로 떠오르며 그 아래 팝오버가 뜬다.
+  // 내 댓글 → 삭제(확인 알림은 confirmDeleteComment가 띄운다), 남 댓글 → 신고.
+  // 행 위치는 measureInWindow — Modal은 Stage 클램프 밖(창 좌표)이라 창 기준 좌표가 맞다.
+  type CommentLike = { id: string; name: string; text: string; photo?: string; emoji?: string; isMine?: boolean; createdAt: number; time?: string };
+  const commentRowRefs = useRef<Record<string, any>>({});
+  const [commentMenu, setCommentMenu] = useState<{ c: CommentLike; rect: { x: number; y: number; w: number; h: number } } | null>(null);
+  // 열고 닫기 연출 — Modal 자체 fade 대신 값 하나(0→1)로 배경 흐림·카드 떠오름·메뉴 스프링을 함께 몬다.
+  // 닫을 때는 역재생이 끝난 뒤에 언마운트해야 카드가 툭 사라지지 않는다.
+  const cmAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!commentMenu) return;
+    cmAnim.setValue(0);
+    Animated.spring(cmAnim, { toValue: 1, useNativeDriver: true, tension: 140, friction: 11 }).start();
+  }, [commentMenu, cmAnim]);
+  const closeCommentMenu = (after?: () => void) => {
+    Animated.timing(cmAnim, { toValue: 0, duration: 170, easing: Easing.out(Easing.quad), useNativeDriver: true })
+      .start(() => { setCommentMenu(null); after?.(); });
+  };
+  const openCommentMenu = (c: CommentLike) => {
+    const show = (rect: { x: number; y: number; w: number; h: number }) => { warn(); setCommentMenu({ c, rect }); };
+    const fallback = { x: 16, y: SCREEN_H * 0.4, w: winW - 32, h: 60 };
+    const node = commentRowRefs.current[c.id];
+    if (node && typeof node.measureInWindow === 'function') {
+      node.measureInWindow((x: number, y: number, w: number, h: number) => {
+        show([x, y, w, h].every((v) => typeof v === 'number') ? { x, y, w, h } : fallback);
+      });
+    } else show(fallback);
+  };
+
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = record?.isMyPost === true;
   // 보관된 게시물이면 상세 ⋯ 메뉴를 '보관 해제 / 삭제'만 노출한다
   const isArchived = !!record?.id && archivedIds.includes(record.id);
+
+  // 날짜 알약 행의 ⋯ — 버튼이 실제로 어디 있는지 재서 메뉴 카드를 그 아래에 붙인다.
+  // measureInWindow는 비동기라 콜백 안에서 열어야 한다(먼저 열면 첫 프레임이 옛 위치로 그려진다).
+  // ⚠️ 저장하는 건 '최종 paddingTop'이 아니라 **앵커 y**다 — 카드 높이는 onLayout으로 나중에
+  //    도착하므로, 최종값을 굳혀 두면 실측이 와도 위치가 안 고쳐진다(렌더에서 매번 다시 계산).
+  const openMenuFromPill = () => {
+    const node = moreBtnRef.current;
+    // 레포 선례(MainCoachmark.tsx:158, BlogRecordScreen.tsx:1527)와 같은 가드 —
+    // ref가 있어도 measureInWindow가 없는 노드(플래튼된 뷰)가 있다.
+    if (!node || typeof node.measureInWindow !== 'function') { setMenuAnchorY(null); setMenuVisible(true); return; }
+    node.measureInWindow((_x, y, _w, h) => {
+      if (typeof y !== 'number' || typeof h !== 'number') { setMenuAnchorY(null); setMenuVisible(true); return; }
+      setMenuAnchorY(y + h);
+      setMenuVisible(true);
+    });
+  };
+
+  // 메뉴 카드 높이 — 실측(onLayout)이 오기 전 첫 프레임은 **렌더 조건과 같은 술어로** 센 항목 수로 추정한다.
+  // 예전엔 320을 박아 뒀는데, 항목이 4개뿐인 타인 글에서도 320을 빼는 바람에 클램프가 거의 항상
+  // 발동해 카드가 버튼보다 위에 떴다. 카드가 버튼 위로 올라가는 건 버튼이 화면 하단일 때만이어야 한다.
+  // 공통 행은 '링크 복사' 1개뿐이다 — 공유 행은 2026-09-20 시안에서 빠졌다(액션 행과 중복).
+  const menuItemCount = isArchived ? 2 : isMyPost ? 5 + (viewType === 'blog' ? 1 : 0) : 3; // 타인 글은 링크·신고·차단 3개 고정(네이버 내보내기는 내 글만)
+  const menuCardEstH = menuItemCount * 28 + (menuItemCount - 1) * 1; // 행 28 × n + 구분선 1 × (n-1). 시안 SVG 130×88 = 3행(28×3+2)
+  const menuPaddingTop = menuAnchorY == null
+    ? 110 // blog 헤더 ⋯ (앵커 없음) — 기존 값 유지
+    : Math.max(0, Math.min(menuAnchorY + 6, SCREEN_H - (menuCardH || menuCardEstH) - insets.bottom - 8));
+
+  // 입력바 높이 = paddingTop 8 + 아바타 42 + paddingBottom. 그라데이션 136에서 이걸 뺀 만큼이
+  // 래퍼 밖으로 넘칠 양이고, 그 값을 래퍼가 paddingTop으로 품는다(아래 렌더 주석 참조).
+  // 키보드가 떠 있으면 홈 인디케이터 여백(23·insets.bottom)은 키보드 뒤로 사라지므로 8만 남긴다 —
+  // iOS도 그대로 두면 입력 알약과 키보드 사이가 그만큼 벌어졌다(2026-09-20 지적).
+  const inputBarPadBottom = kbVisible ? 8 : Platform.OS === 'ios' ? Math.max(insets.bottom, 23) : insets.bottom + 12;
+  // 답글 바·@칩 줄이 떠 있으면 겹침을 끈다 — 음수 marginTop이 그 줄들 위로 올라가 가려 버린다.
+  const suppressOverlap = !!replyTo || (commentFocused && !!activeMention);
+  const gradientOverlap = suppressOverlap ? 0 : Math.max(0, 136 - (8 + 42 + inputBarPadBottom));
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const shareId = record?.remoteId ?? postId;
@@ -1983,36 +2151,22 @@ export default function PostDetailScreen() {
     }
   };
 
+  // 작성자 행 2번째 줄의 국가 — 2026-09-20 시안에서 스킨 틴트 칩을 버리고 **평문 한 줄**로 바꿨다.
+  // (칩 스타일 countryTag/countryTagText는 지우지 않는다 — 스냅 상세 등 다른 경로가 쓴다.)
+  // 국기 없이 나라 이름만(2026-09-20 사용자 지시). record.country는 "🇰🇷 대한민국" 꼴의 태그라 앞 토큰을 뗀다.
+  const stripFlag = (tag: string) => { const sp = tag.indexOf(' '); return sp > 0 ? tag.slice(sp + 1).trim() : tag; };
   const renderCountries = () => {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
-        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{countryTagLabel(record.country, i18n.language)}</Text>
-        </View>
+        <Text style={s.userCountryText} onLayout={(e) => setCountryW(e.nativeEvent.layout.width)} {...andFitText}>{countryLabel(stripFlag(record.country), i18n.language)}</Text>
       ) : null;
     }
-    if (record.countries.length <= 3) {
-      return record.countries.map((c, i) => (
-        <View key={i} style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {countryLabel(c.name, i18n.language)}</Text>
-        </View>
-      ));
-    }
-    return (
-      <>
-        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {countryLabel(record.countries[0].name, i18n.language)}</Text>
-        </View>
-        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>+{record.countries.length - 1}</Text>
-        </View>
-      </>
-    );
+    // 3개까지는 " · "로 이어 한 줄. 4개 이상이면 첫 나라 + 나머지 개수.
+    const label = record.countries.length <= 3
+      ? record.countries.map((c) => countryLabel(c.name, i18n.language)).join(' · ')
+      : `${countryLabel(record.countries[0].name, i18n.language)} +${record.countries.length - 1}`;
+    return <Text style={s.userCountryText} onLayout={(e) => setCountryW(e.nativeEvent.layout.width)} {...andFitText}>{label}</Text>;
   };
-
-  const CommentSvg = ({ size = 20, color = C.dim }: { size?: number; color?: string }) => (
-    <CommentSvgIcon size={size} color={color} />
-  );
 
   // ── 스냅: 인스타 스토리 스타일 전체화면 ──
   if (viewType === 'snap') {
@@ -2043,27 +2197,6 @@ export default function PostDetailScreen() {
   }
 
   // 사진/네컷/placeholder 위에 공통으로 올리는 동행자 오버레이
-  const companionsOverlay = record.companions && record.companions.length > 0 ? (
-    <>
-      <TouchableOpacity
-        style={s.tagBtn}
-        activeOpacity={0.8}
-        onPress={() => setShowCompanions(!showCompanions)}
-      >
-        <PersonIcon size={14} color="#fff" />
-      </TouchableOpacity>
-      {showCompanions && (
-        <View style={s.companionPopup}>
-          {record.companions.map((comp, i) => (
-            <View key={i} style={s.companionPopupItem}>
-              <View style={s.companionIconWrap}>{companionIcon(comp)}</View>
-              <Text style={s.companionPopupText}>{comp}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </>
-  ) : null;
 
   // 더블탭 좋아요 하트 버스트 (사진/네컷 위 오버레이)
   const heartOverlay = heartBurst ? (
@@ -2074,8 +2207,8 @@ export default function PostDetailScreen() {
 
   return (
     <View style={s.container}>
-      {/* 헤더 — 구분선은 스크롤을 시작한 뒤에만(맨 위에선 콘텐츠와 한 면처럼) */}
-      <View style={[s.header, { paddingTop: insets.top + 8, borderBottomColor: scrolled ? C.cardBorder : 'transparent' }]}>
+      {/* 헤더 — 구분선은 항상 표시(2026-09-20 시안). 오른쪽 버튼은 blog만, feed·cut은 빈 스페이서. */}
+      <View style={[s.header, { paddingTop: insets.top + 8 }]}>
           <View style={s.headerSide}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
               <BackChevronIcon />
@@ -2083,7 +2216,7 @@ export default function PostDetailScreen() {
           </View>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
           <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 8 }]}>
-            {viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 && (
+            {isBlogLayout && (
               <TouchableOpacity
                 onPress={() => setFontScale((p) => (p >= 1.4 ? 0.85 : p + 0.15))}
                 style={s.menuBtn}
@@ -2093,8 +2226,9 @@ export default function PostDetailScreen() {
                 <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }} {...andFitText}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
-            {!record.isExample && (
-              <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
+            {/* feed·cut의 ⋯는 아래 날짜 알약 행으로 내려갔다 — 헤더 ⋯는 blog·album만 */}
+            {!isFeedLayout && !record.isExample && (
+              <TouchableOpacity onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
                 <Text style={s.menuDots}>···</Text>
               </TouchableOpacity>
             )}
@@ -2112,16 +2246,11 @@ export default function PostDetailScreen() {
           contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          onScrollBeginDrag={() => setShowCompanions(false)}
-          onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
-          scrollEventThrottle={32}
         >
               {/* ── 유저 정보 + 이미지 + 본문 ── */}
               {(() => {
-                const isMyPost = record.isMyPost === true || record.user.handle === globalHandle;
-                const postDisplayName = isMyPost
-                  ? `@${globalHandle}`
-                  : (record.user.name ? record.user.name : `@${record.user.handle}`);
+                // 표시 이름·폰트는 캡션과 공유한다(위 authorIsMe/postDisplayName/authorFontStyle).
+                const isMyPost = authorIsMe;
                 // 메이트 버튼은 제거했다(2026-09-15) — '메이트' 표시를 한 번 누르면 확인 없이 바로
                 // 끊겨 오터치 사고가 잦았다. 메이트 신청·해제는 프로필 화면에서만 한다.
                 return (
@@ -2138,9 +2267,9 @@ export default function PostDetailScreen() {
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >
-                      <View style={[s.avatar, record.isExample && { overflow: 'hidden' }]}>
+                      <View style={s.avatar}>
                         {record.isExample ? (
-                          <Image source={APP_LOGO} style={{ width: 42, height: 42 }} resizeMode="cover" />
+                          <Image source={APP_LOGO} style={{ width: 42, height: 42, borderRadius: 21 }} resizeMode="cover" />
                         ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (
@@ -2148,6 +2277,8 @@ export default function PostDetailScreen() {
                         ) : (
                           <PersonIcon size={24} color="#A0A0B0" />
                         )}
+                        {/* 프로필 사진 유무와 무관하게 알약과 같은 유리 링(사진 위에 얹힘) */}
+                        <AutoPillRing />
                       </View>
                       <View style={s.userInfo}>
                         {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
@@ -2156,24 +2287,18 @@ export default function PostDetailScreen() {
                           {record.isExample ? (
                             <Text style={s.officialBadge}>{t('socialEmpty.official')}</Text>
                           ) : (
-                            <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                            <Text style={[s.userName, authorFontStyle]} onLayout={(e) => setHandleW(e.nativeEvent.layout.width)}>{postDisplayName}</Text>
                           )}
                         </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
-                          {!record.isExample && <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>}
+                          {!record.isExample && <Text style={[s.userTimeText, { marginLeft: timeMarginLeft }]} onLayout={(e) => setTimeW(e.nativeEvent.layout.width)}>{timeAgo(record.timestamp)}</Text>}
                         </View>
                       </View>
                     </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
-                      // 앱 공용 0.5 단위 별점 — 예전 '★'.repeat는 4.5점이 별 4개로 잘렸다
-                      <RatingStars
-                        score={record.rating}
-                        size={13}
-                        gap={2}
-                        fullColor={skinAccent.accent}
-                        emptyColor="rgba(255,255,255,0.18)"
-                      />
+                      // 별 나열(RatingStars) → 시안의 링 배지. 0.5 단위 표현은 숫자(4.5)가 대신한다.
+                      <RatingRingBadge score={record.rating} />
                     )}
                   </Animated.View>
                 );
@@ -2223,7 +2348,7 @@ export default function PostDetailScreen() {
                     <Animated.View style={[s.mediaWrap, entMedia]}>
                       {/* 뒤 은은한 글로우 — 프레임색을 따라감(프레임 사진이면 스킨색) */}
                       <LiquidCardGlow
-                        width={SCREEN_W - 40}
+                        width={SCREEN_W - 32}
                         height={cutFitStyle(record.cutPhoto!.layout, SCREEN_W, SCREEN_H).height}
                         color={record.cutPhoto!.frameColor || skinAccent.accent}
                         opacity={0.12}
@@ -2236,7 +2361,6 @@ export default function PostDetailScreen() {
                           </TouchableOpacity>
                         </View>
                       </View>
-                      {companionsOverlay}
                       {heartOverlay}
                     </Animated.View>
                   ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
@@ -2282,7 +2406,6 @@ export default function PostDetailScreen() {
                         fullBleed
                         frame={normalizePhotoFrame(record.photoFrame)}
                       />
-                      {companionsOverlay}
                       {heartOverlay}
                     </Animated.View>
                   ) : (
@@ -2302,22 +2425,28 @@ export default function PostDetailScreen() {
                           {viewType === 'feed' ? t('postDetail.typeFeed') : viewType === 'cut' ? t('postDetail.typeCut') : t('postDetail.typeAlbum')}
                         </Text>
                       </View>
-                      {companionsOverlay}
                     </LinearGradient>
                   )}
 
-                  {bodyText ? (
+                  {/* feed·cut의 본문은 액션 행 아래 '캡션'으로 내려갔다(아래 captionBlock).
+                      앨범은 시안 범위 밖이라 그리드 바로 아래 기존 자리를 지킨다. */}
+                  {!isFeedLayout && bodyText ? (
                     <Text
                       style={[
                         s.content,
                         { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
                       ]}
                       numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
+                      // 펼친 뒤 본문(끝 포함)을 누르면 다시 접힌다
+                      onPress={bodyLong && bodyExpanded ? () => setBodyExpanded(false) : undefined}
+                      suppressHighlighting
+                      accessibilityRole={bodyLong && bodyExpanded ? 'button' : undefined}
+                      accessibilityHint={bodyLong && bodyExpanded ? t('postDetail.bodyLessA11y') : undefined}
                     >
                       {bodyText}
                     </Text>
                   ) : null}
-                  {bodyLong && !bodyExpanded && (
+                  {!isFeedLayout && bodyLong && !bodyExpanded && (
                     <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
                       <Text style={[s.moreBtn, { color: skinAccent.accent }]}>{t('postDetail.more')}</Text>
                     </TouchableOpacity>
@@ -2328,8 +2457,127 @@ export default function PostDetailScreen() {
           {/* ── 이하 공통: 정보 칩, 메모, 키워드, 좋아요, 댓글 ── */}
           <View>
 
-          {/* ── 키워드 (여행정보 위, 항상 표시 — 앨범은 사진 모음이라 제외) ── */}
-          {viewType !== 'album' && record.keywords && record.keywords.length > 0 && (
+          {/* ── 날짜 알약 행 (feed·cut) — 기존 '여행정보' 토글 + 정보 칩을 대체한다 ──
+              왼쪽에 날짜/날씨/항공/예산 알약을 접어 흘리고, 오른쪽 끝에 ⋯(헤더에서 내려옴). */}
+          {isFeedLayout && (record.startDate || record.weather || record.budget || record.flightType || record.companions?.length || !record.isExample) && (() => {
+            const hasDate = !!(record.startDate && record.endDate);
+            const hasOptional = !!(normalizeWeather(record.weather) || record.flightType || record.budget || record.companions?.length);
+            // 선택정보 줄 — 항공 → 날씨 → 예산 → 동행자
+            const optionalPills = hasOptional ? (
+              <View style={s.optionalRow}>
+                {record.flightType && (
+                  /* 시안(2026-09-20 '캘린더 누르면 여행정보 펼쳐짐'): 글자만, 아이콘 없음. 실측 66×30 */
+                  <View style={s.infoPill}>
+                    <AutoPillRing />
+                    <Text style={s.infoPillText}>{record.flightType}</Text>
+                  </View>
+                )}
+                {normalizeWeather(record.weather) && (
+                  <View style={[s.infoPill, s.infoPillRound]}>
+                    <AutoPillRing />
+                    {/* 기록 화면과 같은 제작 SVG 세트 — 이모지는 기기 폰트마다 모양이 달랐다 */}
+                    <WeatherIcon value={record.weather} size={16} color="#FFFFFF" />
+                  </View>
+                )}
+                {record.budget && (
+                  <View style={s.infoPill}>
+                    <AutoPillRing />
+                    <Text style={s.infoPillText}>
+                      {currencySymbol(record.budget.currency)}{' '}{record.budget.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                )}
+                {record.companions?.map((comp, i) => (
+                  <View key={`${comp}-${i}`} style={s.infoPill}>
+                    <AutoPillRing />
+                    <View style={s.companionIconWrap}>{companionIcon(comp)}</View>
+                    <Text style={s.infoPillText}>{comp}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null;
+            return (<>
+            <View style={s.pillRow}>
+              <View style={s.pillGroup}>
+                {hasDate && (
+                  <TouchableOpacity
+                    ref={datePillRef}
+                    // 오버레이가 떠 있는 동안 원본을 숨긴다 — 흐린 원본 위에 사본이 겹치면 알약 두 장이 포개져
+                    // 다른 정보 알약보다 밝게(빛나듯) 보였다. 사본만 남기면 선택정보 알약과 같은 밝기가 된다.
+                    style={[s.datePill, !!datePillRect && { opacity: 0 }]}
+                    activeOpacity={0.8}
+                    disabled={!hasOptional}
+                    onPress={openDatePill}
+                    accessibilityRole="button"
+                    accessibilityState={{ expanded: !!datePillRect }}
+                    accessibilityLabel={t('postDetail.travelInfo')}
+                  >
+                    <AutoPillRing />
+                    <CalendarLineIcon />
+                    <Text style={s.datePillText}>{record.startDate} ~ {record.endDate}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {!record.isExample && (
+                <TouchableOpacity
+                  ref={moreBtnRef}
+                  onPress={openMenuFromPill}
+                  style={s.morePill}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('postDetail.menuA11y')}
+                >
+                  <AutoPillRing />
+                  <View style={s.moreDot} />
+                  <View style={s.moreDot} />
+                  <View style={s.moreDot} />
+                </TouchableOpacity>
+              )}
+            </View>
+            {/* 날짜가 없으면 접을 손잡이가 없으므로 선택정보를 바로 보여준다 */}
+            {!hasDate && optionalPills}
+            {/* 날짜 알약을 누르면: 나머지는 흐리고, 날짜 알약과 선택정보만 제자리에 떠오른다. 어디를 눌러도 닫힌다 */}
+            <Modal visible={!!datePillRect} transparent animationType="none" statusBarTranslucent onRequestClose={closeDatePill}>
+              {datePillRect && (
+                <View style={StyleSheet.absoluteFill}>
+                  {/* 시안(캘린더 누르면 여행정보 펼쳐짐)은 배경을 거의 그대로 두고 살짝만 가라앉힌다 — 댓글 팝오버(30/0.62)보다 훨씬 약하게 */}
+                  <Pressable style={StyleSheet.absoluteFill} onPress={closeDatePill} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+                    <Animated.View style={[StyleSheet.absoluteFill, { opacity: dpAnim }]}>
+                      {Platform.OS === 'ios' && <BlurView intensity={8} tint="dark" style={StyleSheet.absoluteFill} />}
+                      <View style={[StyleSheet.absoluteFill, { backgroundColor: Platform.OS === 'ios' ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.28)' }]} />
+                    </Animated.View>
+                  </Pressable>
+                  <Animated.View style={{ position: 'absolute', left: datePillRect.x, top: datePillRect.y, opacity: dpAnim }}>
+                    <TouchableOpacity
+                      style={s.datePill}
+                      activeOpacity={0.8}
+                      onPress={closeDatePill}
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: true }}
+                      accessibilityLabel={t('postDetail.travelInfo')}
+                    >
+                      <AutoPillRing />
+                      <CalendarLineIcon />
+                      <Text style={s.datePillText}>{record.startDate} ~ {record.endDate}</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                  {/* optionalRow의 marginTop 8이 알약과의 간격 */}
+                  <Animated.View
+                    style={{
+                      position: 'absolute', left: datePillRect.x, top: datePillRect.y + datePillRect.h, width: winW - datePillRect.x - 16,
+                      opacity: dpAnim,
+                      transform: [{ translateY: dpAnim.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+                    }}
+                  >
+                    {optionalPills}
+                  </Animated.View>
+                </View>
+              )}
+            </Modal>
+            </>);
+          })()}
+
+          {/* ── 키워드 칩 (blog 전용 — feed·cut은 캡션 끝에 #태그 글자로 흘린다, 2026-09-20 시안) ── */}
+          {viewType !== 'album' && !isFeedLayout && record.keywords && record.keywords.length > 0 && (
             <View style={s.keywords}>
               {record.keywords.map((k) => (
                 <View key={k} style={[s.keyword, { backgroundColor: skinAccent.tint(0.12) }]}>
@@ -2339,8 +2587,8 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 여행정보 토글 버튼 (앨범 제외) ── */}
-          {viewType !== 'album' && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {/* ── 여행정보 토글 버튼 (blog 전용 — feed·cut은 위 알약 행이 대신한다) ── */}
+          {!isFeedLayout && viewType !== 'album' && (record.startDate || record.weather || record.budget || record.flightType) && (
             <TouchableOpacity
               style={[s.travelInfoBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}
               activeOpacity={0.8}
@@ -2352,8 +2600,8 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           )}
 
-          {/* ── 정보 칩들 ── */}
-          {viewType !== 'album' && travelInfoOpen && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {/* ── 정보 칩들 (blog 전용) ── */}
+          {!isFeedLayout && viewType !== 'album' && travelInfoOpen && (record.startDate || record.weather || record.budget || record.flightType) && (
             <View style={s.infoRow}>
               {record.startDate && record.endDate && (
                 <View style={s.infoChip}>
@@ -2392,40 +2640,77 @@ export default function PostDetailScreen() {
 
           {/* ── 좋아요 · 댓글 수 + 댓글 목록 (앨범은 사진 모음이라 소셜 요소 없음) ── */}
           {viewType !== 'album' && (<>
-          <Animated.View style={[s.statsRow, entInfo]}>
-            <View style={[s.statBtn, record.liked && s.statBtnLiked]}>
-              <TouchableOpacity onPress={() => { if (record.isExample) return; tap(); springLike(); handleToggleLike(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-                  <HeartSvg filled={!!record.liked} />
-                </Animated.View>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
-                <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
-              </TouchableOpacity>
-            </View>
+          {/* ── 구분선 (본문 덩어리 ↔ 반응 영역) ── */}
+          <View style={s.sectionDivider} />
+
+          {/* ── 액션 행 — 유리 알약을 걷어내고 아이콘+숫자만 나열(2026-09-20 시안) ── */}
+          <Animated.View style={[s.actionRow, entInfo]}>
+            <TouchableOpacity onPress={() => { if (record.isExample) return; tap(); springLike(); handleToggleLike(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+              <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                <HeartSvg filled={!!record.liked} />
+              </Animated.View>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ marginLeft: 6 }} onPress={openLikers} disabled={!canShowLikers || !!record.isExample} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
+              <Text style={[s.actionCount, record.liked && { color: C.red }]}>{record.likes}</Text>
+            </TouchableOpacity>
             {!record.isExample && (
-              <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
-                <CommentSvg />
-                <Text style={s.statCount}>{totalComments}</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity style={{ marginLeft: 20 }} onPress={() => commentInputRef.current?.focus()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
+                  <CommentIcon size={20} color={C.white} />
+                </TouchableOpacity>
+                <TouchableOpacity style={{ marginLeft: 7 }} onPress={() => commentInputRef.current?.focus()} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
+                  <Text style={s.actionCount}>{totalComments}</Text>
+                </TouchableOpacity>
+                {/* 메뉴 모달의 '공유' 항목과 같은 핸들러 — 동작·문구가 갈라지지 않게 재사용한다 */}
+                <TouchableOpacity style={{ marginLeft: 18 }} onPress={handleSharePost} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('postDetail.shareAction')}>
+                  <ShareIcon size={22} color={C.white} />
+                </TouchableOpacity>
+              </>
             )}
           </Animated.View>
 
-          {/* ── 구분선 ── */}
-          <View style={s.divider} />
+          {/* ── 캡션 (feed·cut) — 아이디 + 본문을 한 문단으로 흘린다 ── */}
+          {isFeedLayout && (bodyText || record.keywords?.length) ? (
+            <>
+              <Text
+                style={[s.captionBody, { marginTop: 20 }]}
+                numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
+                // 펼친 뒤 캡션(끝 포함)을 누르면 다시 접힌다
+                onPress={bodyLong && bodyExpanded ? () => setBodyExpanded(false) : undefined}
+                suppressHighlighting
+                accessibilityRole={bodyLong && bodyExpanded ? 'button' : undefined}
+                accessibilityHint={bodyLong && bodyExpanded ? t('postDetail.bodyLessA11y') : undefined}
+              >
+                {!record.isExample && (
+                  <Text style={[s.captionHandle, authorFontStyle]}>{postDisplayName}{'  '}</Text>
+                )}
+                {bodyText}
+                {/* #태그는 본문 뒤에 보라 글자로 이어 붙는다(칩 아님) */}
+                {!!record.keywords?.length && (
+                  <Text style={s.captionTags}>{bodyText ? ' ' : ''}{record.keywords.map((k) => `#${k}`).join(' ')}</Text>
+                )}
+              </Text>
+              {bodyLong && !bodyExpanded && (
+                <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
+                  <Text style={[s.moreBtn, { color: skinAccent.accent }]}>{t('postDetail.more')}</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          ) : null}
 
           {/* ── 댓글 목록 ── */}
-          <Text style={s.commentTitle}>{t('postDetail.commentCountN', { count: totalComments })}</Text>
+          <View style={s.commentList}>
           {comments.map((c) => (
             <View key={c.id}>
-              <View style={s.commentItem}>
+              <Pressable ref={(n) => { commentRowRefs.current[c.id] = n; }} style={s.commentItem} onLongPress={() => openCommentMenu(c)} delayLongPress={350}>
                 {/* 아바타/이름 탭 → 작성자 프로필 (서버 댓글만 authorId 보유) */}
                 <TouchableOpacity
                   style={s.commentAvatar}
                   disabled={!c.authorId}
                   onPress={() => c.authorId && navigation.navigate('FriendProfile', { userId: c.authorId, username: c.name })}
                 >
-                  <AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} />
+                  <AuthorAvatar photo={c.photo} emoji={c.emoji} size={36} emojiSize={15} />
+                  <AutoPillRing />
                 </TouchableOpacity>
                 <View style={s.commentBody}>
                   <View style={s.commentTopRow}>
@@ -2438,36 +2723,36 @@ export default function PostDetailScreen() {
                     <Text style={s.commentTime}>{commentTime(c)}</Text>
                   </View>
                   {/* @언급은 보라 네온 + 탭하면 그 사람 프로필로 (MentionText가 처리) */}
-                  <MentionText text={c.text} style={s.commentText} />
+                  <MentionText text={c.text} style={s.commentText} mentionStyle={s.commentMention} />
                   <View style={s.commentActions}>
-                    <TouchableOpacity style={s.commentLikeBtn} onPress={() => { tap(); toggleCommentLike(postId, c.id); }}>
-                      <Text style={[s.commentLikeIcon, c.liked && { color: C.red }]}>{c.liked ? '♥' : '♡'}</Text>
-                      {!!c.likes && <Text style={s.commentLikeCount}>{c.likes}</Text>}
-                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
                       <Text style={s.commentActionText} {...andFitText}>{t('postDetail.reply')}</Text>
                     </TouchableOpacity>
-                    {c.isMine ? (
-                      <TouchableOpacity onPress={() => confirmDeleteComment(c.id)}>
-                        <Text style={[s.commentActionText, { color: C.red }]} {...andFitText}>{t('postDetail.delete')}</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity onPress={() => setCommentReportId(c.id)}>
-                        <Text style={s.commentActionText} {...andFitText}>{t('social.report')}</Text>
+                    {!!c.replies?.length && (
+                      <TouchableOpacity onPress={() => setCommentHidden(c.id, !hiddenCommentIds.has(c.id))}>
+                        <Text style={[s.commentActionText, s.commentActionMuted]} {...andFitText}>
+                          {hiddenCommentIds.has(c.id) ? t('postDetail.showReplies', { count: c.replies!.length }) : t('postDetail.hideComment')}
+                        </Text>
                       </TouchableOpacity>
                     )}
                   </View>
                 </View>
-              </View>
-              {/* 답글 목록 */}
-              {c.replies && c.replies.length > 0 && c.replies.map((r) => (
-                <View key={r.id} style={s.replyItem}>
+                {/* 좋아요는 행 오른쪽 끝 세로선 — 글리프(♥/♡) 대신 본문과 같은 SVG 하트 */}
+                <TouchableOpacity style={s.commentLikeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { tap(); toggleCommentLike(postId, c.id); }}>
+                  {!!c.likes && <Text style={s.commentLikeCount}>{c.likes}</Text>}
+                  <HeartSvg filled={!!c.liked} size={14.2} strokeWidth={1.2} />
+                </TouchableOpacity>
+              </Pressable>
+              {/* 답글 목록 — 부모의 '숨기기'로 접힌다 */}
+              {c.replies && c.replies.length > 0 && !hiddenCommentIds.has(c.id) && c.replies.map((r) => (
+                <Pressable key={r.id} ref={(n) => { commentRowRefs.current[r.id] = n; }} style={s.replyItem} onLongPress={() => openCommentMenu(r)} delayLongPress={350}>
                   <TouchableOpacity
                     style={s.commentAvatar}
                     disabled={!r.authorId}
                     onPress={() => r.authorId && navigation.navigate('FriendProfile', { userId: r.authorId, username: r.name })}
                   >
-                    <AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} />
+                    <AuthorAvatar photo={r.photo} emoji={r.emoji} size={36} emojiSize={15} />
+                    <AutoPillRing />
                   </TouchableOpacity>
                   <View style={s.commentBody}>
                     <View style={s.commentTopRow}>
@@ -2479,27 +2764,18 @@ export default function PostDetailScreen() {
                       </Text>
                       <Text style={s.commentTime}>{commentTime(r)}</Text>
                     </View>
-                    <MentionText text={r.text} style={s.commentText} />
+                    <MentionText text={r.text} style={s.commentText} mentionStyle={s.commentMention} />
                     <View style={s.commentActions}>
-                      <TouchableOpacity style={s.commentLikeBtn} onPress={() => { tap(); toggleCommentLike(postId, r.id); }}>
-                        <Text style={[s.commentLikeIcon, r.liked && { color: C.red }]}>{r.liked ? '♥' : '♡'}</Text>
-                        {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
-                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
                         <Text style={s.commentActionText} {...andFitText}>{t('postDetail.reply')}</Text>
                       </TouchableOpacity>
-                      {r.isMine ? (
-                        <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
-                          <Text style={[s.commentActionText, { color: C.red }]} {...andFitText}>{t('postDetail.delete')}</Text>
-                        </TouchableOpacity>
-                      ) : (
-                        <TouchableOpacity onPress={() => setCommentReportId(r.id)}>
-                          <Text style={s.commentActionText} {...andFitText}>{t('social.report')}</Text>
-                        </TouchableOpacity>
-                      )}
                     </View>
                   </View>
-                </View>
+                  <TouchableOpacity style={s.commentLikeBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { tap(); toggleCommentLike(postId, r.id); }}>
+                    {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
+                    <HeartSvg filled={!!r.liked} size={14.2} strokeWidth={1.2} />
+                  </TouchableOpacity>
+                </Pressable>
               ))}
             </View>
           ))}
@@ -2508,6 +2784,7 @@ export default function PostDetailScreen() {
           ) : comments.length === 0 ? (
             <Text style={s.commentEmpty}>{t('trip.noComments')}</Text>
           ) : null}
+          </View>
           </>)}
           <View style={{ height: 16 }} />
           </View>
@@ -2535,43 +2812,59 @@ export default function PostDetailScreen() {
             onPick={pickMention}
           />
         )}
-        {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
-        <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : kbVisible ? 12 : insets.bottom + 12 }]}>
-          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-            ref={commentInputRef}
-            style={s.input}
-            placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')}
-            placeholderTextColor={C.muted}
-            value={commentText}
-            onChangeText={setCommentText}
-            // 커서 추적 — @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알아야 한다
-            onSelectionChange={(e) => setCommentCursor(e.nativeEvent.selection.end)}
-            // 포커스 추적 — 키보드만 내렸을 때 칩 줄이 남지 않게 한다(위 onCommentBlur 주석)
-            onFocus={onCommentFocus}
-            onBlur={onCommentBlur}
-            onSubmitEditing={addComment}
-            returnKeyType="send"
-            maxLength={500}
+        {/* 입력바 래퍼 — 그라데이션(136)이 입력바보다 커서 위 댓글 목록 위로 흘러 올라간다.
+            ⚠️ 넘치는 만큼(gradientOverlap)을 **래퍼의 paddingTop으로 품고 같은 값의 음수 marginTop으로
+               되돌린다.** `overflow:'visible'`에 기대면 안드로이드가 부모 경계 밖 자식을 안 그려
+               그라데이션이 입력바 높이만큼만 칠해진다(QA F-1).
+            ⚠️ pointerEvents는 **prop**으로만 준다(layout-parity 규칙 13 — 스타일 키는 무시된다).
+               box-none이라 투명한 위 63px는 아래 댓글의 탭을 그대로 통과시킨다. */}
+        <View pointerEvents="box-none" style={[s.inputWrap, { paddingTop: gradientOverlap, marginTop: -gradientOverlap }]}>
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(12,12,12,0.7)']}
+            locations={[0.02, 0.55]}
+            pointerEvents="none"
+            style={s.inputGradient}
           />
-          <TouchableOpacity
-            style={[s.sendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && s.sendBtnDisabled]}
-            onPress={addComment}
-            disabled={!commentText.trim()}
-          >
-            <Text style={[s.sendText, !commentText.trim() && s.sendTextDisabled]}>{t('postDetail.send')}</Text>
-          </TouchableOpacity>
+          {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
+          <View style={[s.inputBar, { paddingBottom: inputBarPadBottom }]}>
+            <View style={s.inputAvatar}>
+              <AuthorAvatar photo={globalProfilePhoto ?? undefined} size={42} />
+              <AutoPillRing />
+            </View>
+            <View style={s.inputPill}>
+              <AutoPillRing />
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+                ref={commentInputRef}
+                style={[s.input, !!commentText.trim() && { paddingRight: 56 }]}
+                placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')}
+                placeholderTextColor="rgba(255,255,255,0.7)"
+                value={commentText}
+                onChangeText={setCommentText}
+                // 커서 추적 — @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알아야 한다
+                onSelectionChange={(e) => setCommentCursor(e.nativeEvent.selection.end)}
+                // 포커스 추적 — 키보드만 내렸을 때 칩 줄이 남지 않게 한다(위 onCommentBlur 주석)
+                onFocus={onCommentFocus}
+                onBlur={onCommentBlur}
+                onSubmitEditing={addComment}
+                returnKeyType="send"
+                maxLength={500}
+              />
+              {/* 전송은 쓸 내용이 있을 때만 나타난다 — 비활성 회색 버튼을 늘 띄워 두지 않는다(시안).
+                  시안(Group 2085664666): 60×30 보라(#8741FF) 알약 + 흰 위 화살표. 입력 알약 오른쪽 안쪽에 5 여백으로 얹는다 */}
+              {!!commentText.trim() && (
+                <TouchableOpacity style={s.sendPill} onPress={addComment} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel={t('postDetail.send')}>
+                  <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+                    <SvgPath d="M7 12.5V1.8M2.2 6.6L7 1.8l4.8 4.8" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
         </>
         )}
       </KeyboardAvoidingView>
 
-      {/* 동행자 팝업 닫기용 오버레이 */}
-      {showCompanions && (
-        <Pressable
-          style={s.dismissOverlay}
-          onPress={() => setShowCompanions(false)}
-        />
-      )}
 
       {/* ── 메뉴 모달 ── */}
       <Modal
@@ -2582,44 +2875,47 @@ export default function PostDetailScreen() {
         onRequestClose={() => setMenuVisible(false)}
       >
         <TouchableOpacity
-          style={[s.menuOverlay, { paddingRight: 20 + stageGutter }]}
+          style={[s.menuOverlay, { paddingRight: 20 + stageGutter, paddingTop: menuPaddingTop }]}
           accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
-          <View style={s.menuCard}>
+          <View
+            style={s.menuCard}
+            onLayout={(e) => {
+              // 실측 높이가 오면 추정치를 대체한다 — 같은 값으로 setState 하면 무한 루프라 1px 여유를 둔다
+              const h = e.nativeEvent.layout.height;
+              if (h > 0 && Math.abs(h - menuCardH) > 1) setMenuCardH(h);
+            }}
+          >
+            <AutoPillRing radius={10} />
             {isArchived ? (
               /* 보관된 게시물 — 보관 해제 / 삭제만 노출 */
               <>
                 <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={16} color="#fff" />
+                  <ArchiveIcon size={14} color="#fff" />
                   <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                  <TrashIcon size={16} color="#FF3B30" />
+                  <TrashIcon size={14} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
             <>
-            {/* 공통 메뉴 */}
+            {/* 공통 메뉴 — 공유 행은 뺐다. 액션 행에 종이비행기 공유가 이미 있어 중복이었다(2026-09-20 시안) */}
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
-              <LinkIcon size={16} color="#fff" />
+              <LinkIcon size={13} color="#fff" />
               <Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
-            <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleSharePost} activeOpacity={0.7}>
-              <ShareIcon size={16} color="#fff" />
-              <Text style={s.menuItemText}>{t('postDetail.shareAction')}</Text>
-            </TouchableOpacity>
 
-            {viewType === 'blog' && (
+            {isMyPost && viewType === 'blog' && (
               <>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleExportToNaver} activeOpacity={0.7}>
-                  <View style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: '#03C75A', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>N</Text>
+                  <View style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#03C75A', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>N</Text>
                   </View>
                   <Text style={s.menuItemText}>{t('postDetail.naverExportTitle')}</Text>
                 </TouchableOpacity>
@@ -2631,13 +2927,13 @@ export default function PostDetailScreen() {
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleToggleVisibility} activeOpacity={0.7}>
                   {record.visibility === 'private'
-                    ? <GlobeIcon size={16} color="#fff" />
-                    : <LockClosedIcon size={16} color="#fff" />}
+                    ? <GlobeIcon size={14} color="#fff" />
+                    : <LockClosedIcon size={14} color="#fff" />}
                   <Text style={s.menuItemText}>{t(record.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={16} color="#fff" />
+                  <ArchiveIcon size={14} color="#fff" />
                   <Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -2652,26 +2948,27 @@ export default function PostDetailScreen() {
                     navigation.navigate('NewRecord', { record: rawRecord });
                   }
                 }} activeOpacity={0.7}>
-                  <PencilIcon size={16} color="#fff" />
+                  <PencilIcon size={14} color="#fff" />
                   <Text style={s.menuItemText}>{t('postDetail.editAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                  <TrashIcon size={16} color="#FF3B30" />
+                  <TrashIcon size={14} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
+                {/* 타인 글 — 시안 3행: 링크 복사 / 신고하기 / 차단하기 */}
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleReport} activeOpacity={0.7}>
-                  <MegaphoneIcon size={16} color="#FF3B30" />
+                  <WarningIcon size={14} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
-                {/* 수정 6: 타인 게시물 차단 — SocialScreen과 동일 패턴 */}
+                {/* 수정 6: 타인 게시물 차단 — SocialScreen과 동일 패턴. 아이콘은 사람이 아니라 금지 표식(BlockIcon) */}
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
-                  <PersonIcon size={16} color="#FF3B30" />
+                  <BlockIcon size={14} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
                 </TouchableOpacity>
               </>
@@ -2693,6 +2990,74 @@ export default function PostDetailScreen() {
           setTimeout(() => setToastMsg(''), 2000);
         }}
       />
+
+      {/* 댓글 꾹 누르기 팝오버 — 인스타 댓글 시트 참고(2026-09-20): 흐린 배경 + 누른 댓글 카드 + 아래 둥근 메뉴 */}
+      <Modal visible={!!commentMenu} transparent animationType="none" statusBarTranslucent onRequestClose={() => closeCommentMenu()}>
+        {commentMenu && (() => {
+          const { c, rect } = commentMenu;
+          const MENU_W = 240;
+          const ROW_H = 52;
+          const rows = c.isMine
+            ? [{ key: 'delete', label: t('postDetail.delete'), icon: <TrashIcon size={22} color="#FF3B30" />, onPress: () => confirmDeleteComment(c.id) }]
+            : [{ key: 'report', label: t('social.report'), icon: <WarningIcon size={22} color="#FF3B30" />, onPress: () => setCommentReportId(c.id) }];
+          const menuH = rows.length * ROW_H + 8;
+          const below = rect.y + rect.h + 8;
+          // 아래에 자리가 없으면 댓글 위로
+          const top = below + menuH <= SCREEN_H - insets.bottom - 8 ? below : Math.max(insets.top + 8, rect.y - menuH - 8);
+          const left = Math.max(16, Math.min(rect.x + 24, winW - 16 - MENU_W));
+          return (
+            <View style={StyleSheet.absoluteFill}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => closeCommentMenu()} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+                <Animated.View style={[StyleSheet.absoluteFill, { opacity: cmAnim }]}>
+                  {Platform.OS === 'ios'
+                    ? <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+                    : <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.62)' }]} />}
+                </Animated.View>
+              </Pressable>
+              {/* 누른 댓글 — 원래 자리에 카드로 다시 그린다(원본은 흐림 아래). 제자리에서 살짝 커지며 떠오르고, 닫힐 땐 되돌아간다 */}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  s.cmCard,
+                  { left: rect.x, top: rect.y, width: rect.w, minHeight: rect.h },
+                  { opacity: cmAnim, transform: [{ scale: cmAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.03] }) }] },
+                ]}
+              >
+                <View style={s.commentAvatar}><AuthorAvatar photo={c.photo} emoji={c.emoji} size={36} emojiSize={15} /><AutoPillRing /></View>
+                <View style={s.commentBody}>
+                  <View style={s.commentTopRow}>
+                    <Text style={s.commentName}>{c.name}</Text>
+                    <Text style={s.commentTime}>{commentTime(c)}</Text>
+                  </View>
+                  <MentionText text={c.text} style={s.commentText} mentionStyle={s.commentMention} />
+                </View>
+              </Animated.View>
+              {/* 메뉴 — 카드 쪽에서 스프링으로 펼쳐진다(작게·살짝 위에서 → 제자리) */}
+              <Animated.View
+                style={[
+                  s.cmMenu,
+                  { left, top, width: MENU_W },
+                  {
+                    opacity: cmAnim,
+                    transform: [
+                      { translateY: cmAnim.interpolate({ inputRange: [0, 1], outputRange: [top > rect.y ? -10 : 10, 0] }) },
+                      { scale: cmAnim.interpolate({ inputRange: [0, 1], outputRange: [0.88, 1] }) },
+                    ],
+                  },
+                ]}
+              >
+                {Platform.OS === 'ios' && <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />}
+                {rows.map((r) => (
+                  <TouchableOpacity key={r.key} style={s.cmRow} activeOpacity={0.7} onPress={() => closeCommentMenu(r.onPress)}>
+                    {r.icon}
+                    <Text style={[s.cmRowText, { color: '#FF3B30' }]}>{r.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </Animated.View>
+            </View>
+          );
+        })()}
+      </Modal>
 
       {/* 댓글 신고 — 접수 즉시 해당 댓글이 목록에서 사라진다(App Store 1.2) */}
       <ReportModal
@@ -2768,17 +3133,19 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   // ── 헤더 ──
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 10,
-    borderBottomWidth: 1, borderBottomColor: C.cardBorder,
+    paddingHorizontal: 16, paddingBottom: 10,
+    // 항상 보이는 얇은 구분선 (2026-09-20 시안 line.svg — 0.8 / 흰색 15%)
+    borderBottomWidth: 0.8, borderBottomColor: 'rgba(255,255,255,0.15)',
   },
   // 좌(뒤로가기)·우(메뉴) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
   headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지
+  // 뒤로가기 — 카드 박스 없이 chevron만(사용자 지시). 38 치수는 터치 영역으로 유지.
+  // flex-start: chevron을 패딩 끝(x≈16~17)에 붙인다 — 가운데 정렬이면 시안보다 안쪽으로 들어간다.
   backBtn: {
     width: 38, height: 38,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'flex-start', justifyContent: 'center',
   },
-  headerTitle: { flexShrink: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.white, marginHorizontal: 8 },
+  headerTitle: { flexShrink: 1, textAlign: 'center', fontSize: 18, fontWeight: '800', letterSpacing: 0.72, color: C.white, marginHorizontal: 8 },
   menuBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: C.card,
@@ -2787,7 +3154,8 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   menuDots: { fontSize: 16, color: C.dim, letterSpacing: 2, marginTop: -2 },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 },
+  // 좌우 16 — 이 값이 바뀌면 mediaFullBleed의 음수 마진과 'SCREEN_W - 32' 계산도 함께 바뀐다
+  scrollContent: { paddingHorizontal: 16, paddingTop: 19, paddingBottom: 8 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: C.muted, fontSize: 14 },
 
@@ -2796,19 +3164,40 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
 
   // ── 유저 정보 ──
   userRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18,
+    flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 15,
   },
-  authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
+  // 42 원 + 테두리 없음 — 스킨 틴트 링은 시안에서 빠졌다
   avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: tint(0.12), alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: tint(0.2),
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center',
   },
-  userInfo: { flex: 1 },
-  userName: { fontSize: 15, fontWeight: '700', color: C.white },
+  userInfo: { flex: 1, marginTop: 2 },
+  userName: { fontSize: 15, fontWeight: '800', letterSpacing: 0.45, color: C.white },
+  // 국가·게시 시간은 한 줄(같은 열)에 나열 — 국가 왼쪽 끝이 아이디 왼쪽 끝과 같은 선.
   userMeta: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4,
   },
+  // 이 화면의 국가·시간은 칩이 아니라 평문 한 줄(2026-09-20 시안).
+  // 아래 countryTag/countryTagText는 지우지 않는다 — 다른 경로가 쓰는 칩 스타일이다.
+  userCountryText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, color: C.white },
+  userTimeText: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, color: 'rgba(255,255,255,0.5)' },
+  // 꾹 누른 댓글 카드 — 행과 같은 내부 배치(paddingLeft 11·gap 14·아바타 marginTop 2)를 유지해 제자리에 겹친다
+  cmCard: {
+    position: 'absolute', flexDirection: 'row', alignItems: 'flex-start', gap: 16,
+    paddingLeft: 11, paddingRight: 12, paddingVertical: 8, marginTop: -8,
+    borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  cmMenu: {
+    position: 'absolute', borderRadius: 22, overflow: 'hidden', paddingVertical: 4,
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(36,36,42,0.72)' : 'rgba(36,36,42,0.98)',
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 18 },
+      default: { elevation: 12 },
+    }),
+  },
+  cmRow: { flexDirection: 'row', alignItems: 'center', gap: 14, height: 52, paddingHorizontal: 18 },
+  cmRowText: { fontSize: 17, fontWeight: '600', color: '#FFFFFF' },
   countryTag: {
     backgroundColor: tint(0.12),
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4,
@@ -2826,8 +3215,8 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
 
   // ── 실제 사진/네컷 영역 ──
   mediaWrap: { position: 'relative', marginBottom: 4 },
-  // 피드 캐러셀 — 스크롤 본문 패딩(20)을 상쇄해 화면 폭 가득 채운다
-  mediaFullBleed: { marginHorizontal: -20 },
+  // 피드 캐러셀 — 스크롤 본문 패딩(16)을 상쇄해 화면 폭 가득 채운다
+  mediaFullBleed: { marginHorizontal: -16 },
   // 스트립 기울임 — '책상 위 인화지'. 그림자는 iOS만(Android elevation은 투명 래퍼에서
   // 사각 그림자가 그대로 드러난다 — 깊이감은 뒤 글로우가 대신한다)
   cutTiltWrap: {
@@ -2843,11 +3232,11 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
       default: {},
     }),
   },
-  // 사진첩(앨범) 그리드 — 본문 패딩(20+20) 안 3열
+  // 사진첩(앨범) 그리드 — 본문 패딩(16+16) 안 3열
   albumGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginBottom: 10 },
   albumGridImg: {
-    width: Math.floor((SCREEN_W - 40 - 4) / 3),
-    height: Math.floor((SCREEN_W - 40 - 4) / 3),
+    width: Math.floor((SCREEN_W - 32 - 4) / 3),
+    height: Math.floor((SCREEN_W - 32 - 4) / 3),
     borderRadius: 4,
     backgroundColor: '#1F1F22',
   },
@@ -2856,7 +3245,7 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   albumSectionTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   albumSectionCount: { fontSize: 12, color: '#A1A1B0' },
   cutImage: {
-    width: SCREEN_W - 40, height: SCREEN_H * 0.6, borderRadius: 12,
+    width: SCREEN_W - 32, height: SCREEN_H * 0.6, borderRadius: 12,
     marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',
   },
   heartBurst: {
@@ -2937,6 +3326,34 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   },
   memoText: { fontSize: 13, color: C.dim, lineHeight: 20, fontStyle: 'italic' },
 
+  // ── 날짜 알약 행 (feed·cut) ──
+  // 왼쪽 그룹은 줄바꿈되지만 ⋯는 항상 오른쪽 끝 첫 줄에 붙어야 해서 alignItems: 'flex-start'.
+  pillRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  pillGroup: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  datePill: {
+    height: 30, borderRadius: 31.5, backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingLeft: 22, paddingRight: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  datePillText: { fontSize: 14, fontWeight: '800', letterSpacing: -0.14, color: C.white },
+  // 항공·날씨·예산·동행자 — 날짜 알약과 같은 규격(높이 30·r31.5·bg 0.1)·같은 글자(14/800). 시안 실측: '직항' 66×30 → 좌우 16
+  infoPill: {
+    height: 30, borderRadius: 31.5, backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  infoPillText: { fontSize: 14, fontWeight: '800', letterSpacing: -0.14, color: C.white },
+  // 아이콘만 든 알약(날씨)은 지름 30 원
+  infoPillRound: { width: 30, paddingHorizontal: 0, justifyContent: 'center' },
+  // 날짜 알약 아래 펼쳐지는 선택정보 줄 — 시안 실측: 날짜 아래 10, 알약 사이 10
+  optionalRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+  // ⋯ — 헤더에서 내려온 메뉴 버튼. 점 3개(지름 3, 중심 간격 7 → gap 4)
+  morePill: {
+    width: 30, height: 30, borderRadius: 15, marginLeft: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  moreDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: C.white },
+
   // ── 키워드 ──
   keywords: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   keyword: {
@@ -2966,20 +3383,35 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   statIcon: { fontSize: 22, color: C.dim },
   statCount: { fontSize: 14, fontWeight: '700', color: C.white },
 
+  // ── 액션 행 (2026-09-20 시안) — 알약 없이 아이콘+숫자만. 간격은 각 요소의 marginLeft로.
+  actionRow: { flexDirection: 'row', alignItems: 'center', paddingLeft: 1, marginTop: 19 },
+  actionCount: { fontSize: 14, fontWeight: '700', letterSpacing: 0.42, color: C.white },
+
+  // 본문 ↔ 반응 영역 경계. 본문 패딩(16)을 상쇄해 화면 폭 가득.
+  sectionDivider: { height: 0.8, backgroundColor: 'rgba(255,255,255,0.15)', marginHorizontal: -16, marginTop: 20 },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.cardBorder, marginBottom: 16 },
 
+  // ── 캡션 (액션 행 아래) ──
+  // 아이디와 본문을 **한 Text 안에 중첩**으로 흘린다 — 별도 Text를 늘어놓으면 줄바꿈과
+  // numberOfLines(더보기 판정)가 어긋난다(MentionText와 같은 이유).
+  captionHandle: { fontSize: 15, fontWeight: '700', letterSpacing: 0.45, color: C.white },
+  captionBody: { fontSize: 14, fontWeight: '500', letterSpacing: 0.42, color: C.white, lineHeight: 18 },
+  captionTags: { color: '#B286FF', fontWeight: '600' },
+
   // ── 댓글 목록 ──
-  commentTitle: { fontSize: 14, fontWeight: '700', color: C.white, marginBottom: 14 },
-  commentItem: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  commentList: { marginTop: 25 },
+  // 아바타↔이름 간격 16(작성자 행·댓글·답글 공통, 2026-09-20 사용자 지시)
+  commentItem: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 11, gap: 16, marginBottom: 14 },
   commentAvatar: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: C.card, alignItems: 'center', justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 18, marginTop: 2,
+    backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center',
   },
   commentBody: { flex: 1 },
-  commentTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
-  commentName: { fontSize: 13, fontWeight: '600', color: C.white },
-  commentTime: { fontSize: 11, color: C.muted },
-  commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
+  commentTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  commentName: { fontSize: 12, fontWeight: '700', letterSpacing: 0.36, color: C.white },
+  commentTime: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, color: 'rgba(255,255,255,0.5)', marginTop: 2 },
+  commentText: { fontSize: 12, fontWeight: '400', color: C.white, lineHeight: 15.6, marginTop: 4 },
+  commentMention: { color: '#B286FF', fontWeight: '600' },
   moreBtn: { color: a, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 6 },
   // ── 좋아요한 사람 목록 ──
   likersOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -2994,12 +3426,16 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   likerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   likerName: { fontSize: 14, fontWeight: '600', color: C.white },
   likerHandle: { fontSize: 12, color: C.dim, marginTop: 1 },
-  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
-  commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 7 },
+  // 하트는 행 오른쪽 끝, 아바타(36) 중심에 맞춰 내린다: 2(아바타 marginTop) + (36-12.2)/2 ≈ 14
+  commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', marginTop: 14 },
   commentLikeIcon: { fontSize: 14, color: C.dim },
-  commentLikeCount: { fontSize: 12, color: C.dim },
-  commentActionText: { fontSize: 12, color: C.muted, fontWeight: '600' },
-  replyItem: { flexDirection: 'row', gap: 8, marginBottom: 12, marginLeft: 42 },
+  commentLikeCount: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.5)' },
+  commentActionText: { fontSize: 12, color: C.white, fontWeight: '600' },
+  commentActionMuted: { color: 'rgba(255,255,255,0.5)' },
+  // 61 = commentItem paddingLeft 11 + 아바타 36 + gap 14 → 답글 아바타가 부모 본문과 같은 선에 선다
+  // marginLeft 63 = 부모 paddingLeft 11 + 아바타 36 + 간격 16 → 답글 아바타가 부모 본문 x에 맞춰진다
+  replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, marginBottom: 14, marginLeft: 63 },
   replyBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 8,
@@ -3009,26 +3445,37 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   replyBarCancel: { fontSize: 16, color: C.muted, paddingHorizontal: 4 },
 
   // ── 댓글 입력 ──
+  // 래퍼는 배경을 깔지 않는다 — 그라데이션(136)이 입력바 위로 흘러 올라가 댓글을 덮는 연출.
+  // paddingTop/marginTop(= gradientOverlap)은 호출부에서 준다. overflow는 지정하지 않는다 —
+  // 안드로이드에서 'visible'은 부모 밖 렌더를 보장하지 않아 기대면 안 된다(QA F-1).
+  inputWrap: { position: 'relative' },
+  inputGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 136 },
   inputBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 16, paddingTop: 10, paddingBottom: 28,
-    borderTopWidth: 1, borderTopColor: C.cardBorder,
-    backgroundColor: C.bg,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 23,
+    backgroundColor: 'transparent',
+  },
+  inputAvatar: {
+    width: 42, height: 42, borderRadius: 21, // overflow hidden 없음 — AuthorAvatar가 스스로 둥글게 자르고, 링이 잘리면 안 된다
+    backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center',
+  },
+  // 댓글 입력 알약 — 날짜·정보 알약과 같은 유리 룩(흰 10% 바탕 + AutoPillRing 대각 그라데이션 링, 2026-09-20).
+  // borderWidth를 두면 링과 이중 테두리가 되므로 두지 않는다.
+  inputPill: {
+    flex: 1, marginLeft: 16, height: 40, borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center',
   },
   input: {
-    flex: 1, height: 40, borderRadius: 20,
-    backgroundColor: C.card, paddingHorizontal: 16,
-    color: C.white, fontSize: 14,
+    flex: 1, height: 40,
+    color: C.white, fontSize: 12, fontWeight: '600',
   },
-  sendBtn: {
-    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
-    backgroundColor: a,
+  // 배경 없는 글자 버튼 — 입력이 있을 때만 렌더된다(비활성 상태 자체가 없다)
+  // 전송 알약 — 시안 고정색(#8741FF, 캐러셀 활성 점과 같은 값). 입력 알약(높이 40) 안 오른쪽 끝, 상하 5 여백
+  sendPill: {
+    position: 'absolute', right: 5, top: 5, width: 60, height: 30, borderRadius: 15,
+    backgroundColor: DOT_ACTIVE, alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: {
-    backgroundColor: C.cardBorder,
-  },
-  sendText: { fontSize: 13, fontWeight: '700', color: '#0A0A0F' },
-  sendTextDisabled: { color: C.muted },
 
   // ── 동행자 팝업 닫기 오버레이 ──
   dismissOverlay: {
@@ -3042,19 +3489,21 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
     justifyContent: 'flex-start', alignItems: 'flex-end',
     paddingTop: 110, paddingRight: 20,
   },
+  // ⋯ 메뉴 카드 — 2026-09-20 시안 SVG "Rectangle 240652657"(130×88, rx 10, 흰 10%, 테두리 없음). 그림자는 반투명이라 뺐다
   menuCard: {
-    width: 180, backgroundColor: C.card,
-    borderRadius: 14, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 12,
+    minWidth: 130, backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10, // overflow:'hidden' 금지 — AutoPillRing(대각 그라데이션 링)이 잘린다. 행 배경이 없어 클립이 필요 없다
   },
+  // 행 높이 28 — 시안 88 ÷ 3행. 터치 최소치(44)보다 작지만 시안 우선(menuCardEstH도 같은 28을 쓴다)
   menuItem: {
     flexDirection: 'row', alignItems: 'center',
-    height: 48, paddingHorizontal: 16, gap: 10,
+    height: 28, paddingLeft: 12, paddingRight: 12, gap: 8,
   },
-  menuItemText: { fontSize: 14, color: C.white, fontWeight: '500' },
-  menuDivider: { height: 1, backgroundColor: '#3A3A4A' },
-  menuSectionDivider: { height: 6, backgroundColor: '#1A1A26' },
+  menuItemText: { fontSize: 13, color: C.white, fontWeight: '600' },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
+  // 예전엔 6px 두꺼운 띠였는데 시안이 모든 행 사이를 같은 1px로 쓴다 → menuDivider와 같은 값.
+  // 마크업의 '섹션 경계' 의미만 남기려고 이름은 유지한다.
+  menuSectionDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
 
   // ── 토스트 ──
   toast: {
