@@ -35,6 +35,7 @@ import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { DateRangeField } from '../components/record/DateRangeField';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { MediaPickerModal } from '../components/record/MediaPickerModal';
+import DateRangePhotoSheet from '../components/record/DateRangePhotoSheet';
 import WeatherIcon from '../components/WeatherIcon';
 import { FriendPickerModal } from '../components/record/FriendPickerModal';
 import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
@@ -52,6 +53,7 @@ import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { stageWidthNow } from '../utils/stage';
+import { dayRangeMs } from '../utils/dateRangePhotoPick';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -494,12 +496,30 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     return compressed;
   };
 
-  const selectMedia = async () => {
-    const slots = maxRecordPhotos - medias.length;
-    if (slots <= 0) {
-      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
-      return;
+  // 원본 uri 배열을 기록에 담는 유일한 경로. 시스템 선택기 결과와 기간 사진 격자 결과가
+  // 같은 함수를 타야 상한 slice·photoTexts 길이 맞춤이 한 곳에서만 관리된다.
+  const importOriginals = async (originals: string[]) => {
+    if (originals.length === 0) return;
+    setLoadingMedia(true);
+    setMediaProgress({ done: 0, total: originals.length });
+    try {
+      const compressed = await addNewOriginals(originals, medias, (done, total) => setMediaProgress({ done, total }));
+      setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
+      // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
+      setPhotoTexts((prev) => {
+        const addedCount = Math.max(0, Math.min(compressed.length, maxRecordPhotos - prev.length));
+        return [...prev, ...Array(addedCount).fill('')];
+      });
+    } finally {
+      setLoadingMedia(false);
+      setMediaProgress(null);
     }
+  };
+
+  // 시스템 사진첩 선택기 — 기간이 없을 때의 폴백과 기간 시트의 '전체 사진첩에서 고르기'가
+  // 같은 코드를 쓰도록 분리했다. 두 진입이 갈라지면 한쪽만 고쳐진다.
+  const launchSystemPicker = async () => {
+    const slots = maxRecordPhotos - medias.length;
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -508,23 +528,81 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         quality: 0.8,
       });
       if (!result.canceled && result.assets) {
-        setLoadingMedia(true);
-        setMediaProgress({ done: 0, total: result.assets.length });
-        const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias, (done, total) => setMediaProgress({ done, total }));
-        setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
-        // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
-        setPhotoTexts((prev) => {
-          const addedCount = Math.max(0, Math.min(compressed.length, maxRecordPhotos - prev.length));
-          return [...prev, ...Array(addedCount).fill('')];
-        });
+        await importOriginals(result.assets.map(a => a.uri));
       }
+    } catch (e: any) {
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
+    }
+  };
+
+  const selectMedia = async () => {
+    const slots = maxRecordPhotos - medias.length;
+    if (slots <= 0) {
+      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
+      return;
+    }
+    // 여행 기간이 정해져 있으면 그 기간에 찍은 사진 격자를 먼저 보여준다 —
+    // 수천 장짜리 사진첩에서 여행 사진을 직접 찾아 헤매지 않게 하는 것이 이 변경의 목적이다.
+    if (dayRangeMs(startDate, endDate)) {
+      setRangeSheetVisible(true);
+      return;
+    }
+    await launchSystemPicker();
+  };
+
+  // 기간 사진 격자에서 담기 — 결과는 시스템 선택기와 똑같이 importOriginals로만 흘린다.
+  // 시트(RN Modal)를 먼저 닫고 진행 오버레이(절대위치 View)를 띄우는 순서를 지킨다.
+  // iCloud 오프로드분은 uri가 없어 assetId로 온다 — 여기서 downloadCloudAssets(진행률·취소 UI가
+  // 이미 오버레이에 있다)로 받아 같은 배열에 합친다. 시트는 사진을 버리지 않는다.
+  const confirmRangeSheet = async (uris: string[], cloudAssetIds: string[], assetIds: string[]) => {
+    setRangeSheetVisible(false);
+    // 시트 uri는 ph://(원본)라 originalUriMapRef의 file://과 안 맞는다 → assetId로 '담김'을 기억하고,
+    // 원본 uri→assetId를 남겨 사진을 지우면 removeMedia가 '담김'을 풀 수 있게 한다.
+    uris.forEach((u, i) => { if (assetIds[i]) sheetAssetIdByOriginalUriRef.current[u] = assetIds[i]; });
+    setSheetAddedAssetIds((prev) => Array.from(new Set([...prev, ...assetIds])));
+    // 다운로드 구간에도 오버레이가 떠 있어야 '멈춘 건가' 오해가 없다. importOriginals가 안에서
+    // 다시 켜고 끄지만 같은 방향이라 중첩은 무해하다.
+    setLoadingMedia(true);
+    try {
+      const cloudOk = await downloadCloudAssets(cloudAssetIds);
+      cloudOk.forEach((c) => { if (typeof c.asset === 'string') sheetAssetIdByOriginalUriRef.current[c.uri] = c.asset; });
+      await importOriginals([...uris, ...cloudOk.map((c) => c.uri)]);
+      // 안내는 시트가 닫힌 뒤(여기)에만 띄운다 — 시트와 같은 tick에 띄우면 iOS에서 Alert가
+      // 시트에 붙은 채로 함께 사라져 사용자가 읽지 못한다.
+      const failedCloud = cloudAssetIds.length - cloudOk.length;
+      if (failedCloud > 0) Alert.alert(t('newRecord.noticeTitle'), t('album.icloudSkipped', { count: failedCloud }));
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
     } finally {
       setLoadingMedia(false);
-      setMediaProgress(null);
     }
   };
+
+  // 시트 안의 '전체 사진첩에서 고르기'.
+  // ⚠️ RN Modal이 닫히는 애니메이션 도중에 네이티브 피커를 present하면 iOS의 present/dismiss가
+  //    엇갈려 보이지 않는 모달 껍데기가 남고 앱 전체 터치를 삼킨다(아래 loadingMedia 오버레이
+  //    주석의 그 사고). 시트가 완전히 닫힌 뒤에만 선택기를 띄운다.
+  // iOS는 RN Modal의 onDismiss(네이티브 dismiss 완료 후 발화)를 결정적 신호로 쓴다 — 타이머는
+  // 기기 성능·저전력·'동작 줄이기'에 따라 어긋나고, 어긋나면 위에 적은 터치 삼킴 사고가 그대로 난다.
+  // 안드로이드는 RN이 onDismiss를 아예 부르지 않으므로(Modal.js가 iOS에서만 호출) 타이머 폴백을 남긴다.
+  const SHEET_DISMISS_MS = 400;
+  const pendingPickerRef = useRef(false);
+  const openSystemPickerFromSheet = () => {
+    setRangeSheetVisible(false);
+    if (Platform.OS === 'ios') {
+      pendingPickerRef.current = true; // handleSheetDismissed가 이어받는다
+      // 방어: onDismiss가 어떤 이유로든 안 오면 '전체 사진첩에서 고르기'가 죽는다(실기기 미검증 신호).
+      // 넉넉한 지연 뒤 예약이 아직 남아 있을 때만 한 번 실행 — onDismiss가 먼저 왔으면 ref가 false라 무동작.
+      setTimeout(handleSheetDismissed, SHEET_DISMISS_MS * 3);
+      return;
+    }
+    setTimeout(() => { void launchSystemPicker(); }, SHEET_DISMISS_MS);
+  };
+  function handleSheetDismissed() {
+    if (!pendingPickerRef.current) return;
+    pendingPickerRef.current = false;
+    void launchSystemPicker();
+  }
 
   const removeMedia = (index: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -532,6 +610,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     if (removedUri && removedUri === representativePhoto) {
       setRepresentativePhoto(null);
     }
+    // 시트로 담았던 사진이면 '담김' 제외를 푼다 — 다시 열었을 때 고를 수 있어야 한다
+    const removedAssetId = removedUri ? sheetAssetIdByOriginalUriRef.current[originalUriMapRef.current[removedUri] ?? removedUri] : undefined;
+    if (removedAssetId) setSheetAddedAssetIds((prev) => prev.filter((id) => id !== removedAssetId));
     setMedias(prev => prev.filter((_, i) => i !== index));
     // 삭제된 인덱스의 글 슬롯도 함께 제거
     setPhotoTexts(prev => prev.filter((_, i) => i !== index));
@@ -916,6 +997,25 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [loadingMedia,            setLoadingMedia]            = useState(false);
   const [mediaProgress,           setMediaProgress]           = useState<{ done: number; total: number } | null>(null); // 사진 처리 진행 개수(n/총)
 
+  // ── 기간 사진 격자 시트 ──
+  const [rangeSheetVisible, setRangeSheetVisible] = useState(false);
+  // 이미 이 기록에 담긴 원본 uri — 격자에서 '담김'으로 빼 중복 추가를 막는다.
+  // medias는 압축본이라 originalUriMapRef로 원본을 되찾고, 매핑이 없는 항목(압축을 건너뛴
+  // 작은 사진·수정 모드로 복원된 uri)은 그 자체가 원본이다.
+  const excludedOriginalUris = useMemo(
+    () => medias.map((u) => originalUriMapRef.current[u] ?? u),
+    [medias],
+  );
+  // 수정 모드에서는 위 uri가 앱 저장소(document dir) 경로라 사진첩 uri와 절대 안 겹친다 —
+  // 기록이 들고 있는 mediaAssetIds(uri→assetId)로 assetId 기준 제외를 한 번 더 건다.
+  // ⚠️ 시스템 선택기로 담은 사진은 ImagePicker 캐시 복사본이라 assetId를 알 수 없어 여전히 못 거른다(알려진 한계).
+  const [sheetAddedAssetIds, setSheetAddedAssetIds] = useState<string[]>([]); // 이 화면에서 시트로 담은 자산 id
+  const sheetAssetIdByOriginalUriRef = useRef<Record<string, string>>({}); // 시트로 담은 원본 uri → assetId
+  const excludedAssetIds = useMemo(
+    () => [...Object.values(editRecord?.mediaAssetIds ?? {}), ...sheetAddedAssetIds],
+    [editRecord, sheetAddedAssetIds],
+  );
+
   // ── 미디어 선택 모달 (상한 초과 시) ──
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
   const [mediaPickerAssets,   setMediaPickerAssets]   = useState<MediaLibrary.Asset[]>([]);
@@ -974,11 +1074,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const ICLOUD_DL_TIMEOUT_MS = 15000;
   const [cloudProgress, setCloudProgress] = useState<{ done: number; total: number } | null>(null);
   const cloudCancelRef = useRef(false);
+  // assets는 Asset 객체 또는 assetId 문자열 — getAssetInfoAsync가 둘 다 받는다(AssetRef).
+  // 기간 사진 시트는 Asset 객체를 들고 있지 않고 id만 넘기므로 문자열 경로가 필요하다.
   const downloadCloudAssets = async (
-    assets: MediaLibrary.Asset[]
-  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+    assets: (MediaLibrary.Asset | string)[]
+  ): Promise<{ asset: MediaLibrary.Asset | string; uri: string }[]> => {
     if (assets.length === 0) return [];
-    const oks: { asset: MediaLibrary.Asset; uri: string }[] = [];
+    const oks: { asset: MediaLibrary.Asset | string; uri: string }[] = [];
     cloudCancelRef.current = false;
     setCloudProgress({ done: 0, total: assets.length });
     try {
@@ -1445,6 +1547,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               endValue={formatDate(endDate)}
               onPress={() => setCalendarVisible(true)}
             />
+            {/* 날짜를 먼저 정할수록 얻는 게 있다는 걸 알려준다 — selectMedia가 dayRangeMs(startDate,endDate)로
+                기간 사진 격자를 띄워 그 기간 사진만 추린다. 날짜 기반 자동 채움은 이것뿐이라(국가는 GPS 기준,
+                ✨ 여행 기억은 플래그 OFF) 문구를 사진 추림으로만 한정한다 — 넓히면 약속이 지켜지지 않는다. */}
+            <Text style={s.dateFirstHint}>{t('newRecord.dateFirstHint')}</Text>
           </View>
 
           {/* ══════════════════ ③ 박스 B: 필수 여행 정보(국가·별점) ══════════════════ */}
@@ -1932,6 +2038,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         selected={currency}
         onSelect={(code) => { chooseCurrency(code); setCurrencyModalVisible(false); }}
         onClose={() => setCurrencyModalVisible(false)}
+      />
+
+      {/* ── 기간 사진 격자 — 여행 기간에 찍은 사진만 골라 담는다 ── */}
+      <DateRangePhotoSheet
+        visible={rangeSheetVisible}
+        startDate={startDate}
+        endDate={endDate}
+        /* 다국가 기록은 지금 쓰고 있는 국가 구간(활성 탭) 기준이어야 GPS 필터가 맞는다 */
+        countryName={selectedCountries[activeCountryIdx]?.name ?? selectedCountries[0]?.name ?? null}
+        max={Math.max(1, maxRecordPhotos - medias.length)}
+        excludeUris={excludedOriginalUris}
+        excludeAssetIds={excludedAssetIds}
+        onConfirm={confirmRangeSheet}
+        onOpenSystemPicker={openSystemPickerFromSheet}
+        onClose={() => setRangeSheetVisible(false)}
+        onDismiss={handleSheetDismissed}
       />
 
       {/* ── 미디어 선택 모달 (상한 초과 시) ── */}
@@ -2684,6 +2806,14 @@ const s = StyleSheet.create({
   kwHint: {
     fontSize: 11,
     color: COLORS.textMuted,
+  },
+  dateFirstHint: {
+    fontSize: 11,
+    // 이 파일의 로컬 COLORS.textMuted(#4A4A59)는 placeholder용 저대비값이라 배경 #0A0A0F 대비 2.27:1로 AA 미달이다.
+    // 항상 보이는 안내 문장은 draggableHelperText와 같은 '텍스트 흐림' #A1A1B0(7.75:1)을 쓴다.
+    color: '#A1A1B0',
+    marginTop: 8,
+    lineHeight: 16,
   },
   kwTag: {
     flexDirection: 'row',

@@ -963,6 +963,10 @@ const ko = {
     cloudDownloading: 'iCloud에서 받는 중 {{done}}/{{total}}…',
     importingPhotos: '사진 가져오는 중…',
     importingPhotosN: '사진 가져오는 중 {{done}}/{{total}}',
+    // 기간 사진 격자(DateRangePhotoSheet) — 나머지 문구는 album.* 키를 재사용한다
+    rangePickerSub: '{{range}} · 이 기간에 찍은 사진이에요',
+    rangePickerConfirm: '{{count}}장 담기',
+    rangePickerSystem: '전체 사진첩에서 고르기',
     cloudCancelA11y: 'iCloud 다운로드 취소',
     allDuplicateMsg: '선택한 기간의 사진이 이미 모두 추가되어 있어요.',
     limitedAccessTitle: '일부 사진만 접근 허용됨',
@@ -1013,6 +1017,7 @@ const ko = {
     noPhotoSelectedDesc: '최소 1장의 사진을 추가해야 다음으로 넘어갈 수 있어요',
     countryChange: '변경',
     date: '날짜',
+    dateFirstHint: '날짜를 먼저 정하면 그 기간에 찍은 사진만 골라 보여줘서 기록이 훨씬 간단해져요.',
     departDate: '출발일',
     arriveDate: '도착일',
     textLabel: '글',

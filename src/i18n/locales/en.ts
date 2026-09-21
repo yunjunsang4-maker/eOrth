@@ -950,6 +950,12 @@ const en = {
     cloudDownloading: 'Downloading from iCloud {{done}}/{{total}}…',
     importingPhotos: 'Importing photos…',
     importingPhotosN: 'Importing photos {{done}}/{{total}}',
+    // Date-range photo grid (DateRangePhotoSheet) — other strings reuse the album.* keys
+    rangePickerSub: '{{range}} · Photos taken during this period',
+    rangePickerConfirm: 'Add {{count}} photos',
+    // i18next plural: 기본 키는 _other 역할, 1장일 때만 _one이 잡힌다('Add 1 photos' 회귀)
+    rangePickerConfirm_one: 'Add {{count}} photo',
+    rangePickerSystem: 'Choose from all photos',
     cloudCancelA11y: 'Cancel iCloud download',
     allDuplicateMsg: 'All photos from this period are already added.',
     limitedAccessTitle: 'Limited photo access',
@@ -1000,6 +1006,7 @@ const en = {
     noPhotoSelectedDesc: 'Add at least one photo to continue',
     countryChange: 'Change',
     date: 'Date',
+    dateFirstHint: 'Set the dates first and only photos from that period are shown, so recording takes far less effort.',
     departDate: 'Departure',
     arriveDate: 'Arrival',
     textLabel: 'Text',
