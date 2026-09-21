@@ -143,6 +143,10 @@ const companionIcon = (name: string, color = '#FFFFFF'): React.ReactNode => {
 // ⚠️ viewBox가 정사각이 아니다(24×21, 2026-09-21 시안 heart.svg). size는 **가로**이고 높이는 비율로 따라온다 —
 //    size를 높이로 착각해 정사각으로 그리면 하트가 세로로 눌린다.
 // 채움색은 color를 안 주면 **스킨 강조색**(useSkinAccent)을 따른다 — 시안 원색 #A47DE9는 aurora 스킨값.
+// 키워드 표시용 — 피드·네컷 폼은 '#여행'으로, 블로그 폼은 '여행'으로 저장해 둘이 섞여 있다.
+// 표시할 때 앞 '#'를 벗기고 한 번만 붙여 '##여행'을 막는다(저장값은 건드리지 않음).
+const hashTag = (k: string) => `#${k.replace(/^#+/, '')}`;
+
 const HEART_W = 24;
 const HEART_H = 21;
 const HeartSvg = ({ filled, size = HEART_W, color, strokeWidth = 2 }: { filled: boolean; size?: number; color?: string; strokeWidth?: number }) => {
@@ -2045,7 +2049,7 @@ export default function PostDetailScreen() {
           if (record.countryFlag && record.countryName) lines.push(`📍 ${record.countryFlag} ${record.countryName}`);
           if (record.startDate && record.endDate) lines.push(`📅 ${record.startDate} ~ ${record.endDate}`);
           if (bodyText) lines.push('', bodyText);
-          if (record.keywords?.length) lines.push('', record.keywords.map((k) => `#${k}`).join(' '));
+          if (record.keywords?.length) lines.push('', record.keywords.map(hashTag).join(' '));
           lines.push('', t('postDetail.shareFooter'));
           Share.share({ message: lines.join('\n') });
         },
@@ -2581,7 +2585,7 @@ export default function PostDetailScreen() {
             <View style={s.keywords}>
               {record.keywords.map((k) => (
                 <View key={k} style={[s.keyword, { backgroundColor: skinAccent.tint(0.12) }]}>
-                  <Text style={[s.keywordText, { color: skinAccent.accent }]}>#{k}</Text>
+                  <Text style={[s.keywordText, { color: skinAccent.accent }]}>{hashTag(k)}</Text>
                 </View>
               ))}
             </View>
@@ -2651,7 +2655,7 @@ export default function PostDetailScreen() {
               </Animated.View>
             </TouchableOpacity>
             <TouchableOpacity style={{ marginLeft: 6 }} onPress={openLikers} disabled={!canShowLikers || !!record.isExample} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
-              <Text style={[s.actionCount, record.liked && { color: C.red }]}>{record.likes}</Text>
+              <Text style={[s.actionCount, record.liked && { color: skinAccent.accent }]}>{record.likes}</Text>
             </TouchableOpacity>
             {!record.isExample && (
               <>
@@ -2687,7 +2691,7 @@ export default function PostDetailScreen() {
                 {bodyText}
                 {/* #태그는 본문 뒤에 보라 글자로 이어 붙는다(칩 아님) */}
                 {!!record.keywords?.length && (
-                  <Text style={s.captionTags}>{bodyText ? ' ' : ''}{record.keywords.map((k) => `#${k}`).join(' ')}</Text>
+                  <Text style={s.captionTags}>{bodyText ? ' ' : ''}{record.keywords.map(hashTag).join(' ')}</Text>
                 )}
               </Text>
               {bodyLong && !bodyExpanded && (
@@ -3468,7 +3472,7 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   },
   input: {
     flex: 1, height: 40,
-    color: C.white, fontSize: 12, fontWeight: '600',
+    color: C.white, fontSize: 14, fontWeight: '600',
   },
   // 배경 없는 글자 버튼 — 입력이 있을 때만 렌더된다(비활성 상태 자체가 없다)
   // 전송 알약 — 시안 고정색(#8741FF, 캐러셀 활성 점과 같은 값). 입력 알약(높이 40) 안 오른쪽 끝, 상하 5 여백
