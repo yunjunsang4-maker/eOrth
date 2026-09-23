@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 /** docs/ 아래에서 gh-pages 루트로 그대로 복사되는 파일들 */
 export const PUBLISHED_FILES = [
+  'index.html',              // 앱 소개 랜딩(인스타 프로필 링크) — gh-pages 루트
   'terms.html',
   'privacy-policy.html',
   'privacy-policy-en.html',  // 영문 스토어 로케일용 번역(한국어 원문이 정본)
