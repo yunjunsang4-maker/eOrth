@@ -237,6 +237,11 @@ const es: WithPlurals<typeof ko> = {
     coachFabTitle: 'Agregar registro +',
     coachFabDesc: 'Agrega un registro nuevo en el formato que prefieras: feed, blog, tira, álbum y más.',
   },
+  trip: {
+    // 이 파일의 유일한 trip 키 — 나머지 trip.* 는 fallback(en)으로 나간다
+    sortLatest: 'Más recientes primero',
+    sortOldest: 'Más antiguos primero',
+  },
 };
 
 export default es;

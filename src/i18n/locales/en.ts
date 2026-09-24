@@ -1891,6 +1891,8 @@ const en = {
     delete: 'Delete',
     recordsCount: '{{n}} records',
     moduleRecordsN: '{{n}} records',
+    sortLatest: 'Newest first',
+    sortOldest: 'Oldest first',
     noticeTitle: 'Notice',
     recordDeleteTitle: 'Delete record',
     albumDeletePhotoTitle: 'Delete photo',

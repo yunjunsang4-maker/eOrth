@@ -491,6 +491,15 @@ export const SearchIcon: React.FC<IconProps> = ({ size = 64, color, dot = false,
   </Svg>
 );
 
+/** 선 달력 아이콘 — 블로그 기록 날짜 칩 시안(선 1.7, round) 그대로. 채움형 CalendarIcon(96 viewBox)과 달리
+ *  작은 인라인 칩·라벨 옆에 쓰는 아웃라인. 원본 11.67 좌표라 stroke 바깥 절반이 잘리는 것도 시안과 동일. */
+export const OutlineCalendarIcon: React.FC<{ size?: number; color: string }> = ({ size = 12, color }) => (
+  <Svg width={size} height={size} viewBox="0 0 12 12" fill="none">
+    <Path d="M9.33 1.17H2.33C1.04 1.17 0 2.21 0 3.5V9.33C0 10.62 1.04 11.67 2.33 11.67H9.33C10.62 11.67 11.67 10.62 11.67 9.33V3.5C11.67 2.21 10.62 1.17 9.33 1.17Z" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+    <Path d="M3.5 0V2.33M8.17 0V2.33M0 4.67H11.67" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+
 export const CalendarIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
   <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
     <Defs>

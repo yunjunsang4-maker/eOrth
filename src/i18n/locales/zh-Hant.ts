@@ -221,6 +221,11 @@ const zhHant: DeepPartial<typeof ko> = {
     coachFabTitle: '新增紀錄 +',
     coachFabDesc: '可以用動態、部落格、四格、相簿等喜歡的形式新增紀錄。',
   },
+  trip: {
+    // 이 파일의 유일한 trip 키 — 나머지 trip.* 는 fallback(en)으로 나간다
+    sortLatest: '最新優先',
+    sortOldest: '最舊優先',
+  },
 };
 
 export default zhHant;

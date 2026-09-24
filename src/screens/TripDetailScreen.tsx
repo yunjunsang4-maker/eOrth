@@ -11,27 +11,35 @@ import {
   Modal,
   Alert,
   Platform,
+  LayoutAnimation,
+  UIManager,
+  useWindowDimensions,
 } from 'react-native';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon } from '../components/icons';
+import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
 import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
 import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
-import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
-import { useSkinAccent } from '../constants/skinTheme';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
-import RecoSection from '../components/trip/RecoSection';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { sortFormatModules, type SortOrder } from './tripDetailSort';
+
+// 형식 행 펼침(LayoutAnimation)은 안드로이드에서 이 플래그가 켜져 있어야 동작한다 (FAQScreen과 동일)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
 const viewTypeName = (type: string, tr: TFunction): string => {
@@ -49,12 +57,16 @@ const viewTypeName = (type: string, tr: TFunction): string => {
 // 폭(=Stage 폭 - 40)은 컴포넌트 본문에서 실시간으로 받으므로 여기엔 높이만 둔다.
 const CARD_H = 180;
 
-// 형식 펼침 시 같은 형식 기록을 가로 스와이프로 넘길 때의 한 장 폭 (expandWrap 콘텐츠 폭에 맞춤)
-// 폭(SWIPE_CARD_W = Stage 폭 - 52)은 snapToInterval에 들어가므로 본문에서 계산한다.
-const SWIPE_GAP = 12;
-// 스냅은 세로 사진. 카드 폭을 사진 폭에 맞춰 좁게 (사진폭 + 카드 좌우 패딩 16*2)
-const SNAP_PHOTO_W = 108;
-const SNAP_CARD_W = SNAP_PHOTO_W + 32;
+// 형식 펼침 시 나오는 기록 타일 — 형식과 무관하게 한 종류다(시안). 폭은 고정이라 상수로 둔다.
+const TILE_W = 120;
+const TILE_H = 128;
+const TILE_GAP = 12;
+
+// 형식 행
+const ROW_H = 72;
+
+// ⋯ 버튼 지름 — 스타일과 PillRing 치수가 같은 값을 봐야 링이 버튼 경계에 정확히 앉는다
+const MORE_BTN = 36;
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -116,7 +128,8 @@ const FmtFeedIcon = ({ color }: { color: string }) => (
   <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
     <View style={{ width: 8, height: 4, borderTopLeftRadius: 2, borderTopRightRadius: 2, backgroundColor: color }} />
     <View style={{ width: 20, height: 13, borderRadius: 3, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: COLORS.card }} />
+      {/* 구멍 색은 RecordFab FeedIcon과 동일(#2E2E3B) — 형식 선택 팝업 버튼 바탕과 같아 FAB 아이콘 그대로 보인다 */}
+      <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: '#2E2E3B' }} />
     </View>
   </View>
 );
@@ -174,6 +187,39 @@ const ADD_FORMATS: { type: string; name: string }[] = [
   { type: 'album', name: '사진첩' },
 ];
 
+// 기록의 미리보기 사진들 — 형식마다 사진이 들어 있는 필드가 달라(피드·사진첩은 medias,
+// 스냅은 snapBack/Front, 스트립은 cutPhoto) 한곳에 모은다. 형식 행 배경과 펼침 타일이 같이 쓴다.
+// representativePhoto는 다른 사진이 하나도 없을 때만 마지막 폴백으로 본다(표지 전용 크롭본이라
+// 우선하면 히어로와 같은 사진이 행 배경·타일에 중복으로 깔린다).
+function recordThumbs(r: TravelRecord): string[] {
+  if (r.medias && r.medias.length > 0) return r.medias;
+  if (r.viewType === 'snap') return [r.snapBackUri, r.snapFrontUri].filter(Boolean) as string[];
+  if (r.viewType === 'cut' && r.cutPhoto) {
+    return r.cutPhoto.previewUri ? [r.cutPhoto.previewUri] : (r.cutPhoto.photos ?? []);
+  }
+  // medias가 비고 대표 사진만 있는 기록(옛 피드 카드가 보던 폴백) — 타일 배경이 단색으로 비지 않게
+  return r.representativePhoto ? [r.representativePhoto] : [];
+}
+
+// ⋯ 메뉴 카드 유리 테두리 — 게시물 상세 ⋯ 메뉴와 같은 좌상단·우하단 흰색 대각 그라데이션 링(PillRing diagonal).
+// 부모의 첫 자식으로 넣으면 absoluteFill 층이 제 크기를 실측해 링을 얹는다(행 수가 달라 높이가 변해도 됨).
+// ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 이중 테두리가 된다.
+function AutoPillRing({ radius }: { radius: number }) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h }));
+      }}
+    >
+      <PillRing width={size.w} height={size.h} radius={radius} diagonal />
+    </View>
+  );
+}
+
 // 'YYYY.MM.DD' / 'YYYY-MM-DD' → epoch(ms). 실패 시 null (recordStore의 그룹핑 파서와 동일 규칙)
 // new Date('YYYY-MM-DD')는 ISO 규칙상 'UTC 자정'으로 읽혀, 아래 fmt()의 로컬 getter로 다시
 // 표시하면 미주(UTC-) 시간대에서 하루가 밀린다 → 공용 수동 파서(로컬 자정)를 쓴다.
@@ -191,11 +237,13 @@ function computeTripPeriod(recs: { startDate?: string; endDate?: string; date?: 
     if (en != null) times.push(en);
   }
   if (times.length === 0) return {};
-  const fmt = (t: number) => {
-    const d = new Date(t);
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  };
-  return { startDate: fmt(Math.min(...times)), endDate: fmt(Math.max(...times)) };
+  return { startDate: fmtDotDate(Math.min(...times)), endDate: fmtDotDate(Math.max(...times)) };
+}
+
+// epoch(ms) → 'YYYY.MM.DD' (로컬). 여행 기간 표시와 펼침 타일의 게시일이 같이 쓴다.
+function fmtDotDate(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // 여행 기간을 'YYYY.MM.DD' 또는 'YYYY.MM.DD ~ YYYY.MM.DD' 표시 문자열로
@@ -224,13 +272,13 @@ type RouteParams = {
 
 export default function TripDetailScreen() {
   const { t, i18n } = useTranslation();
-  // 스와이프 카드 폭은 snapToInterval(cardW + SWIPE_GAP)에 그대로 들어간다 —
-  // 박제하면 폴드 펼침 시 스냅 위치가 카드 경계에서 어긋난다.
+  // 썸네일 조정 프레임 비율·썸네일 격자 칸은 Stage 폭에서 파생한다 — 박제하면 폴드에서 어긋난다.
   const SCREEN_WIDTH = useStageWidth();
   const CARD_ASPECT = (SCREEN_WIDTH - 40) / CARD_H;
-  const SWIPE_CARD_W = SCREEN_WIDTH - 52;
   const thumbCellSize = (SCREEN_WIDTH - 32 - 16) / 3; // 시트 좌우 16×2 + gap 8×2
-  const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
+  // 히어로는 화면 높이의 37%(시안 874 중 ~320). 작은 기기에서 납작해지지 않게 260이 바닥.
+  // Stage 폭과 달리 높이는 클램프 대상이 아니라 창 높이를 그대로 쓴다.
+  const HERO_H = Math.max(260, Math.round(useWindowDimensions().height * 0.37));
   // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 right:20으로 붙는다 — 폴드·태블릿에서
   // 창 오른쪽 끝에 붙어 버튼과 어긋나므로 레터박스 폭만큼 안쪽으로 민다
   const stageGutter = useStageGutter();
@@ -266,6 +314,11 @@ export default function TripDetailScreen() {
   const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
   const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
   const [formatPickerVisible, setFormatPickerVisible] = useState(false); // 기록 추가 — 형식 선택
+  // 형식 행 정렬. 규칙 자체는 순수 함수 sortFormatModules(tripDetailSort.ts)에 있다.
+  const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [sortAnchorY, setSortAnchorY] = useState<number | null>(null);
+  const sortBtnRef = useRef<View>(null);
 
   useEffect(() => {
     setEditedTitle(titleToDisplay);
@@ -427,27 +480,7 @@ export default function TripDetailScreen() {
           )
         : groupRecordObjs;
 
-  // 이 여행의 앨범 기록. 여러 개면 최신 것. pool이 비었을 때 추천의 폴백 소스로 쓴다.
-  // matchedRecords의 정렬 관례는 경로마다 반대다 — groupRecordObjs(그룹 있음)는
-  // linkRecordToTrip이 append해 과거→최신(오름차순)이지만, 폴백 경로(records.filter)는
-  // addRecord가 [newRecord, ...prev]로 맨 앞에 넣어 최신→과거(내림차순)다.
-  // 배열 순서에 기대지 않고 timestamp로 직접 최신을 고른다.
-  // timestamp는 생성 시 Date.now() (updateRecord는 갱신하지 않음 — changes 타입이
-  // Omit<..., 'timestamp'>라 아예 넘길 수도 없다). 따라서 이건 '수정 시각'이 아니라
-  // '생성 시각 기준 최신' 판정이다.
-  // reduce는 새 객체를 만들지 않고 배열 안의 참조를 그대로 반환하므로, matchedRecords가
-  // 매 렌더 새 배열이어도 find와 마찬가지로 결과 참조는 안정적이다 — RecoSection의 effect
-  // deps가 매 렌더 재발화하지 않는다.
-  const albumRecordForReco = useMemo(() => {
-    const albums = matchedRecords.filter((r) => r.viewType === 'album');
-    if (albums.length === 0) return undefined;
-    return albums.reduce((latest, r) => ((r.timestamp ?? 0) > (latest.timestamp ?? 0) ? r : latest));
-  }, [matchedRecords]);
-  // RecoSection에 넘길 개인화 재료. 매 렌더 새 배열이 되지 않도록 records에만 묶는다.
-  const recoPastRecords = useMemo(() => records.map((r) => ({ viewType: r.viewType })), [records]);
-
   // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
-  const tripPeriod = computeTripPeriod(matchedRecords);
   const tripDateRange = computeTripDateRange(matchedRecords) ?? trip.date;
 
   // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 그룹 커버 우선, 없으면 기록의 첫 사진
@@ -468,25 +501,70 @@ export default function TripDetailScreen() {
     return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType && !r.isImportCover);
   };
 
-  // ── 포맷 콘솔: 기록이 있는 형식만 모듈 목록으로 표시, 탭하면 펼쳐짐 ──
+  // ── 형식 행: 기록이 있는 형식만 한 줄씩, 탭하면 그 자리에서 펼쳐짐 ──
   const FORMAT_ORDER = ['feed', 'blog', 'cut', 'snap', 'album'];
   const modules = FORMAT_ORDER
     .map((vt) => ({ vt, config: VIEW_CONFIG[vt], items: getRecordsByType(vt) }))
     .filter((m) => !!m.config && m.items.length > 0);
+  // 정렬은 순수 함수에 맡긴다. modules는 매 렌더 새 배열이라 useMemo를 씌워도 캐시가 안 산다.
+  const sortedModules = sortFormatModules(modules, sortOrder, FORMAT_ORDER);
   const [expandedType, setExpandedType] = useState<string | null>(null);
+  // 펼침 가로 목록 오른쪽 페이드 — 뒤에 타일이 더 있을 때만 보인다(끝까지 넘기면 사라짐).
+  // 한 번에 한 형식만 펼치므로 상태 하나면 충분하다. 폭은 onLayout/onContentSizeChange 실측.
+  const [tileMoreRight, setTileMoreRight] = useState(false);
+  const tileListW = useRef(0);
+  const tileContentW = useRef(0);
+  const tileScrollX = useRef(0);
+  const recalcTileMore = () => {
+    setTileMoreRight(tileContentW.current - (tileScrollX.current + tileListW.current) > 4);
+  };
+  // 세로 목록 하단 페이드 — 형식 행이 쌓여 화면 아래를 넘길 때만 보인다(끝까지 내리면 사라짐). 가로와 같은 판정
+  const [listMoreBottom, setListMoreBottom] = useState(false);
+  const listH = useRef(0);
+  const listContentH = useRef(0);
+  const listScrollY = useRef(0);
+  const recalcListMore = () => {
+    setListMoreBottom(listContentH.current - (listScrollY.current + listH.current) > 4);
+  };
 
-  // 애니메이션
+  // 애니메이션 — 헤더·히어로·행 목록이 같은 값 하나로 함께 페이드 인 (스태거 없음)
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const moduleAnims = useRef(FORMAT_ORDER.map(() => new Animated.Value(0))).current;
+  // 행 오른쪽 셰브론 각도(0=닫힘 -90°, 1=열림 0°). 형식 수가 최대 5개라 필요한 것만 만들어 둔다.
+  const chevronAnims = useRef<Record<string, Animated.Value>>({}).current;
+  const chevronFor = (vt: string) => {
+    if (!chevronAnims[vt]) chevronAnims[vt] = new Animated.Value(0);
+    return chevronAnims[vt];
+  };
+  const spinChevron = (vt: string, to: number) =>
+    Animated.timing(chevronFor(vt), { toValue: to, duration: 180, useNativeDriver: true }).start();
+
+  // 행 펼치기/접기 — 한 번에 하나만 열린다. 닫히는 행의 셰브론도 같이 되돌려야
+  // 다음에 그 행을 열 때 이미 아래를 향한 상태로 시작하지 않는다.
+  const toggleModule = (vt: string) => {
+    const next = expandedType === vt ? null : vt;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (expandedType && expandedType !== next) spinChevron(expandedType, 0);
+    if (next) spinChevron(next, 1);
+    // 새로 펼치는 목록은 x=0부터 — 이전 형식의 스크롤 위치·폭이 페이드 판정에 남지 않게
+    tileScrollX.current = 0; tileContentW.current = 0; setTileMoreRight(false);
+    setExpandedType(next);
+  };
+
+  // 정렬 버튼이 실제로 어디 있는지 재서 메뉴를 그 아래에 붙인다.
+  // measureInWindow는 비동기라 콜백 안에서 열어야 한다(먼저 열면 첫 프레임이 옛 위치로 그려진다).
+  // 레포 선례(PostDetailScreen·MainCoachmark)와 같은 가드 — ref가 있어도 measureInWindow가
+  // 없는 노드(플래튼된 뷰)가 있어, 없으면 menuSheet 기본 top으로 폴백한다.
+  const openSortMenu = () => {
+    const node: any = sortBtnRef.current;
+    if (!node || typeof node.measureInWindow !== 'function') { setSortAnchorY(null); setSortMenuVisible(true); return; }
+    node.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+      setSortAnchorY(typeof y === 'number' && typeof h === 'number' ? y + h + 6 : null);
+      setSortMenuVisible(true);
+    });
+  };
 
   useEffect(() => {
     Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    // 모듈은 순차(스태거) 없이 한 번에 부드럽게 페이드 인 — 하나씩 뜨는 거슬림 제거
-    Animated.parallel(
-      moduleAnims.map((anim) =>
-        Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true })
-      )
-    ).start();
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
@@ -534,74 +612,28 @@ export default function TripDetailScreen() {
 
   return (
     <View style={s.container}>
-      {/* 헤더 */}
-      <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
-        <View style={s.headerSide}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtnPlain} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-            <BackChevronIcon />
-          </TouchableOpacity>
-        </View>
-        <View style={s.headerCenter}>
-          {isEditing ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                value={editedTitle}
-                onChangeText={setEditedTitle}
-                style={s.headerInput}
-                autoFocus
-                onSubmitEditing={handleSaveTitle}
-              />
-              <TouchableOpacity onPress={handleSaveTitle} style={s.saveTitleBtn}>
-                <Text style={s.saveTitleTxt}>✓</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setIsEditing(false); setEditedTitle(titleToDisplay); }} style={s.saveTitleBtn}>
-                <Text style={s.saveTitleTxt}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <Text style={s.headerTitle} numberOfLines={1}>{titleToDisplay}</Text>
-          )}
-        </View>
-        {/* ☰ 편집 메뉴 — 타인 여행(게스트)은 편집 대상이 없어 숨김.
-            테두리 없는 투명 스페이서로 폭만 유지해 제목 중앙 정렬은 그대로 둔다 */}
-        {isGuest ? (
-          <View style={s.headerSide} />
-        ) : (
-          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 6 }]}>
-            {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
-            {TRAVEL_MOMENTS_ENABLED && (
-              <TouchableOpacity
-                style={s.backBtn}
-                onPress={() => setMomentSheetVisible(true)}
-                accessibilityRole="button"
-                accessibilityLabel={t('moments.sheetTitle')}
-              >
-                <Text style={{ fontSize: 16 }}>✨</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
-              <View style={s.menuBars}>
-                <View style={s.menuBar} />
-                <View style={s.menuBar} />
-                <View style={s.menuBar} />
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-      </Animated.View>
 
       {/* 편집 메뉴 시트 */}
       <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-          {/* 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정 — iOS 100 = 인셋(~48)+52 */}
-          <View style={[s.menuSheet, { right: 20 + stageGutter }, Platform.OS === 'android' && { top: insets.top + 52 }]}>
+          {/* 메뉴가 열린 동안만 히어로 사진 위쪽을 어둡게 — 밝은 사진 위에서 반투명 카드가 읽히도록(시안).
+              사진 높이만큼만 덮고 아래로 갈수록 투명해져 목록은 그대로 보인다. 터치는 통과 */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0)']}
+            locations={[0, 0.55, 1]}
+            style={[s.menuTopDim, { height: HERO_H }]}
+            pointerEvents="none"
+          />
+          {/* ⋯ 버튼(헤더 paddingTop insets.top+10, 지름 36) 바로 아래 6px, 오른쪽 끝은 버튼과 맞춤(헤더 gutter 16) */}
+          <View style={[s.menuSheet, { right: 16 + stageGutter, top: insets.top + 10 + MORE_BTN + 6 }]}>
+            <AutoPillRing radius={10} />
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"
               accessibilityLabel={t('trip.addRecordA11y')}
               onPress={() => { setMenuVisible(false); setFormatPickerVisible(true); }}
             >
-              <PlusIcon size={16} color={COLORS.white} />
+              <PlusIcon size={14} color={COLORS.white} />
               <Text style={s.menuItemText}>{t('comp2.tdAddRecord')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
@@ -616,12 +648,12 @@ export default function TripDetailScreen() {
                 setIsEditing(true);
               }}
             >
-              <PencilIcon size={16} color={COLORS.white} />
+              <PencilIcon size={14} color={COLORS.white} />
               <Text style={s.menuItemText}>{t('comp2.tdEditTitle')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb} accessibilityRole="button" accessibilityLabel={t('trip.changeThumbA11y')}>
-              <GalleryIcon size={16} color={COLORS.white} />
+              <GalleryIcon size={14} color={COLORS.white} />
               <Text style={s.menuItemText}>{t('comp2.tdChangeThumb')}</Text>
             </TouchableOpacity>
             {/* 불러오기로 만든 카드에만 — 보관해 둔 분석 사진이 있을 때 노출 */}
@@ -629,21 +661,44 @@ export default function TripDetailScreen() {
               <>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleRerollThumb} accessibilityRole="button" accessibilityLabel={t('trip.rerollThumb')}>
-                  <GalleryIcon size={16} color={COLORS.white} />
+                  <GalleryIcon size={14} color={COLORS.white} />
                   <Text style={s.menuItemText}>{rerolling ? t('trip.rerollThumbBusy') : t('trip.rerollThumb')}</Text>
                 </TouchableOpacity>
               </>
             )}
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel={t('trip.archiveCardA11y')}>
-              <ArchiveIcon size={16} color={COLORS.white} />
+              <ArchiveIcon size={14} color={COLORS.white} />
               <Text style={s.menuItemText}>{t('comp2.tdArchive')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard} accessibilityRole="button" accessibilityLabel={t('trip.deleteCardA11y')}>
-              <TrashIcon size={16} color="#FF3B30" />
+              <TrashIcon size={14} color="#FF3B30" />
               <Text style={[s.menuItemText, s.menuItemDanger]}>{t('comp2.tdDelete')}</Text>
             </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 정렬 앵커 메뉴 — 편집 메뉴와 같은 카드 스타일을 쓰되 위치만 정렬 버튼 실측값에 붙인다 */}
+      <Modal visible={sortMenuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setSortMenuVisible(false)}>
+        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setSortMenuVisible(false)}>
+          <View style={[s.menuSheet, { right: 16 + stageGutter }, sortAnchorY != null && { top: sortAnchorY }]}>
+            <AutoPillRing radius={10} />
+            {(['latest', 'oldest'] as const).map((o, i) => (
+              <React.Fragment key={o}>
+                {i > 0 && <View style={s.menuDivider} />}
+                <TouchableOpacity
+                  style={s.menuItem}
+                  accessibilityRole="button"
+                  onPress={() => { setSortOrder(o); setSortMenuVisible(false); }}
+                >
+                  <Text style={[s.menuItemText, sortOrder === o && { color: COLORS.purpleNeon }]}>
+                    {t(o === 'latest' ? 'trip.sortLatest' : 'trip.sortOldest')}
+                  </Text>
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -659,21 +714,20 @@ export default function TripDetailScreen() {
       {/* 기록 추가 — 형식 선택 모달 */}
       <Modal visible={formatPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
         <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
+          {/* 불투명 카드 + 대각 그라데이션 링(AutoPillRing). 보라 하드코딩 테두리 폐기. 반투명은 사용자 지시로 뺐다 */}
           <View style={s.fmCard}>
+            <AutoPillRing radius={20} />
             <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
             <Text style={s.fmSub}>
               {trip.country ? t('trip.recordFormatPromptCountry', { country: countryTagLabel(trip.country, i18n.language) }) : t('trip.recordFormatPrompt')}
             </Text>
-            {/* 기간이 정해진 여행이면 작성 화면에 이 여행 날짜가 자동 적용된다(국가+날짜로 그룹화되어 이 카드에 묶임) */}
-            {tripPeriod.startDate ? (
-              <Text style={s.fmHint}>
-                {t('trip.autoDateHint', { range: tripDateRange })}
-              </Text>
-            ) : null}
+            {/* "여행 날짜 자동 적용" 안내는 뺐다 — 507c335에서 tripPrefill 전달을 없애 더는 자동 적용되지 않는다(없는 기능 약속 금지) */}
             <View style={s.fmGrid}>
               {ADD_FORMATS.map((f) => (
                 <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={t('trip.addFormatA11y', { format: viewTypeName(f.type, t) })}>
-                  <FormatIcon type={f.type} color={VIEW_CONFIG[f.type]?.accent ?? COLORS.purpleNeon} />
+                  <AutoPillRing radius={14} />
+                  {/* FAB(RecordFab)와 같은 흰색 아이콘 — 형식색 틴트 없음(사용자 지정) */}
+                  <FormatIcon type={f.type} color={COLORS.white} />
                   <Text style={s.fmName}>{viewTypeName(f.type, t)}</Text>
                 </TouchableOpacity>
               ))}
@@ -728,179 +782,183 @@ export default function TripDetailScreen() {
         }}
       />
 
+      {/* 히어로 — 전체 폭 커버 사진, ScrollView 밖이라 스크롤해도 상단에 고정(사용자 지정). 헤더가 이 위에 겹친다. */}
+      <Animated.View style={[s.hero, {
+        height: HERO_H,
+        opacity: headerAnim,
+        transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [15, 0] }) }],
+      }]}>
+        {coverPhoto ? (
+          <Image source={{ uri: coverPhoto }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+        ) : (
+          // 사진이 없는 카드(불러오기 실패·샘플)는 기존처럼 여행 색 그라데이션 + 이모지
+          <LinearGradient
+            colors={[trip.color, 'rgba(10,10,15,0.8)', COLORS.bg]}
+            style={[StyleSheet.absoluteFillObject, { alignItems: 'center', justifyContent: 'center' }]}
+          >
+            <Text style={s.heroEmoji}>{trip.emoji}</Text>
+          </LinearGradient>
+        )}
+        {/* 사진 상단만 살짝 어둡게 — 겹친 헤더(제목·버튼) 가독성. 사용자 지정 '살짝만' */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0)']}
+          locations={[0, 0.35]}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+        {/* 하단 날짜·기록 수 가독성용 옅은 스크림. 배경색까지 녹이지 않아 사진 아래 경계가 또렷하다(시안) */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
+          locations={[0.55, 1]}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+        <View style={s.heroBottomRow} pointerEvents="none">
+          <View style={s.heroDateRow}>
+            <OutlineCalendarIcon size={13} color={COLORS.white} />
+            <Text style={s.heroDate}>{tripDateRange}</Text>
+          </View>
+          {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 형식 행과 같은 실측 기준 사용 */}
+          {/* 불러오기가 만든 '표지 전용' 기록은 getRecordsByType과 똑같이 뺀다 — 안 빼면 사진첩 없이 카드만 만든 여행이 "1개의 기록"으로 보인다 */}
+          <Text style={s.heroCount} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.filter((r) => !r.isImportCover).length })}</Text>
+        </View>
+      </Animated.View>
+
       <ScrollView
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onLayout={(e) => { listH.current = e.nativeEvent.layout.height; recalcListMore(); }}
+        onContentSizeChange={(_, h) => { listContentH.current = h; recalcListMore(); }}
+        onScroll={(e) => { listScrollY.current = e.nativeEvent.contentOffset.y; recalcListMore(); }}
+        scrollEventThrottle={32}
       >
-        {/* 히어로 배너 */}
-        <Animated.View style={[s.hero, {
-          opacity: headerAnim,
-          transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [15, 0] }) }],
-        }]}>
-          <LinearGradient
-            colors={[trip.color, 'rgba(10,10,15,0.8)', COLORS.bg]}
-            style={s.heroBg}
-          />
-          {coverPhoto ? (
-            <Image source={{ uri: coverPhoto }} style={s.heroPhoto} resizeMode="cover" />
-          ) : (
-            <Text style={s.heroEmoji}>{trip.emoji}</Text>
-          )}
-          <Text style={s.heroDate}>{tripDateRange}</Text>
-          <View style={[s.heroPill, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}>
-            {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
-            {/* 불러오기가 만든 '표지 전용' 기록은 getRecordsByType과 똑같이 뺀다 — 안 빼면 사진첩 없이 카드만 만든 여행이 "1개의 기록"으로 보인다 */}
-            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.filter((r) => !r.isImportCover).length })}</Text>
+
+        {/* 정렬 */}
+        <View style={s.sortRow}>
+          {/* 실측용 래퍼 — collapsable={false}가 없으면 안드로이드가 뷰를 플래튼해 measureInWindow가 사라진다.
+              TouchableOpacity는 collapsable prop을 받지 않으므로 View로 한 겹 감싼다. */}
+          <View ref={sortBtnRef} collapsable={false}>
+            <TouchableOpacity
+              style={s.sortBtn}
+              onPress={openSortMenu}
+              accessibilityRole="button"
+              accessibilityLabel={t(sortOrder === 'latest' ? 'trip.sortLatest' : 'trip.sortOldest')}
+            >
+              <Text style={s.sortLabel}>{t(sortOrder === 'latest' ? 'trip.sortLatest' : 'trip.sortOldest')}</Text>
+              <ChevronIcon size={16} color="rgba(255,255,255,0.9)" up={sortMenuVisible} />
+            </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
 
-        {/* AI 형식 추천 — 게스트 모드(타인 여행)면 미노출.
-            앨범이 없어도 뜬다(2026-09-01) — 불러오기로 만든 카드는 사진첩이 없기 때문이다.
-            앨범이 있으면 pool이 비었을 때의 폴백 소스로 넘긴다. */}
-        {!isGuest && currentGroup && (
-          <RecoSection
-            tripGroupId={currentGroup.id}
-            albumRecord={albumRecordForReco}
-            pastRecords={recoPastRecords}
-          />
-        )}
-
-        {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
-        <View style={s.console}>
-          {/* 에너지 레일 */}
-          <LinearGradient
-            colors={['rgba(191,133,252,0)', 'rgba(191,133,252,0.55)', 'rgba(191,133,252,0)']}
-            style={s.rail}
-          />
-
-          {modules.map((m, idx) => {
+        {/* ── 형식 행: 기록이 있는 형식만 한 줄씩 ── */}
+        <View style={s.rows}>
+          {sortedModules.map((m) => {
             const open = expandedType === m.vt;
-            const even = idx % 2 === 0;
-            // 모듈 미리보기 썸네일 — 형식별로 사진 위치가 달라 medias 외에 스냅/스트립 사진도 가져온다
-            const thumbs = m.items.flatMap((r) => {
-              if (r.medias && r.medias.length > 0) return r.medias;
-              if (r.viewType === 'snap') return [r.snapBackUri, r.snapFrontUri].filter(Boolean) as string[];
-              if (r.viewType === 'cut' && r.cutPhoto) {
-                return r.cutPhoto.previewUri ? [r.cutPhoto.previewUri] : (r.cutPhoto.photos ?? []);
-              }
-              return [];
-            }).slice(0, 3);
-            // 스냅·피드·블로그·스트립은 좁은 카드로 가로 스와이프(옆 카드가 보임), 앨범만 전체 폭
-            const cardW = m.vt === 'album' ? SWIPE_CARD_W : SNAP_CARD_W;
-            // 순차 슬라이드 제거 — 모든 모듈이 동시에 부드럽게 페이드 인만 한다
-            const animStyle = {
-              opacity: moduleAnims[idx],
-            };
+            // 행 배경 사진 — 최대 3장을 폭 1/N씩 나란히 깐다(형식별 사진 위치는 recordThumbs가 흡수)
+            const thumbs = m.items.flatMap(recordThumbs).slice(0, 3);
             return (
-              <Animated.View key={m.vt} style={[s.moduleWrap, animStyle]}>
-                {/* 레일 노드 + 커넥터 */}
-                <View style={[s.railNode, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
-                <View style={[s.railLink, { backgroundColor: m.config.accent + '55' }]} />
-
+              <Animated.View key={m.vt} style={[s.rowWrap, { opacity: headerAnim }]}>
                 <TouchableOpacity
                   activeOpacity={0.85}
-                  onPress={() => setExpandedType(open ? null : m.vt)}
-                  style={[
-                    s.module,
-                    even ? s.moduleCutA : s.moduleCutB,
-                    { borderColor: open ? m.config.accent : m.config.accent + '38' },
-                    even ? { marginRight: 22 } : { marginLeft: 22 },
-                  ]}
+                  onPress={() => toggleModule(m.vt)}
+                  style={s.row}
+                  accessibilityRole="button"
+                  accessibilityLabel={viewTypeName(m.vt, t)}
                 >
-                  <LinearGradient
-                    colors={m.config.gradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                  <View style={[s.moduleEdge, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
-
-                  <Text style={[s.moduleIndex, { color: m.config.accent }]}>
-                    {String(idx + 1).padStart(2, '0')}
-                  </Text>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={[s.moduleCode, { color: m.config.accent + 'AA' }]}>
-                      MODULE // {m.vt.toUpperCase()}
-                    </Text>
-                    <View style={s.moduleNameRow}>
-                      <FormatIcon type={m.vt} color={m.config.accent} />
-                      <Text style={s.moduleName}>{viewTypeName(m.vt, t)}</Text>
-                    </View>
-                    <View style={s.moduleMetaRow}>
-                      <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
-                      <Text style={[s.moduleCount, { color: m.config.accent }]} {...andFitText}>{t('trip.moduleRecordsN', { n: m.items.length })}</Text>
-                    </View>
-                  </View>
-
                   {thumbs.length > 0 ? (
-                    <View style={s.thumbStack}>
+                    <View style={[StyleSheet.absoluteFillObject, { flexDirection: 'row' }]} pointerEvents="none">
                       {thumbs.map((uri, i) => (
-                        <Image
-                          key={i}
-                          source={{ uri }}
-                          style={[
-                            s.thumbMini,
-                            { marginLeft: i === 0 ? 0 : -14, transform: [{ rotate: `${(i - 1) * 7}deg` }] },
-                          ]}
-                        />
+                        <Image key={`${uri}-${i}`} source={{ uri }} style={{ flex: 1 }} resizeMode="cover" />
                       ))}
                     </View>
                   ) : (
-                    <View style={s.moduleBigIcon}>
-                      <FormatIcon type={m.vt} color={m.config.accent} />
-                    </View>
+                    <LinearGradient colors={m.config.gradient} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
                   )}
-
-                  <Text style={[s.moduleChevron, { color: m.config.accent }, open && s.moduleChevronOpen]}>❯</Text>
+                  {/* 가로 스크림 — 왼쪽(글자 쪽)을 진하게 덮어 사진 위에서도 읽히게 */}
+                  <LinearGradient
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    colors={['rgba(14,14,22,0.88)', 'rgba(14,14,22,0.55)', 'rgba(14,14,22,0.12)']}
+                    locations={[0, 0.45, 1]}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+                  {/* 형식색 틴트 — 시안의 '피드는 파랑 기운' 처럼 형식색이 왼쪽에서 은은히 */}
+                  <LinearGradient
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    colors={[m.config.accent + '40', m.config.accent + '00']}
+                    style={StyleSheet.absoluteFillObject}
+                    pointerEvents="none"
+                  />
+                  <View style={s.rowBody}>
+                    <Text style={s.rowName} numberOfLines={1}>{viewTypeName(m.vt, t)}</Text>
+                    <View style={s.rowMeta}>
+                      {/* FormatIcon은 24 고정이라 0.6배로 줄여 14 박스에 맞춘다 */}
+                      <View style={s.rowIconBox}>
+                        <View style={{ transform: [{ scale: 0.6 }] }}>
+                          <FormatIcon type={m.vt} color={COLORS.white} />
+                        </View>
+                      </View>
+                      <Text style={s.rowCount} {...andFitText}>{t('trip.recordsCount', { n: m.items.length })}</Text>
+                    </View>
+                  </View>
+                  <Animated.View
+                    style={[s.rowChevron, {
+                      transform: [{
+                        rotate: chevronFor(m.vt).interpolate({ inputRange: [0, 1], outputRange: ['-90deg', '0deg'] }),
+                      }],
+                    }]}
+                    pointerEvents="none"
+                  >
+                    <ChevronIcon size={16} color={COLORS.white} />
+                  </Animated.View>
                 </TouchableOpacity>
 
-                {/* 펼침 — 해당 형식으로 기록된 것들 (여러 개면 가로 스와이프) */}
+                {/* 펼침 — 이 형식의 기록 타일(형식 불문 한 종류). 2개 이상이면 가로 스와이프. */}
                 {open && (
-                  <View style={[s.expandWrap, { borderLeftColor: m.config.accent + '44' }]}>
+                  <View style={s.expandWrap}>
                     {m.items.length > 1 ? (
+                      <>
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        snapToInterval={cardW + SWIPE_GAP}
+                        snapToInterval={TILE_W + TILE_GAP}
                         decelerationRate="fast"
                         disableIntervalMomentum
+                        onLayout={(e) => { tileListW.current = e.nativeEvent.layout.width; recalcTileMore(); }}
+                        onContentSizeChange={(w) => { tileContentW.current = w; recalcTileMore(); }}
+                        onScroll={(e) => { tileScrollX.current = e.nativeEvent.contentOffset.x; recalcTileMore(); }}
+                        scrollEventThrottle={32}
                       >
                         {m.items.map((record, i) => (
-                          <TouchableOpacity
+                          <RecordTile
                             key={record.id}
-                            activeOpacity={0.75}
+                            record={record}
                             onPress={() => handleRecordPress(record)}
-                            style={{
-                              width: cardW,
-                              marginRight: i === m.items.length - 1 ? 0 : SWIPE_GAP,
-                            }}
-                          >
-                            {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
-                            {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
-                            {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
-                            {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
-                            {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
-                          </TouchableOpacity>
+                            style={i === m.items.length - 1 ? undefined : { marginRight: TILE_GAP }}
+                          />
                         ))}
                       </ScrollView>
+                      {/* 오른쪽 끝 페이드 — 3~4번째 타일부터 잘리는 것을 "더 있음"으로 읽히게. 끝까지 넘기면 사라진다 */}
+                      {tileMoreRight && (
+                        <LinearGradient
+                          colors={['rgba(10,10,15,0)', 'rgba(10,10,15,0.85)']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 0 }}
+                          style={s.tileFadeRight}
+                          pointerEvents="none"
+                        />
+                      )}
+                      </>
                     ) : (
-                      m.items.map((record) => (
-                        <TouchableOpacity
-                          key={record.id}
-                          activeOpacity={0.75}
-                          onPress={() => handleRecordPress(record)}
-                          style={{ width: cardW, alignSelf: 'flex-start' }}
-                        >
-                          {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
-                          {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
-                          {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
-                          {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
-                          {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
-                        </TouchableOpacity>
-                      ))
+                      <RecordTile
+                        record={m.items[0]}
+                        onPress={() => handleRecordPress(m.items[0])}
+                        style={{ alignSelf: 'flex-start' }}
+                      />
                     )}
                   </View>
                 )}
@@ -916,6 +974,77 @@ export default function TripDetailScreen() {
           )}
         </View>
       </ScrollView>
+      {/* 하단 페이드 — 형식 행이 화면 아래까지 꽉 찼을 때 "더 있음"으로 읽히게. ScrollView 형제라 스크롤과 무관하게 고정 */}
+      {listMoreBottom && (
+        <LinearGradient
+          colors={['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)']}
+          style={[s.listFadeBottom, { height: 72 + insets.bottom }]}
+          pointerEvents="none"
+        />
+      )}
+
+      {/* 헤더 — 히어로 사진 위에 겹친다(배경 투명). 사진이 상태바 아래까지 깔리도록 absolute이고,
+          ScrollView 뒤(나중)에 선언 + zIndex·elevation으로 안드로이드에서도 위에 그린다. */}
+      <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]} pointerEvents="box-none">
+        {/* 제목 가독성용 딤은 히어로 상단 그라데이션(heroTopDim)이 맡는다 — 헤더 높이에 갇힌 띠가 되지 않게 */}
+        <View style={s.headerSide}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtnPlain} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+            <BackChevronIcon />
+          </TouchableOpacity>
+        </View>
+        <View style={s.headerCenter}>
+          {isEditing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+                value={editedTitle}
+                onChangeText={setEditedTitle}
+                style={s.headerInput}
+                autoFocus
+                onSubmitEditing={handleSaveTitle}
+              />
+              <TouchableOpacity onPress={handleSaveTitle} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setIsEditing(false); setEditedTitle(titleToDisplay); }} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={s.headerTitle} numberOfLines={1}>{titleToDisplay}</Text>
+          )}
+        </View>
+        {/* ⋯ 편집 메뉴 — 타인 여행(게스트)은 편집 대상이 없어 숨김.
+            테두리 없는 투명 스페이서로 폭만 유지해 제목 중앙 정렬은 그대로 둔다 */}
+        {isGuest ? (
+          <View style={s.headerSide} />
+        ) : (
+          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 6 }]}>
+            {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
+            {TRAVEL_MOMENTS_ENABLED && (
+              <TouchableOpacity
+                style={s.backBtn}
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+              >
+                <Text style={{ fontSize: 16 }}>✨</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={s.moreBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
+              {/* 앱 공용 링 — 블로그·게시물 상세 알약과 같은 좌상단·우하단 흰색 대각 그라데이션(PillRing diagonal).
+                  버튼이 36 고정이라 실측(AutoPillRing) 없이 직접 얹는다. Svg는 View(pointerEvents none)로 감싸 터치 삼킴 방지 */}
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <PillRing width={MORE_BTN} height={MORE_BTN} radius={MORE_BTN / 2} diagonal />
+              </View>
+              <View style={s.moreDots}>
+                <View style={s.moreDot} />
+                <View style={s.moreDot} />
+                <View style={s.moreDot} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+      </Animated.View>
     </View>
   );
 }
@@ -927,267 +1056,51 @@ function useCommentCount(recordId: string): number {
   return list.reduce((sum, c) => sum + 1 + (c.replies?.length ?? 0), 0);
 }
 
-// ─── 피드 카드 (스냅과 동일한 세로 포트레이트 형태) ───
-function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  const { t } = useTranslation();
+// ─── 기록 타일 — 형식 펼침 시 나오는 카드(피드·블로그·스냅·스트립·사진첩 공통 1종) ───
+// useCommentCount가 훅이라 목록 안에서 바로 부를 수 없어 별도 컴포넌트로 뺀다.
+function RecordTile({ record, onPress, style }: {
+  record: TravelRecord;
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
   const commentCount = useCommentCount(record.id);
-  const img = record.medias?.[0] || record.representativePhoto;
+  const photo = recordThumbs(record)[0];
   return (
-    <View style={[card.feed, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={['rgba(191,133,252,0.08)', 'rgba(191,133,252,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 피드 배지만 */}
-      <View style={card.snapHeader}>
-        <Text style={card.feedDate}>{record.date}</Text>
-        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatFeed')}</Text>
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} style={[tile.card, style]}>
+      {photo ? (
+        <>
+          <Image source={{ uri: photo }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          {/* 아래쪽만 어둡게 — 날짜가 밝은 사진 위에서도 읽히게 */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.55)']}
+            style={StyleSheet.absoluteFillObject}
+            pointerEvents="none"
+          />
+        </>
+      ) : null}
+      {/* 0이면 숫자를 지우고 아이콘만 둔다(시안) */}
+      <View style={tile.stats} pointerEvents="none">
+        <View style={tile.statRow}>
+          <HeartIcon size={14} color={COLORS.white} />
+          {record.likes > 0 && <Text style={tile.statTxt}>{record.likes}</Text>}
+        </View>
+        <View style={tile.statRow}>
+          <CommentIcon size={14} color={COLORS.white} />
+          {commentCount > 0 && <Text style={tile.statTxt}>{commentCount}</Text>}
         </View>
       </View>
-      {/* 세로 사진 */}
-      {img ? (
-        <Image source={{ uri: img }} style={card.snapPortrait} resizeMode="cover" />
-      ) : (
-        <View style={[card.snapPortrait, card.snapPortraitPlaceholder]}>
-          <Text style={{ fontSize: 22, color: '#A1A1B0' }}>📸</Text>
-        </View>
-      )}
-      <View style={card.feedFooter}>
-        <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <View style={card.feedStatRow}>
-          <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{commentCount}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── 앨범 카드 ───
-function AlbumCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  // 셀 폭만 Stage 폭에서 파생 — card는 모듈 최상위 스타일시트라 폭만 인라인으로 내렸다.
-  const albumCellW = (useStageWidth() - 40 - 32 - 30) / 3;
-  const medias = record.medias ?? [];
-  const cells = medias.slice(0, 6);
-  const extra = medias.length - cells.length; // 7장 이상이면 마지막 칸에 +N 표시
-  return (
-    <View style={[card.album, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={['rgba(255,166,87,0.1)', 'rgba(255,166,87,0.02)', 'rgba(255,166,87,0)']}
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 사진첩 그리드 — 실제 사진이 있으면 썸네일, 없으면 플레이스홀더 */}
-      <View style={card.albumGrid}>
-        {cells.length > 0 ? (
-          cells.map((uri, i) => (
-            <View key={i} style={[card.albumCell, { width: albumCellW }, card.albumCellPhoto]}>
-              <Image source={{ uri }} style={card.albumPhoto} resizeMode="cover" />
-              {i === cells.length - 1 && extra > 0 && (
-                <View style={card.albumMoreOverlay}>
-                  <Text style={card.albumMoreTxt}>+{extra}</Text>
-                </View>
-              )}
-            </View>
-          ))
-        ) : (
-          [0, 1, 2, 3, 4, 5].map((i) => (
-            <View key={i} style={[card.albumCell, { width: albumCellW, backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
-              {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
-              {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
-              {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
-              {i === 3 && <Text style={card.albumCellIcon}>🚠</Text>}
-              {i === 4 && <Text style={card.albumCellIcon}>❄️</Text>}
-              {i === 5 && <Text style={{ fontSize: 11, color: accent }}>+</Text>}
-            </View>
-          ))
-        )}
-      </View>
-      {/* 설명 */}
-      <Text style={card.albumContent} numberOfLines={2}>{record.content}</Text>
-      {/* 하단 */}
-      <View style={card.albumFooter}>
-        <Text style={card.albumDate}>{record.date}</Text>
-        {record.memo && (
-          <Text style={[card.albumMemo, { color: accent }]} numberOfLines={1}>
-            💡 {record.memo}
-          </Text>
-        )}
-      </View>
-    </View>
-  );
-}
-
-// ─── 블로그 카드 ───
-function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  const { t } = useTranslation();
-  const commentCount = useCommentCount(record.id);
-  const getBlogExcerpt = () => {
-    if (record.blogBlocks && record.blogBlocks.length > 0) {
-      const textBlock = record.blogBlocks.find((b) => b.type === 'text');
-      if (textBlock) return textBlock.value;
-    }
-    return record.content;
-  };
-
-  const getBlogTitle = () => {
-    if (record.blogBlocks && record.blogBlocks.length > 0) {
-      const headingBlock = record.blogBlocks.find((b) => b.type === 'heading');
-      if (headingBlock) return headingBlock.value;
-    }
-    return t('trip.blogTravelogue');
-  };
-
-  return (
-    <View style={[card.feed, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={[accent + '14', accent + '00']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 블로그 배지만 */}
-      <View style={card.snapHeader}>
-        <Text style={card.feedDate}>{record.date}</Text>
-        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatBlog')}</Text>
-        </View>
-      </View>
-      <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={2}>
-        {getBlogTitle()}
-      </Text>
-      <Text style={card.feedContent} numberOfLines={4}>
-        {getBlogExcerpt()}
-      </Text>
-      <View style={card.feedFooter}>
-        <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <View style={card.feedStatRow}>
-          <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{commentCount}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── 스냅 카드 ───
-function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  const { t } = useTranslation();
-  const commentCount = useCommentCount(record.id);
-  return (
-    <View style={[card.feed, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={[accent + '14', accent + '00']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 스냅 배지만 */}
-      <View style={card.snapHeader}>
-        <Text style={card.feedDate}>{record.date}</Text>
-        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatSnap')}</Text>
-        </View>
-      </View>
-      {/* 세로 스냅 사진 (촬영이 세로라 포트레이트로 표시) */}
-      {(record.snapBackUri || record.snapFrontUri || record.medias?.[0]) ? (
-        <Image
-          source={{ uri: (record.snapBackUri || record.snapFrontUri || record.medias?.[0]) as string }}
-          style={card.snapPortrait}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[card.snapPortrait, card.snapPortraitPlaceholder]}>
-          <Text style={{ fontSize: 22, color: '#A1A1B0' }}>📸</Text>
-        </View>
-      )}
-      <View style={card.feedFooter}>
-        <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <View style={card.feedStatRow}>
-          <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{commentCount}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── 스트립 카드 ───
-function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  const { t } = useTranslation();
-  const commentCount = useCommentCount(record.id);
-  const photos = record.cutPhoto?.photos ?? [];
-  // 프레임 규격(가로/세로 비율)에 맞춰 미리보기를 렌더 (고정 높이 대신 실제 프레임 비율 사용)
-  const frameAspect = record.cutPhoto ? CUT_LAYOUTS[record.cutPhoto.layout]?.aspect ?? 3 / 4 : 3 / 4;
-  return (
-    <View style={[card.feed, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={[accent + '14', accent + '00']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 스트립 배지만 */}
-      <View style={card.snapHeader}>
-        <Text style={card.feedDate}>{record.date}</Text>
-        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatCut')}</Text>
-        </View>
-      </View>
-      {/* 합성된 네컷 이미지(previewUri) 우선 — 영구 저장되어 안정적. 없으면 개별 사진 */}
-      {record.cutPhoto?.previewUri ? (
-        <Image
-          source={{ uri: record.cutPhoto.previewUri }}
-          style={{ width: '100%', aspectRatio: frameAspect, borderRadius: 8, backgroundColor: '#222', marginBottom: 10 }}
-          resizeMode="cover"
-        />
-      ) : photos.length > 0 ? (
-        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-          {photos.slice(0, 4).map((p, i) => (
-            <Image
-              key={i}
-              source={{ uri: p }}
-              style={{ width: 45, height: 60, borderRadius: 4, backgroundColor: '#222' }}
-            />
-          ))}
-        </View>
-      ) : (
-        <View
-          style={{
-            width: 45,
-            height: 60,
-            borderRadius: 4,
-            backgroundColor: '#2A2A3A',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 10,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: '#A1A1B0' }}>🎞️</Text>
-        </View>
-      )}
-      <Text style={card.feedContent} numberOfLines={1}>
-        {record.content || t('trip.fourCutPhoto')}
-      </Text>
-      <View style={card.feedFooter}>
-        <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <View style={card.feedStatRow}>
-          <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{commentCount}</Text>
-        </View>
-      </View>
-    </View>
+      {/* 게시일(작성 시각) — 여행 날짜(record.date)가 아니다(사용자 지정). 서버 조회본 등 timestamp가 없으면 여행 날짜로 폴백 */}
+      <Text style={tile.date} numberOfLines={1}>{record.timestamp ? fmtDotDate(record.timestamp) : record.date}</Text>
+    </TouchableOpacity>
   );
 }
 
 // ─── 메인 스타일 ───
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+  // 히어로 사진 위에 겹치는 투명 헤더. ScrollView보다 위에 그려야 하므로 zIndex(iOS)+elevation(Android).
   header: {
+    position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, elevation: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1200,9 +1113,18 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.cardBorder,
     alignItems: 'center', justifyContent: 'center',
   },
-  // 뒤로가기만 박스 없이 chevron(앱 전 화면 공통). ☰·✨는 위 backBtn 카드형 유지
+  // 뒤로가기만 박스 없이 chevron(앱 전 화면 공통). ✨는 위 backBtn 카드형 유지
   backBtnPlain: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  // 좌(뒤로가기)·우(✨·☰) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
+  // ⋯ 버튼 — 사진 위에 뜨므로 테두리 흰 55%·바탕 검정 15%로 어느 사진에서나 보이게
+  // 테두리는 PillRing(대각 그라데이션)이 그리므로 borderWidth 없음 — overflow hidden도 금지(링이 잘린다)
+  moreBtn: {
+    width: MORE_BTN, height: MORE_BTN, borderRadius: MORE_BTN / 2,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  moreDots: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  moreDot: { width: 3.5, height: 3.5, borderRadius: 1.75, backgroundColor: COLORS.white },
+  // 좌(뒤로가기)·우(✨·⋯) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
   headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   headerCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3, textAlign: 'center' },
@@ -1233,25 +1155,24 @@ const s = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 60 },
-  // 히어로
-  hero: {
-    alignItems: 'center', paddingTop: 8, paddingBottom: 28,
-    position: 'relative', overflow: 'hidden',
+  // 히어로 — 높이는 창 높이에서 파생되므로 호출부에서 인라인으로 주입한다
+  hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#1A0A2E' },
+  heroEmoji: { fontSize: 64 },
+  heroBottomRow: {
+    // 사진 옆·아래 여백 16 (사용자 지정)
+    position: 'absolute', left: 0, right: 0, bottom: 16, paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  heroBg: { ...StyleSheet.absoluteFillObject, opacity: 0.7 },
-  heroEmoji: { fontSize: 64, marginBottom: 10 },
-  heroPhoto: {
-    width: 104, height: 104, borderRadius: 24, marginBottom: 10,
-    backgroundColor: '#1A0A2E',
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)',
-  },
-  heroDate: { fontSize: 14, color: COLORS.textDim, fontWeight: '500', letterSpacing: 0.5 },
-  heroPill: {
-    marginTop: 8, paddingHorizontal: 14, paddingVertical: 5,
-    borderRadius: 20, backgroundColor: 'rgba(191,133,252,0.12)',
-    borderWidth: 1, borderColor: 'rgba(191,133,252,0.2)',
-  },
-  heroPillText: { fontSize: 12, color: COLORS.purpleNeon, fontWeight: '600' },
+  heroDateRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  heroDate: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.9)' },
+  heroCount: { fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.85)' },
+
+  /* ── 정렬 행 ── */
+  // 히어로 사진 ↔ 정렬 행 ↔ 첫 형식 행 간격 16 (사용자 지정)
+  sortRow: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16, alignItems: 'flex-end' },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sortLabel: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+
   // 섹션
   // 빈 상태
   emptyCard: {
@@ -1263,44 +1184,39 @@ const s = StyleSheet.create({
   emptyText: { fontSize: 13, color: COLORS.textMuted },
 
   /* ── ☰ 편집 메뉴 ── */
-  menuBars: { gap: 4, alignItems: 'center', justifyContent: 'center' },
-  menuBar: { width: 16, height: 2, borderRadius: 1, backgroundColor: COLORS.white },
-  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  // 시안(2026-09-24)은 뒤 화면을 어둡게 하지 않는다 — 딤 없는 투명 오버레이(바깥 탭으로 닫기만)
+  menuOverlay: { flex: 1, backgroundColor: 'transparent' },
+  menuTopDim: { position: 'absolute', top: 0, left: 0, right: 0 },
+  // ⋯ 메뉴 카드 — 게시물 상세 ⋯ 메뉴와 같은 시안 스타일(흰 10% 반투명, rx10, 테두리 없음, 링은 AutoPillRing).
+  // overflow:'hidden' 금지 — 링이 잘린다. 행 배경이 없어 클립이 필요 없다.
   menuSheet: {
-    position: 'absolute', top: 100, right: 20, minWidth: 160,
-    backgroundColor: COLORS.card, borderRadius: 14,
-    borderWidth: 1, borderColor: COLORS.cardBorder,
-    paddingVertical: 6, overflow: 'hidden',
+    position: 'absolute', top: 100, right: 16, minWidth: 130,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10,
   },
-  // 이모지 대신 제작 SVG 아이콘 — 아이콘+라벨 가로 정렬 (PostDetail ☰ 메뉴와 동일한 톤)
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16 },
-  menuItemText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  // 행 28 · 글자 13 — 게시물 상세 ⋯ 메뉴와 동일 치수(시안 SVG 130×88 = 3행)
+  menuItem: { flexDirection: 'row', alignItems: 'center', height: 28, paddingHorizontal: 12, gap: 8 },
+  menuItemText: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   menuItemDanger: { color: '#FF3B30' },
-  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
 
   /* ── 기록 추가 형식 선택 모달 ── */
   fmOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24,
   },
+  // 카드·항목 모두 borderWidth·overflow:'hidden' 금지 — AutoPillRing 링이 테두리를 그린다
   fmCard: {
     width: '100%', maxWidth: 360,
     backgroundColor: COLORS.card, borderRadius: 20, padding: 20,
-    borderWidth: 1, borderColor: 'rgba(191,133,252,0.25)',
   },
   fmTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
-  fmSub: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', marginBottom: 10 },
-  fmHint: {
-    color: COLORS.purpleNeon, fontSize: 12, textAlign: 'center', lineHeight: 17,
-    backgroundColor: 'rgba(191,133,252,0.1)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10,
-    marginBottom: 16,
-  },
+  fmSub: { color: 'rgba(255,255,255,0.7)', fontSize: 13, textAlign: 'center', marginBottom: 16 },
   fmGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
+  // 버튼 바탕 #2E2E3B = 디자인 토큰 '카드'이자 RecordFab 피드 아이콘 구멍 색
   fmItem: {
     width: 92, height: 82,
     backgroundColor: '#2E2E3B', borderRadius: 14,
     alignItems: 'center', justifyContent: 'center', gap: 6,
-    borderWidth: 1, borderColor: 'rgba(191,133,252,0.18)',
   },
   fmName: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
 
@@ -1328,112 +1244,41 @@ const s = StyleSheet.create({
   },
   thumbCancelTxt: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
 
-  /* ── 기록 포맷 콘솔 (네온 레일 + 모듈) ── */
-  console: { position: 'relative', paddingLeft: 30, paddingTop: 4 },
-  rail: { position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, borderRadius: 1 },
-  moduleWrap: { position: 'relative', marginBottom: 16 },
-  railNode: {
-    position: 'absolute', left: -23, top: 30, width: 10, height: 10, borderRadius: 5,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
-    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6 },
-      default: {},
-    }),
-    zIndex: 2,
+  /* ── 형식 행 (시안: 사진 배경 + 왼쪽 스크림) ── */
+  rows: { paddingHorizontal: 16 },
+  rowWrap: { marginBottom: 16 },
+  row: {
+    height: ROW_H, borderRadius: 14, overflow: 'hidden',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: '#2E2E3B',
+    flexDirection: 'row', alignItems: 'center',
   },
-  railLink: { position: 'absolute', left: -14, top: 34, width: 14, height: 1.5, borderRadius: 1 },
-  module: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: 'rgba(26,26,38,0.85)',
-    borderWidth: 1, paddingVertical: 14, paddingHorizontal: 14,
-    overflow: 'hidden',
+  rowBody: { flex: 1, paddingLeft: 16 },
+  rowName: { fontSize: 18, fontWeight: '800', color: COLORS.white, letterSpacing: -0.3 },
+  rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
+  rowIconBox: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
+  rowCount: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  rowChevron: {
+    width: 30, height: 30, borderRadius: 15, marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  // 비대칭 컷 코너 — 짝수/홀수 모듈이 서로 거울 형태
-  moduleCutA: { borderTopLeftRadius: 4, borderTopRightRadius: 24, borderBottomRightRadius: 4, borderBottomLeftRadius: 24 },
-  moduleCutB: { borderTopLeftRadius: 24, borderTopRightRadius: 4, borderBottomRightRadius: 24, borderBottomLeftRadius: 4 },
-  moduleEdge: {
-    position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2,
-    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5 },
-      default: {},
-    }),
-  },
-  moduleIndex: {
-    fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center',
-    // 안드로이드는 letterSpacing이 마지막 글자 뒤에도 여백을 남겨 왼쪽으로 치우침 → 같은 값만큼 왼쪽 패딩으로 상쇄 (SnapRecordScreen snapBadge와 동일 패턴)
-    ...(Platform.OS === 'android' && { paddingLeft: 1 }),
-  },
-  moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
-  moduleNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  moduleMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
-  moduleDataLine: { flex: 1, height: 1, maxWidth: 90 },
-  moduleCount: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  thumbStack: { flexDirection: 'row', alignItems: 'center' },
-  thumbMini: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: '#1A0A2E',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
-  },
-  moduleBigIcon: { alignItems: 'center', justifyContent: 'center' },
-  moduleChevron: { fontSize: 14, fontWeight: '800', marginLeft: 2 },
-  moduleChevronOpen: { transform: [{ rotate: '90deg' }] },
-  expandWrap: { marginTop: 10, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 2 },
+  expandWrap: { marginTop: 12 },
+  tileFadeRight: { position: 'absolute', top: 0, bottom: 0, right: 0, width: 56 },
+  listFadeBottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
 });
 
-// ─── 카드 스타일 ───
-const card = StyleSheet.create({
-  // Feed
-  feed: {
-    backgroundColor: COLORS.card, borderRadius: 18,
-    borderWidth: 1, padding: 16, marginBottom: 10, overflow: 'hidden',
+// ─── 기록 타일 스타일 ───
+const tile = StyleSheet.create({
+  card: {
+    width: TILE_W, height: TILE_H, borderRadius: 12,
+    overflow: 'hidden', backgroundColor: '#2E2E3B',
   },
-  feedDate: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
-  feedTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  feedTypeText: { fontSize: 10, fontWeight: '700' },
-  feedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, marginBottom: 4 },
-  feedContent: { fontSize: 14, color: COLORS.white, lineHeight: 21, marginBottom: 12 },
-  feedFooter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  feedStatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  feedStat: { fontSize: 12, color: COLORS.textDim },
-
-  // Snap (세로 포트레이트) — 카드 폭을 사진 폭에 맞춤
-  snapHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 10,
+  stats: { position: 'absolute', top: 10, right: 10, gap: 6, alignItems: 'flex-end' },
+  statRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statTxt: { fontSize: 12, fontWeight: '600', color: COLORS.white },
+  date: {
+    position: 'absolute', left: 10, bottom: 10,
+    fontSize: 11, fontWeight: '500', color: 'rgba(255,255,255,0.85)',
   },
-  snapPortrait: {
-    width: SNAP_PHOTO_W, height: Math.round(SNAP_PHOTO_W * 4 / 3), borderRadius: 10, alignSelf: 'center',
-    backgroundColor: '#222', marginBottom: 10,
-  },
-  snapPortraitPlaceholder: {
-    backgroundColor: '#2A2A3A', alignItems: 'center', justifyContent: 'center',
-  },
-
-  // Album
-  album: {
-    backgroundColor: COLORS.card, borderRadius: 18,
-    borderWidth: 1, padding: 16, marginBottom: 10, overflow: 'hidden',
-  },
-  albumGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12,
-  },
-  // width는 Stage 폭에서 파생되므로 AlbumCard에서 인라인으로 주입한다.
-  albumCell: {
-    height: 56,
-    borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-  },
-  albumCellIcon: { fontSize: 20 },
-  albumCellPhoto: { overflow: 'hidden', backgroundColor: '#1A0A2E' },
-  albumPhoto: { width: '100%', height: '100%' },
-  albumMoreOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
-  },
-  albumMoreTxt: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
-  albumContent: { fontSize: 13, color: COLORS.white, lineHeight: 20, marginBottom: 10 },
-  albumFooter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  albumDate: { fontSize: 11, color: COLORS.textMuted },
-  albumMemo: { fontSize: 11, fontWeight: '500', flex: 1 },
 });

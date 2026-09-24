@@ -1913,6 +1913,8 @@ const ko = {
     delete: '삭제',
     recordsCount: '{{n}}개의 기록',
     moduleRecordsN: '{{n}}개 기록',
+    sortLatest: '최신순',
+    sortOldest: '오래된순',
     noticeTitle: '알림',
     recordDeleteTitle: '기록 삭제',
     albumDeletePhotoTitle: '사진 삭제',

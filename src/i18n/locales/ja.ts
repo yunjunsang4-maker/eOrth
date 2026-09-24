@@ -222,6 +222,11 @@ const ja: DeepPartial<typeof ko> = {
     coachFabTitle: '記録を追加 +',
     coachFabDesc: 'フィード・ブログ・ストリップ・アルバムなど、好きな形式で新しい記録を追加できます。',
   },
+  trip: {
+    // 이 파일의 유일한 trip 키 — 나머지 trip.* 는 fallback(en)으로 나간다
+    sortLatest: '新しい順',
+    sortOldest: '古い順',
+  },
 };
 
 export default ja;
