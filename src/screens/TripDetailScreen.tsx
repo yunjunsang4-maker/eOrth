@@ -19,7 +19,6 @@ import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
-import type { TripPrefillParam } from '../navigation/types';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
 import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
 import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
@@ -435,7 +434,7 @@ export default function TripDetailScreen() {
   // 배열 순서에 기대지 않고 timestamp로 직접 최신을 고른다.
   // timestamp는 생성 시 Date.now() (updateRecord는 갱신하지 않음 — changes 타입이
   // Omit<..., 'timestamp'>라 아예 넘길 수도 없다). 따라서 이건 '수정 시각'이 아니라
-  // '생성 시각 기준 최신' 판정이다 — buildTripPrefill의 "가장 최근 기록"과 동일 기준.
+  // '생성 시각 기준 최신' 판정이다.
   // reduce는 새 객체를 만들지 않고 배열 안의 참조를 그대로 반환하므로, matchedRecords가
   // 매 렌더 새 배열이어도 find와 마찬가지로 결과 참조는 안정적이다 — RecoSection의 effect
   // deps가 매 렌더 재발화하지 않는다.
@@ -491,40 +490,14 @@ export default function TripDetailScreen() {
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
-  // 기간·필수(동행자·별점)·상세(경비·날씨·항공편·키워드) 정보를 기존 기록에서 모아 넘겨
-  // 작성 화면이 미리 채운다 — 같은 여행을 형식만 바꿔 이어 쓸 때 재입력이 없도록.
-  const buildTripPrefill = (): TripPrefillParam | undefined => {
-    // 필드별로 '가장 최근 기록'의 값을 쓴다 — 최신 기록이 그 여행의 최종 정보에 가장 가깝다
-    const src = [...matchedRecords].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-    const first = <T,>(get: (r: TravelRecord) => T | undefined | null, ok: (v: T) => boolean): T | undefined => {
-      for (const r of src) {
-        const v = get(r);
-        if (v != null && ok(v)) return v;
-      }
-      return undefined;
-    };
-    const prefill: TripPrefillParam = {
-      startDate: tripPeriod.startDate || undefined,
-      endDate: tripPeriod.endDate || undefined,
-      rating: first((r) => r.rating, (v) => v > 0),
-      companions: first((r) => r.companions, (v) => v.length > 0),
-      companionFriends: first((r) => r.companionFriends, (v) => v.length > 0),
-      budget: first((r) => r.budget, (v) => v.amount > 0),
-      weather: first((r) => r.weather, (v) => !!v),
-      flightType: first((r) => r.flightType, (v) => !!v),
-      keywords: first((r) => r.keywords, (v) => v.length > 0),
-    };
-    return Object.values(prefill).some((v) => v !== undefined) ? prefill : undefined;
-  };
-
+  // 미리 채우기(tripPrefill)는 보내지 않는다 — 탭 바 FAB 진입 화면과 똑같이 보이도록 통일.
   const handleAddRecord = (type: string) => {
     setFormatPickerVisible(false);
     const selectedCountry = { name: trip.country || '', flag: trip.countryFlag };
-    const tp = buildTripPrefill();
     const nav = navigation as any;
     switch (type) {
-      case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPrefill: tp }); break;
-      case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPrefill: tp }); break;
+      case 'blog':  nav.navigate('BlogRecord', { selectedCountry }); break;
+      case 'cut':   nav.navigate('CutRecord', { selectedCountry }); break;
       case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
       case 'album': {
         // 여행 카드당 사진첩 1개 — 이미 있으면 생성 대신 안내 (기존 사진첩에서 추가·정리)
@@ -535,7 +508,7 @@ export default function TripDetailScreen() {
         nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id });
         break;
       }
-      default:      nav.navigate('NewRecord', { selectedCountry, tripPrefill: tp });
+      default:      nav.navigate('NewRecord', { selectedCountry });
     }
   };
 

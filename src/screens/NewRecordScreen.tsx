@@ -380,7 +380,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (mapped && !selectedCountries.some(c => c.name === mapped.name)) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSelectedCountries(prev => [...prev, mapped]);
-        setOpenBox(null); // 지구본 등 경유 진입 시 박스 접힘
+        // 박스는 접지 않는다 — 카드·지구본 경유 진입도 FAB 진입과 같은 초기 상태(필수 박스 열림)로 통일
       }
       if (params.selectedCountry.region) {
         setSelectedRegion({
