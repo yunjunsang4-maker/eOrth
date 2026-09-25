@@ -21,9 +21,9 @@ import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
-import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
-import { DateRangeField } from '../components/record/DateRangeField';
+import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
+import { andFitText } from '../utils/fitText';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
@@ -38,17 +38,49 @@ import {
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
   SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon,
   SunIcon, CloudyIcon, RainIcon, SnowIcon, WindIcon,
-  LockClosedIcon, LockOpenIcon,
+  LockClosedIcon, LockOpenIcon, OutlineCalendarIcon,
   BackChevronIcon,
 } from '../components/icons';
 
-// 디자인 토큰
+// 디자인 토큰 — BlogRecordScreen의 C와 같은 표(2026-09-24 기록 화면 UI 통일).
+// 강조색(구 보라 고정색 4종 — 네온/딥/바탕/테두리)은 여기서 제거했다 —
+// 스킨 연동을 위해 makeStyles(a, ad, tint) 인자로 넘어간다. 보라가 박혀 있으면
+// 스킨을 cyan/mint로 바꿔도 이 화면만 보라로 남는다(블로그가 겪은 문제 그대로).
 const C = {
-  bg: '#0A0A0F', card: '#2E2E3B', divider: '#1A1A26',
-  purpleNeon: '#BF85FC', purpleDeep: '#6B21A8',
-  purpleBg: 'rgba(107,33,168,0.25)', purpleBorder: 'rgba(191,133,252,0.3)',
-  white: '#FFFFFF', textDim: '#A1A1B0', textMuted: '#4A4A59', gold: '#FFD700',
+  bg: '#0A0A0F', editorBg: '#111118', card: '#2E2E3B', cardLight: '#1E1B33',
+  white: '#FFFFFF', dim: '#A1A1B0', muted: '#4A4A59', divider: '#1A1A26',
+  gold: '#FFD700',
 };
+
+/** 헤더 저장 알약 치수 — 테두리는 AutoPillRing이 실측하므로, 이 값은 st.saveBtn 스타일 전용이다
+ *  (BlogRecordScreen의 SAVE_BTN_H/R과 같은 값) */
+const SAVE_BTN_H = 30;
+const SAVE_BTN_R = SAVE_BTN_H / 2;
+
+/** 부모 알약을 꽉 채우는 투명 층이 자기 크기를 실측해 PillRing(좌상단·우하단 흰색 대각 그라데이션 테두리)을 얹는다.
+ *  BlogRecordScreen·CutRecordScreen의 같은 이름 함수를 그대로 옮긴 로컬 사본이다 —
+ *  PillRing은 Rect width를 **숫자**로 받아야 하고(안드로이드는 width="100%"가 폭 변경 뒤 갱신되지 않는다),
+ *  absoluteFill 층의 레이아웃이 곧 부모 알약의 크기다. 반경은 높이/2(완전 알약).
+ *  ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 실측이 안쪽으로 밀린다.
+ *  이 층을 감싼 View의 pointerEvents="none"이 규칙 12(오버레이 Svg는 View로 감쌀 것)를 만족시킨다. */
+function AutoPillRing() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        // Math.round는 달력 호출부와 같다 — 서브픽셀 폭이 들어오면 테두리가 반 픽셀 흐려진다
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h })); // 같은 값 setState로 도는 루프 방지
+      }}
+    >
+      {/* 첫 렌더에는 size.w가 0이라 PillRing이 스스로 null을 반환한다.
+          diagonal: 좌상단·우하단이 흰색, 가운데로 갈수록 투명한 대각 대칭(블로그 알약과 동일) */}
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
+    </View>
+  );
+}
 
 // ─── 상수 (피드와 동일) ───
 const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
@@ -154,6 +186,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  const st = useSt(); // 스킨색이 박힌 스타일시트 (블로그 기록 화면과 같은 패턴)
+  // 국가·날짜 칩 색 — BlogRecordScreen과 같은 판정. 시안 값(rgba(117,26,173,0.2) / #E0C9FF)은
+  // aurora(보라) 전용이라 그대로 박으면 cyan·mint 스킨에서 보라가 남는다.
+  // ringGradient 유무로 커스텀 스킨을 판정해 갈라 쓴다 (aurora만 ringGradient가 null).
+  const customSkin = !!skinAccent.ringGradient;
+  const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)'; // 시안 rgba(117,26,173,0.2)
+  const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
   const { addRecord, addTripGroup, neighbors, records } = useRecords();
   // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
@@ -339,7 +378,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
   // ─── 별점 (0.5 단위 드래그) ───
   const STAR_SIZE = 32;
-  const STAR_GAP = 6;
+  // STAR_GAP은 st.ratingRow의 gap과 **반드시 같아야** 한다 — 드래그 히트테스트가
+  // i * (STAR_SIZE + STAR_GAP)로 별 위치를 역산하기 때문(블로그 기록 화면과 같은 불변식).
+  const STAR_GAP = 8;
   const ratingRowRef = useRef<View>(null);
   const ratingRowPageX = useRef(0);
   const getRatingFromX = (x: number) => {
@@ -548,14 +589,14 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* ✨ 여행 기억 버튼은 국가 필드로 이동(중앙정렬 제목과 겹침 방지) */}
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
-            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.35) }]]}
+            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             {privateFriends.length > 0 ? (
-              <LockClosedIcon size={13} color={C.white} />
+              <LockClosedIcon size={17} color={C.white} />
             ) : (
-              <LockOpenIcon size={13} color={C.textDim} />
+              <LockOpenIcon size={17} color={C.dim} />
             )}
             {privateFriends.length > 0 && (
               <View style={st.lockBadge}>
@@ -563,8 +604,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSave} disabled={saving} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={[st.save, { color: skinAccent.accent }, saving && { opacity: 0.5 }]}>{saving ? t('cutInfo.saving') : t('common.save')}</Text>
+          {/* 링(AutoPillRing 흰색 대각 그라데이션) → 콘텐츠 순. 링 층은 absoluteFill이라 Text 가운데 정렬도
+              탭도 건드리지 않고, 폭은 문구('저장'/'저장 중…'/다국어)마다 달라져 AutoPillRing이 스스로 실측한다 */}
+          <TouchableOpacity onPress={handleSave} disabled={saving} style={st.saveBtnWrap} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <View style={[st.saveBtn, saving && { opacity: 0.5 }]}>
+              <AutoPillRing />
+              <Text style={st.saveBtnText} {...andFitText}>{saving ? t('cutInfo.saving') : t('common.save')}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -579,46 +625,53 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             </View>
           ) : null}
 
-          {/* 국가 */}
-          <View style={st.fieldBlock}>
-            <View style={st.labelRow}>
-              <Text style={st.label}>{t('cutInfo.country')}</Text>
-              <Text style={[st.req, { color: skinAccent.accent }]}>✱</Text>
-              <View style={{ flex: 1 }} />
-              {/* ✨ 여행 기억 — 국가표시 열 오른쪽 끝 */}
-              {TRAVEL_MOMENTS_ENABLED && (
-                <TouchableOpacity
-                  onPress={() => setMomentSheetVisible(true)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('moments.sheetTitle')}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{ padding: 4 }}
-                >
-                  <Text style={{ fontSize: 18 }}>✨</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
-              <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
+          {/* 국가 — 아래 여백만 0이다. 블로그는 국가 행(topChipRow)에 bottom 여백이 없고
+              날짜 칩의 marginTop 16 하나가 둘 사이를 띄운다. 여기서 18을 남기면 18+16=34가 된다. */}
+          {/* 블로그 topChipRow와 같은 구조 — 라벨·✱ 없이 칩이 라벨을 겸한다(블로그는 ✱을 어디서도 안 쓴다).
+              ✨ 여행 기억 버튼은 블로그처럼 칩과 같은 행(플래그 OFF) */}
+          <View style={st.topChipRow}>
+            {/* 링(AutoPillRing) → 콘텐츠 순. 바탕색은 스킨별 인라인(chipBg) */}
+            <TouchableOpacity style={[st.countryChip, { backgroundColor: chipBg }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
+              <AutoPillRing />
+              <Text style={selectedCountry ? [st.countryChipText, { color: chipFg }] : st.countryChipPlaceholder} numberOfLines={1}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
+            {TRAVEL_MOMENTS_ENABLED && (
+              <TouchableOpacity
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ fontSize: 18 }}>✨</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
 
-          {/* 날짜 */}
+          {/* 날짜 칩 — 국가 칩과 같은 알약(링 → 콘텐츠 순), 누르면 달력.
+              블로그처럼 칩 자체가 라벨을 겸하므로 라벨 행(라벨 + ✱)은 두지 않는다
+              — 블로그도 국가·날짜 칩에 ✱을 붙이지 않는다(PanelRow required는 어디서도 안 쓴다). */}
+          {/* 블로그는 칩 아래 여백을 제목 입력(marginTop 16)이 갖지만 이 화면은 아래가 fieldBlock
+              연속이라, 래퍼를 둬 아래쪽만 같은 리듬(marginBottom 18)으로 맞춘다.
+              위쪽 16은 st.dateChip의 marginTop이 그대로 만든다(= 블로그와 동일). */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.date')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
-            <DateRangeField
-              startLabel={t('cutInfo.departDate')}
-              startValue={fmtDate(startDate, t)}
-              endLabel={t('cutInfo.arriveDate')}
-              endValue={fmtDate(endDate ?? startDate, t)}
-              onPress={() => setCalendarVisible(true)}
-            />
+            <TouchableOpacity style={[st.countryChip, st.dateChip, { backgroundColor: chipBg }]} onPress={() => setCalendarVisible(true)} activeOpacity={0.8}>
+              <AutoPillRing />
+              <OutlineCalendarIcon size={12} color={startDate ? chipFg : C.muted} />
+              <Text style={startDate ? [st.countryChipText, { color: chipFg }] : st.countryChipPlaceholder} numberOfLines={1}>
+                {startDate
+                  ? (endDate && endDate.getTime() !== startDate.getTime()
+                      ? `${fmtDate(startDate, t)} ~ ${fmtDate(endDate, t)}`
+                      : fmtDate(startDate, t))
+                  : t('cutInfo.date')}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* 글 */}
@@ -627,7 +680,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.memoInput}
               placeholder={t('cutInfo.textPlaceholder')}
-              placeholderTextColor={C.textMuted}
+              placeholderTextColor={C.muted}
               value={memo} onChangeText={setMemo}
               multiline textAlignVertical="top"
             />
@@ -635,37 +688,41 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 동행자 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.companionSelect')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
-            <View style={st.chipWrap}>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.companionSelect')}</Text></View>
+            <View style={st.chipRow}>
               {COMPANIONS.map(comp => {
                 const active = companions.includes(comp);
                 return (
                   <TouchableOpacity
                     key={comp}
-                    style={[st.compChip, active && [st.compChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
+                    style={[st.chip, active && [st.chipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                     onPress={() => toggleCompanion(comp)}
                     activeOpacity={0.75}
                   >
-                    <View style={st.compChipIcon}>{companionIcon(comp, active ? skinAccent.accent : C.textDim)}</View>
-                    <Text style={[st.compChipTxt, active && [st.compChipTxtActive, { color: skinAccent.accent }]]}>{companionLabel(comp, t)}</Text>
+                    {/* st.chip은 블로그와 같이 방향이 없는 상자다 — 아이콘+글자는 반드시 이 행 래퍼 안에 둔다
+                        (빼면 세로로 쌓인다). 블로그의 아이콘 달린 칩이 전부 같은 형태다. */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <View style={st.compChipIcon}>{companionIcon(comp, active ? skinAccent.accent : C.dim)}</View>
+                      <Text style={[st.chipText, active && [st.chipTextActive, { color: skinAccent.accent }]]}>{companionLabel(comp, t)}</Text>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
             </View>
             {companionFriends.length > 0 && (
-              <View style={st.friendChipRow}>
+              <View style={[st.chipRow, { marginTop: 8 }]}>
                 {companionFriends.map(friend => (
-                  <View key={friend} style={st.friendChip}>
-                    <View style={[st.friendChipAvatar, { backgroundColor: skinAccent.accentDeep }]}><Text style={st.friendChipAvatarTxt}>{friend[0]}</Text></View>
-                    <Text style={st.friendChipName}>{friend}</Text>
+                  <View key={friend} style={[st.friendChip, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]}>
+                    <View style={[st.friendChipAvatar, { backgroundColor: skinAccent.tint(0.3) }]}><Text style={st.friendChipAvatarTxt}>{friend[0]}</Text></View>
+                    <Text style={[st.friendChipName, { color: skinAccent.accent }]}>{friend}</Text>
                     <TouchableOpacity onPress={() => removeCompanionFriend(friend)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                      <Text style={st.friendChipX}>✕</Text>
+                      <Text style={{ color: C.muted, fontSize: 10 }}>✕</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
-            <TouchableOpacity style={[st.addFriendBtn, { borderColor: skinAccent.tint(0.3), backgroundColor: skinAccent.tint(0.06) }]} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
+            <TouchableOpacity style={[st.addFriendBtn, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
               <FriendIcon size={16} color={skinAccent.accent} />
               <Text style={[st.addFriendTxt, { color: skinAccent.accent }]}>{t('cutInfo.addAppFriend')}</Text>
               {companionFriends.length > 0 && (
@@ -677,7 +734,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 별점 */}
           <View style={st.fieldBlock}>
             <View style={st.ratingLabelRow}>
-              <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.rating')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
+              <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.rating')}</Text></View>
               {rating > 0
                 ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
                 : <Text style={st.ratingScoreEmpty}>{t('cutInfo.ratingEmpty')}</Text>}
@@ -694,12 +751,14 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 return (
                   <TouchableOpacity
                     key={opt.value}
-                    style={[st.smallBtn, isActive && [st.smallBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
+                    style={[st.chip, isActive && [st.chipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                     onPress={() => setVisibility(opt.value)}
                     activeOpacity={0.75}
                   >
-                    <View style={st.compChipIcon}>{visibilityIcon(opt.value, isActive ? skinAccent.accent : C.textDim)}</View>
-                    <Text style={[st.smallTxt, isActive && [st.smallTxtActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value, t)}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                      <View style={st.compChipIcon}>{visibilityIcon(opt.value, isActive ? skinAccent.accent : C.dim)}</View>
+                      <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value, t)}</Text>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -722,23 +781,25 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               {budget ? <Text style={[st.optValue, { color: skinAccent.accent }]}>{Number(budget).toLocaleString()} {currency}</Text> : null}
             </View>
             <View style={st.budgetRow}>
+              {/* 통화만 전용 칩(currencyChip) — 블로그도 선택 칩과 따로 쓴다.
+                  활성 바탕이 틴트가 아니라 accentDeep이라 다른 칩보다 진하다(블로그 호출부와 동일) */}
               {CURRENCIES.map(c => (
-                <TouchableOpacity key={c} style={[st.curChip, currency === c && [st.curChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
-                  <Text style={[st.curTxt, currency === c && [st.curTxtActive, { color: skinAccent.accent }]]}>{c}</Text>
+                <TouchableOpacity key={c} style={[st.currencyChip, currency === c && [st.currencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
+                  <Text style={[st.currencyTxt, currency === c && [st.currencyTxtActive, { color: skinAccent.accent }]]}>{c}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
-                style={[st.curChip, !CURRENCIES.includes(currency) && [st.curChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
+                style={[st.currencyChip, !CURRENCIES.includes(currency) && [st.currencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                 onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
                 activeOpacity={0.75}
               >
-                <Text style={[st.curTxt, !CURRENCIES.includes(currency) && [st.curTxtActive, { color: skinAccent.accent }]]}>
+                <Text style={[st.currencyTxt, !CURRENCIES.includes(currency) && [st.currencyTxtActive, { color: skinAccent.accent }]]}>
                   {CURRENCIES.includes(currency) ? t('cutInfo.otherCurrency') : currency}
                 </Text>
               </TouchableOpacity>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.budgetInput}
-                placeholder={t('cutInfo.amountPlaceholder')} placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.amountPlaceholder')} placeholderTextColor={C.muted}
                 value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
                 keyboardType="numeric"
               />
@@ -756,12 +817,14 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               {WEATHER_OPTIONS.map(w => (
                 <TouchableOpacity
                   key={w.value}
-                  style={[st.smallBtn, weather === w.value && [st.smallBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
+                  style={[st.chip, weather === w.value && [st.chipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                   onPress={() => setWeather(weather === w.value ? '' : w.value)}
                   activeOpacity={0.75}
                 >
-                  {WEATHER_ICON_MAP[w.value]}
-                  <Text style={[st.smallTxt, weather === w.value && [st.smallTxtActive, { color: skinAccent.accent }]]}>{weatherLabel(w.value, t)}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {WEATHER_ICON_MAP[w.value]}
+                    <Text style={[st.chipText, weather === w.value && [st.chipTextActive, { color: skinAccent.accent }]]}>{weatherLabel(w.value, t)}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -778,15 +841,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               {FLIGHT_OPTIONS.map(f => (
                 <TouchableOpacity
                   key={f}
-                  style={[st.flightBtn, flightType === f && [st.flightBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
+                  style={[st.chip, flightType === f && [st.chipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                   onPress={() => setFlightType(flightType === f ? '' : f)}
                   activeOpacity={0.75}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     {f === '직항'
-                      ? <TakeoffIcon size={14} color={flightType === f ? skinAccent.accent : C.textDim} />
-                      : <TransferIcon size={14} color={flightType === f ? skinAccent.accent : C.textDim} />}
-                    <Text style={[st.flightTxt, flightType === f && [st.flightTxtActive, { color: skinAccent.accent }]]}>{flightLabel(f, t)}</Text>
+                      ? <TakeoffIcon size={14} color={flightType === f ? skinAccent.accent : C.dim} />
+                      : <TransferIcon size={14} color={flightType === f ? skinAccent.accent : C.dim} />}
+                    <Text style={[st.chipText, flightType === f && [st.chipTextActive, { color: skinAccent.accent }]]}>{flightLabel(f, t)}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -800,13 +863,19 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               <Text style={st.optTitle}>{t('cutInfo.keyword')}</Text>
               {keywords.length > 0 && <Text style={[st.optValue, { color: skinAccent.accent }]}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
             </View>
-            <View style={st.kwBox}>
-              {keywords.map(kw => (
-                <TouchableOpacity key={kw} style={[st.kwTag, { backgroundColor: skinAccent.tint(0.15) }]} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))} activeOpacity={0.75}>
-                  <Text style={[st.kwTagTxt, { color: skinAccent.accent }]}>{kw}</Text>
-                  <Text style={[st.kwTagDel, { color: skinAccent.accent }]}> ✕</Text>
-                </TouchableOpacity>
-              ))}
+            {/* 블로그와 같은 구조 — 태그 줄(kwTagRow)과 입력칸(kwInput)이 형제다.
+                예전엔 한 상자(kwBox) 안에 태그와 입력이 섞여 있어 블로그와 모양이 달랐다. */}
+            <View style={st.kwWrap}>
+              {keywords.length > 0 && (
+                <View style={st.kwTagRow}>
+                  {keywords.map(kw => (
+                    <TouchableOpacity key={kw} style={[st.kwTag, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.35) }]} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))} activeOpacity={0.75}>
+                      <Text style={[st.kwTagText, { color: skinAccent.accent }]}>{kw}</Text>
+                      <Text style={st.kwTagDel}> ✕</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.kwInput}
                 value={keywordQuery}
@@ -815,7 +884,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   else setKeywordQuery(v);
                 }}
                 placeholder={keywords.length === 0 ? t('newRecord.keywordPlaceholder') : '#'}
-                placeholderTextColor={C.textMuted}
+                placeholderTextColor={C.muted}
                 returnKeyType="done"
                 onSubmitEditing={() => { addKeyword(keywordQuery); setKeywordQuery(''); }}
               />
@@ -920,11 +989,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </TouchableOpacity>
             </View>
             <View style={cur.searchWrap}>
-              <SearchIcon size={14} color={C.textDim} />
+              <SearchIcon size={14} color={C.dim} />
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={cur.searchInput}
                 value={currencySearch} onChangeText={setCurrencySearch}
-                placeholder={t('cutInfo.currencySearchPlaceholder')} placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.currencySearchPlaceholder')} placeholderTextColor={C.muted}
                 autoFocus
               />
             </View>
@@ -970,11 +1039,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </TouchableOpacity>
             </View>
             <View style={ct.searchWrap}>
-              <SearchIcon size={14} color={C.textDim} />
+              <SearchIcon size={14} color={C.dim} />
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={ct.searchInput}
                 value={countrySearch} onChangeText={setCountrySearch}
-                placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.muted}
                 returnKeyType="search"
               />
               {countrySearch.length > 0 && (
@@ -1028,132 +1097,147 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   );
 }
 
-const st = StyleSheet.create({
+/**
+ * 스킨 강조색이 박힌 스타일시트 — BlogRecordScreen의 makeStyles와 같은 패턴(2026-09-24 기록 화면 UI 통일).
+ *
+ * 색을 모듈 최상위 StyleSheet에 박아두면 스킨을 cyan/mint로 바꿔도 이 화면만 보라로 남는다
+ * (블로그가 실제로 겪은 문제). 호출부를 하나하나 인라인으로 덮는 대신 스타일시트 자체를 스킨의
+ * 함수로 만든다 — 색을 쓰는 모든 지점이 자동으로 따라오고, 새 스타일을 추가할 때도 빠뜨릴 일이 없다.
+ *
+ * a=accent(밝은 강조), ad=accentDeep(진한 강조), tint=밝은 강조의 알파 틴트.
+ */
+const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider, zIndex: 10, elevation: 10 },
   // 뒤로가기 — 박스 없이 38×38 터치 영역 가운데 chevron만(앱 전 화면 공통)
   backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
   // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
   headerTitleWrap: { position: 'absolute', left: 0, right: 0 },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white, textAlign: 'center' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
-  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
-  lockBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
-  save: { fontSize: 16, fontWeight: '700', color: C.purpleNeon },
+  headerTitle: { color: C.white, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  lockBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  lockBtnActive: { backgroundColor: tint(0.4), borderWidth: 1, borderColor: a },
+  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 15, height: 15, alignItems: 'center', justifyContent: 'center' },
+  lockBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
+  // 사용자 시안: 70×30 알약(radius 15) — 바탕 흰 10%, 좌상단·우하단 흰색 대각 그라데이션 테두리(PillRing diagonal), 글자 #C3C3C3
+  saveBtnWrap: { marginRight: 0 }, // 화면 끝 여백 = 헤더 paddingHorizontal 16 (앱 공통 gutter, 블로그 saveBtnWrap과 동일)
+  // width가 아니라 minWidth인 이유: 저장 중 문구나 다국어 문구는 70을 넘어 고정 width면 잘린다.
+  // 테두리는 AutoPillRing이 그리므로 borderWidth·overflow:'hidden' 금지(링이 잘리고 실측이 밀린다).
+  saveBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: SAVE_BTN_R, minWidth: 70, height: SAVE_BTN_H, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
 
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 16 },
+  scroll: { flex: 1, backgroundColor: C.editorBg },
+  content: { paddingHorizontal: 16, paddingTop: 13 }, // 좌우 16 = 앱 공통 gutter
 
+  // 네컷 미리보기 — 블로그에 대응 요소가 없어 기존 값을 유지한다
   previewWrap: { alignItems: 'center', marginBottom: 22 },
   previewImg: { width: '70%', height: 150, borderRadius: 10 },
 
-  fieldBlock: { marginBottom: 20 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
-  label: { color: C.white, fontSize: 14, fontWeight: '700' },
-  req: { color: C.purpleNeon, fontSize: 11 },
+  // 블로그 PanelRow(panelRow/panelLabelRow/panelLabel/reqTag)의 값. 구조는 그대로 두고 값만 옮겼다.
+  // labelRow의 gap을 없앤 것은 req가 marginLeft 4를 스스로 갖기 때문(남겨두면 8이 된다).
+  fieldBlock: { marginBottom: 18, gap: 8 },
+  labelRow: { flexDirection: 'row', alignItems: 'center' },
+  label: { color: C.dim, fontSize: 13, fontWeight: '600' },
 
-  countryChip: { alignSelf: 'flex-start', backgroundColor: C.card, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: C.purpleBorder },
-  countryChipTxt: { color: C.white, fontSize: 14, fontWeight: '600' },
-  countryChipPlaceholder: { color: C.textDim, fontSize: 14 },
+  // 국가·날짜 칩 — 바탕색은 스킨별 인라인(chipBg). 테두리는 AutoPillRing이 그리므로 borderWidth 0
+  topChipRow: { flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 20, elevation: 20 }, // 블로그 2903행과 동일
+  countryChip: { alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4, height: 30, borderRadius: 15, paddingHorizontal: 22 },
+  dateChip: { marginTop: 16, gap: 13 }, // 시안: 아이콘→글자 간격 13(countryChip의 gap 4를 덮는다)
+  // 시안 AppleSDGothicNeoEB00(ExtraBold) = weight 800. iOS는 PostScript 이름을 직접 지정해 숫자·영문(날짜)도
+  // SF Pro가 아니라 Apple SD Gothic Neo 글리프로 그린다. 안드로이드는 이 폰트가 없어 undefined(기본 한글 폰트 + 800).
+  countryChipText: { flexShrink: 1, color: a, fontSize: 14, fontWeight: '800', lineHeight: 18, letterSpacing: -0.14, fontFamily: Platform.select({ ios: 'AppleSDGothicNeo-ExtraBold', default: undefined }) },
+  countryChipPlaceholder: { color: C.muted, fontSize: 14 },
 
-  // 날짜 버튼 스타일은 components/record/DateRangeField로 이동했다(화면 4곳 통일)
+  memoInput: { color: C.white, fontSize: 13, lineHeight: 20, minHeight: 56, backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider },
 
-  memoInput: { backgroundColor: C.card, borderRadius: 12, padding: 14, color: C.white, fontSize: 14, minHeight: 96 },
-
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  compChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 9,
-    borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: 'transparent',
-  },
-  compChipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
+  // 선택 칩 4종(동행자·공개범위·날씨·항공편) 공통 — 블로그 chip/chipActive/chipText/chipTextActive.
+  // 통화는 블로그가 전용 currencyChip을 쓰므로 아래에 따로 있다.
+  // 방향이 없는 상자라 아이콘+글자는 호출부의 행 래퍼 안에 둔다(빼면 세로로 쌓인다).
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
+  chipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
+  chipText: { color: C.dim, fontSize: 13 },
+  chipTextActive: { color: a },
   compChipIcon: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
-  compChipTxt: { color: C.textDim, fontSize: 13, fontWeight: '600' },
-  compChipTxtActive: { color: C.purpleNeon },
 
-  friendChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
-  friendChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderRadius: 18, paddingLeft: 4, paddingRight: 10, paddingVertical: 4 },
-  friendChipAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: C.purpleDeep, alignItems: 'center', justifyContent: 'center' },
-  friendChipAvatarTxt: { color: C.white, fontSize: 11, fontWeight: '700' },
-  friendChipName: { color: C.white, fontSize: 13 },
-  friendChipX: { color: C.textDim, fontSize: 12 },
+  friendChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
+  friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: ad, alignItems: 'center', justifyContent: 'center' },
+  friendChipAvatarTxt: { color: C.white, fontSize: 10, fontWeight: '700' },
+  friendChipName: { color: a, fontSize: 12, fontWeight: '500' },
 
-  addFriendBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: C.purpleBorder, backgroundColor: 'rgba(191,133,252,0.06)' },
-  addFriendTxt: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
-  addFriendBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.purpleDeep, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
-  addFriendBadgeTxt: { color: C.white, fontSize: 11, fontWeight: '700' },
+  addFriendBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.cardLight, borderRadius: 10, borderWidth: 1, borderColor: tint(0.3), alignSelf: 'flex-start' },
+  addFriendTxt: { color: a, fontSize: 13, fontWeight: '600' },
+  addFriendBadge: { backgroundColor: ad, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' },
 
-  ratingLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  // 별점 — 컨테이너만 블로그 값(ratingWrap/ratingRow). 별 드래그·반별 클립은 그대로다.
+  ratingLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   ratingScore: { color: C.gold, fontSize: 13, fontWeight: '700' },
-  ratingScoreEmpty: { color: C.textMuted, fontSize: 12 },
+  ratingScoreEmpty: { color: C.muted, fontSize: 12 },
   ratingCard: { backgroundColor: C.card, borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
-  ratingRow: { flexDirection: 'row', gap: 6 },
+  ratingRow: { flexDirection: 'row', gap: 8, alignItems: 'center' }, // gap = STAR_GAP (드래그 히트테스트가 이 값을 역산한다)
   // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
-  starChar: { fontSize: 32, color: C.textMuted, lineHeight: Platform.OS === 'ios' ? 34 : 38 },
+  starChar: { fontSize: 32, color: C.muted, lineHeight: Platform.OS === 'ios' ? 34 : 38 },
   starCharActive: { color: C.gold },
   starAbsolute: { position: 'absolute', left: 0, top: 0 },
   starFillClip: { position: 'absolute', left: 0, top: 0, height: 32, overflow: 'hidden' },
 
-  divider: { height: 1, backgroundColor: C.divider, marginTop: 4, marginBottom: 16 },
-  optNotice: { color: C.textDim, fontSize: 12, marginBottom: 16 },
-  visNotice: { color: C.textDim, fontSize: 11, lineHeight: 16, marginTop: 8 },
+  divider: { height: 1, backgroundColor: C.divider, marginVertical: 8 }, // 블로그 optDivider
+  optNotice: { color: C.muted, fontSize: 11, textAlign: 'center', marginBottom: 14 },
+  visNotice: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 6, marginBottom: 2 },
 
-  optRow: { marginBottom: 20 },
-  optHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
-  optTitle: { color: C.white, fontSize: 14, fontWeight: '700' },
-  optValue: { color: C.purpleNeon, fontSize: 12, marginLeft: 4 },
+  // 선택 항목 행 — 블로그 PanelRow(아이콘 + 라벨)와 같은 값.
+  // 블로그는 아이콘 래퍼에 marginRight 6을 주는데 여기선 행의 gap 6이 같은 6을 만든다.
+  optRow: { marginBottom: 18, gap: 8 },
+  optHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  optTitle: { color: C.dim, fontSize: 13, fontWeight: '600' },
+  optValue: { color: a, fontSize: 12, marginLeft: 4 }, // 블로그 PanelRow엔 없는 값 표시 — 이 화면 고유라 유지
 
   budgetRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  curChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: 'transparent' },
-  curChipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
-  curTxt: { color: C.textDim, fontSize: 13, fontWeight: '600' },
-  curTxtActive: { color: C.purpleNeon },
-  budgetInput: { flex: 1, minWidth: 90, backgroundColor: C.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: C.white, fontSize: 14 },
+  // 통화 칩 — 선택 칩(chip)보다 살짝 작다(padV 7·r8). 활성 색은 호출부가 accentDeep/accent로 덮는다
+  currencyChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
+  currencyChipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
+  currencyTxt: { color: C.dim, fontSize: 12, fontWeight: '600' },
+  currencyTxtActive: { color: a },
+  budgetInput: { flex: 1, minWidth: 80, height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
 
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  smallBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: C.card, borderWidth: 1, borderColor: 'transparent' },
-  smallBtnActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
-  smallTxt: { color: C.textDim, fontSize: 13, fontWeight: '600' },
-  smallTxtActive: { color: C.purpleNeon },
-
-  flightBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 18, backgroundColor: C.card, borderWidth: 1, borderColor: 'transparent' },
-  flightBtnActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
-  flightTxt: { color: C.textDim, fontSize: 13, fontWeight: '600' },
-  flightTxtActive: { color: C.purpleNeon },
-
-  kwBox: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
-  kwTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
-  kwTagTxt: { color: C.purpleNeon, fontSize: 13 },
-  kwTagDel: { color: C.purpleNeon, fontSize: 11 },
-  kwInput: { flexGrow: 1, minWidth: 80, color: C.white, fontSize: 14, paddingVertical: 2 },
-  kwHint: { color: C.textMuted, fontSize: 11, marginTop: 6 },
+  kwWrap: { gap: 8 },
+  kwTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  kwTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  kwTagText: { color: a, fontSize: 12, fontWeight: '500' },
+  kwTagDel: { color: C.muted, fontSize: 9 },
+  kwInput: { height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
+  kwHint: { color: C.muted, fontSize: 11, marginTop: 6 }, // 블로그에 없는 안내문 — 이 화면 고유라 유지
 });
+
+/** 현재 스킨색으로 만든 스타일시트 — 스킨이 바뀔 때만 다시 만든다 */
+function useSt() {
+  const { accent, accentDeep, tint } = useSkinAccent();
+  return useMemo(() => makeStyles(accent, accentDeep, tint), [accent, accentDeep, tint]);
+}
 
 
 const fp = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   headerTitle: { color: C.white, fontSize: 16, fontWeight: '700' },
   list: { },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
   rowActive: { },
   avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.divider, alignItems: 'center', justifyContent: 'center' },
-  avatarActive: { backgroundColor: C.purpleDeep },
+  // 색은 호출부가 skinAccent로 인라인 지정한다(예전 보라 고정색은 그 인라인에 늘 덮여 죽은 값이었다)
+  avatarActive: { },
   avatarTxt: { color: C.white, fontSize: 14, fontWeight: '700' },
-  name: { flex: 1, color: C.textDim, fontSize: 15 },
+  name: { flex: 1, color: C.dim, fontSize: 15 },
   nameActive: { color: C.white, fontWeight: '600' },
-  check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: C.textMuted, alignItems: 'center', justifyContent: 'center' },
-  checkActive: { backgroundColor: C.purpleDeep, borderColor: C.purpleDeep },
+  check: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: C.muted, alignItems: 'center', justifyContent: 'center' },
+  checkActive: { },
   checkMark: { color: C.white, fontSize: 13, fontWeight: '700' },
-  doneBtn: { marginTop: 14, backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  doneBtn: { marginTop: 14, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   doneTxt: { color: C.white, fontSize: 15, fontWeight: '700' },
 });
 
@@ -1161,37 +1245,37 @@ const cur = StyleSheet.create({
   // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
   // width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 10, maxHeight: '80%', flexShrink: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { color: C.white, fontSize: 16, fontWeight: '700' },
-  doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
+  doneBtn: { fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
   item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 4 },
   itemBorder: { borderBottomWidth: 1, borderBottomColor: C.divider },
   code: { color: C.white, fontSize: 14, fontWeight: '700', width: 54 },
-  name: { flex: 1, color: C.textDim, fontSize: 14 },
-  check: { color: C.purpleNeon, fontSize: 15, fontWeight: '700' },
+  name: { flex: 1, color: C.dim, fontSize: 14 },
+  check: { fontSize: 15, fontWeight: '700' },
 });
 
 const ct = StyleSheet.create({
   // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
   // width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
   sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 10, maxHeight: '80%', flexShrink: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { color: C.white, fontSize: 16, fontWeight: '700' },
-  doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
+  doneBtn: { fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
-  searchClear: { color: C.textDim, fontSize: 13, fontWeight: '700' },
-  pickedCount: { color: C.textDim, fontSize: 11, paddingBottom: 6 },
-  continent: { color: C.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingTop: 14, paddingBottom: 6 },
+  searchClear: { color: C.dim, fontSize: 13, fontWeight: '700' },
+  pickedCount: { color: C.dim, fontSize: 11, paddingBottom: 6 },
+  continent: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingTop: 14, paddingBottom: 6 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
   itemBlocked: { opacity: 0.35 },
   flag: { fontSize: 20 },
   name: { flex: 1, color: C.white, fontSize: 15 },
-  check: { color: C.purpleNeon, fontSize: 15, fontWeight: '700' },
-  empty: { color: C.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 30 },
+  check: { fontSize: 15, fontWeight: '700' },
+  empty: { color: C.muted, fontSize: 13, textAlign: 'center', paddingVertical: 30 },
 });
 

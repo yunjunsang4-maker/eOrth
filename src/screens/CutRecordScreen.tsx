@@ -35,12 +35,17 @@ import {
   GalleryIcon as SvgGalleryIcon,
   BackChevronIcon,
 } from '../components/icons';
-import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBottomSheet';
+import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { stageWidthNow } from '../utils/stage';
 
 const SCREEN_W = stageWidthNow();
 const SCREEN_H = Dimensions.get('window').height;
+
+// 알약 치수 — BlogRecordScreen의 SAVE_BTN_H/R과 같은 값(헤더 '다음', 기본/테마 탭 공통)
+const PILL_H = 30;
+const PILL_R = PILL_H / 2;
 
 // 디자인 토큰
 const C = {
@@ -71,9 +76,39 @@ const CUSTOM_ROWS: string[][] = [
   ...[0.86, 0.72, 0.58, 0.44, 0.3].map((l) => CUSTOM_HUES.map((h) => hslHex(h, 0.55, l))),
 ];
 
+/** 부모 알약을 꽉 채우는 투명 층이 자기 크기를 실측해 PillRing(좌상단·우하단 흰색 대각 그라데이션 테두리)을 얹는다.
+ *  BlogRecordScreen의 같은 이름 함수를 그대로 옮긴 로컬 사본이다(PostDetail·TripDetail도 각자 사본을 둔다) —
+ *  PillRing은 Rect width를 **숫자**로 받아야 하고(안드로이드는 width="100%"가 폭 변경 뒤 갱신되지 않는다),
+ *  absoluteFill 층의 레이아웃이 곧 부모 알약의 크기다. 반경은 높이/2(완전 알약).
+ *  이 층을 감싼 View의 pointerEvents="none"이 규칙 12(오버레이 Svg는 View로 감쌀 것)를 만족시킨다. */
+function AutoPillRing() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        // Math.round는 달력 호출부와 같다 — 서브픽셀 폭이 들어오면 테두리가 반 픽셀 흐려진다
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h })); // 같은 값 setState로 도는 루프 방지
+      }}
+    >
+      {/* 첫 렌더에는 size.w가 0이라 PillRing이 스스로 null을 반환한다.
+          diagonal: 좌상단·우하단이 흰색, 가운데로 갈수록 투명한 대각 대칭(블로그 알약과 동일) */}
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
+    </View>
+  );
+}
+
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 활성 탭·칩 강조를 스킨색으로
+  // 탭 칩 색 — BlogRecordScreen과 같은 판정. Figma 시안 값(rgba(117,26,173,0.2) / #E0C9FF)은 aurora(보라)
+  // 전용이라 그대로 박으면 cyan·mint 스킨에서 보라가 남는다. ringGradient 유무로 커스텀 스킨을 판정해
+  // 갈라 쓴다 (aurora만 ringGradient가 null).
+  const customSkin = !!skinAccent.ringGradient;
+  const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)'; // 시안 rgba(117,26,173,0.2)
+  const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
   const selectedCountry = route.params?.selectedCountry ?? null;
   // 스트립 로고 제거(프리미엄) — 프리미엄이고 설정 토글이 켜져 있을 때만 로고 미포함
   const { isPremium, stripLogoRemoval } = useSettings();
@@ -324,9 +359,20 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         <TouchableOpacity onPress={handleCancel} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
           <BackChevronIcon />
         </TouchableOpacity>
-        <Text style={st.title}>{t('cut.title')}</Text>
-        <TouchableOpacity onPress={goNext} hitSlop={8}>
-          <Text style={[st.save, { color: skinAccent.accent }]}>{t('common.next')}</Text>
+        {/* 제목은 헤더 가로 전체를 덮는 절대배치 — '다음'이 알약(minWidth 70)이 되면서 오른쪽 폭이
+            뒤로가기(38)보다 커져, space-between으로는 제목이 왼쪽으로 밀린다(BlogRecordScreen과 같은 해법).
+            pointerEvents는 <Text>가 아니라 래퍼 <View>의 prop으로 건다 — RN 0.81.5의 Text는
+            안드로이드 네이티브 구현이 없어 좌우 버튼의 세로 중앙 띠를 삼킨다. */}
+        <View style={st.titleWrap} pointerEvents="none">
+          <Text style={st.title}>{t('cut.title')}</Text>
+        </View>
+        {/* 링(AutoPillRing 흰색 대각 그라데이션) → 콘텐츠 순. 링 층은 absoluteFill이라 Text 가운데 정렬도
+            탭도 건드리지 않고, 폭은 다국어 문구마다 달라져 AutoPillRing이 스스로 실측한다 */}
+        <TouchableOpacity onPress={goNext} style={st.nextBtnWrap}>
+          <View style={st.nextBtn}>
+            <AutoPillRing />
+            <Text style={st.nextBtnText} {...andFitText}>{t('common.next')}</Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -386,8 +432,10 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         )}
         <View style={st.tabs}>
           {(['기본', '테마'] as const).map((cat) => (
-            <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && [st.tabOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}>
-              <Text style={[st.tabTxt, tab === cat && [st.tabTxtOn, { color: skinAccent.accent }]]}>{tabLabel(cat)}</Text>
+            <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && { backgroundColor: chipBg }]}>
+              {/* 링(AutoPillRing) → 콘텐츠 순 */}
+              <AutoPillRing />
+              <Text style={[st.tabTxt, tab === cat && { color: chipFg }]}>{tabLabel(cat)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -617,8 +665,16 @@ const st = StyleSheet.create({
   },
   // 뒤로가기 — 박스 없이 38×38 터치 영역 가운데 chevron만(앱 전 화면 공통)
   backBtn: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 17, fontWeight: 'bold', color: C.white },
-  save: { fontSize: 16, fontWeight: '700', color: C.purple },
+  // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
+  // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전과 같은 자리에 놓는다.
+  titleWrap: { position: 'absolute', left: 0, right: 0 },
+  title: { fontSize: 17, fontWeight: 'bold', color: C.white, textAlign: 'center' },
+  // '다음' 알약 — BlogRecordScreen의 저장 알약과 같은 값. 바탕 흰 10%, 테두리는 AutoPillRing이 그리므로
+  // borderWidth·overflow:'hidden' 금지(링이 잘리고 absoluteFill 실측이 밀린다).
+  nextBtnWrap: { marginRight: 0 }, // 화면 끝 여백 = 헤더 paddingHorizontal 16 (앱 공통 gutter, 블로그 saveBtnWrap과 동일)
+  // width가 아니라 minWidth인 이유: 다국어 문구('Next'/'Siguiente')는 70을 넘어 고정 width면 잘린다
+  nextBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: PILL_R, minWidth: 70, height: PILL_H, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
+  nextBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
 
   canvasArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 16 },
   hint: { fontSize: 12, color: C.dim },
@@ -627,13 +683,14 @@ const st = StyleSheet.create({
   catScroll: { flexGrow: 0 },
 
   tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12, justifyContent: 'center' },
+  // 블로그 국가·날짜 칩과 같은 알약(30 높이·반경 15·좌우 22). 비선택은 '다음' 알약과 같은 톤(흰 10% + #C3C3C3),
+  // 선택은 chipBg/chipFg 인라인. borderWidth는 전부 제거 — 테두리는 AutoPillRing이 그린다.
   tab: {
-    paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 22, height: PILL_H, borderRadius: PILL_R,
+    backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center',
   },
-  tabOn: { backgroundColor: 'rgba(191,133,252,0.18)', borderColor: C.purple },
-  tabTxt: { fontSize: 13, color: C.dim, fontWeight: '600' },
-  tabTxtOn: { color: C.purple },
+  // 블로그 국가·날짜 칩 글자(countryChipText)와 동일 — 800·행간 18·자간 -0.14·iOS AppleSDGothicNeo-ExtraBold. 색만 선택 여부로 갈린다
+  tabTxt: { flexShrink: 1, fontSize: 14, color: '#C3C3C3', fontWeight: '800', lineHeight: 18, letterSpacing: -0.14, fontFamily: Platform.select({ ios: 'AppleSDGothicNeo-ExtraBold', default: undefined }) },
 
   cat: { paddingHorizontal: 16, paddingBottom: 4, gap: 12, alignItems: 'flex-end' },
   catItem: {

@@ -7,13 +7,32 @@ import {
   TouchableOpacity,
   Animated,
   useWindowDimensions,
-  Platform,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { PillRing } from './record/CalendarBottomSheet';
+import { andFitText } from '../utils/fitText';
+
+/** 알약 유리 테두리 — 블로그 기록 알약과 같은 좌상단·우하단 흰색 대각 그라데이션 링(PillRing diagonal).
+ *  부모의 첫 자식으로 넣으면 absoluteFill 층이 제 크기를 실측해 링을 얹는다(문구·다국어로 폭이 달라도 됨).
+ *  ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 이중 테두리가 된다. */
+function AutoPillRing() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h }));
+      }}
+    >
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
+    </View>
+  );
+}
 
 // 슬롯에 들어간 사진의 조정값 — tx/ty는 프레임 크기 대비 비율, scale은 배율(≥1)
 export type CutTransform = { scale: number; tx: number; ty: number };
@@ -108,6 +127,10 @@ function clampT(tx: number, ty: number, s: number, cfg: Cfg) {
 export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto, onRemove }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 블로그 국가·날짜 칩과 같은 색 판정 — aurora만 시안 보라, 나머지 스킨은 스킨색(ringGradient 유무로 판정)
+  const customSkin = !!skinAccent.ringGradient;
+  const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)';
+  const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
   // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 프레임이 어긋난다.
   const { width: SW, height: SH } = useWindowDimensions();
   // 프레임 크기 — aspect에 맞춰 화면에 fit
@@ -217,32 +240,28 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
             </View>
           </GestureDetector>
           <Text style={s.hint}>{t('comp.cutAdjustHint')}</Text>
+          {/* 하단 4버튼 — 블로그 기록 알약과 동일 규격(30h·r15·링 → 콘텐츠 순, 2026-09-24 기록 화면 UI 통일).
+              사진 변경·취소 = 흰 10% + #C3C3C3, 삭제 = 같은 알약에 빨강 글자, 확인 = 선택 칩(스킨 틴트 20% + 스킨색 글자) */}
           <View style={s.btnRow}>
             {onChangePhoto && (
-              <TouchableOpacity onPress={onChangePhoto} style={s.btnGlass} activeOpacity={0.85}>
-                <Text style={s.btnGlassTxt}>{t('comp.changePhoto')}</Text>
+              <TouchableOpacity onPress={onChangePhoto} style={s.pill} activeOpacity={0.85}>
+                <AutoPillRing />
+                <Text style={s.pillTxt} {...andFitText}>{t('comp.changePhoto')}</Text>
               </TouchableOpacity>
             )}
             {onRemove && (
-              <TouchableOpacity onPress={onRemove} style={s.btnDanger} activeOpacity={0.85}>
-                <Text style={s.btnDangerTxt}>{t('comp.delete')}</Text>
+              <TouchableOpacity onPress={onRemove} style={s.pill} activeOpacity={0.85}>
+                <AutoPillRing />
+                <Text style={[s.pillTxt, s.pillTxtDanger]} {...andFitText}>{t('comp.delete')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onCancel} style={s.btnGlass} activeOpacity={0.85}>
-              <Text style={s.btnGlassTxt}>{t('common.cancel')}</Text>
+            <TouchableOpacity onPress={onCancel} style={s.pill} activeOpacity={0.85}>
+              <AutoPillRing />
+              <Text style={s.pillTxt} {...andFitText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={confirm}
-              style={[s.btnPrimaryWrap, { shadowColor: skinAccent.accent }]}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={skinAccent.btnGradient}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                style={s.btnPrimaryGrad}
-              >
-                <Text style={s.btnPrimaryTxt}>{t('common.confirm')}</Text>
-              </LinearGradient>
+            <TouchableOpacity onPress={confirm} style={[s.pill, { backgroundColor: chipBg }]} activeOpacity={0.85}>
+              <AutoPillRing />
+              <Text style={[s.pillTxt, { color: chipFg }]} {...andFitText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -259,30 +278,8 @@ const s = StyleSheet.create({
   gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)' },
   hint: { color: '#A1A1B0', fontSize: 12 },
   btnRow: { flexDirection: 'row', gap: 10, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' },
-  // 글래스 필 — 얇은 테두리 + 은은한 흰색 채움 (사진 변경·취소)
-  btnGlass: {
-    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
-  },
-  btnGlassTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  // 확인 — 스킨 그라데이션 + 소프트 글로우
-  btnPrimaryWrap: {
-    borderRadius: 999,
-    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
-    ...Platform.select({
-      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12 },
-      default: {},
-    }),
-  },
-  btnPrimaryGrad: {
-    paddingHorizontal: 28, paddingVertical: 12, borderRadius: 999,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  btnPrimaryTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  // 삭제 — 빨강 글래스
-  btnDanger: {
-    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999,
-    backgroundColor: 'rgba(255,59,48,0.12)', borderWidth: 1, borderColor: 'rgba(255,59,48,0.4)',
-  },
-  btnDangerTxt: { color: '#FF3B30', fontSize: 14, fontWeight: '600' },
+  // 블로그 헤더 저장 알약(saveBtn)과 동일 — 바탕 흰 10%, 30h·r15, padH 16. 테두리는 AutoPillRing(borderWidth 금지)
+  pill: { height: 30, borderRadius: 15, minWidth: 70, paddingHorizontal: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  pillTxt: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
+  pillTxtDanger: { color: '#FF3B30' },
 });

@@ -2888,7 +2888,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 15, height: 15, alignItems: 'center', justifyContent: 'center' },
   lockBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   // 사용자 시안: 70×30 알약(radius 15) — 바탕 흰 10%, 좌상단·우하단 흰색 대각 그라데이션 테두리(PillRing diagonal — 달력 알약의 #CECFCD 링과 다름), 글자 #C3C3C3
-  saveBtnWrap: { marginRight: 13 }, // 헤더 padding 12 + 13 = 끝에서 25(시안)
+  saveBtnWrap: { marginRight: 0 }, // 화면 끝 여백 = 헤더 paddingHorizontal 16 (앱 공통 gutter, 2026-09-24 사용자 확정 — 스트립 '다음'과 동일)
   // width가 아니라 minWidth인 이유: '저장 중…'이나 다국어 문구는 70을 넘어 고정 width면 잘린다. 시안 기본 상태('저장' 2글자)에서는 70으로 렌더된다
   saveBtn: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: SAVE_BTN_R, minWidth: 70, height: SAVE_BTN_H, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' },
   saveBtnText: { color: '#C3C3C3', fontSize: 14, fontWeight: '600' },
