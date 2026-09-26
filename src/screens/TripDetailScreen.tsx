@@ -21,6 +21,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { PillRing } from '../components/record/CalendarBottomSheet';
@@ -35,6 +36,9 @@ import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { sortFormatModules, type SortOrder } from './tripDetailSort';
+import { classifyRowPhoto, pickRowPhoto, type RowPhotoCategory } from './tripDetailRowPhoto';
+import { analyzePhotos, isPhotoVisionAvailable } from '../../modules/photo-vision';
+import { makeThumbnail } from '../services/photoAI/qualityAssessment';
 
 // 형식 행 펼침(LayoutAnimation)은 안드로이드에서 이 플래그가 켜져 있어야 동작한다 (FAQScreen과 동일)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -64,6 +68,8 @@ const TILE_GAP = 12;
 
 // 형식 행
 const ROW_H = 72;
+// 형식 행 오른쪽 '선명 구간'(블러 없음) 폭 — 시안 기준 세로 선이 오른쪽 끝에서 52
+const ROW_CLEAR_W = 52;
 
 // ⋯ 버튼 지름 — 스타일과 PillRing 치수가 같은 값을 봐야 링이 버튼 경계에 정확히 앉는다
 const MORE_BTN = 36;
@@ -199,6 +205,85 @@ function recordThumbs(r: TravelRecord): string[] {
   }
   // medias가 비고 대표 사진만 있는 기록(옛 피드 카드가 보던 폴백) — 타일 배경이 단색으로 비지 않게
   return r.representativePhoto ? [r.representativePhoto] : [];
+}
+
+// 형식 행 표시 순서. 컴포넌트 밖에 둬야 매 렌더 새 배열이 되지 않는다 —
+// 아래 행 배경 선별 이펙트의 deps에 들어가므로, 안에 두면 렌더마다 재분석이 돈다.
+const FORMAT_ORDER = ['feed', 'blog', 'cut', 'snap', 'album'];
+
+// ── 형식 행 배경 사진 1장 선별 ──
+// 규칙(풍경 80% · 사람 15% · 음식 5%, 빈 부류는 재정규화)은 순수 함수 tripDetailRowPhoto.ts에 있다.
+// 여기 있는 건 그 함수에 먹일 신호를 모으는 부분(썸네일 생성 + 네이티브 분석 + 캐시)뿐이다.
+
+/** 행마다 분석할 후보 사진 상한. 사진첩 한 개가 수백 장이면 행 배경 한 장 고르려고 썸네일 수백 개를 만든다 */
+const ROW_PHOTO_MAX_CANDIDATES = 12;
+/** 분석 입력 썸네일 한 변(px). 품질 평가(512)보다 작게 — 부류 판정에는 이 정도로 충분하고 생성이 빠르다 */
+const ROW_PHOTO_THUMB_SIZE = 256;
+/** 네이티브 분석 상한(ms). 응답이 없어도 행 배경이 영영 폴백에 머무르지 않게 */
+const ROW_PHOTO_TIMEOUT_MS = 6000;
+
+// 세션 캐시 — 같은 사진을 두 번 분석하지 않는다(화면을 나갔다 들어와도 유지).
+const rowPhotoCategoryCache = new Map<string, RowPhotoCategory | null>();
+// 카드+형식별로 고른 사진. 같은 카드에 재진입하면 같은 사진이 보여야 한다(매번 바뀌면
+// 사용자에겐 깜빡임으로 읽힌다). 후보 목록 지문이 바뀌면(기록 추가·삭제) 다시 고른다.
+const rowPhotoPickCache = new Map<string, { fp: string; uri: string | null }>();
+
+/**
+ * 이 형식 기록들의 사진을 순서대로 모아 중복을 뺀 뒤 상한까지. (형식별 사진 위치는 recordThumbs가 흡수)
+ */
+function rowPhotoCandidates(items: TravelRecord[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const r of items) {
+    // 스트립은 합성본(previewUri, 프레임 안 4컷)이 아니라 **구성 사진 낱장**을 후보로 — 행 배경은
+    // '기록에 쓰인 사진 한 장'이어야지 스트립 형식 자체가 보이면 안 된다(사용자 지적). 낱장이 없으면 기존 폴백
+    const uris = r.viewType === 'cut' && r.cutPhoto?.photos?.length ? r.cutPhoto.photos : recordThumbs(r);
+    for (const uri of uris) {
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      out.push(uri);
+      if (out.length >= ROW_PHOTO_MAX_CANDIDATES) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * 후보 uri → 부류 배열(입력과 같은 순서). 캐시에 없는 것만 썸네일을 만들어 네이티브에 넘긴다.
+ *
+ * 네이티브가 없는 환경(Expo Go·podspec 이전 구형 빌드)·분석 실패·타임아웃·썸네일 실패는
+ * 전부 'other'로 떨어진다 → pickRowPhoto의 "세 부류 다 비면 미분류 중 무작위" 경로를 타므로
+ * 행 배경이 비지 않는다. 타임아웃은 캐시에 적지 않아 다음 진입에 다시 시도한다.
+ */
+async function classifyRowUris(uris: string[]): Promise<(RowPhotoCategory | null)[]> {
+  const todo = uris.filter((u) => !rowPhotoCategoryCache.has(u));
+  if (todo.length > 0 && isPhotoVisionAvailable) {
+    try {
+      // 네이티브엔 절대 원본을 넘기지 않는다(OOM) — qualityAssessment와 같은 규칙
+      const thumbs = await Promise.all(todo.map((u) => makeThumbnail(u, ROW_PHOTO_THUMB_SIZE)));
+      const pairs = todo
+        .map((u, i) => ({ u, thumb: thumbs[i] }))
+        .filter((p): p is { u: string; thumb: string } => !!p.thumb);
+      if (pairs.length > 0) {
+        const results = await Promise.race([
+          analyzePhotos(pairs.map((p) => p.thumb)),
+          new Promise<null>((res) => setTimeout(() => res(null), ROW_PHOTO_TIMEOUT_MS)),
+        ]);
+        if (results) {
+          const byUri = new Map(results.map((r) => [r.uri, r]));
+          for (const { u, thumb } of pairs) {
+            const raw = byUri.get(thumb);
+            rowPhotoCategoryCache.set(u, raw && !raw.error ? classifyRowPhoto(raw) : 'other');
+          }
+        }
+      }
+    } catch {
+      // 분석이 통째로 실패해도 화면은 폴백 사진으로 굴러간다
+    }
+  }
+  // has()로 갈라야 한다 — 캐시된 null(영수증·문서 제외 판정)을 ??가 'other'로 되살려 제외가 죽는다(QA M-1).
+  // 캐시 미적중(썸네일 실패·미지원·타임아웃)만 'other'.
+  return uris.map((u) => (rowPhotoCategoryCache.has(u) ? (rowPhotoCategoryCache.get(u) as RowPhotoCategory | null) : 'other'));
 }
 
 // ⋯ 메뉴 카드 유리 테두리 — 게시물 상세 ⋯ 메뉴와 같은 좌상단·우하단 흰색 대각 그라데이션 링(PillRing diagonal).
@@ -502,12 +587,60 @@ export default function TripDetailScreen() {
   };
 
   // ── 형식 행: 기록이 있는 형식만 한 줄씩, 탭하면 그 자리에서 펼쳐짐 ──
-  const FORMAT_ORDER = ['feed', 'blog', 'cut', 'snap', 'album'];
+  // (FORMAT_ORDER는 모듈 최상위로 올려 뒀다 — 행 배경 이펙트 deps에 들어가므로)
   const modules = FORMAT_ORDER
     .map((vt) => ({ vt, config: VIEW_CONFIG[vt], items: getRecordsByType(vt) }))
     .filter((m) => !!m.config && m.items.length > 0);
   // 정렬은 순수 함수에 맡긴다. modules는 매 렌더 새 배열이라 useMemo를 씌워도 캐시가 안 산다.
   const sortedModules = sortFormatModules(modules, sortOrder, FORMAT_ORDER);
+
+  // 형식별 행 배경 후보 — 렌더(폴백 첫 장)와 분석 이펙트가 같은 목록을 본다.
+  // 지문은 FORMAT_ORDER 순으로 만든다 — 정렬만 바꿨을 때 재분석이 돌지 않게(정렬은 배경과 무관).
+  const rowCands: Record<string, string[]> = {};
+  for (const m of modules) rowCands[m.vt] = rowPhotoCandidates(m.items);
+  const rowCandsFp = FORMAT_ORDER.map((vt) => `${vt}=${(rowCands[vt] ?? []).join(',')}`).join(';');
+  // 확률로 고른 행 배경. 분석이 끝나기 전까지는 비어 있고, 렌더가 후보 첫 장으로 폴백한다.
+  const [rowPhoto, setRowPhoto] = useState<Record<string, string | null>>({});
+  // 이펙트가 최신 후보 목록을 보게 하는 우회 — rowCands는 매 렌더 새 객체라 deps에 넣을 수 없고,
+  // 대신 지문(rowCandsFp)이 바뀔 때만 이펙트가 돌므로 ref로 읽어도 항상 최신이다.
+  const rowCandsRef = useRef(rowCands);
+  rowCandsRef.current = rowCands;
+
+  // 형식 행 배경 선별 — 형식을 하나씩 순차로 분석한다(동시에 여러 행이 네이티브를 부르면
+  // 썸네일 생성이 몰려 진입이 버벅인다). 긴 await 뒤에는 반드시 cancelled를 다시 본다.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cands = rowCandsRef.current;
+      for (const vt of FORMAT_ORDER) {
+        const uris = cands[vt] ?? [];
+        if (uris.length === 0) {
+          // 후보가 0장이 되면(기록 삭제 등) 이전 사진이 남지 않게 비운다 → 형식색 gradient 폴백(QA L-1)
+          if (!cancelled) setRowPhoto((p) => (p[vt] == null ? p : { ...p, [vt]: null }));
+          continue;
+        }
+        const fp = uris.join(',');
+        const key = `${trip.id}:${vt}`;
+        const cached = rowPhotoPickCache.get(key);
+        if (cached && cached.fp === fp) {
+          // 같은 카드 재진입 — 다시 뽑지 않고 그때 고른 사진을 그대로 쓴다
+          if (!cancelled) setRowPhoto((p) => (p[vt] === cached.uri ? p : { ...p, [vt]: cached.uri }));
+          continue;
+        }
+        const cats = await classifyRowUris(uris);
+        if (cancelled) return;
+        const pool = uris
+          .map((uri, i) => ({ uri, category: cats[i] }))
+          .filter((c): c is { uri: string; category: RowPhotoCategory } => c.category !== null);
+        // 후보가 전부 제외(영수증·문서)면 첫 장으로 — 행이 단색으로 비는 것보다 낫다
+        const picked = pickRowPhoto(pool, Math.random) ?? uris[0];
+        rowPhotoPickCache.set(key, { fp, uri: picked });
+        setRowPhoto((p) => ({ ...p, [vt]: picked }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [trip.id, rowCandsFp]);
+
   const [expandedType, setExpandedType] = useState<string | null>(null);
   // 펼침 가로 목록 오른쪽 페이드 — 뒤에 타일이 더 있을 때만 보인다(끝까지 넘기면 사라짐).
   // 한 번에 한 형식만 펼치므로 상태 하나면 충분하다. 폭은 onLayout/onContentSizeChange 실측.
@@ -856,8 +989,9 @@ export default function TripDetailScreen() {
         <View style={s.rows}>
           {sortedModules.map((m) => {
             const open = expandedType === m.vt;
-            // 행 배경 사진 — 최대 3장을 폭 1/N씩 나란히 깐다(형식별 사진 위치는 recordThumbs가 흡수)
-            const thumbs = m.items.flatMap(recordThumbs).slice(0, 3);
+            // 행 배경 사진 — 이 형식 사진 중 한 장이 행을 꽉 채운다(풍경 80 · 사람 15 · 음식 5).
+            // 분석이 끝나기 전에는 후보 첫 장을 깔아 두고, 끝나면 고른 사진으로 갈아탄다.
+            const rowBg = rowPhoto[m.vt] ?? (rowCands[m.vt] ?? [])[0];
             return (
               <Animated.View key={m.vt} style={[s.rowWrap, { opacity: headerAnim }]}>
                 <TouchableOpacity
@@ -867,32 +1001,35 @@ export default function TripDetailScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={viewTypeName(m.vt, t)}
                 >
-                  {thumbs.length > 0 ? (
-                    <View style={[StyleSheet.absoluteFillObject, { flexDirection: 'row' }]} pointerEvents="none">
-                      {thumbs.map((uri, i) => (
-                        <Image key={`${uri}-${i}`} source={{ uri }} style={{ flex: 1 }} resizeMode="cover" />
-                      ))}
+                  {rowBg ? (
+                    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+                      <Image source={{ uri: rowBg }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                     </View>
                   ) : (
                     <LinearGradient colors={m.config.gradient} style={StyleSheet.absoluteFillObject} pointerEvents="none" />
                   )}
-                  {/* 가로 스크림 — 왼쪽(글자 쪽)을 진하게 덮어 사진 위에서도 읽히게 */}
-                  <LinearGradient
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    colors={['rgba(14,14,22,0.88)', 'rgba(14,14,22,0.55)', 'rgba(14,14,22,0.12)']}
-                    locations={[0, 0.45, 1]}
-                    style={StyleSheet.absoluteFillObject}
-                    pointerEvents="none"
-                  />
-                  {/* 형식색 틴트 — 시안의 '피드는 파랑 기운' 처럼 형식색이 왼쪽에서 은은히 */}
-                  <LinearGradient
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    colors={[m.config.accent + '40', m.config.accent + '00']}
-                    style={StyleSheet.absoluteFillObject}
-                    pointerEvents="none"
-                  />
+                  {/* 시안: 세로 선 기준 왼쪽(글자 쪽)만 블러+스크림+틴트, 오른쪽(chevron 쪽)은 사진이 선명하게 */}
+                  <View style={s.rowGlass} pointerEvents="none">
+                    {/* 안드로이드는 experimentalBlurMethod 없으면 no-op — 프로필 정보 바와 같은 dimezisBlurView(실기기 확인 필요) */}
+                    <BlurView intensity={10} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+                    {/* 가로 스크림 — 글자 쪽을 진하게 덮어 사진 위에서도 읽히게 */}
+                    <LinearGradient
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      colors={['rgba(14,14,22,0.7)', 'rgba(14,14,22,0.45)', 'rgba(14,14,22,0.25)']}
+                      locations={[0, 0.5, 1]}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    {/* 형식색 틴트 — 시안의 '피드는 파랑 기운' 처럼 형식색이 왼쪽에서 은은히 */}
+                    <LinearGradient
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                      colors={[m.config.accent + '40', m.config.accent + '00']}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </View>
+                  {/* 블러 경계 세로 선 */}
+                  <View style={s.rowDivider} pointerEvents="none" />
                   <View style={s.rowBody}>
                     <Text style={s.rowName} numberOfLines={1}>{viewTypeName(m.vt, t)}</Text>
                     <View style={s.rowMeta}>
@@ -976,11 +1113,21 @@ export default function TripDetailScreen() {
       </ScrollView>
       {/* 하단 페이드 — 형식 행이 화면 아래까지 꽉 찼을 때 "더 있음"으로 읽히게. ScrollView 형제라 스크롤과 무관하게 고정 */}
       {listMoreBottom && (
-        <LinearGradient
-          colors={['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)']}
-          style={[s.listFadeBottom, { height: 72 + insets.bottom }]}
-          pointerEvents="none"
-        />
+        <View style={[s.listFadeBottom, { height: 72 + insets.bottom }]} pointerEvents="none">
+          {/* 유리 느낌 — 옅은 블러 위에 배경색 그라데이션. 안드로이드는 experimentalBlurMethod 없으면 no-op이라
+              프로필 썸네일 정보 바(ProfileVisuals)와 같은 dimezisBlurView. 뒤가 어두운 목록이라 흰 블룸 문제 없음 */}
+          <BlurView
+            intensity={22}
+            tint="dark"
+            experimentalBlurMethod="dimezisBlurView"
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={['rgba(10,10,15,0)', 'rgba(10,10,15,0.55)', 'rgba(10,10,15,0.85)']}
+            locations={[0, 0.5, 1]}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
       )}
 
       {/* 헤더 — 히어로 사진 위에 겹친다(배경 투명). 사진이 상태바 아래까지 깔리도록 absolute이고,
@@ -1258,9 +1405,12 @@ const s = StyleSheet.create({
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 },
   rowIconBox: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
   rowCount: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
+  // 선 오른쪽 선명 구간 폭 = chevron 30 + 오른쪽 여백 12 + 왼쪽 숨 10 (chevron이 구간 가운데)
+  rowGlass: { position: 'absolute', top: 0, bottom: 0, left: 0, right: ROW_CLEAR_W, overflow: 'hidden' },
+  rowDivider: { position: 'absolute', top: 0, bottom: 0, right: ROW_CLEAR_W, width: 1, backgroundColor: 'rgba(255,255,255,0.35)' },
+  // 화살표 뒤 반투명 원은 뺐다(사용자 지시) — 크기·위치는 그대로 두어 터치 영역과 선 오른쪽 구간 배치 유지
   rowChevron: {
-    width: 30, height: 30, borderRadius: 15, marginRight: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    width: 30, height: 30, marginRight: 12,
     alignItems: 'center', justifyContent: 'center',
   },
   expandWrap: { marginTop: 12 },
