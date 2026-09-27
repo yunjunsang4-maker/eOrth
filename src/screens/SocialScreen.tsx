@@ -44,7 +44,7 @@ import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { putMineFirst, groupSnapRings } from '../utils/snapStrip';
+import { putMineFirst, groupSnapRings, isSnapTripOngoing } from '../utils/snapStrip';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
@@ -3203,20 +3203,27 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const exampleSnap = useMemo(() => ({ ...EXAMPLE_SNAP, content: t('socialEmpty.exampleSnapContent') }), [t]);
 
   // 스냅 링 줄 = [내 대표(또는 '내 스냅 +' 자리표시), 나머지…]
-  // 내 스냅이 있으면 맨 앞으로 끌어올려 그 링에 + 배지를 붙이고, 없으면 자리표시 칸을 끼운다.
+  // 진행 중인 내 여행 링이 있으면 맨 앞으로 끌어올려 그 링에 + 배지를 붙이고, 없으면 자리표시 칸을 끼운다.
   // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링을 소개하는 기존 동작은 유지.
   const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
   // rank=timestamp: snapItems는 모두 열람 상태면 오래된 순이라, 내 스냅이 나라별로 여럿이면
   // 배열 첫 번째가 아니라 가장 최신 스냅이 앞에 와야 방금 찍은 것에 배지가 붙는다(QA F-1)
   // putMineFirst는 **여행 링에만** 적용한다. 일상 링까지 대상에 넣으면 내 일상이 맨 앞으로
   // 끌려와 '일상은 여행 링 뒤'라는 규칙이 깨진다(groupSnapRings가 정렬해 둔 것을 되돌리는 셈).
-  const ordered = useMemo(() => {
+  // 끌어올림·배지는 내 최신 여행 링이 **진행 중**일 때만(2026-09-27) — 몇 달 전 끝난 미국 여행
+  // 링에 +가 붙어 "미국 여행에 추가되는" 것처럼 보였다. 끝났으면 groupSnapRings 순서 그대로 두고
+  // 자리표시 칸을 앞에 끼운다. 판정은 utils/snapStrip.isSnapTripOngoing(+verify) — 카드 날짜 범위 ±1일.
+  // Date.now()는 이 memo가 다시 돌 때만 읽힌다 — 자정을 넘겨 화면을 켜 둔 채면 다음 갱신까지 이전 판정 유지.
+  const { ordered, hasMine } = useMemo(() => {
     const trips = snapItems.filter((s: any) => !s._isDaily);
     const dailies = snapItems.filter((s: any) => s._isDaily);
-    return [...putMineFirst(trips, isMineSnap, (snap: any) => snap.timestamp ?? 0), ...dailies];
-  }, [snapItems, globalHandle]);
-  // 내 '여행' 링이 맨 앞일 때만 배지를 붙인다 — 내 일상 링만 있으면 '내 스냅 +' 자리표시가 앞에 온다
-  const hasMine = ordered.length > 0 && isMineSnap(ordered[0]) && !(ordered[0] as any)._isDaily;
+    const moved = putMineFirst(trips, isMineSnap, (snap: any) => snap.timestamp ?? 0);
+    // putMineFirst는 내 여행 링이 없으면 순서를 그대로 두므로 맨 앞이 내 것인지 다시 확인한다
+    const live = moved.length > 0 && isMineSnap(moved[0])
+      && isSnapTripOngoing(moved[0] as any, tripGroups, records, Date.now());
+    // 내 일상 링만 있거나 끝난 여행뿐이면 '내 스냅 +' 자리표시가 앞에 온다
+    return live ? { ordered: [...moved, ...dailies], hasMine: true } : { ordered: snapItems, hasMine: false };
+  }, [snapItems, globalHandle, tripGroups, records]);
   const snapDisplay = hasMine
     ? ordered
     : [MY_SNAP_PLACEHOLDER, ...(ordered.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : ordered)];
@@ -3277,7 +3284,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           <View style={s.storySection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storyScroll}>
               {snapDisplay.map((snap: any) => {
-                // '내 스냅 +' 자리표시 — 내 스냅이 없을 때만 들어온다. 어디를 눌러도 카메라로 간다.
+                // '내 스냅 +' 자리표시 — 내 진행 중 여행 링이 없을 때(내 스냅 없음·끝난 여행만) 들어온다. 어디를 눌러도 카메라로 간다.
                 if (snap._mySnapEntry) {
                   return (
                     <TouchableOpacity
@@ -3288,7 +3295,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       accessibilityRole="button"
                       accessibilityLabel={t('social.mySnapA11y')}
                     >
-                      {/* 아직 내 스냅이 없으므로 링은 '다 본' 상태와 같은 회색 */}
+                      {/* 진행 중인 내 스냅이 없으므로 링은 '다 본' 상태와 같은 회색 */}
                       <LinearGradient colors={['#3A3A4A', '#3A3A4A']} style={s.storyRing}>
                         <View style={s.storyAvatarWrap}>
                           <View style={s.storyAvatar}>

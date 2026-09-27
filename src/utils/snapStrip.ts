@@ -4,6 +4,8 @@
 // rank가 필요한 이유(QA F-1): snapItems는 모두 열람 상태면 오래된 순으로 재정렬되므로
 // 배열 첫 번째를 집으면 방금 찍은 스냅이 아니라 가장 오래된 나라의 스냅이 앞에 온다.
 
+import { tripPeriodOf } from './momentMatch';
+
 /** 내 대표 항목 하나를 맨 앞으로(나머지 순서 유지). 없으면 같은 순서의 새 배열. 입력은 mutate하지 않는다. */
 export function putMineFirst<T>(items: T[], isMine: (item: T) => boolean, rank?: (item: T) => number): T[] {
   let idx = -1;
@@ -119,4 +121,69 @@ export function groupSnapRings<T extends SnapRingItem>(
     (a, b) => (a._hasUnviewed === b._hasUnviewed ? timeOf(a) - timeOf(b) : a._hasUnviewed ? -1 : 1),
   );
   return [...trips, ...dailies];
+}
+
+// ─────────────────────────────────────────────────────────────
+// 내 여행 링이 '진행 중'인가 — + 배지를 붙일지(2026-09-27)
+// ─────────────────────────────────────────────────────────────
+// 예전엔 내 여행 링이 하나라도 있으면 최신 것을 맨 앞에 두고 + 배지를 붙였다. 그러면 몇 달 전
+// 끝난 미국 여행 링에 +가 붙어 "미국 여행에 추가되는" 것처럼 보였다. 이제 진행 중일 때만 배지.
+//
+// 끝났다의 기준 = 그 여행의 여행 카드에 기록된 날짜 범위(사용자 지시). recordStore의 tripSession은
+// 컨텍스트에 노출돼 있지 않고 30일 방치 만료라 '진행 중'의 근거로 못 쓴다.
+// 여유 1일 — 시차·어제 찍고 오늘 여는 경우(momentMatch.TRIP_PAD_MS와 같은 취지).
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** isSnapTripOngoing이 읽는 카드 모양 (recordStore.TripGroup이 그대로 들어온다) */
+export interface OngoingTripCard {
+  id: string;
+  records: string[];
+  stay?: { status?: string } | null;
+}
+/** 기간 계산에 쓰는 기록 모양 (TravelRecord가 그대로 들어온다) */
+export interface OngoingTripRecord {
+  id: string;
+  startDate?: string;
+  endDate?: string;
+  date?: string;
+  timestamp?: number;
+}
+
+/** ms → 그 날의 로컬 자정 */
+function localMidnight(ms: number): number {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/**
+ * 링 대표 스냅의 여행이 오늘(now, 로컬 자정 기준) 진행 중인가.
+ * 1) tripGroupId로 카드를 찾고, 체류 카드면 `stay.status === 'active'`가 곧 진행 중(paused=귀국 중이라 새 스냅이 이 카드로 안 들어감).
+ * 2) 카드 기록들의 [시작, 종료]를 tripPeriodOf로. 카드가 없거나 기간이 null이면 대표 스냅
+ *    자신의 날짜 → 그것도 없으면 timestamp. 대표는 링 안 최신 스냅이라 종료 쪽 근거로 충분하다.
+ * 3) [시작 − 1일, 종료 + 1일] 안이면 진행 중.
+ */
+export function isSnapTripOngoing(
+  rep: OngoingTripRecord & { tripGroupId?: string | null },
+  tripGroups: OngoingTripCard[],
+  records: OngoingTripRecord[],
+  now: number,
+): boolean {
+  const card = rep.tripGroupId ? tripGroups.find((g) => g.id === rep.tripGroupId) : undefined;
+  if (card?.stay && card.stay.status === 'active') return true;
+
+  let period: { startMs: number; endMs: number } | null = null;
+  if (card) {
+    const ids = new Set(card.records);
+    period = tripPeriodOf(records.filter((r) => ids.has(r.id)));
+  }
+  if (!period) period = tripPeriodOf([rep]);
+  if (!period && rep.timestamp) {
+    const day = localMidnight(rep.timestamp);
+    period = { startMs: day, endMs: day };
+  }
+  if (!period) return false; // 날짜 근거가 전혀 없으면 끝난 것으로 — 옛 증상(끝난 여행에 +)보다 안전한 쪽
+
+  const today = localMidnight(now);
+  return today >= period.startMs - DAY_MS && today <= period.endMs + DAY_MS;
 }

@@ -1,7 +1,7 @@
 /**
  * snapStrip 검증 — node node_modules/tsx/dist/cli.mjs src/utils/snapStrip.verify.ts
  */
-import { putMineFirst, groupSnapRings } from './snapStrip';
+import { putMineFirst, groupSnapRings, isSnapTripOngoing } from './snapStrip';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -170,6 +170,50 @@ eq(groupSnapRings<Snap>([
 const gsrc: Snap[] = [snap({ id: 'z1', timestamp: 2 }), snap({ id: 'z2', timestamp: 1 })];
 groupSnapRings(gsrc, unviewed);
 eq(ids(gsrc), ['z1', 'z2'], 'groupSnapRings: 입력 배열은 그대로');
+
+// ─────────────────────────────────────────────────────────────
+// isSnapTripOngoing — 내 여행 링 + 배지 조건(카드 날짜 범위 ±1일, 2026-09-27)
+// ─────────────────────────────────────────────────────────────
+// now는 2026-09-27 정오(로컬) 고정 — 판정이 로컬 자정으로 내리므로 시각은 결과에 영향이 없어야 한다
+const NOW = new Date(2026, 8, 27, 12, 0).getTime();
+const recs = [
+  { id: 'us1', startDate: '2026.05.01', endDate: '2026.05.10' }, // 끝난 미국 여행
+  { id: 'now1', date: '2026.09.25' }, { id: 'now2', startDate: '2026.09.26', endDate: '2026.09.28' }, // 오늘 포함
+  { id: 'e1', date: '2026.09.26' }, // 어제 끝남
+  { id: 'e2', date: '2026.09.25' }, // 그저께 끝남
+];
+const cards = [
+  { id: 'us', records: ['us1'] },
+  { id: 'now', records: ['now1', 'now2'] },
+  { id: 'end1', records: ['e1'] },
+  { id: 'end2', records: ['e2'] },
+  { id: 'stay', records: ['us1'], stay: { status: 'active' } }, // 기록 날짜는 옛날이어도 체류 진행 중
+  { id: 'stayEnded', records: ['now1'], stay: { status: 'ended' } }, // 체류 끝 → 날짜 규칙으로 떨어짐
+  { id: 'stayPaused', records: ['us1'], stay: { status: 'paused' } }, // 체류 중 귀국 → 날짜 규칙(5월) → 끝
+];
+const ongo = (rep: { id: string; tripGroupId?: string | null; timestamp?: number; date?: string }) =>
+  isSnapTripOngoing(rep, cards, recs, NOW);
+
+// 원래 증상 — 몇 달 전 끝난 여행 링에는 배지가 붙으면 안 된다
+eq(ongo({ id: 's', tripGroupId: 'us' }), false, '진행 중: 끝난 과거 여행(5월) → false');
+eq(ongo({ id: 's', tripGroupId: 'now' }), true, '진행 중: 카드 기간이 오늘 포함 → true');
+// 1일 여유 경계 — 종료 다음날은 진행 중, 이틀 뒤는 끝
+eq(ongo({ id: 's', tripGroupId: 'end1' }), true, '진행 중: 종료 다음날 → true(1일 여유)');
+eq(ongo({ id: 's', tripGroupId: 'end2' }), false, '진행 중: 종료 이틀 뒤 → false');
+// 체류 카드는 날짜와 무관하게 status로
+eq(ongo({ id: 's', tripGroupId: 'stay' }), true, '진행 중: 체류 active(기록은 옛날) → true');
+// 체류 ended면 날짜 규칙 — now1(9/25)은 이틀 전이라 false. 'ended' 분기를 지우면 여기서 true로 깨진다
+eq(ongo({ id: 's', tripGroupId: 'stayEnded' }), false, '진행 중: 체류 ended → 날짜 규칙(이틀 전) → false');
+eq(ongo({ id: 's', tripGroupId: 'stayPaused' }), false, '진행 중: 체류 paused(귀국 중) → 날짜 규칙 → false');
+// 카드 없음(tripGroupId 없는 옛 스냅·편입 실패) → 대표 스냅 timestamp
+eq(ongo({ id: 's', timestamp: new Date(2026, 8, 27, 9, 0).getTime() }), true, '진행 중: 카드 없음 + 오늘 timestamp → true');
+eq(ongo({ id: 's', tripGroupId: 'gone', timestamp: new Date(2026, 8, 20).getTime() }), false, '진행 중: 카드 id가 목록에 없음 + 1주 전 timestamp → false');
+// 카드는 있는데 기록 날짜가 비었으면 대표 스냅 자신의 date로
+eq(isSnapTripOngoing({ id: 's', tripGroupId: 'x', date: '2026.09.27' }, [{ id: 'x', records: ['missing'] }], recs, NOW),
+  true, '진행 중: 카드 기간 null → 대표 스냅 date(오늘) → true');
+// 널 계열 — 날짜 근거가 전혀 없으면 끝난 것으로(옛 증상 쪽으로 넘어지지 않게)
+eq(ongo({ id: 's' }), false, '진행 중: 카드·date·timestamp 전부 없음 → false');
+eq(ongo({ id: 's', tripGroupId: null, timestamp: 0 }), false, '진행 중: tripGroupId null + timestamp 0 → false');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
