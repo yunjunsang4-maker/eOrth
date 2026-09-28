@@ -182,7 +182,7 @@ const zhHant: DeepPartial<typeof ko> = {
     defaultColor: '預設顏色',
     countryColors: '各國顏色',
     addCountry: '新增國家',
-    chipRemove: '移除',
+    chipRemove: '移除顏色',
     changeColor: '變更顏色',
     noRecordedCountries: '還沒有紀錄的國家',
     reset: '重設',

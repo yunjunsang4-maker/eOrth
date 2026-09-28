@@ -788,6 +788,21 @@ export default function MainScreen({ navigation, route }: Props) {
   const [addingCountryColor, setAddingCountryColor] = useState(false);
   // 국가 칩 × → '기록 삭제 | 색상 변경' 팝오버 대상. 칩 위치는 onLayout 실측(chipWrap 기준)
   const [chipMenuFor, setChipMenuFor] = useState<string | null>(null);
+  // 스킨 카드 덱 슬라이드 — 카드별 translateX(선택 스킨=맨 앞). 폭은 셋 다 같고 x만 옮겨 '앞으로 밀려 나오는' 느낌
+  const deckX = useRef<Record<string, Animated.Value>>({}).current;
+  const deckSlotX = (slot: number) => -(GLOBE_SKINS.length - 1 - slot) * DS_DECK_PEEK;
+  const deckOrder = useMemo(() => {
+    const front = GLOBE_SKINS.find(s => s.id === globeSkin) ?? GLOBE_SKINS[0];
+    return [front, ...GLOBE_SKINS.filter(s => s !== front)].map(s => s.id);
+  }, [globeSkin]);
+  deckOrder.forEach((id, slot) => { if (!deckX[id]) deckX[id] = new Animated.Value(deckSlotX(slot)); });
+  useEffect(() => {
+    Animated.parallel(deckOrder.map((id, slot) =>
+      Animated.spring(deckX[id], { toValue: deckSlotX(slot), useNativeDriver: true, friction: 9, tension: 70 }),
+    )).start();
+  }, [deckOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 색상별 국가 목록 스크롤 상태 — 넘칠 때만, 끝에 닿기 전까지만 하단 딤을 켠다
+  const [chipScroll, setChipScroll] = useState({ y: 0, viewH: 0, contentH: 0 });
   const [chipMenuW, setChipMenuW] = useState(0); // 팝오버 실측 폭(다국어 문구 길이별) — 0이면 첫 측정 전이라 숨김
   // 칩 위치 — state로 둬야 방금 추가한 칩(실측 전)에도 onLayout 뒤 팝오버가 뜬다
   const [chipLayouts, setChipLayouts] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({});
@@ -2559,13 +2574,13 @@ export default function MainScreen({ navigation, route }: Props) {
                     뒤 카드를 먼저 그려 앞 카드가 위에 오게 한다 — 앞 카드는 터치 대상이 아니라서 그 영역 탭은
                     형제(뒤 카드)로 새지 않는다(RN 터치는 조상으로만 버블링). */}
                 {globeVariant === 'aurora' && (() => {
-                  const front = GLOBE_SKINS.find(s => s.id === globeSkin) ?? GLOBE_SKINS[0];
-                  const deck = [front, ...GLOBE_SKINS.filter(s => s !== front)];
                   return (
                     <View style={dsm.deck}>
-                      {deck.map((s, i) => ({ s, i })).reverse().map(({ s, i }) => {
+                      {/* 렌더 순서는 GLOBE_SKINS 고정(재정렬·리마운트 없이 x만 슬라이드), 겹침 순서는 zIndex로 */}
+                      {GLOBE_SKINS.map(s => {
+                        const i = deckOrder.indexOf(s.id);
                         const locked = s.premium && !isPremium;
-                        const cardStyle = [dsm.deckCard, { width: DS_DECK_W - (deck.length - 1 - i) * DS_DECK_PEEK + DS_DECK_BLEED }];
+                        const cardStyle = [dsm.deckCard, { width: DS_DECK_W + DS_DECK_BLEED, zIndex: GLOBE_SKINS.length - i, transform: [{ translateX: deckX[s.id] }] }];
                         const body = (
                           <>
                             {s.id === 'aurora' ? (
@@ -2588,12 +2603,15 @@ export default function MainScreen({ navigation, route }: Props) {
                             </View>
                           </>
                         );
-                        if (i === 0) return <View key={s.id} style={cardStyle} accessible accessibilityLabel={t(s.labelKey)} accessibilityState={{ selected: true }}>{body}</View>;
+                        // 앞 카드도 같은 트리(disabled Touchable)로 둬야 선택이 바뀔 때 리마운트 없이 이어서 움직인다.
+                        // disabled여도 터치를 받아 삼키므로 앞 카드 영역 탭이 뒤 카드로 새지 않는다.
                         return (
+                          <Animated.View key={s.id} style={cardStyle}>
                           <TouchableOpacity
-                            key={s.id}
-                            style={cardStyle}
+                            style={StyleSheet.absoluteFill}
+                            disabled={i === 0}
                             activeOpacity={0.85}
+                            accessibilityState={{ selected: i === 0 }}
                             onPress={() => {
                               if (locked) { cancelDisplaySettings(); navigation.navigate('Premium'); return; }
                               setGlobeSkin(s.id); // 테마드 세터가 스킨별 저장 색 복원까지 수행
@@ -2603,6 +2621,7 @@ export default function MainScreen({ navigation, route }: Props) {
                           >
                             {body}
                           </TouchableOpacity>
+                          </Animated.View>
                         );
                       })}
                     </View>
@@ -2640,7 +2659,12 @@ export default function MainScreen({ navigation, route }: Props) {
                     return (
                   <>
                   {/* 팝오버가 마지막 줄 칩 아래로 내려가도 잘리지 않게 열린 동안 하단 여백을 늘린다 */}
-                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: chipMenuFor || editing ? 64 : 28 }}>
+                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: chipMenuFor || editing ? 64 : 28 }}
+                    scrollEventThrottle={16}
+                    onScroll={(e) => { const y = e.nativeEvent.contentOffset.y; setChipScroll(p => (Math.abs(p.y - y) < 2 ? p : { ...p, y })); }}
+                    onLayout={(e) => { const viewH = Math.round(e.nativeEvent.layout.height); setChipScroll(p => (p.viewH === viewH ? p : { ...p, viewH })); }}
+                    onContentSizeChange={(_, h) => { const contentH = Math.round(h); setChipScroll(p => (p.contentH === contentH ? p : { ...p, contentH })); }}
+                  >
                     <View style={dsm.chipWrap}>
                       {candidates.length > 0 && (
                         <TouchableOpacity
@@ -2727,8 +2751,8 @@ export default function MainScreen({ navigation, route }: Props) {
                           onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== chipMenuW) setChipMenuW(w); }}
                         >
                           <View style={[dsm.chipMenuArrow, { left: arrowX - left - 6 }]} pointerEvents="none" />
-                          {/* 색상 풍선 테두리 — 공용 알약 링(실측, 흰색 대각) */}
-                          {colorTarget && <AutoPillRing />}
+                          {/* 풍선 테두리(색상·'색상 제거|변경' 둘 다) — 공용 알약 링(실측, 흰색 대각) */}
+                          <AutoPillRing />
                           {colorTarget ? (
                             // 기본 색은 빼고(고르면 개별 색 의미가 없다) 나머지 스킨 팔레트를 알약으로
                             getSkinPalette(globeSkin).filter(c => c !== globeColor).map(c => (
@@ -2766,7 +2790,16 @@ export default function MainScreen({ navigation, route }: Props) {
                       );
                     })()}
                   </ScrollView>
-                  {/* 하단 페이드 제거 — #0A0B0F 사각 그라데이션이 유리 카드 배경과 달라 칩 아래 네모 그림자로 보였다 */}
+                  {/* 하단 딤 — 목록이 넘치고 끝에 닿기 전만. 예전 #0A0B0F 상시 페이드가 네모 그림자로 보였던 것을 피해
+                      ① 검정 반투명(블러·매트 어느 배경이든 같은 톤으로 어두워짐) ② 카드 좌우 끝까지(옆 경계 없음, 카드 overflow가 자름)
+                      ③ 확인 버튼 위 여백(14)까지 내려 끊기는 선을 버튼 경계에 숨긴다 */}
+                  {chipScroll.contentH > chipScroll.viewH + 1 && chipScroll.y + chipScroll.viewH < chipScroll.contentH - 4 && (
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.55)']}
+                      style={dsm.listDim}
+                      pointerEvents="none"
+                    />
+                  )}
                   </>
                     );
                   })()}
@@ -3031,6 +3064,7 @@ const dsm = StyleSheet.create({
   swatch: { width: 50, height: 30, borderRadius: 15 },
   swatchActive: { borderWidth: 1.5, borderColor: '#fff' },
   listWrap: { flex: 1, position: 'relative' },
+  listDim: { position: 'absolute', left: -DS_PAD, right: -DS_PAD, bottom: -14, height: 70 },
   emptyHint: { color: '#6F6F7A', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 24 },
   // 색상별 국가 칩
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

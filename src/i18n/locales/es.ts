@@ -196,7 +196,7 @@ const es: WithPlurals<typeof ko> = {
     defaultColor: 'Color predeterminado',
     countryColors: 'Colores por país',
     addCountry: 'Añadir país',
-    chipRemove: 'Quitar',
+    chipRemove: 'Quitar color',
     changeColor: 'Cambiar color',
     noRecordedCountries: 'No hay países registrados',
     reset: 'Restablecer',
