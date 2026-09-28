@@ -57,6 +57,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryEnglishName } from '../constants/countries';
 import { countryLabel as locCountry, countryTagLabel } from '../utils/countryLabel';
+import { regionDisplayName } from '../utils/regionLabel';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import FeedAdSlot from '../components/ads/FeedAdSlot';
@@ -2822,7 +2823,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
   );
 }
 
-// 스냅 링 줄 맨 앞 '내 스냅 +' 자리표시 — 내 스냅이 하나도 없을 때만 끼워 넣는다.
+// 스냅 링 줄 맨 앞 '내 스냅 +' 고정 칸 — 항상 끼워 넣는 촬영 입구.
 // 렌더 map에서 _mySnapEntry로 분기하므로 실제 기록 shape를 흉내 낼 필요가 없다.
 const MY_SNAP_PLACEHOLDER: any = { id: '__my-snap-entry__', _mySnapEntry: true };
 
@@ -3202,31 +3203,23 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const exampleFeed = useMemo(() => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent') }), [t]);
   const exampleSnap = useMemo(() => ({ ...EXAMPLE_SNAP, content: t('socialEmpty.exampleSnapContent') }), [t]);
 
-  // 스냅 링 줄 = [내 대표(또는 '내 스냅 +' 자리표시), 나머지…]
-  // 진행 중인 내 여행 링이 있으면 맨 앞으로 끌어올려 그 링에 + 배지를 붙이고, 없으면 자리표시 칸을 끼운다.
+  // 스냅 링 줄 = ['내 스냅 +' 고정 칸, groupSnapRings 순서 그대로…]
+  // 왼쪽 고정 칸은 언제나 촬영 입구(2026-09-28 사용자 지시). 예전엔 내 진행 중 여행 링을 맨 앞으로
+  // 끌어올려 그 링을 고정 칸처럼 썼는데, 찍으면 새 링이 생기고 고정 칸을 눌러도 같은 링이 열려 중복이었다.
+  // 진행 중인 내 여행 링은 고정 칸 바로 뒤로 끌어온다(배지 없음) — 내 스냅은 늘 '본 것'이라
+  // groupSnapRings가 오래된 순으로 두면 방금 찍은 링이 맨 뒤(화면 밖)로 밀린다(QA F-1).
+  // 끝난 여행은 그대로 — 몇 달 전 링이 앞줄을 차지하지 않게(isSnapTripOngoing, 카드 날짜 ±1일).
+  // 일상 링은 putMineFirst 대상에서 뺀다 — '일상은 여행 링 뒤' 규칙 유지.
   // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링을 소개하는 기존 동작은 유지.
-  const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
-  // rank=timestamp: snapItems는 모두 열람 상태면 오래된 순이라, 내 스냅이 나라별로 여럿이면
-  // 배열 첫 번째가 아니라 가장 최신 스냅이 앞에 와야 방금 찍은 것에 배지가 붙는다(QA F-1)
-  // putMineFirst는 **여행 링에만** 적용한다. 일상 링까지 대상에 넣으면 내 일상이 맨 앞으로
-  // 끌려와 '일상은 여행 링 뒤'라는 규칙이 깨진다(groupSnapRings가 정렬해 둔 것을 되돌리는 셈).
-  // 끌어올림·배지는 내 최신 여행 링이 **진행 중**일 때만(2026-09-27) — 몇 달 전 끝난 미국 여행
-  // 링에 +가 붙어 "미국 여행에 추가되는" 것처럼 보였다. 끝났으면 groupSnapRings 순서 그대로 두고
-  // 자리표시 칸을 앞에 끼운다. 판정은 utils/snapStrip.isSnapTripOngoing(+verify) — 카드 날짜 범위 ±1일.
-  // Date.now()는 이 memo가 다시 돌 때만 읽힌다 — 자정을 넘겨 화면을 켜 둔 채면 다음 갱신까지 이전 판정 유지.
-  const { ordered, hasMine } = useMemo(() => {
+  const orderedSnaps = useMemo(() => {
+    const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
     const trips = snapItems.filter((s: any) => !s._isDaily);
-    const dailies = snapItems.filter((s: any) => s._isDaily);
     const moved = putMineFirst(trips, isMineSnap, (snap: any) => snap.timestamp ?? 0);
-    // putMineFirst는 내 여행 링이 없으면 순서를 그대로 두므로 맨 앞이 내 것인지 다시 확인한다
     const live = moved.length > 0 && isMineSnap(moved[0])
       && isSnapTripOngoing(moved[0] as any, tripGroups, records, Date.now());
-    // 내 일상 링만 있거나 끝난 여행뿐이면 '내 스냅 +' 자리표시가 앞에 온다
-    return live ? { ordered: [...moved, ...dailies], hasMine: true } : { ordered: snapItems, hasMine: false };
+    return live ? [...moved, ...snapItems.filter((s: any) => s._isDaily)] : snapItems;
   }, [snapItems, globalHandle, tripGroups, records]);
-  const snapDisplay = hasMine
-    ? ordered
-    : [MY_SNAP_PLACEHOLDER, ...(ordered.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : ordered)];
+  const snapDisplay = [MY_SNAP_PLACEHOLDER, ...(orderedSnaps.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : orderedSnaps)];
 
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
@@ -3284,7 +3277,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           <View style={s.storySection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storyScroll}>
               {snapDisplay.map((snap: any) => {
-                // '내 스냅 +' 자리표시 — 내 진행 중 여행 링이 없을 때(내 스냅 없음·끝난 여행만) 들어온다. 어디를 눌러도 카메라로 간다.
+                // '내 스냅 +' 고정 칸 — 항상 맨 앞. 어디를 눌러도 카메라로 간다.
                 if (snap._mySnapEntry) {
                   return (
                     <TouchableOpacity
@@ -3295,7 +3288,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       accessibilityRole="button"
                       accessibilityLabel={t('social.mySnapA11y')}
                     >
-                      {/* 진행 중인 내 스냅이 없으므로 링은 '다 본' 상태와 같은 회색 */}
+                      {/* 촬영 입구라 열람 상태가 없다 — '다 본' 상태와 같은 회색 링 */}
                       <LinearGradient colors={['#3A3A4A', '#3A3A4A']} style={s.storyRing}>
                         <View style={s.storyAvatarWrap}>
                           <View style={s.storyAvatar}>
@@ -3341,29 +3334,17 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       </View>
                     </View>
                   </LinearGradient>
-                  {/* 내 대표 링(맨 앞)에만 + 배지 — 링 본체 탭은 기존대로 상세, 배지 탭은 카메라.
-                      배지는 링 위에 겹쳐 있어 hitSlop만큼 링 탭(상세)을 먹는다 — 8이면 아바타 면적의 약 23%라
-                      4로 줄였다(QA F-2). 배지 자체 22dp가 주 터치 영역 */}
-                  {hasMine && snap.id === ordered[0].id && (
-                    <TouchableOpacity
-                      style={[s.storyPlusBadge, { backgroundColor: skinAccent.accent }]}
-                      hitSlop={4}
-                      onPress={() => { select(); navigation.navigate('SnapRecord'); }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('social.mySnapA11y')}
-                    >
-                      {/* RNSVG 터치삼킴 방어 — 아이콘을 pointerEvents none View로 감싼다 */}
-                      <View pointerEvents="none"><PlusIcon size={12} color="#0A0A0F" /></View>
-                    </TouchableOpacity>
-                  )}
-                  {/* 링 라벨(사용자 결정 2026-09-12) — 내 링은 '어디'(일상(집 아이콘)/지역명/나라명),
+                  {/* 링 라벨(사용자 결정 2026-09-12) — 내 링은 '어디'(거주지명(집 아이콘, 2026-09-28 '일상'→거주지명)/지역명/나라명),
                       다른 사람 링은 국기 + 아이디. 내 링은 장소 텍스트라 아이디 폰트(프리미엄)를 걸지 않는다. */}
                   {(() => {
                     const mine = snap.isMyPost || snap.user.handle === globalHandle;
-                    const place = snap.regionName || snap.countryName || snap.snapDetectedCountry || '';
+                    // 저장값은 한글 원문이라 표시할 때 현지화한다(지역: 코드→지오 영문명, 나라: countryLabel)
+                    const place = snap.regionName
+                      ? regionDisplayName(snap.regionName, snap.regionNameEn, i18n.language)
+                      : locCountry(snap.countryName || snap.snapDetectedCountry, i18n.language);
                     const flag = snap.countryFlag ? `${snap.countryFlag} ` : '';
                     const label = mine
-                      ? (snap._isDaily ? t('snap.dailyRing') : `${flag}${place || getPostDisplayName(snap.user, true)}`)
+                      ? (snap._isDaily ? (place || t('snap.dailyRing')) :`${flag}${place || getPostDisplayName(snap.user, true)}`)
                       : `${flag}${getPostDisplayName(snap.user, false)}`;
                     return (
                   <View style={s.storyNameRow}>

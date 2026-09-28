@@ -3,6 +3,8 @@
 import { KOREA_REGIONS } from '../constants/koreaRegions';
 import type { TravelRecord } from '../store/recordStore';
 import { isKoreanLang } from './langKind';
+import { ISO2_TO_GEO } from '../constants/homeRegions';
+import { regionNameByCode } from './regionGeoLookup';
 
 // regionNameEn은 저장 키(지도 색·태깅 매칭용)와 영어 모드 표시 라벨을 겸한다.
 // 지역 키 마이그레이션 이후 이 값은 ISO 코드(`US-NY`)가 되므로, 표시에 그대로 쓰면
@@ -14,8 +16,9 @@ export const isRegionCode = (s: string | undefined | null): boolean =>
   !!s && REGION_CODE_RE.test(s);
 
 /**
- * 비(非)한국어 모드 지역 표시명. regionNameEn이 코드 형태면 한글 regionName으로 폴백한다.
- * (MainScreen·PostDetailScreen·통계 화면이 같은 판정을 쓰도록 여기 한 곳에 둔다)
+ * 비(非)한국어 모드 지역 표시명. regionNameEn이 코드 형태면 지오의 영문명(`KR-11`→Seoul)으로,
+ * 그것도 없으면 한국 시/도 프리셋 → 한글 regionName 순으로 폴백한다.
+ * (MainScreen·PostDetailScreen·소셜 스냅 링·통계 화면이 같은 판정을 쓰도록 여기 한 곳에 둔다)
  */
 export function regionDisplayName(
   regionName: string | undefined | null,
@@ -24,8 +27,12 @@ export function regionDisplayName(
 ): string {
   const ko = regionName ?? '';
   if (isKoreanLang(lang)) return ko;
-  if (!regionNameEn || isRegionCode(regionNameEn)) return ko;
-  return regionNameEn;
+  if (regionNameEn && !isRegionCode(regionNameEn)) return regionNameEn;
+  // 코드 접두는 ISO2 — 지오 키(ISO3)로 바꿔 조회한다. 수록 안 된 국가면 null이라 다음 폴백으로
+  const byCode = regionNameEn
+    ? regionNameByCode(ISO2_TO_GEO[regionNameEn.slice(0, 2)] ?? '', regionNameEn, lang)
+    : null;
+  return byCode || KOREA_REGIONS.find((r) => r.name === ko)?.nameEn || ko;
 }
 
 /** 기록쌍(regionName↔regionNameEn) + 한국 시/도로 KO→EN 지역명 맵 구성. */
