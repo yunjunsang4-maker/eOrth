@@ -2789,6 +2789,8 @@ export default function MainScreen({ navigation, route }: Props) {
                             ))
                           ) : (
                             <>
+                              {/* 이미 기본 색과 같으면 '색상 제거'는 의미가 없어 숨긴다(사용자 요청) — 색상 변경만 */}
+                              {countryColors[target] !== globeColor && (<>
                               <TouchableOpacity
                                 style={dsm.chipMenuItem}
                                 activeOpacity={0.7}
@@ -2800,6 +2802,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                 <Text style={[dsm.chipMenuText, { color: '#FF3B30' }]} numberOfLines={1}>{t('main.chipRemove')}</Text>
                               </TouchableOpacity>
                               <View style={dsm.chipMenuDivider} />
+                              </>)}
                               <TouchableOpacity
                                 style={dsm.chipMenuItem}
                                 activeOpacity={0.7}
