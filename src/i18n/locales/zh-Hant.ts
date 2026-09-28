@@ -181,6 +181,7 @@ const zhHant: DeepPartial<typeof ko> = {
     importFromGallery: '從相簿匯入',
     defaultColor: '預設顏色',
     countryColors: '各國顏色',
+    addCountry: '新增國家',
     noRecordedCountries: '還沒有紀錄的國家',
     reset: '重設',
     regionDisplayTitle: '大陸地圖顯示設定',

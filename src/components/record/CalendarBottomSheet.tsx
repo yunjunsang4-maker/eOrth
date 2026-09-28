@@ -71,11 +71,11 @@ const CHIP_PALETTES: Record<string, { bg: string[]; text: string }> = {
  *  넓은 알약에서도 모서리만 밝다(비율 단위였을 때는 위 변 40%가 희게 깔려 왼쪽 전체가 밝아 보였다 — 사용자 지적). */
 const CORNER_PX = 20;
 
-export function PillRing({ width, height, radius, strokeWidth = 1, diagonal = false }: { width: number; height: number; radius: number; strokeWidth?: number; diagonal?: boolean }) {
+export function PillRing({ width, height, radius, strokeWidth = 1, diagonal = false, cornerPx = CORNER_PX }: { width: number; height: number; radius: number; strokeWidth?: number; diagonal?: boolean; /** diagonal 흰색 거리 — 카드처럼 모서리 반경이 큰 곳은 20px이면 곡선 밖이라 거의 안 보인다 */ cornerPx?: number }) {
   const id = useId();
   if (width <= 0 || height <= 0) return null;
   const half = strokeWidth / 2;
-  const cornerT = Math.min(0.5, CORNER_PX / (width + height)); // 아주 작은 알약(w+h<40)은 양쪽 흰색이 가운데서 만난다
+  const cornerT = Math.min(0.5, cornerPx / (width + height)); // 아주 작은 알약(w+h<40)은 양쪽 흰색이 가운데서 만난다
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg width={width} height={height}>
@@ -100,6 +100,24 @@ export function PillRing({ width, height, radius, strokeWidth = 1, diagonal = fa
         <Rect x={half} y={half} width={width - strokeWidth} height={height - strokeWidth} rx={radius - half} ry={radius - half}
           fill="none" stroke={`url(#${id})`} strokeWidth={strokeWidth} />
       </Svg>
+    </View>
+  );
+}
+
+/** 폭이 문구마다 달라지는 알약용 — 부모 크기를 실측해 diagonal PillRing을 그린다(Cut 화면 로컬 AutoPillRing과 동일).
+ *  부모에 borderWidth·overflow hidden 금지(링이 1px 밀리거나 잘린다). */
+export function AutoPillRing() {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h })); // 같은 값 setState 루프 방지
+      }}
+    >
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
     </View>
   );
 }

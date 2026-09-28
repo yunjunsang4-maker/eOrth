@@ -182,6 +182,7 @@ const ja: DeepPartial<typeof ko> = {
     importFromGallery: '写真から取り込む',
     defaultColor: '基本の色',
     countryColors: '国ごとの色',
+    addCountry: '国を追加',
     noRecordedCountries: '記録した国はありません',
     reset: 'リセット',
     regionDisplayTitle: '大陸マップの表示設定',

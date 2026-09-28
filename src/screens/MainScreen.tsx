@@ -49,7 +49,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
 import { success, tap } from '../utils/haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon, GalleryIcon } from '../components/icons';
+import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon, GalleryIcon, PlusIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { getGlobeSkinTheme, getGlassBgHue, GLOBE_SKINS } from '../constants/globeSkins';
 import { getSkinAccent } from '../constants/skinTheme';
@@ -83,6 +83,7 @@ import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
 import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
 import StayTripSuggestBanner from '../components/StayTripSuggestBanner';
+import { PillRing, AutoPillRing } from '../components/record/CalendarBottomSheet';
 import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
@@ -94,6 +95,12 @@ const height = Dimensions.get('window').height;
 const DS_CARD_W = Math.min(325, width - 24);
 const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
 const DS_PAD = DS_CARD_W * (29 / 325); // 좌우 패딩 29 (버튼폭 268)
+// 스킨 카드 덱(시안 325 기준): 카드 왼쪽 가장자리~오른쪽 패딩 안쪽까지, 뒤 카드는 PEEK씩 삐져나옴.
+// 앞 카드는 왼쪽으로 BLEED만큼 카드 밖까지 이어져 dsCard의 overflow hidden에 잘린다(시안처럼 왼쪽 모서리 없음).
+const DS_DECK_H = 120;
+const DS_DECK_PEEK = 26;
+const DS_DECK_BLEED = 20;
+const DS_DECK_W = DS_CARD_W - DS_PAD;
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
 // 스킨별 활성화색 팔레트(각 4색). aurora=보라(뒤 2색 노이즈), cyan=시안. 미지정 스킨(mint 등)은 aurora 폴백.
 // 채도 -15%(색상·밝기 유지) — 활성화색이 과포화로 튀지 않게 살짝 낮춤. 원본 대비 HSL S만 ×0.85.
@@ -777,6 +784,8 @@ export default function MainScreen({ navigation, route }: Props) {
   }, []);
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
+  // '국가 추가 +' 칩으로 펼치는 후보(개별 색이 아직 없는 방문국) 목록 열림 여부
+  const [addingCountryColor, setAddingCountryColor] = useState(false);
 
   // 표시 설정 모달은 라이브로 적용되므로, 열 때 스냅샷을 떠두고 "취소(바깥 탭)" 시 원복한다.
   // ⚠️ puzzleImages와 regionGlobalMode(사진/퍼즐 토글)는 스냅샷에 넣지 않는다 — 색상 팔레트처럼
@@ -812,11 +821,13 @@ export default function MainScreen({ navigation, route }: Props) {
     }
     dsSnapshot.current = null;
     setEditingCountryColor(null);
+    setAddingCountryColor(false);
     setDisplaySettingsVisible(false);
   };
   const confirmDisplaySettings = () => {
     dsSnapshot.current = null;
     setEditingCountryColor(null);
+    setAddingCountryColor(false);
     setDisplaySettingsVisible(false);
   };
 
@@ -2492,6 +2503,14 @@ export default function MainScreen({ navigation, route }: Props) {
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
             <SheetBackdrop pointerEvents="none" />
+            {/* 스킨 팝업(지구본 모드)은 앱 공용 알약 링(흰색 대각 그라데이션)으로 통일. 대륙 모드는 아래 Figma 테두리 유지 */}
+            {viewMode === 'globe' && (
+              // 카드는 선이 길어 흰색이 진해 보인다 — 불투명도로만 낮춤(사용자 요청)
+              <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
+                <PillRing width={Math.round(DS_CARD_W)} height={Math.round(DS_CARD_H)} radius={29} strokeWidth={1.7} diagonal cornerPx={120} />
+              </View>
+            )}
+            {viewMode !== 'globe' && (<>
             {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬
                 (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다.
                  이 Svg는 카드 전면(DS_CARD_W×DS_CARD_H)을 덮으므로 안 감싸면 카드 안 터치가 전부 먹힌다) */}
@@ -2519,108 +2538,183 @@ export default function MainScreen({ navigation, route }: Props) {
               <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder1)" strokeOpacity={0.5} strokeWidth={1.7} />
             </Svg>
             </View>
+            </>)}
 
             {viewMode === 'globe' ? (
               <>
                 <Text style={styles.dsTitle}>{t('main.territoryDisplayTitle')}</Text>
-                <Text style={styles.dsSub}>{t('main.territoryDisplaySub')}</Text>
+                {/* 한 줄 고정 — '요'만 다음 줄로 떨어져서 폭이 모자라면 글자를 줄인다(iOS·안드로이드 공통) */}
+                <Text style={styles.dsSub} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('main.territoryDisplaySub')}</Text>
 
-                {/* 지구본 스킨 (본체 색) — aurora(색 활성화) 폼에만 적용되므로 그때만 노출 */}
-                {globeVariant === 'aurora' && (<>
-                <Text style={[dsm.sectionLabel, { marginTop: 6 }]}>{t('settings.globeSkin')}</Text>
-                <View style={dsm.skinRow}>
-                  {GLOBE_SKINS.map(s => {
-                    const selected = globeSkin === s.id;
-                    const locked = s.premium && !isPremium;
-                    return (
-                      <TouchableOpacity
-                        key={s.id}
-                        style={dsm.skinItem}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          if (locked) { setDisplaySettingsVisible(false); navigation.navigate('Premium'); return; }
-                          setGlobeSkin(s.id); // 테마드 세터가 스킨별 저장 색 복원까지 수행
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={t(s.labelKey)}
-                      >
-                        <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[dsm.skinCircle, selected && dsm.skinCircleActive]}>
-                          {locked && <LockClosedIcon size={16} color="#FFFFFF" />}
-                        </LinearGradient>
-                        <Text style={[dsm.skinLabel, selected && dsm.skinLabelActive]} numberOfLines={1}>{t(s.labelKey)}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                </>)}
+                {/* 지구본 스킨 카드 덱 (시안 2026-09-28) — aurora(색 활성화) 폼에만 적용되므로 그때만 노출.
+                    선택 스킨이 맨 앞(카드 왼쪽 가장자리 밖까지 이어져 잘림), 나머지는 GLOBE_SKINS 순서로 뒤에서
+                    오른쪽으로 DS_DECK_PEEK씩 삐져나온다. 스킨 전환은 삐져나온 뒤 카드 탭으로만(스와이프 없음, 사용자 확정).
+                    뒤 카드를 먼저 그려 앞 카드가 위에 오게 한다 — 앞 카드는 터치 대상이 아니라서 그 영역 탭은
+                    형제(뒤 카드)로 새지 않는다(RN 터치는 조상으로만 버블링). */}
+                {globeVariant === 'aurora' && (() => {
+                  const front = GLOBE_SKINS.find(s => s.id === globeSkin) ?? GLOBE_SKINS[0];
+                  const deck = [front, ...GLOBE_SKINS.filter(s => s !== front)];
+                  return (
+                    <View style={dsm.deck}>
+                      {deck.map((s, i) => ({ s, i })).reverse().map(({ s, i }) => {
+                        const locked = s.premium && !isPremium;
+                        const cardStyle = [dsm.deckCard, { width: DS_DECK_W - (deck.length - 1 - i) * DS_DECK_PEEK + DS_DECK_BLEED }];
+                        const body = (
+                          <>
+                            {s.id === 'aurora' ? (
+                              // 시안(2026-09-28) aurora 카드 픽셀 추출값 — 청보라(위)→라벤더(우하) 불투명 그라데이션만
+                              // (반투명 덧층은 사용자 요청으로 제거)
+                              <LinearGradient colors={['#636697', '#6759A6', '#8A6CCA']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
+                            ) : (
+                              <LinearGradient colors={s.preview} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+                            )}
+                            {/* 세로 이름표 — 120×PEEK 텍스트 상자를 90° 돌려 PEEK×120 띠에 정확히 겹친다
+                                (rotate는 레이아웃 크기를 안 바꾸므로 회전 전 상자를 띠 중심에 미리 맞춰 둔다) */}
+                            <View style={dsm.deckLabelStrip} pointerEvents="none">
+                              {/* 민트 스킨 선택 시(앞 카드) 밝은 민트 바탕에 흰 글자가 안 보여 어두운 글자로 */}
+                              <Text style={[dsm.deckLabel, i === 0 && s.id === 'mint' && { color: '#0B0A0E' }]} numberOfLines={1}>{s.id}</Text>
+                              {locked && (
+                                <View style={dsm.deckLock}>
+                                  <LockClosedIcon size={12} color="#FFFFFF" />
+                                </View>
+                              )}
+                            </View>
+                          </>
+                        );
+                        if (i === 0) return <View key={s.id} style={cardStyle} accessible accessibilityLabel={t(s.labelKey)} accessibilityState={{ selected: true }}>{body}</View>;
+                        return (
+                          <TouchableOpacity
+                            key={s.id}
+                            style={cardStyle}
+                            activeOpacity={0.85}
+                            onPress={() => {
+                              if (locked) { cancelDisplaySettings(); navigation.navigate('Premium'); return; }
+                              setGlobeSkin(s.id); // 테마드 세터가 스킨별 저장 색 복원까지 수행
+                            }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t(s.labelKey)}
+                          >
+                            {body}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
 
-                {/* 활성화 색상 팔레트 (국기/갤러리 옵션 제거 — 색상만) */}
-                <Text style={[dsm.sectionLabel, { marginTop: 16 }]}>{t('main.defaultColor')}</Text>
+                {/* 기본 색상 — 알약 4개 균등 배치 (국기/갤러리 옵션 제거 — 색상만) */}
+                <Text style={[dsm.sectionLabel, { marginTop: 12, marginBottom: 22 }]}>{t('main.defaultColor')}</Text>
                 <View style={dsm.paletteRow}>
                   {getSkinPalette(globeSkin).map(c => (
                     <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
                       <View style={[dsm.swatch, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, globeColor === c && dsm.swatchActive]}>
                         {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={100} />}
                       </View>
+                      {/* 공용 알약 링(블로그 알약과 같은 흰색 대각 그라데이션) — 노이즈 알약의 overflow hidden에
+                          잘리지 않게 형제 층으로 얹는다. 선택 알약은 흰 테두리가 대신하므로 생략 */}
+                      {globeColor !== c && <PillRing width={50} height={30} radius={15} diagonal />}
                     </TouchableOpacity>
                   ))}
                 </View>
 
-                {/* 국가별 색상 리스트 (하단 페이드) */}
-                <Text style={[dsm.sectionLabel, { marginTop: 18 }]}>{t('main.countryColors')}</Text>
+                {/* 색상별 국가 — 개별 색을 지정한 방문국만 칩으로(사용자 확정). × = 개별 색 삭제(기본 색으로 복귀),
+                    칩 탭 = 아래 팔레트로 색 변경, '국가 추가 +' = 개별 색 없는 방문국 후보를 펼쳐 하나 고르면
+                    현재 기본 색으로 추가하고 곧바로 편집 상태로 둔다. */}
+                <Text style={[dsm.sectionLabel, { marginTop: 24, marginBottom: 16 }]}>{t('main.countryColors')}</Text>
                 <View style={dsm.listWrap}>
                   {visitedNameSet.size === 0 ? (
                     <Text style={dsm.emptyHint}>{t('main.noRecordedCountries')}</Text>
-                  ) : (
+                  ) : (() => {
+                    const visitedList = Array.from(visitedNameSet);
+                    const colored = visitedList.filter(n => !!countryColors[n]);
+                    const candidates = visitedList.filter(n => !countryColors[n]);
+                    const nameOf = (nameEn: string) => countryEn(EN_TO_KO[nameEn] || nameEn);
+                    const editing = editingCountryColor && countryColors[editingCountryColor] ? editingCountryColor : null;
+                    return (
                   <>
                   <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
-                    {Array.from(visitedNameSet).map(nameEn => {
-                      const ko = EN_TO_KO[nameEn] || nameEn;
-                      const dotColor = countryColors[nameEn] || globeColor;
-                      const isEditing = editingCountryColor === nameEn;
-                      return (
-                        <View key={nameEn}>
+                    <View style={dsm.chipWrap}>
+                      {candidates.length > 0 && (
+                        <TouchableOpacity
+                          style={dsm.chip}
+                          activeOpacity={0.7}
+                          onPress={() => { setAddingCountryColor(v => !v); setEditingCountryColor(null); }}
+                          accessibilityRole="button"
+                        >
+                          {addingCountryColor ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
+                          <Text style={dsm.chipText} numberOfLines={1}>{t('main.addCountry')}</Text>
+                          {/* RNSVG가 터치를 삼키지 않도록 View(pointerEvents none)로 감싼다 */}
+                          <View pointerEvents="none"><PlusIcon size={11} color="#FFFFFF" /></View>
+                        </TouchableOpacity>
+                      )}
+                      {colored.map(nameEn => {
+                        const isEditing = editing === nameEn;
+                        return (
                           <TouchableOpacity
-                            style={dsm.countryRow}
+                            key={nameEn}
+                            style={dsm.chip}
                             activeOpacity={0.7}
-                            onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
+                            onPress={() => { setEditingCountryColor(isEditing ? null : nameEn); setAddingCountryColor(false); }}
                           >
-                            <View style={[dsm.countryDot, { backgroundColor: dotColor }]} />
-                            <Text style={dsm.countryName} numberOfLines={1}>{countryEn(ko)}</Text>
-                            <Svg width={12} height={8} viewBox="0 0 12 8">
-                              <SvgPath d="M1 1.5 6 6.5 11 1.5" stroke="#8B8B91" strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                            </Svg>
+                            {isEditing ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
+                            <Text style={dsm.chipText} numberOfLines={1}>{nameOf(nameEn)}</Text>
+                            <TouchableOpacity
+                              hitSlop={{ top: 8, bottom: 8, left: 6, right: 10 }}
+                              onPress={() => {
+                                setCountryColors(prev => { const next = { ...prev }; delete next[nameEn]; return next; });
+                                if (isEditing) setEditingCountryColor(null);
+                              }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${nameOf(nameEn)} ${t('main.reset')}`}
+                            >
+                              {/* × = 공용 PlusIcon 45° 회전(전용 X 아이콘 없음). RNSVG 터치 삼킴 방지로 View 래핑 */}
+                              <View pointerEvents="none" style={{ transform: [{ rotate: '45deg' }] }}>
+                                <PlusIcon size={13} color="rgba(255,255,255,0.7)" />
+                              </View>
+                            </TouchableOpacity>
                           </TouchableOpacity>
-                          {isEditing && (
-                            <View style={dsm.countryPalette}>
-                              {getSkinPalette(globeSkin).map(c => (
-                                <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setCountryColors(prev => ({ ...prev, [nameEn]: c }))}>
-                                  <View style={[dsm.swatchSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, (countryColors[nameEn] || globeColor) === c && dsm.swatchSmActive]}>
-                                    {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
-                                  </View>
-                                </TouchableOpacity>
-                              ))}
-                              {countryColors[nameEn] && (
-                                <TouchableOpacity
-                                  style={dsm.countryReset}
-                                  onPress={() => setCountryColors(prev => { const next = { ...prev }; delete next[nameEn]; return next; })}
-                                >
-                                  <Text style={dsm.countryResetText}>{t('main.reset')}</Text>
-                                </TouchableOpacity>
-                              )}
+                        );
+                      })}
+                    </View>
+
+                    {/* 국가 추가 후보 — 개별 색이 아직 없는 방문국 */}
+                    {addingCountryColor && candidates.length > 0 && (
+                      <View style={[dsm.chipWrap, dsm.subPanel]}>
+                        {candidates.map(nameEn => (
+                          <TouchableOpacity
+                            key={nameEn}
+                            style={[dsm.chip, dsm.chipCandidate]}
+                            activeOpacity={0.7}
+                            onPress={() => {
+                              setCountryColors(prev => ({ ...prev, [nameEn]: globeColor }));
+                              setEditingCountryColor(nameEn);
+                              setAddingCountryColor(false);
+                            }}
+                          >
+                            <AutoPillRing />
+                            <Text style={dsm.chipText} numberOfLines={1}>{nameOf(nameEn)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* 선택한 칩의 색 변경 팔레트 */}
+                    {editing && (
+                      <View style={[dsm.countryPalette, dsm.subPanel]}>
+                        {getSkinPalette(globeSkin).map(c => (
+                          <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setCountryColors(prev => ({ ...prev, [editing]: c }))}>
+                            <View style={[dsm.swatchSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, countryColors[editing] === c && dsm.swatchSmActive]}>
+                              {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
                             </View>
-                          )}
-                        </View>
-                      );
-                    })}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
                   </ScrollView>
-                  <LinearGradient
-                    colors={['rgba(10,11,15,0)', 'rgba(10,11,15,0.9)']}
-                    style={dsm.listFade}
-                    pointerEvents="none"
-                  />
+                  {/* 하단 페이드 제거 — #0A0B0F 사각 그라데이션이 유리 카드 배경과 달라 칩 아래 네모 그림자로 보였다 */}
                   </>
-                  )}
+                    );
+                  })()}
                 </View>
               </>
             ) : (
@@ -2801,10 +2895,17 @@ export default function MainScreen({ navigation, route }: Props) {
             )}
 
             <TouchableOpacity
-              style={[dsm.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
+              // 지구본 모드는 시안(2026-09-28)의 넓은 어두운 유리 알약. 대륙 모드는 기존 스킨 딥 컬러 유지
+              style={viewMode === 'globe' ? [dsm.confirmBtn, dsm.confirmBtnGlass] : [dsm.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >
+              {/* 카드 테두리와 같은 링(대각 흰색·120px·불투명도 0.5). 폭은 카드 폭 - 좌우 18(시안 비율)로 고정 계산 */}
+              {viewMode === 'globe' && (
+                <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
+                  <PillRing width={Math.round(DS_CARD_W * (289 / 325))} height={52} radius={26} diagonal cornerPx={120} />
+                </View>
+              )}
               <Text style={dsm.confirmText} {...andFitText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
@@ -2858,28 +2959,45 @@ const dsm = StyleSheet.create({
   galleryBtn: { height: 49, borderRadius: 15, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   galleryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   sectionLabel: { color: '#9A9A9A', fontSize: 13, fontWeight: '600', marginBottom: 14 },
-  // 지구본 스킨 선택 행
-  skinRow: { flexDirection: 'row', gap: 18, marginBottom: 4 },
-  skinItem: { alignItems: 'center', gap: 6, width: 60 },
-  skinCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  skinCircleActive: { borderColor: '#FFFFFF' },
-  skinLabel: { color: '#9A9A9A', fontSize: 11 },
-  skinLabelActive: { color: '#FFFFFF', fontWeight: '600' },
-  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
-  swatch: { width: 34, height: 34, borderRadius: 17 },
-  swatchActive: { borderWidth: 2, borderColor: '#fff' },
-  listWrap: { flex: 1, marginTop: 4, position: 'relative' },
+  // 지구본 스킨 카드 덱 — 좌측은 카드 패딩을 상쇄해 카드 가장자리부터 시작
+  deck: { height: DS_DECK_H, marginLeft: -DS_PAD, position: 'relative' },
+  deckCard: { position: 'absolute', top: 0, left: -DS_DECK_BLEED, height: DS_DECK_H, borderRadius: 10, overflow: 'hidden' },
+  deckLabelStrip: { position: 'absolute', top: 0, right: 0, width: DS_DECK_PEEK, height: DS_DECK_H, alignItems: 'center' },
+  deckLabel: {
+    position: 'absolute', width: DS_DECK_H, height: DS_DECK_PEEK,
+    left: (DS_DECK_PEEK - DS_DECK_H) / 2, top: (DS_DECK_H - DS_DECK_PEEK) / 2,
+    paddingLeft: 9, color: '#FFFFFF', fontSize: 12, fontWeight: '700',
+    lineHeight: DS_DECK_PEEK, includeFontPadding: false, textAlignVertical: 'center',
+    transform: [{ rotate: '90deg' }],
+  },
+  deckLock: { position: 'absolute', bottom: 8 },
+  // 기본 색상 알약 — 시안대로 왼쪽 정렬·간격 14
+  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  swatch: { width: 50, height: 30, borderRadius: 15 },
+  swatchActive: { borderWidth: 1.5, borderColor: '#fff' },
+  listWrap: { flex: 1, position: 'relative' },
   emptyHint: { color: '#6F6F7A', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 24 },
-  listFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 48 },
-  countryRow: { flexDirection: 'row', alignItems: 'center', height: 31, marginBottom: 6 },
-  countryDot: { width: 19, height: 19, borderRadius: 9.5, borderWidth: 1, borderColor: '#fff', marginRight: 12 },
-  countryName: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '700' },
-  countryPalette: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 8, paddingLeft: 31, alignItems: 'center' },
+  // 색상별 국가 칩
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7, height: 30, borderRadius: 15, paddingHorizontal: 12, maxWidth: '100%',
+    backgroundColor: 'rgba(255,255,255,0.1)', // 테두리는 AutoPillRing — borderWidth 금지(링이 1px 밀림)
+  },
+  // 선택 표시 — 레이아웃을 흔들지 않게 절대위치 흰 테두리 층(링 대신)
+  chipActiveRing: { ...StyleSheet.absoluteFillObject, borderRadius: 15, borderWidth: 1, borderColor: '#FFFFFF' },
+  chipCandidate: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  chipText: { color: '#fff', fontSize: 13, fontWeight: '700', includeFontPadding: false, flexShrink: 1 },
+  subPanel: { marginTop: 12 },
+  countryPalette: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   swatchSm: { width: 24, height: 24, borderRadius: 12 },
   swatchSmActive: { borderWidth: 2, borderColor: '#fff' },
-  countryReset: { paddingHorizontal: 10, height: 24, borderRadius: 12, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  countryResetText: { color: '#A1A1B0', fontSize: 11, fontWeight: '600' },
   confirmBtn: { height: 49, borderRadius: 15, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  // 시안: 좌우 18(카드 패딩 29보다 넓음)·높이 52 알약·어두운 유리
+  confirmBtnGlass: {
+    height: 52, borderRadius: 26, marginHorizontal: DS_CARD_W * (18 / 325) - DS_PAD,
+    // 테두리는 PillRing이 그린다 — borderWidth를 두면 링과 이중선이 되고 링 위치가 1px 밀린다
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
   confirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
 

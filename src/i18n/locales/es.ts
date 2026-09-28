@@ -195,6 +195,7 @@ const es: WithPlurals<typeof ko> = {
     importFromGallery: 'Importar desde Fotos',
     defaultColor: 'Color predeterminado',
     countryColors: 'Colores por país',
+    addCountry: 'Añadir país',
     noRecordedCountries: 'No hay países registrados',
     reset: 'Restablecer',
     regionDisplayTitle: 'Visualización del mapa de continentes',
