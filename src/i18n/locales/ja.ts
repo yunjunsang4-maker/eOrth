@@ -183,6 +183,8 @@ const ja: DeepPartial<typeof ko> = {
     defaultColor: '基本の色',
     countryColors: '国ごとの色',
     addCountry: '国を追加',
+    chipRemove: '削除',
+    changeColor: '色を変更',
     noRecordedCountries: '記録した国はありません',
     reset: 'リセット',
     regionDisplayTitle: '大陸マップの表示設定',

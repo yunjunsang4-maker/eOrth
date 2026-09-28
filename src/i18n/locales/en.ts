@@ -673,6 +673,8 @@ const en = {
     defaultColor: 'Default color',
     countryColors: 'Countries by color',
     addCountry: 'Add country',
+    chipRemove: 'Remove',
+    changeColor: 'Change color',
     noRecordedCountries: 'No recorded countries',
     reset: 'Reset',
     regionDisplayTitle: 'Continent map display settings',

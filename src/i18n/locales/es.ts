@@ -196,6 +196,8 @@ const es: WithPlurals<typeof ko> = {
     defaultColor: 'Color predeterminado',
     countryColors: 'Colores por país',
     addCountry: 'Añadir país',
+    chipRemove: 'Quitar',
+    changeColor: 'Cambiar color',
     noRecordedCountries: 'No hay países registrados',
     reset: 'Restablecer',
     regionDisplayTitle: 'Visualización del mapa de continentes',

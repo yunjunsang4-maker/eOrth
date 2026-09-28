@@ -686,6 +686,8 @@ const ko = {
     defaultColor: '기본 색상',
     countryColors: '색상별 국가',
     addCountry: '국가 추가',
+    chipRemove: '기록 삭제',
+    changeColor: '색상 변경',
     noRecordedCountries: '기록한 국가가 없습니다',
     reset: '초기화',
     regionDisplayTitle: '대륙 지도 표시 설정',

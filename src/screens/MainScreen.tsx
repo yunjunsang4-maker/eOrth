@@ -786,6 +786,11 @@ export default function MainScreen({ navigation, route }: Props) {
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
   // '국가 추가 +' 칩으로 펼치는 후보(개별 색이 아직 없는 방문국) 목록 열림 여부
   const [addingCountryColor, setAddingCountryColor] = useState(false);
+  // 국가 칩 × → '기록 삭제 | 색상 변경' 팝오버 대상. 칩 위치는 onLayout 실측(chipWrap 기준)
+  const [chipMenuFor, setChipMenuFor] = useState<string | null>(null);
+  const [chipMenuW, setChipMenuW] = useState(0); // 팝오버 실측 폭(다국어 문구 길이별) — 0이면 첫 측정 전이라 숨김
+  // 칩 위치 — state로 둬야 방금 추가한 칩(실측 전)에도 onLayout 뒤 팝오버가 뜬다
+  const [chipLayouts, setChipLayouts] = useState<Record<string, { x: number; y: number; w: number; h: number }>>({});
 
   // 표시 설정 모달은 라이브로 적용되므로, 열 때 스냅샷을 떠두고 "취소(바깥 탭)" 시 원복한다.
   // ⚠️ puzzleImages와 regionGlobalMode(사진/퍼즐 토글)는 스냅샷에 넣지 않는다 — 색상 팔레트처럼
@@ -822,12 +827,14 @@ export default function MainScreen({ navigation, route }: Props) {
     dsSnapshot.current = null;
     setEditingCountryColor(null);
     setAddingCountryColor(false);
+    setChipMenuFor(null);
     setDisplaySettingsVisible(false);
   };
   const confirmDisplaySettings = () => {
     dsSnapshot.current = null;
     setEditingCountryColor(null);
     setAddingCountryColor(false);
+    setChipMenuFor(null);
     setDisplaySettingsVisible(false);
   };
 
@@ -2632,13 +2639,14 @@ export default function MainScreen({ navigation, route }: Props) {
                     const editing = editingCountryColor && countryColors[editingCountryColor] ? editingCountryColor : null;
                     return (
                   <>
-                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
+                  {/* 팝오버가 마지막 줄 칩 아래로 내려가도 잘리지 않게 열린 동안 하단 여백을 늘린다 */}
+                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: chipMenuFor || editing ? 64 : 28 }}>
                     <View style={dsm.chipWrap}>
                       {candidates.length > 0 && (
                         <TouchableOpacity
                           style={dsm.chip}
                           activeOpacity={0.7}
-                          onPress={() => { setAddingCountryColor(v => !v); setEditingCountryColor(null); }}
+                          onPress={() => { setAddingCountryColor(v => !v); setEditingCountryColor(null); setChipMenuFor(null); }}
                           accessibilityRole="button"
                         >
                           {addingCountryColor ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
@@ -2654,18 +2662,20 @@ export default function MainScreen({ navigation, route }: Props) {
                             key={nameEn}
                             style={dsm.chip}
                             activeOpacity={0.7}
-                            onPress={() => { setEditingCountryColor(isEditing ? null : nameEn); setAddingCountryColor(false); }}
+                            onLayout={(e) => {
+                              const { x, y, width: w, height: h } = e.nativeEvent.layout;
+                              setChipLayouts(prev => { const o = prev[nameEn]; return o && o.x === x && o.y === y && o.w === w && o.h === h ? prev : { ...prev, [nameEn]: { x, y, w, h } }; });
+                            }}
+                            onPress={() => { setEditingCountryColor(isEditing ? null : nameEn); setAddingCountryColor(false); setChipMenuFor(null); }}
                           >
-                            {isEditing ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
+                            <AutoPillRing />
                             <Text style={dsm.chipText} numberOfLines={1}>{nameOf(nameEn)}</Text>
                             <TouchableOpacity
                               hitSlop={{ top: 8, bottom: 8, left: 6, right: 10 }}
-                              onPress={() => {
-                                setCountryColors(prev => { const next = { ...prev }; delete next[nameEn]; return next; });
-                                if (isEditing) setEditingCountryColor(null);
-                              }}
+                              // × = 바로 삭제하지 않고 '기록 삭제 | 색상 변경' 팝오버를 연다(시안 2026-09-28)
+                              onPress={() => { setChipMenuFor(chipMenuFor === nameEn ? null : nameEn); setEditingCountryColor(null); setAddingCountryColor(false); }}
                               accessibilityRole="button"
-                              accessibilityLabel={`${nameOf(nameEn)} ${t('main.reset')}`}
+                              accessibilityLabel={`${nameOf(nameEn)} ${t('main.chipRemove')} / ${t('main.changeColor')}`}
                             >
                               {/* × = 공용 PlusIcon 45° 회전(전용 X 아이콘 없음). RNSVG 터치 삼킴 방지로 View 래핑 */}
                               <View pointerEvents="none" style={{ transform: [{ rotate: '45deg' }] }}>
@@ -2698,18 +2708,63 @@ export default function MainScreen({ navigation, route }: Props) {
                       </View>
                     )}
 
-                    {/* 선택한 칩의 색 변경 팔레트 */}
-                    {editing && (
-                      <View style={[dsm.countryPalette, dsm.subPanel]}>
-                        {getSkinPalette(globeSkin).map(c => (
-                          <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setCountryColors(prev => ({ ...prev, [editing]: c }))}>
-                            <View style={[dsm.swatchSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, countryColors[editing] === c && dsm.swatchSmActive]}>
-                              {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
+                    {/* 칩 팝오버 2종 — × = '기록 삭제 | 색상 변경', 칩 본문·'색상 변경' = 색상 알약(시안 2026-09-28).
+                        chipWrap 밖(스크롤 콘텐츠 직속)·맨 뒤에 둔다: chipWrap 경계 밖이면 안드로이드가 자식 터치를 안 받고,
+                        뒤 형제여야 후보 패널 위에 그려진다. 하단 여백(64) 안이라 터치 영역이 유지된다.
+                        chipWrap이 콘텐츠 (0,0)이라 칩 onLayout 좌표를 그대로 쓴다. */}
+                    {(() => {
+                      const colorTarget = editing;
+                      const target = colorTarget || (chipMenuFor && countryColors[chipMenuFor] ? chipMenuFor : null);
+                      const l = target ? chipLayouts[target] : undefined;
+                      if (!target || !l) return null;
+                      const arrowX = l.x + l.w - 12 - 6.5; // × 중심(칩 좌우 패딩 12, 아이콘 13)
+                      const maxLeft = chipMenuW > 0 ? DS_CARD_W - DS_PAD * 2 - chipMenuW : 0;
+                      const left = Math.max(0, Math.min(maxLeft, arrowX - chipMenuW * 0.66));
+                      return (
+                        <View
+                          key={colorTarget ? 'color' : 'actions'} // 종류가 바뀌면 폭을 새로 잰다
+                          style={[dsm.chipMenu, colorTarget && dsm.chipMenuColors, { top: l.y + l.h + 8, left, opacity: chipMenuW > 0 ? 1 : 0 }]}
+                          onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== chipMenuW) setChipMenuW(w); }}
+                        >
+                          <View style={[dsm.chipMenuArrow, { left: arrowX - left - 6 }]} pointerEvents="none" />
+                          {/* 색상 풍선 테두리 — 공용 알약 링(실측, 흰색 대각) */}
+                          {colorTarget && <AutoPillRing />}
+                          {colorTarget ? (
+                            // 기본 색은 빼고(고르면 개별 색 의미가 없다) 나머지 스킨 팔레트를 알약으로
+                            getSkinPalette(globeSkin).filter(c => c !== globeColor).map(c => (
+                              <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setCountryColors(prev => ({ ...prev, [colorTarget]: c })); setEditingCountryColor(null); }}>
+                                <View style={[dsm.chipMenuSwatch, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, countryColors[colorTarget] === c && dsm.swatchActive]}>
+                                  {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={60} />}
+                                </View>
+                                {/* 기본 색상 알약과 같은 링 — 노이즈 알약 overflow hidden에 안 잘리게 형제 층, 선택 알약은 흰 테두리가 대신 */}
+                                {countryColors[colorTarget] !== c && <PillRing width={40} height={25} radius={12.5} diagonal />}
+                              </TouchableOpacity>
+                            ))
+                          ) : (
+                            <>
+                              <TouchableOpacity
+                                style={dsm.chipMenuItem}
+                                activeOpacity={0.7}
+                                onPress={() => {
+                                  setCountryColors(prev => { const next = { ...prev }; delete next[target]; return next; });
+                                  setChipMenuFor(null);
+                                }}
+                              >
+                                <Text style={[dsm.chipMenuText, { color: '#FF3B30' }]} numberOfLines={1}>{t('main.chipRemove')}</Text>
+                              </TouchableOpacity>
+                              <View style={dsm.chipMenuDivider} />
+                              <TouchableOpacity
+                                style={dsm.chipMenuItem}
+                                activeOpacity={0.7}
+                                onPress={() => { setEditingCountryColor(target); setChipMenuFor(null); }}
+                              >
+                                <Text style={dsm.chipMenuText} numberOfLines={1}>{t('main.changeColor')}</Text>
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      );
+                    })()}
                   </ScrollView>
                   {/* 하단 페이드 제거 — #0A0B0F 사각 그라데이션이 유리 카드 배경과 달라 칩 아래 네모 그림자로 보였다 */}
                   </>
@@ -2986,11 +3041,20 @@ const dsm = StyleSheet.create({
   // 선택 표시 — 레이아웃을 흔들지 않게 절대위치 흰 테두리 층(링 대신)
   chipActiveRing: { ...StyleSheet.absoluteFillObject, borderRadius: 15, borderWidth: 1, borderColor: '#FFFFFF' },
   chipCandidate: { backgroundColor: 'rgba(255,255,255,0.05)' },
+  // × 팝오버(시안 #555658 알약 + 위쪽 꼬리 + 세로 구분선)
+  chipMenu: {
+    position: 'absolute', flexDirection: 'row', alignItems: 'center', height: 30, borderRadius: 15,
+    backgroundColor: 'rgba(93,94,96,0.9)', paddingHorizontal: 4, // 시안: 뒤 칩이 비치는 반투명 회색
+  },
+  // 꼬리 — 테두리 삼각형(알약 위로만 튀어나오게: 겹치면 반투명이 두 번 칠해져 마름모가 비친다). Svg 안 씀(규칙 12)
+  chipMenuArrow: { position: 'absolute', top: -6, width: 0, height: 0, borderLeftWidth: 6, borderRightWidth: 6, borderBottomWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: 'rgba(93,94,96,0.9)' },
+  chipMenuColors: { height: 38, borderRadius: 19, paddingHorizontal: 12, gap: 14 },
+  chipMenuSwatch: { width: 40, height: 25, borderRadius: 12.5 },
+  chipMenuItem: { paddingHorizontal: 12, height: 30, justifyContent: 'center' },
+  chipMenuText: { color: '#fff', fontSize: 12, fontWeight: '700', includeFontPadding: false },
+  chipMenuDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.35)' },
   chipText: { color: '#fff', fontSize: 13, fontWeight: '700', includeFontPadding: false, flexShrink: 1 },
   subPanel: { marginTop: 12 },
-  countryPalette: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
-  swatchSm: { width: 24, height: 24, borderRadius: 12 },
-  swatchSmActive: { borderWidth: 2, borderColor: '#fff' },
   confirmBtn: { height: 49, borderRadius: 15, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
   // 시안: 좌우 18(카드 패딩 29보다 넓음)·높이 52 알약·어두운 유리
   confirmBtnGlass: {
