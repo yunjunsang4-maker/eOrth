@@ -97,8 +97,17 @@ const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
 const DS_PAD = DS_CARD_W * (29 / 325); // 좌우 패딩 29 (버튼폭 268)
 // 스킨 카드 덱(시안 325 기준): 카드 왼쪽 가장자리~오른쪽 패딩 안쪽까지, 뒤 카드는 PEEK씩 삐져나옴.
 // 앞 카드는 왼쪽으로 BLEED만큼 카드 밖까지 이어져 dsCard의 overflow hidden에 잘린다(시안처럼 왼쪽 모서리 없음).
-const DS_DECK_H = 120;
+const DS_DECK_H = 122; // 시안 SVG(Group 2085664691) 242×122
 const DS_DECK_PEEK = 26;
+// 스킨 카드 시안 SVG의 내장 PNG + pattern(objectBoundingBox) 매핑 그대로: 가로는 카드 폭에 맞추고
+// 세로는 카드 높이×hScale로 늘린 뒤 yOff만큼 올린다(preserveAspectRatio none = 비율 무시 stretch).
+// opacity = fill-opacity, labelTop = 앞 카드 세로 이름표 시작 위치, labelInset = 이름표를 띠(26) 중앙보다 안쪽으로 민 거리
+// (시안 글자 중심이 오른쪽 끝에서 aurora 18.4·cyan 18.2·mint 16.3 — 띠 중앙 13 기준 보정).
+const SKIN_CARD_ART: Record<string, { src: number; hScale: number; yOff: number; opacity: number; labelTop: number; labelInset: number }> = {
+  aurora: { src: require('../../assets/globe-skins/aurora-card.png'), hScale: 1.20396, yOff: -0.10199, opacity: 0.8, labelTop: 11.5, labelInset: 4.6 }, // Group 2085664691 (201×122)
+  cyan: { src: require('../../assets/globe-skins/cyan-card.png'), hScale: 1.13352, yOff: -0.06676, opacity: 0.8, labelTop: 14.5, labelInset: 4.4 }, // Group 2085664692 (402×874)
+  mint: { src: require('../../assets/globe-skins/mint-card.png'), hScale: 1.10518, yOff: -0.05259, opacity: 1, labelTop: 13.8, labelInset: 2.5 }, // Group 2085664693 (402×874, 불투명)
+};
 const DS_DECK_BLEED = 20;
 const DS_DECK_W = DS_CARD_W - DS_PAD;
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
@@ -2583,18 +2592,32 @@ export default function MainScreen({ navigation, route }: Props) {
                         const cardStyle = [dsm.deckCard, { width: DS_DECK_W + DS_DECK_BLEED, zIndex: GLOBE_SKINS.length - i, transform: [{ translateX: deckX[s.id] }] }];
                         const body = (
                           <>
-                            {s.id === 'aurora' ? (
-                              // 시안(2026-09-28) aurora 카드 픽셀 추출값 — 청보라(위)→라벤더(우하) 불투명 그라데이션만
-                              // (반투명 덧층은 사용자 요청으로 제거)
-                              <LinearGradient colors={['#636697', '#6759A6', '#8A6CCA']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
+                            {SKIN_CARD_ART[s.id] ? (
+                              // 시안 SVG 그대로 — 앞 카드로 보이는 영역에 사진, 스킨별 fill-opacity.
+                              // 반투명(0.8)이 뒤 카드를 비추지 않게 어두운 바탕(#0B0A0E) 위에 얹는다.
+                              <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0B0A0E' }]}>
+                                <Image
+                                  source={SKIN_CARD_ART[s.id].src}
+                                  resizeMode="stretch"
+                                  style={{
+                                    position: 'absolute',
+                                    left: DS_DECK_BLEED + (GLOBE_SKINS.length - 1) * DS_DECK_PEEK,
+                                    width: DS_DECK_W - (GLOBE_SKINS.length - 1) * DS_DECK_PEEK,
+                                    top: SKIN_CARD_ART[s.id].yOff * DS_DECK_H,
+                                    height: SKIN_CARD_ART[s.id].hScale * DS_DECK_H,
+                                    opacity: SKIN_CARD_ART[s.id].opacity,
+                                  }}
+                                />
+                              </View>
                             ) : (
                               <LinearGradient colors={s.preview} start={{ x: 0, y: 1 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
                             )}
                             {/* 세로 이름표 — 120×PEEK 텍스트 상자를 90° 돌려 PEEK×120 띠에 정확히 겹친다
                                 (rotate는 레이아웃 크기를 안 바꾸므로 회전 전 상자를 띠 중심에 미리 맞춰 둔다) */}
-                            <View style={dsm.deckLabelStrip} pointerEvents="none">
+                            {/* 앞 카드 이름표는 스킨별 시안 위치(SKIN_CARD_ART.labelInset·labelTop)로 */}
+                            <View style={[dsm.deckLabelStrip, i === 0 && { right: SKIN_CARD_ART[s.id]?.labelInset ?? 4.6 }]} pointerEvents="none">
                               {/* 민트 스킨 선택 시(앞 카드) 밝은 민트 바탕에 흰 글자가 안 보여 어두운 글자로 */}
-                              <Text style={[dsm.deckLabel, i === 0 && s.id === 'mint' && { color: '#0B0A0E' }]} numberOfLines={1}>{s.id}</Text>
+                              <Text style={[dsm.deckLabel, i === 0 && s.id === 'mint' && { color: '#0B0A0E' }, i === 0 && SKIN_CARD_ART[s.id] && { paddingLeft: SKIN_CARD_ART[s.id].labelTop }]} numberOfLines={1}>{s.id}</Text>
                               {locked && (
                                 <View style={dsm.deckLock}>
                                   <LockClosedIcon size={12} color="#FFFFFF" />
@@ -3049,12 +3072,12 @@ const dsm = StyleSheet.create({
   sectionLabel: { color: '#9A9A9A', fontSize: 13, fontWeight: '600', marginBottom: 14 },
   // 지구본 스킨 카드 덱 — 좌측은 카드 패딩을 상쇄해 카드 가장자리부터 시작
   deck: { height: DS_DECK_H, marginLeft: -DS_PAD, position: 'relative' },
-  deckCard: { position: 'absolute', top: 0, left: -DS_DECK_BLEED, height: DS_DECK_H, borderRadius: 10, overflow: 'hidden' },
+  deckCard: { position: 'absolute', top: 0, left: -DS_DECK_BLEED, height: DS_DECK_H, borderRadius: 15, overflow: 'hidden' }, // 반경 15 = 시안 SVG
   deckLabelStrip: { position: 'absolute', top: 0, right: 0, width: DS_DECK_PEEK, height: DS_DECK_H, alignItems: 'center' },
   deckLabel: {
     position: 'absolute', width: DS_DECK_H, height: DS_DECK_PEEK,
     left: (DS_DECK_PEEK - DS_DECK_H) / 2, top: (DS_DECK_H - DS_DECK_PEEK) / 2,
-    paddingLeft: 9, color: '#FFFFFF', fontSize: 12, fontWeight: '700',
+    paddingLeft: 11.5, color: '#FFFFFF', fontSize: 12, fontWeight: '700',
     lineHeight: DS_DECK_PEEK, includeFontPadding: false, textAlignVertical: 'center',
     transform: [{ rotate: '90deg' }],
   },
