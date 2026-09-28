@@ -2720,7 +2720,12 @@ export default function MainScreen({ navigation, route }: Props) {
                             <TouchableOpacity
                               hitSlop={{ top: 8, bottom: 8, left: 6, right: 10 }}
                               // × = 바로 삭제하지 않고 '기록 삭제 | 색상 변경' 팝오버를 연다(시안 2026-09-28)
-                              onPress={() => { setChipMenuFor(chipMenuFor === nameEn ? null : nameEn); setEditingCountryColor(null); setAddingCountryColor(false); }}
+                              onPress={() => {
+                                setAddingCountryColor(false);
+                                // 이미 기본 색이면 제거할 게 없으니 ×도 칩 본문처럼 곧장 색상 알약을 연다(사용자 요청)
+                                if (countryColors[nameEn] === globeColor) { setChipMenuFor(null); setEditingCountryColor(isEditing ? null : nameEn); return; }
+                                setChipMenuFor(chipMenuFor === nameEn ? null : nameEn); setEditingCountryColor(null);
+                              }}
                               accessibilityRole="button"
                               accessibilityLabel={`${nameOf(nameEn)} ${t('main.chipRemove')} / ${t('main.changeColor')}`}
                             >
