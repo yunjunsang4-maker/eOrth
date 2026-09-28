@@ -111,12 +111,12 @@ const SKIN_CARD_ART: Record<string, { src: number; hScale: number; yOff: number;
 const DS_DECK_BLEED = 20;
 const DS_DECK_W = DS_CARD_W - DS_PAD;
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
-// 스킨별 활성화색 팔레트(각 4색). aurora=보라(뒤 2색 노이즈), cyan=시안. 미지정 스킨(mint 등)은 aurora 폴백.
-// 채도 -15%(색상·밝기 유지) — 활성화색이 과포화로 튀지 않게 살짝 낮춤. 원본 대비 HSL S만 ×0.85.
+// 스킨별 활성화색 팔레트(각 4색) — 배열 순서가 곧 옵션 알약 순서(사용자 지정 2026-09-28).
+// aurora의 #E1CDFB·#EB19D2는 노이즈 색. 빠진 옛 색은 utils/retiredSkinColors가 저장값을 새 색으로 바꾼다.
 const DS_PALETTES: Record<string, string[]> = {
-  aurora: ['#DF43E8', '#C88BF6', '#E1CDFB', '#EB19D2'],
+  aurora: ['#EB19D2', '#DF43E8', '#E1CDFB', '#A47DE9'],
   cyan:   ['#15D3EC', '#12CAE1', '#C8F5FB', '#8FF6EC'],
-  mint:   ['#8FF6BD', '#12E17A', '#C8FBD0', '#8FF6A0'],
+  mint:   ['#1DFFBB', '#12E17A', '#EBFFF4', '#C8FBD0'],
 };
 // 통계 화면(연도별·대륙별 막대 색)도 이 팔레트를 사용한다 (StatsScreen)
 export const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;

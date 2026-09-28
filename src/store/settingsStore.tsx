@@ -11,6 +11,7 @@ import {
 } from '../utils/regionKeyMigration';
 import { normalizeRegionGlobalMode, type RegionGlobalMode } from '../utils/regionModeMigration';
 import { normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
+import { remapRetiredColor, remapRetiredColorMap, remapRetiredSkinStore } from '../utils/retiredSkinColors';
 import { REGION_COUNTRIES } from '../constants/regionCountries';
 
 // 대륙 모드 즐겨찾기의 유효 코드 집합 — 여기 없는 ISO3는 그리드가 국가를 못 찾아
@@ -69,7 +70,8 @@ export interface SkinColorSet {
 }
 
 // 스킨별 기본 활성화색 (MainScreen DS_PALETTES 기본색과 일치해야 함 — 채도 -15% 반영)
-const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#C88BF6', cyan: '#12CAE1', mint: '#8FF6BD' };
+// 2026-09-28 팔레트 개편: aurora #C88BF6→#A47DE9, mint #8FF6BD→#1DFFBB (빠진 옛 색의 자리를 이은 색)
+const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#A47DE9', cyan: '#12CAE1', mint: '#1DFFBB' };
 
 /**
  * 거주지 시·도 — 소셜 탭의 '일상' 링 판정 기준(설계 2026-09-12).
@@ -346,7 +348,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // 아이콘 팔레트를 스킨에 동기화 — setState '전에' 모듈 COLORS를 갈아끼워 재렌더 시 새 색이 반영되게 한다
   const applyIconPalette = (skin: string) => setPalette(skin === 'cyan' ? 'cyan' : skin === 'mint' ? 'mint' : 'purple');
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
-  const [globeColor, setGlobeColor] = useState('#C88BF6'); // 보라 활성화색 기본 (팔레트 4종 중, 채도 -15%)
+  const [globeColor, setGlobeColor] = useState('#A47DE9'); // 보라 활성화색 기본 (aurora 팔레트 4종 중)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
   const [regionGlobalMode, setRegionGlobalMode] = useState<RegionGlobalMode>('photo');
@@ -473,8 +475,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       applyIconPalette(p.globeSkin ?? 'aurora');
       setGlobeSkin(p.globeSkin ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
-      setGlobeColor(p.globeColor ?? '#C88BF6');
-      setCountryColors(p.countryColors ?? {});
+      // 팔레트 개편으로 빠진 옛 색은 새 색으로 (utils/retiredSkinColors)
+      setGlobeColor(remapRetiredColor(p.globeColor ?? '#A47DE9'));
+      setCountryColors(remapRetiredColorMap(p.countryColors ?? {}));
       setCountryDisplayModes(p.countryDisplayModes ?? {});
       setRegionGlobalMode(normalizeRegionGlobalMode(p.regionGlobalMode));
       // 퍼즐 그림 URI는 iOS 재빌드 시 컨테이너 절대경로가 깨진다 — profilePhoto와 같은 복구
@@ -528,9 +531,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionKeyBackupV0(p.regionKeyBackupV0 ?? null);
       }
       setRegionDisplayModes(rDisplay);
-      setRegionColors(rColors);
+      setRegionColors(remapRetiredColorMap(rColors));
       setTaggedRegions(rTagged);
-      setSkinColorStore(rSkins);
+      setSkinColorStore(remapRetiredSkinStore(rSkins));
       setDismissedRegionTagChips(p.dismissedRegionTagChips ?? []);
       // 즐겨찾기는 순서가 의미라 정렬하지 않고, 목록에서 빠진 국가만 걸러낸다.
       // Set은 삽입 순서를 보존하므로 '첫 등장만 유지'하는 중복 제거가 된다 — 손상된 저장본에
@@ -733,7 +736,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     applyIconPalette('aurora'); // 아이콘 팔레트도 함께 복원 (원시 setter라 테마드 경로를 안 타므로 직접)
     setGlobeSkin('aurora');
     setGlobeDisplayMode('flag');
-    setGlobeColor('#C88BF6'); // 초기 기본값과 동일하게 (팔레트 4종 중 하나, 채도 -15% — #BF85FC는 팔레트 밖)
+    setGlobeColor('#A47DE9'); // 초기 기본값과 동일하게 (aurora 팔레트 4종 중 하나)
     setCountryColors({});
     setCountryDisplayModes({});
     setRegionGlobalMode('photo');
@@ -818,13 +821,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.globeVariant === 'string') setGlobeVariant(v.globeVariant);
     if (typeof v.globeSkin === 'string') { applyIconPalette(v.globeSkin); setGlobeSkin(v.globeSkin); }
     if (typeof v.globeDisplayMode === 'string') setGlobeDisplayMode(v.globeDisplayMode);
-    if (typeof v.globeColor === 'string') setGlobeColor(v.globeColor);
-    if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(v.countryColors);
+    if (typeof v.globeColor === 'string') setGlobeColor(remapRetiredColor(v.globeColor));
+    if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(remapRetiredColorMap(v.countryColors));
     if (v.countryDisplayModes && typeof v.countryDisplayModes === 'object') setCountryDisplayModes(v.countryDisplayModes);
     if (v.regionGlobalMode !== undefined) setRegionGlobalMode(normalizeRegionGlobalMode(v.regionGlobalMode));
     // 옛 백업 JSON에는 GADM 키가 들어 있다. 여기를 빠뜨리면 백업을 복원한 사용자만 조용히 깨진다.
     if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(migrateRegionKeyMap(v.regionDisplayModes as Record<string, 'color' | 'photo'>));
-    if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(migrateRegionKeyMap(v.regionColors as Record<string, string>));
+    if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(remapRetiredColorMap(migrateRegionKeyMap(v.regionColors as Record<string, string>)));
     if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(migrateTaggedRegions(v.taggedRegions as Record<string, TaggedRegion[]>));
     if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
     // 즐겨찾기 순서가 곧 그리드 순서다 — 순서를 보존한 채 유효 코드만 남긴다.
@@ -839,7 +842,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         )),
       );
     }
-    if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(migrateSkinColorStore(v.skinColorStore as Record<string, SkinColorSet>));
+    if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(remapRetiredSkinStore(migrateSkinColorStore(v.skinColorStore as Record<string, SkinColorSet>)));
     // 백업에 실린 지역 키 스키마. 위 네 필드는 스키마와 무관하게 전부 migrate*를 거치므로
     // 적용 후 로컬 상태는 항상 현재 버전이다. 미래 버전 백업(구버전 앱에서 복원)만 경고로 남긴다.
     if (typeof v.regionKeySchema === 'number' && v.regionKeySchema > REGION_KEY_SCHEMA) {
