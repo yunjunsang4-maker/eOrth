@@ -108,6 +108,11 @@ const SKIN_CARD_ART: Record<string, { src: number; hScale: number; yOff: number;
   cyan: { src: require('../../assets/globe-skins/cyan-card.png'), hScale: 1.13352, yOff: -0.06676, opacity: 0.8, labelTop: 14.5, labelInset: 4.4 }, // Group 2085664692 (402×874)
   mint: { src: require('../../assets/globe-skins/mint-card.png'), hScale: 1.10518, yOff: -0.05259, opacity: 1, labelTop: 13.8, labelInset: 2.5 }, // Group 2085664693 (402×874, 불투명)
 };
+const DS_DECK_ORDER: Record<string, string[]> = {
+  aurora: ['aurora', 'cyan', 'mint'],
+  cyan: ['cyan', 'mint', 'aurora'],
+  mint: ['mint', 'cyan', 'aurora'],
+};
 const DS_DECK_BLEED = 20;
 const DS_DECK_W = DS_CARD_W - DS_PAD;
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
@@ -800,7 +805,10 @@ export default function MainScreen({ navigation, route }: Props) {
   // 스킨 카드 덱 슬라이드 — 카드별 translateX(선택 스킨=맨 앞). 폭은 셋 다 같고 x만 옮겨 '앞으로 밀려 나오는' 느낌
   const deckX = useRef<Record<string, Animated.Value>>({}).current;
   const deckSlotX = (slot: number) => -(GLOBE_SKINS.length - 1 - slot) * DS_DECK_PEEK;
+  // 스킨별 덱 순서(앞→뒤)는 DS_DECK_ORDER. 표에 없는 스킨은 선택 스킨 + GLOBE_SKINS 순서.
   const deckOrder = useMemo(() => {
+    const fixed = DS_DECK_ORDER[globeSkin];
+    if (fixed) return fixed;
     const front = GLOBE_SKINS.find(s => s.id === globeSkin) ?? GLOBE_SKINS[0];
     return [front, ...GLOBE_SKINS.filter(s => s !== front)].map(s => s.id);
   }, [globeSkin]);
