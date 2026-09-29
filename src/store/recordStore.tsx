@@ -1416,6 +1416,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 서버 저장 전(임시 id)에 지운 내 댓글 — 저장이 끝나 서버 uuid가 오면 그때 서버에서도 지운다.
   // 없으면 서버에는 남아 다음 refreshComments 때 '부활'한다(2026-09-29 소셜 탭 점검 9번).
   const deletedPendingCommentIdsRef = useRef<Set<string>>(new Set());
+  // 서버 저장 중인 내 댓글(임시 id) → 서버 uuid(실패면 null). 이 댓글에 단 답글이 부모 uuid를 기다리는 데 쓴다.
+  const pendingCommentSidRef = useRef<Map<string, Promise<string | null>>>(new Map());
   // 좋아요 서버 반영이 '진행 중'인 글의 로컬 id → 미착신 요청 수.
   // likeStateRef(최종 의도 상태)와 달리 요청이 끝나면 0으로 돌아온다 — 서버 카운트 병합
   // (refreshMyPostCounts)이 아직 서버에 닿지 않은 내 탭을 되돌려 하트가 깜빡이는 것을 막는 용도라
@@ -1600,7 +1602,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === postId) ? postId : null)
         ?? (remoteIdHint && isRemoteId(remoteIdHint) ? remoteIdHint : null); // reportPost 주석 참조
       const body = (commentsByPost[postId] ?? []).find((c) => c.id === commentId)?.text ?? '';
-      apiReportPost(remoteId, `[comment:${commentId}] ${reason ?? ''} ${body.slice(0, 200)}`.trim()).catch(() => {
+      apiReportPost(remoteId, `[comment:${commentId}] ${reason ?? ''} ${body.slice(0, 200)}`.trim(), isRemoteId(commentId) ? commentId : undefined).catch(() => {
         // 접수 실패는 조용히 무시 — 로컬 숨김은 이미 적용됨
       });
     }
@@ -1735,12 +1737,16 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const feed = feedPosts.find((r) => r.id === postId);
       const remoteId = own?.remoteId ?? feed?.remoteId ?? feed?.id ?? remoteIdOverride;
       if (remoteId) {
-        // 답글 부모는 백엔드 댓글 uuid일 때만 연결. 답글의 답글이면 top-level 부모로 승격(단일 단계 유지).
+        // 답글 부모 = 답글 대상이 속한 top-level 댓글(단일 단계 유지). 그 top이 아직 서버 저장 전(임시 id)이면
+        // 저장이 끝나 uuid가 올 때까지 기다린다 — 예전엔 부모 없이 보내 서버에 top-level 댓글로 저장됐고,
+        // 부모 전송이 실패하면 고아 댓글로 남았다(2026-09-29 소셜 탭 점검 후속).
         let parent: string | undefined;
-        if (replyToId && /^[0-9a-f-]{36}$/i.test(replyToId)) {
+        let parentWait: Promise<string | null> | undefined;
+        if (replyToId) {
           const list = commentsByPost[postId] ?? [];
-          const top = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId));
-          parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
+          const topId = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId))?.id ?? replyToId;
+          if (/^[0-9a-f-]{36}$/i.test(topId)) parent = topId;
+          else parentWait = pendingCommentSidRef.current.get(topId);
         }
         // 저장 실패(오류·세션 없음) → 임시 댓글을 되돌린다. 남겨 두면 refreshComments가 임시 id를
         // 계속 보존해 '나에게만 영원히 보이는 댓글'이 된다(9번). 알림은 notifySyncError가 띄운다.
@@ -1748,8 +1754,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           deletedPendingCommentIdsRef.current.delete(nc.id);
           setCommentsByPost((prev) => (prev[postId] ? { ...prev, [postId]: removeComment(prev[postId], nc.id).next } : prev));
         };
-        apiAddComment(remoteId, text, parent)
+        // 부모 저장이 실패하면(null) 부모는 dropPending으로 답글째 로컬에서 빠졌다 — 이 답글도 보내지 않는다
+        const PARENT_FAILED = Symbol('parentFailed');
+        const send = (async (): Promise<string | null | typeof PARENT_FAILED> => {
+          if (!parentWait) return apiAddComment(remoteId, text, parent);
+          const pid = await parentWait;
+          // 기다리는 사이 부모째 지워졌으면(deleteComment가 임시 답글 id도 기록) 보내지 않는다
+          if (!pid || deletedPendingCommentIdsRef.current.delete(nc.id)) return PARENT_FAILED;
+          return apiAddComment(remoteId, text, pid);
+        })();
+        const sidPromise = send.then((sid) => (typeof sid === 'string' ? sid : null), () => null);
+        pendingCommentSidRef.current.set(nc.id, sidPromise);
+        // 성공한 항목은 지우지 않는다 — 여기서 지우면 로컬 id가 uuid로 바뀌기 전(getMyUserId 대기, 수 초)에 단
+        // 답글이 부모를 못 찾아 top-level로 저장됐다(round5 #1). 실패한 것만 지운다.
+        // ponytail: 세션 동안 내가 보낸 댓글 수만큼 항목이 남는다 — 문제 되면 swap 뒤 한 틱 늦춰 삭제.
+        sidPromise.then((sid) => { if (!sid) pendingCommentSidRef.current.delete(nc.id); });
+        send
           .then(async (sid) => {
+            if (sid === PARENT_FAILED) { dropPending(); return; } // 알림은 부모 쪽에서 이미 떴다
             // 세션 없음(null)도 전송 실패다 — 조용히 사라지지 않게 같은 알림을 띄운다
             if (!sid) { dropPending(); notifySyncError(); return; }
             // 내 profile uuid도 함께 부착 — 없으면 내가 단 댓글에서 작성자 프로필 이동이
@@ -1777,7 +1799,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
               return { ...prev, [postId]: list.map(swap) };
             });
           })
-          .catch((e) => { dropPending(); notifySyncError(e); });
+          .catch((e) => {
+            // 사용자가 이미 지운 댓글(부모째 삭제 → FK 거부 등)의 저장 실패는 알리지 않는다 — 거짓 '동기화 실패'
+            const alreadyDeleted = deletedPendingCommentIdsRef.current.has(nc.id);
+            dropPending();
+            if (!alreadyDeleted) notifySyncError(e);
+          });
       }
     }
   };
@@ -1825,6 +1852,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const { removed } = removeComment(commentsByPost[postId] ?? [], commentId);
     setCommentsByPost((prev) => (prev[postId] ? { ...prev, [postId]: removeComment(prev[postId], commentId).next } : prev));
     if (!isSupabaseConfigured) return;
+    // 댓글째 빠진 '서버 저장 전 답글'도 기록 — 저장이 끝나면 서버에서도 지우고, 부모를 기다리던 답글은 안 보낸다
+    for (const r of removed?.comment.replies ?? []) {
+      if (!isRemoteId(r.id)) deletedPendingCommentIdsRef.current.add(r.id);
+    }
     if (!isRemoteId(commentId)) {
       // 아직 서버 저장 전인 내 댓글 — addComment가 uuid를 받는 순간 서버에서도 지운다
       deletedPendingCommentIdsRef.current.add(commentId);
@@ -1833,7 +1864,16 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     apiDeleteComment(commentId).catch((e) => {
       // 서버 삭제 실패 → 그 댓글만 로컬 복원. 안 하면 다음 refreshComments 때 서버 사본으로
       // '부활'해 사용자는 삭제가 됐다 안 됐다 하는 것처럼 보인다.
-      if (removed) setCommentsByPost((prev) => ({ ...prev, [postId]: restoreComment(prev[postId] ?? [], removed) }));
+      // 되살린 댓글 밑 '서버 저장 전 답글'의 삭제 기록도 거둔다 — 남기면 저장 완료 때 서버에서 지워져
+      // 나에게만 보이는 유령 답글이 된다(round5 #2). 기록이 이미 소비된 답글(그 사이 저장→서버 삭제됐거나
+      // 저장 실패로 정리됨)은 서버에 없으니 되살리지 않는다(round6 #2).
+      const pending = deletedPendingCommentIdsRef.current;
+      if (removed) {
+        const replies = removed.comment.replies?.filter((r) => isRemoteId(r.id) || pending.has(r.id));
+        const back = { ...removed, comment: { ...removed.comment, ...(replies ? { replies } : {}) } };
+        setCommentsByPost((prev) => ({ ...prev, [postId]: restoreComment(prev[postId] ?? [], back) }));
+      }
+      for (const r of removed?.comment.replies ?? []) pending.delete(r.id);
       notifySyncError(e);
     });
   };

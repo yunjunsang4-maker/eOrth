@@ -57,7 +57,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   // DM으로 이동
   const openDM = (follower: NeighborProfile) => {
     tap();
-    const name = follower.handle || '여행자';
+    const name = follower.handle || t('friends.travelerDefault');
     navigation.navigate('DM', {
       friend: { name, handle: follower.handle || name, emoji: follower.emoji || '👤', photo: follower.photo ?? undefined, id: follower.id },
     });
@@ -67,7 +67,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   const [removingId, setRemovingId] = useState<string | null>(null);
   const handleRemoveNeighbor = (neighbor: NeighborProfile) => {
     if (removingId) return;
-    const name = neighbor.handle || '여행자';
+    const name = neighbor.handle || t('friends.travelerDefault');
     // 기존의 tap()을 뺐다 — 바로 아래 warn()과 연달아 울려 한 번의 탭에 두 번 진동했다.
     // 되돌릴 수 없는 동작이므로 더 강한 신호인 warn() 하나만 남긴다.
     warn();
@@ -166,7 +166,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
             <>
               <Text style={[styles.sectionLabel, { color: skinAccent.accent }]}>{t('friends.neighborRequestsN', { count: requests.length })}</Text>
               {requests.map((req) => {
-                const reqName = req.handle || '여행자';
+                const reqName = req.handle || t('friends.travelerDefault');
                 return (
                   <View key={req.requesterId} style={styles.friendRow}>
                     <TouchableOpacity
@@ -214,7 +214,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
             </Text>
           )}
           {followers.map((follower, index) => {
-            const name = follower.handle || '여행자';
+            const name = follower.handle || t('friends.travelerDefault');
             return (
               <React.Fragment key={follower.id}>
                 <TouchableOpacity

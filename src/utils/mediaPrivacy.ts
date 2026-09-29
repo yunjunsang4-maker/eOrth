@@ -67,6 +67,15 @@ export function applyViewer<T extends PrivacyRecord & { photoTexts?: string[]; m
   const nextMedias = visIdx.map((i) => medias[i]);
   const nextRep = visibleRepresentative(record, viewer);
   const out: T = { ...record, medias: nextMedias, representativePhoto: nextRep };
+  // mediaPrivacy도 걸러진 medias의 index로 다시 매긴다 — 원본 index 그대로 두면 사본에 applyViewer가
+  // 한 번 더 걸릴 때(FriendProfile → TripDetail → PostDetail) 엉뚱한(보여야 할) 사진이 가려졌다.
+  // 재매김 후엔 같은 뷰어로 몇 번을 적용해도 결과가 같다(멱등).
+  const priv = record.mediaPrivacy;
+  if (priv) {
+    const nextPriv: Record<number, string[]> = {};
+    visIdx.forEach((i, j) => { if (priv[i]) nextPriv[j] = priv[i]; });
+    out.mediaPrivacy = nextPriv;
+  }
   if (!texts) return out;
   const nextTexts = visIdx.map((i) => texts[i] ?? '');
   out.photoTexts = nextTexts;

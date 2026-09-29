@@ -102,5 +102,23 @@ const rec = {
   assert(applyViewer(oldMemo, '김민수').memo === '옛 본문', 'photoTexts 없는 옛 글: memo는 진짜 본문이라 그대로');
 }
 
+// ── applyViewer 멱등: 사본에 한 번 더 걸려도(FriendProfile → TripDetail → PostDetail) 결과가 같다 ──
+{
+  const rec = {
+    medias: ['p0', 'p1', 'p2', 'p3'],
+    photoTexts: ['글0', '비밀1', '글2', '글3'],
+    representativePhoto: 'p0', memo: '글0',
+    mediaPrivacy: { 1: ['김민수'], 3: ['이서연'] },
+  };
+  const once = applyViewer(rec, '김민수');
+  const twice = applyViewer(once, '김민수');
+  assert(JSON.stringify(once.medias) === JSON.stringify(['p0', 'p2', 'p3']), '1회: 김민수에게 p1만 가림');
+  assert(JSON.stringify(twice.medias) === JSON.stringify(['p0', 'p2', 'p3']), '2회 적용해도 p2가 가려지지 않음(옛 index 1 오적용 없음)');
+  assert(JSON.stringify(twice.photoTexts) === JSON.stringify(['글0', '글2', '글3']), '2회 적용해도 사진별 글 짝 유지');
+  assert(JSON.stringify(once.mediaPrivacy) === JSON.stringify({ 2: ['이서연'] }), '사본 mediaPrivacy는 걸러진 index로 재매김(p3 → 2)');
+  assert(JSON.stringify(applyViewer(once, '이서연').medias) === JSON.stringify(['p0', 'p2']), '재매김된 사본에 다른 뷰어 → 그 사람 대상(p3)만 가림');
+  assert(!('mediaPrivacy' in applyViewer({ medias: ['p0'] }, '김민수')), 'mediaPrivacy 없으면 키를 만들지 않음');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

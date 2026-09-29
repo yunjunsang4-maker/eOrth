@@ -479,7 +479,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             <Text style={st.snapBadge}>SNAP</Text>
             {locName ? (
               <Text style={st.locationText}>
-                📍 {locName}{detectedCity ? ` · ${detectedCity}` : ''}
+                📍 {countryLabel(locName, i18n.language)}{detectedCity ? ` · ${detectedCity}` : ''}
               </Text>
             ) : null}
           </View>
@@ -634,7 +634,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         <View style={st.previewBadges}>
           {detectedCountry && (
             <View style={st.previewBadge}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><PinIcon size={12} color="#fff" /><Text style={st.previewBadgeText}>{detectedCountry}{detectedCity ? ` · ${detectedCity}` : ''}</Text></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><PinIcon size={12} color="#fff" /><Text style={st.previewBadgeText}>{countryLabel(detectedCountry, i18n.language)}{detectedCity ? ` · ${detectedCity}` : ''}</Text></View>
             </View>
           )}
           {notifTimestamp && (

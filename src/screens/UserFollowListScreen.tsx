@@ -78,7 +78,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
             </Text>
           )}
           {list.map((entry, index) => {
-            const name = entry.handle || '여행자';
+            const name = entry.handle || t('friends.travelerDefault');
             return (
               <React.Fragment key={entry.id}>
                 <TouchableOpacity

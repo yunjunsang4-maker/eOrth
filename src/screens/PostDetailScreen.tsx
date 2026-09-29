@@ -45,6 +45,8 @@ import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
 import WeatherIcon, { normalizeWeather } from '../components/WeatherIcon';
 import ReportModal from '../components/ReportModal';
+// 저장값(직항·친구 등 한글 키)은 유지하고 표시만 번역 — 기록 화면들과 같은 라벨 함수
+import { companionLabel, flightLabel } from './CutTravelInfoScreen';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 // RatingStars는 2026-09-20 시안 적용으로 이 화면에서 링 배지(RatingRingBadge)로 대체되어 제거.
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
@@ -2398,7 +2400,8 @@ export default function PostDetailScreen() {
                         <BlogBlockRenderer block={block} fontScale={fontScale} onImagePress={openFullImage} />
                       </View>
                     ) : (
-                      <BlogBlockRenderer key={block.id} block={block} fontScale={fontScale} />
+                      // onImagePress는 사진 블록에 필요하다 — 예전엔 제목 블록에만 넘겨 본문 사진을 눌러도 뷰어가 안 열렸다
+                      <BlogBlockRenderer key={block.id} block={block} fontScale={fontScale} onImagePress={openFullImage} />
                     )
                   )}
                 </>
@@ -2530,7 +2533,7 @@ export default function PostDetailScreen() {
                   /* 시안(2026-09-20 '캘린더 누르면 여행정보 펼쳐짐'): 글자만, 아이콘 없음. 실측 66×30 */
                   <View style={s.infoPill}>
                     <AutoPillRing />
-                    <Text style={s.infoPillText}>{record.flightType}</Text>
+                    <Text style={s.infoPillText}>{flightLabel(record.flightType, t)}</Text>
                   </View>
                 )}
                 {normalizeWeather(record.weather) && (
@@ -2552,7 +2555,7 @@ export default function PostDetailScreen() {
                   <View key={`${comp}-${i}`} style={s.infoPill}>
                     <AutoPillRing />
                     <View style={s.companionIconWrap}>{companionIcon(comp)}</View>
-                    <Text style={s.infoPillText}>{comp}</Text>
+                    <Text style={s.infoPillText}>{companionLabel(comp, t)}</Text>
                   </View>
                 ))}
               </View>
@@ -2679,7 +2682,7 @@ export default function PostDetailScreen() {
               {record.flightType && (
                 <View style={s.infoChip}>
                   {record.flightType === '직항' ? <PlaneIcon size={13} color="#A1A1B0" /> : <TransferIcon size={13} color="#A1A1B0" />}
-                  <Text style={s.infoChipText}>{record.flightType}</Text>
+                  <Text style={s.infoChipText}>{flightLabel(record.flightType, t)}</Text>
                 </View>
               )}
               {record.budget && (

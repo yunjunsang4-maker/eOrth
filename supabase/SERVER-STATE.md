@@ -80,7 +80,23 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 0건 (2026-09-14 정리: 이 절의 ⏳ 전부 2026-09-11~14에 반영 완료)
+## 1. 지금 해야 하는 것 — 0건 (2026-09-29 댓글 신고 SQL 사용자 실행으로 다시 0건)
+
+### ✅ 반영 완료(2026-09-29, 사용자 실행) — 댓글 신고 `reports.comment_id` + 중복 방지 인덱스 분리 (2026-09-29 추가)
+
+> `supabase/migration-2026-09-29-report-comment-id.sql` (schema.sql 신고 절과 동일 내용). 운영·테스트 양쪽 SQL Editor에서 실행.
+
+- **문제:** 댓글 신고도 글 id를 `post_id`로 넣는데 `uq_reports_reporter_post (reporter_id, post_id)` 하나뿐이라,
+  같은 글에서 두 번째 신고(댓글 2개·댓글+글)가 23505로 거부되고 앱이 삼켜 **운영자에게 도착하지 않았다.**
+- **고침:** `comment_id` 컬럼 추가, 인덱스를 글 신고(`comment_id is null`)·댓글 신고(`reporter_id, comment_id`)로 분리.
+- **앱 배포 순서 제약 없음:** 앱(`social.ts reportPostToServer`)은 컬럼이 없으면(42703·PGRST204) `comment_id` 없이
+  다시 넣는다 — 미반영이어도 예전 동작 그대로다. 반영 뒤부터 두 번째 신고가 도착한다.
+- **확인:** `select indexname, indexdef from pg_indexes where tablename = 'reports';` → `uq_reports_reporter_comment` 가 보이고
+  `uq_reports_reporter_post` 조건에 `comment_id IS NULL` 이 붙어 있으면 반영.
+
+---
+
+(이하 2026-09-14 정리 — 그때 기준 ⏳ 전부 2026-09-11~14에 반영 완료)
 
 **①`birthday`·`gender` 2차 drop도 2026-09-14 실행 완료** — 운영은 REST 프로브로 두 컬럼 42703(없음) 확인, 테스트는 사용자 실행.
 실행 근거: 옛 코드는 8월 중순 이후 OTA로 살아 있는 런타임(1.1.0·1.1.1) 전부에서 교체됐고, 앱·Edge Function 어디에도 두 컬럼 참조가 남아 있지 않았다(grep 확인).

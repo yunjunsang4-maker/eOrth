@@ -138,7 +138,7 @@ const fmtDate = (d: Date | null, tr: TFunction) =>
   d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : tr('cutInfo.dateSelect');
 
 // 동행자/날씨/항공편/공개범위 값(저장 키)은 유지하고 표시만 번역
-const companionLabel = (c: string, tr: TFunction) => {
+export const companionLabel = (c: string, tr: TFunction) => {
   switch (c) {
     case '혼자': return tr('newRecord.compSolo');
     case '친구': return tr('newRecord.compFriend');
@@ -160,7 +160,7 @@ const weatherLabel = (v: string, tr: TFunction) => {
     default: return v;
   }
 };
-const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
+export const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
 const visibilityLabel = (v: Visibility, tr: TFunction) => {
   switch (v) {
     case 'neighbors': return tr('newRecord.visNeighbors');

@@ -6,6 +6,7 @@
  * Supabase 미설정 시 모두 무동작.
  */
 
+import i18n from 'i18next';
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import type { PostComment } from '../store/recordStore';
@@ -188,11 +189,20 @@ export async function fetchIncomingNeighborRequests(): Promise<IncomingNeighborR
 }
 
 // 게시물 신고 접수 — 서버 reports 테이블에 저장(운영자 확인용). 로컬 숨김과 별개. (schema.sql 재실행 필요)
-export async function reportPostToServer(postRemoteId: string | null, reason: string | null): Promise<void> {
+// commentId: 댓글 신고면 대상 댓글 uuid — 서버가 (reporter_id, comment_id)로 따로 중복을 막는다
+// (migration-2026-09-29-report-comment-id.sql). 그 SQL이 아직 안 돌아 컬럼이 없으면(42703·PGRST204)
+// comment_id 없이 다시 넣는다 — 예전 동작 그대로라 앱이 먼저 나가도 신고가 사라지지 않는다.
+export async function reportPostToServer(postRemoteId: string | null, reason: string | null, commentId?: string): Promise<void> {
   if (!supabase) return;
   const uid = await getMyUserId();
   if (!uid) return;
-  const { error } = await supabase.from('reports').insert({ reporter_id: uid, post_id: postRemoteId, reason });
+  const row = { reporter_id: uid, post_id: postRemoteId, reason };
+  if (commentId) {
+    const { error } = await supabase.from('reports').insert({ ...row, comment_id: commentId });
+    if (!error) return;
+    if (error.code !== '42703' && error.code !== 'PGRST204') throw error;
+  }
+  const { error } = await supabase.from('reports').insert(row);
   if (error) throw error;
 }
 
@@ -581,7 +591,7 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
         const p = r.profiles ?? {};
         return {
           id: r.user_id,
-          name: p.handle || '여행자',
+          name: p.handle || i18n.t('friends.travelerDefault'),
           handle: p.handle || '',
           emoji: p.emoji || '🙂',
           photo: p.profile_photo || undefined,
@@ -626,7 +636,7 @@ export async function fetchComments(postId: string): Promise<PostComment[] | nul
       const c: PostComment = {
         id: row.id,
         emoji: p.emoji || '🙂',
-        name: p.handle || '여행자',
+        name: p.handle || i18n.t('friends.travelerDefault'),
         photo: p.profile_photo || undefined,
         text: row.text,
         createdAt: new Date(row.created_at).getTime(),

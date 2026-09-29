@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import FeedPhoto from './FeedPhoto';
 import { View, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image, Platform } from 'react-native';
 import { FullWindowOverlay } from 'react-native-screens';
@@ -128,6 +128,15 @@ export default function QuickShareOverlay({
   const windowLevel = Platform.OS === 'ios';
   const stageW = windowLevel ? WINDOW_W : stageWCol;
   const stageOffsetX = windowLevel ? 0 : stageGutter;
+  // 세로도 같은 문제다 — 안드로이드는 이 오버레이가 탭 화면 안(창 y=0이 아닌 헤더 아래)에 그려져,
+  // 창 좌표(cardRect.y·pos.y)를 그대로 쓰면 헤더 높이(약 80~100dp)만큼 아래로 밀려 그려졌다
+  // (2026-09-29 소셜 탭 점검 13번). 루트의 창 y를 실측해 빼 준다. iOS(창 레벨)는 0.
+  const rootRef = useRef<View>(null);
+  const [rootOffsetY, setRootOffsetY] = useState(0);
+  const measureRoot = () => {
+    if (windowLevel) return;
+    rootRef.current?.measureInWindow((_x, y) => { if (Number.isFinite(y)) setRootOffsetY(y); });
+  };
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;
@@ -215,10 +224,11 @@ export default function QuickShareOverlay({
 
   // 로컬 좌표([0, stageW]) 기준 clamp — 이 컴포넌트가 그리는 좌표계와 일치시킨다.
   const clampX = (x: number) => Math.max(8, Math.min(x, stageW - CIRCLE - 8));
-  coords = coords.map((c) => ({ x: clampX(c.x), y: c.y }));
+  // 배치·클램프는 창 좌표로 계산하고(SCREEN_H 비교 기준), 그릴 때만 로컬 좌표로 옮긴다
+  coords = coords.map((c) => ({ x: clampX(c.x), y: c.y - rootOffsetY }));
 
   const body = (
-    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+    <View ref={rootRef} onLayout={measureRoot} style={StyleSheet.absoluteFill} pointerEvents="box-none">
       {/* 어두운 배경 (탭/취소) — 페이드 인 */}
       <Animated.View style={[StyleSheet.absoluteFill, st.dim, { opacity: dimAnim }]}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
@@ -250,7 +260,7 @@ export default function QuickShareOverlay({
             // 함께 빼야 한다(세로는 오프셋이 없어 CIRCLE만 뺀다).
             transform: [
               { translateX: Animated.subtract(pos.x, stageOffsetX + CIRCLE) },
-              { translateY: Animated.subtract(pos.y, CIRCLE) },
+              { translateY: Animated.subtract(pos.y, CIRCLE + rootOffsetY) },
               { scale: ghostAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
               { rotate: '-3deg' },
             ],

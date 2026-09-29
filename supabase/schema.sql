@@ -1724,8 +1724,15 @@ alter table public.reports enable row level security;
 alter table public.reports drop constraint if exists reports_reason_len;
 alter table public.reports add constraint reports_reason_len
   check (reason is null or char_length(reason) <= 1000) not valid;
+-- 댓글 신고는 comment_id로 따로 막는다(2026-09-29) — 예전엔 (reporter_id, post_id) 하나라 같은 글의
+-- 두 번째 신고(댓글 2개·댓글+글)가 23505로 유실됐다. 델타: migration-2026-09-29-report-comment-id.sql
+alter table public.reports
+  add column if not exists comment_id uuid; -- FK 없음: 걸면 신고된 댓글 삭제 시 set null → 글 신고 인덱스와 23505 충돌(댓글·계정 삭제 롤백)
+drop index if exists public.uq_reports_reporter_post;
 create unique index if not exists uq_reports_reporter_post
-  on public.reports (reporter_id, post_id) where post_id is not null;
+  on public.reports (reporter_id, post_id) where post_id is not null and comment_id is null;
+create unique index if not exists uq_reports_reporter_comment
+  on public.reports (reporter_id, comment_id) where comment_id is not null;
 
 drop policy if exists "reports_insert_own" on public.reports;
 create policy "reports_insert_own" on public.reports
