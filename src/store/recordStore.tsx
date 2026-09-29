@@ -77,6 +77,7 @@ import {
 } from '../services/social';
 import { REGION_KEY_SCHEMA, migrateRegionNameEn } from '../utils/regionKeyMigration';
 import { ISO2_TO_GEO } from '../constants/homeRegions'; // Task 1에서 export로 바꿔둔 것
+import { removeComment, restoreComment } from './commentListLogic';
 
 /** 한글 국가명 → ISO3 (지역 키 마이그레이션용). term 첫 토큰이 ISO2다: 'jp 일본 japan' */
 const KO_TO_ISO3: Record<string, string> = Object.fromEntries(
@@ -368,8 +369,8 @@ interface RecordContextType {
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
   reportedPostIds: string[];
   reportedCommentIds: string[];
-  reportComment: (postId: string, commentId: string, reason?: string) => void;
-  reportPost: (id: string, reason?: string) => void;
+  reportComment: (postId: string, commentId: string, reason?: string, remoteIdHint?: string) => void;
+  reportPost: (id: string, reason?: string, remoteIdHint?: string) => void;
   // 음소거한 사용자 handle — 영속(알림 백엔드 도입 시 알림 억제에 사용)
   mutedHandles: string[];
   toggleMute: (handle: string) => void;
@@ -1412,6 +1413,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const likeStateRef = useRef<Record<string, boolean>>({});
   // 댓글 좋아요 진행 중 상태 — toggleCommentLike 연타 드리프트 방지용
   const commentLikeStateRef = useRef<Record<string, boolean>>({});
+  // 서버 저장 전(임시 id)에 지운 내 댓글 — 저장이 끝나 서버 uuid가 오면 그때 서버에서도 지운다.
+  // 없으면 서버에는 남아 다음 refreshComments 때 '부활'한다(2026-09-29 소셜 탭 점검 9번).
+  const deletedPendingCommentIdsRef = useRef<Set<string>>(new Set());
   // 좋아요 서버 반영이 '진행 중'인 글의 로컬 id → 미착신 요청 수.
   // likeStateRef(최종 의도 상태)와 달리 요청이 끝나면 0으로 돌아온다 — 서버 카운트 병합
   // (refreshMyPostCounts)이 아직 서버에 닿지 않은 내 탭을 되돌려 하트가 깜빡이는 것을 막는 용도라
@@ -1565,14 +1569,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 게시물 신고 → 신고 목록에 추가(피드에서 숨김) + 서버 reports에 접수(운영자 확인용).
   // 이미 신고했으면 무시.
-  const reportPost = (id: string, reason?: string) => {
+  // remoteIdHint: 스토어 밖 글(타인 프로필→상세, 게스트 여행 상세의 스냅 등)은 여기서 remoteId를 못 찾아
+  // post_id 없이 접수됐다 — 운영자가 어느 글인지 알 수 없었다(소셜 탭 점검 16번). 화면이 들고 있는 서버 id를
+  // 넘기면 스토어 조회가 실패할 때만 쓴다. uuid가 아니면(예시 글 등) 버린다 — posts FK에 안 맞는다.
+  const reportPost = (id: string, reason?: string, remoteIdHint?: string) => {
     if (reportedPostIds.includes(id)) return;
     noteExplicitFlagAdd('reportedPost', id); // add-only지만 초기화 표식은 넘어야 한다(markSnapViewed 주석 참조)
     setReportedPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     if (isSupabaseConfigured) {
       // remoteId 우선(백엔드 글), 피드 글은 id가 곧 remoteId. 로컬 전용 글이면 post_id 없이 접수
       const target = records.find((r) => r.id === id) ?? feedPosts.find((r) => r.id === id);
-      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === id) ? id : null);
+      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === id) ? id : null)
+        ?? (remoteIdHint && isRemoteId(remoteIdHint) ? remoteIdHint : null);
       apiReportPost(remoteId, reason ?? null).catch(() => {
         // 접수 실패는 조용히 무시 — 로컬 숨김은 이미 적용됨(재신고 시 재시도)
       });
@@ -1583,13 +1591,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // App Store 1.2(UGC)는 불쾌한 콘텐츠를 신고하고 '즉시 사라지게' 하는 수단을 요구하는데,
   // 게시물에만 있고 댓글에는 없었다. 신고 대상 식별은 게시물 신고와 같은 reports 테이블에
   // post_id + reason(댓글 본문 일부 포함)으로 남긴다 — 운영자가 어느 댓글인지 찾을 수 있다.
-  const reportComment = (postId: string, commentId: string, reason?: string) => {
+  const reportComment = (postId: string, commentId: string, reason?: string, remoteIdHint?: string) => {
     if (reportedCommentIds.includes(commentId)) return;
     noteExplicitFlagAdd('reportedComment', commentId);
     setReportedCommentIds((prev) => (prev.includes(commentId) ? prev : [...prev, commentId]));
     if (isSupabaseConfigured) {
       const target = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
-      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === postId) ? postId : null);
+      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === postId) ? postId : null)
+        ?? (remoteIdHint && isRemoteId(remoteIdHint) ? remoteIdHint : null); // reportPost 주석 참조
       const body = (commentsByPost[postId] ?? []).find((c) => c.id === commentId)?.text ?? '';
       apiReportPost(remoteId, `[comment:${commentId}] ${reason ?? ''} ${body.slice(0, 200)}`.trim()).catch(() => {
         // 접수 실패는 조용히 무시 — 로컬 숨김은 이미 적용됨
@@ -1733,12 +1742,27 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           const top = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId));
           parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
         }
+        // 저장 실패(오류·세션 없음) → 임시 댓글을 되돌린다. 남겨 두면 refreshComments가 임시 id를
+        // 계속 보존해 '나에게만 영원히 보이는 댓글'이 된다(9번). 알림은 notifySyncError가 띄운다.
+        const dropPending = () => {
+          deletedPendingCommentIdsRef.current.delete(nc.id);
+          setCommentsByPost((prev) => (prev[postId] ? { ...prev, [postId]: removeComment(prev[postId], nc.id).next } : prev));
+        };
         apiAddComment(remoteId, text, parent)
           .then(async (sid) => {
-            if (!sid) return;
+            // 세션 없음(null)도 전송 실패다 — 조용히 사라지지 않게 같은 알림을 띄운다
+            if (!sid) { dropPending(); notifySyncError(); return; }
             // 내 profile uuid도 함께 부착 — 없으면 내가 단 댓글에서 작성자 프로필 이동이
             // 비활성(disabled={!c.authorId})으로 남는다.
             const myUid = await getMyUserId().catch(() => null);
+            // 저장 전에 이미 지웠으면 서버 사본도 지운다(로컬 목록엔 이미 없음).
+            // ⚠️ 반드시 위 await **뒤**에서 본다 — 앞에서 보면 getMyUserId 대기(토큰 갱신 시 수 초) 중
+            //    지운 댓글은 임시 id로 ref에만 남고 swap도 못 찾아, 서버 사본이 영영 남는다.
+            //    여기서 setCommentsByPost까지는 동기라 그 사이 끼어드는 삭제가 없다.
+            if (deletedPendingCommentIdsRef.current.delete(nc.id)) {
+              apiDeleteComment(sid).catch(notifySyncError);
+              return;
+            }
             // 서버 uuid를 로컬 댓글 id로 교체 — 방금 단 댓글의 삭제·좋아요가 서버에 반영되고
             // (isRemoteId 게이트 통과), 상세 재진입 refreshComments 때 지운 댓글이 '부활'하지
             // 않으며, 이 댓글에 다는 답글도 올바른 부모로 저장된다.
@@ -1753,7 +1777,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
               return { ...prev, [postId]: list.map(swap) };
             });
           })
-          .catch(notifySyncError);
+          .catch((e) => { dropPending(); notifySyncError(e); });
       }
     }
   };
@@ -1796,23 +1820,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 댓글/답글 삭제 (top-level 또는 답글) — 로컬 즉시 반영 + 백엔드 동기화
   const deleteComment = (postId: string, commentId: string) => {
-    const snapshot = commentsByPost[postId]; // 서버 삭제 실패 시 복원용
-    setCommentsByPost((prev) => {
-      const list = prev[postId];
-      if (!list) return prev;
-      const next = list
-        .filter((c) => c.id !== commentId)
-        .map((c) => (c.replies?.length ? { ...c, replies: c.replies.filter((r) => r.id !== commentId) } : c));
-      return { ...prev, [postId]: next };
-    });
-    if (isSupabaseConfigured && isRemoteId(commentId)) {
-      apiDeleteComment(commentId).catch((e) => {
-        // 서버 삭제 실패 → 로컬 복원. 안 하면 다음 refreshComments 때 서버 사본으로
-        // '부활'해 사용자는 삭제가 됐다 안 됐다 하는 것처럼 보인다.
-        if (snapshot) setCommentsByPost((prev) => ({ ...prev, [postId]: snapshot }));
-        notifySyncError(e);
-      });
+    // 서버 삭제 실패 시 복원용 — 목록 스냅샷이 아니라 지운 댓글 하나와 자리만 들고 있는다.
+    // 스냅샷으로 통째 되돌리면 그 사이에 단 댓글까지 지워진다(9번).
+    const { removed } = removeComment(commentsByPost[postId] ?? [], commentId);
+    setCommentsByPost((prev) => (prev[postId] ? { ...prev, [postId]: removeComment(prev[postId], commentId).next } : prev));
+    if (!isSupabaseConfigured) return;
+    if (!isRemoteId(commentId)) {
+      // 아직 서버 저장 전인 내 댓글 — addComment가 uuid를 받는 순간 서버에서도 지운다
+      deletedPendingCommentIdsRef.current.add(commentId);
+      return;
     }
+    apiDeleteComment(commentId).catch((e) => {
+      // 서버 삭제 실패 → 그 댓글만 로컬 복원. 안 하면 다음 refreshComments 때 서버 사본으로
+      // '부활'해 사용자는 삭제가 됐다 안 됐다 하는 것처럼 보인다.
+      if (removed) setCommentsByPost((prev) => ({ ...prev, [postId]: restoreComment(prev[postId] ?? [], removed) }));
+      notifySyncError(e);
+    });
   };
 
   // 백엔드 댓글 불러오기 (게시물 상세 진입 시). remoteId 없으면 로컬 유지.

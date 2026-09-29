@@ -884,6 +884,8 @@ const en = {
   },
   snap: {
     defaultCaption: '⚡ Snapped moment',
+    locationUnknown: '📍 Location unknown',
+    recordAsHome: ' · saved as {{flag}} {{country}}',
     captureFailTitle: 'Capture failed',
     captureFail2nd: 'Failed to capture the second photo. Please try again.',
     captureFailMsg: 'An error occurred while taking the photo. Please try again.',
@@ -1550,6 +1552,8 @@ const en = {
     today: 'today',
     dayAgo: '{{n}}d ago',
     monthDay: '{{m}}/{{d}}',
+    weekAgo: '{{n}}w ago',
+    monthAgo: '{{n}}mo ago',
   },
   dm: {
     emptyStart: 'Start a conversation with {{name}}',

@@ -897,6 +897,8 @@ const ko = {
   },
   snap: {
     defaultCaption: '⚡ 순간 포착',
+    locationUnknown: '📍 위치 미확인',
+    recordAsHome: ' · {{flag}} {{country}}(으)로 기록',
     captureFailTitle: '촬영 실패',
     captureFail2nd: '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.',
     captureFailMsg: '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.',
@@ -1570,6 +1572,8 @@ const ko = {
     today: '오늘',
     dayAgo: '{{n}}일 전',
     monthDay: '{{m}}월 {{d}}일',
+    weekAgo: '{{n}}주 전',
+    monthAgo: '{{n}}달 전',
   },
   dm: {
     emptyStart: '{{name}}님과의 대화를 시작해보세요',

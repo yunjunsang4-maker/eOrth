@@ -73,5 +73,34 @@ const rec = {
   assert(isPostHiddenForViewer({ viewType: 'blog' }, '김민수') === false, 'mediaPrivacy 없으면 숨김 없음');
 }
 
+// ── applyViewer: 사진별 글(photoTexts)도 같은 index로 걸러야 한 칸씩 밀리지 않는다(5번) ──
+{
+  const rec = { medias: ['p0', 'p1', 'p2'], photoTexts: ['글0', '비밀1', '글2'], mediaPrivacy: { 1: ['김민수'] } };
+  assert(JSON.stringify(applyViewer(rec, '김민수').photoTexts) === JSON.stringify(['글0', '글2']), '가린 사진(1)의 글이 빠지고 글2가 p2와 짝 유지');
+  assert(JSON.stringify(applyViewer(rec, '이서연').photoTexts) === JSON.stringify(['글0', '비밀1', '글2']), '대상 아닌 뷰어 → 글 그대로');
+  assert(applyViewer(rec, null) === rec, 'viewer=null → 원본 그대로');
+  assert(!('photoTexts' in applyViewer({ medias: ['p0'], mediaPrivacy: { 0: ['김민수'] } }, '김민수')), 'photoTexts 없으면 키를 만들지 않음');
+  const short = { medias: ['p0', 'p1', 'p2'], photoTexts: ['글0'], mediaPrivacy: { 0: ['김민수'] } };
+  assert(JSON.stringify(applyViewer(short, '김민수').photoTexts) === JSON.stringify(['', '']), '글 배열이 짧으면 빈 글로 채움(p1·p2 짝 유지)');
+}
+
+// ── applyViewer: memo(대표 사진 글 복사본)도 가린 대표 사진의 글을 흘리지 않는다 ──
+{
+  const base = { medias: ['p0', 'p1', 'p2'], photoTexts: ['비밀0', '글1', '글2'], representativePhoto: 'p0', memo: '비밀0' };
+  const repHidden = { ...base, mediaPrivacy: { 0: ['김민수'] } };
+  assert(applyViewer(repHidden, '김민수').memo === '글1', '대표(p0) 가림 → memo는 새 대표(p1)의 글');
+  assert(applyViewer(repHidden, '이서연').memo === '비밀0', '대상 아닌 뷰어 → memo 그대로');
+  const allHidden = { ...base, mediaPrivacy: { 0: ['김민수'], 1: ['김민수'], 2: ['김민수'] } };
+  assert(applyViewer(allHidden, '김민수').memo === '', '사진 전부 가림 → memo 비움(본문 폴백으로 새지 않음)');
+  const otherHidden = { ...base, mediaPrivacy: { 2: ['김민수'] } };
+  assert(applyViewer(otherHidden, '김민수').memo === '비밀0', '대표 아닌 사진만 가림 → memo 그대로');
+  const bySource = { ...base, representativePhoto: 'crop://x', representativePhotoSource: 'p1', memo: '글1', mediaPrivacy: { 1: ['김민수'] } };
+  assert(applyViewer(bySource, '김민수').memo === '', '크롭 대표: 출처(p1) 가림 → 새 대표(외부 URI)의 글 없음 → 비움');
+  const unknownSrc = { ...base, representativePhoto: 'crop://x', memo: '비밀0', mediaPrivacy: { 0: ['김민수'] } };
+  assert(applyViewer(unknownSrc, '김민수').memo === '', '출처 모름: 가린 사진 글과 같으면 비움');
+  const oldMemo = { medias: ['p0'], representativePhoto: 'p0', memo: '옛 본문', mediaPrivacy: { 0: ['김민수'] } };
+  assert(applyViewer(oldMemo, '김민수').memo === '옛 본문', 'photoTexts 없는 옛 글: memo는 진짜 본문이라 그대로');
+}
+
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

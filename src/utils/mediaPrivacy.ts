@@ -52,11 +52,33 @@ export function isPostHiddenForViewer(
 
 // 피드/상세에 넘기기 좋게 medias/representativePhoto만 뷰어 기준으로 교체한 얕은 복사본.
 // viewer=null이면 원본 객체를 그대로 반환(불필요한 재생성 방지).
-export function applyViewer<T extends PrivacyRecord>(record: T, viewer: string | null): T {
+// photoTexts(사진별 글)는 medias와 index가 짝인 병렬 배열이라 같은 index로 함께 거른다 —
+// 안 거르면 가린 사진의 글이 다음 사진 밑에 붙어 비공개 내용이 샌다(2026-09-29 소셜 탭 점검 5번).
+// memo도 같이 본다 — 사진별 글 형식에서 memo는 대표 사진 글의 복사본(NewRecordScreen `photoTexts[repIndex]`)이라,
+// 대표 사진이 가려지면 memo로 그 글이 샌다(피드 카드 본문·상세 본문 폴백). 그땐 뷰어 기준 대표 사진의 글로 바꾼다.
+export function applyViewer<T extends PrivacyRecord & { photoTexts?: string[]; memo?: string; representativePhotoSource?: string }>(
+  record: T,
+  viewer: string | null,
+): T {
   if (viewer === null) return record;
-  return {
-    ...record,
-    medias: visibleMedias(record, viewer),
-    representativePhoto: visibleRepresentative(record, viewer),
-  };
+  const texts = record.photoTexts;
+  const medias = record.medias ?? [];
+  const visIdx = visibleMediaIndices(record, viewer);
+  const nextMedias = visIdx.map((i) => medias[i]);
+  const nextRep = visibleRepresentative(record, viewer);
+  const out: T = { ...record, medias: nextMedias, representativePhoto: nextRep };
+  if (!texts) return out;
+  const nextTexts = visIdx.map((i) => texts[i] ?? '');
+  out.photoTexts = nextTexts;
+  const memo = record.memo;
+  if (memo) {
+    // memo의 출처 = 원래 대표 사진. 출처를 모르면(대표가 medias 밖) 가린 사진의 글과 같은지로 판정
+    const src = record.representativePhotoSource ?? record.representativePhoto;
+    const oi = src ? medias.indexOf(src) : -1;
+    const leaks = oi >= 0
+      ? !visIdx.includes(oi)
+      : texts.some((x, i) => x === memo && !visIdx.includes(i)) && !nextTexts.includes(memo);
+    if (leaks) out.memo = (nextRep ? nextTexts[nextMedias.indexOf(nextRep)] : undefined) ?? '';
+  }
+  return out;
 }

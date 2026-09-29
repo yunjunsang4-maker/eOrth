@@ -47,26 +47,23 @@ export interface SnapRingItem {
   snapDaily?: boolean;
 }
 
-/** 링 1개 = 대표 스냅 + 묶음 집계 두 개 */
-export type SnapRing<T> = T & { _hasUnviewed: boolean; _isDaily: boolean };
+/** 링 1개 = 대표 스냅 + 묶음 집계 + 링 키(뷰어가 같은 묶음을 재생하려고 쓴다) */
+export type SnapRing<T> = T & { _hasUnviewed: boolean; _isDaily: boolean; _ringKey: string };
 
 /**
- * 스냅 배열을 링(여행 단위 + 일상) 목록으로 묶는다.
+ * 스냅마다 링 키를 매긴다(입력과 같은 길이·순서). groupSnapRings와 스냅 뷰어(PostDetailScreen)가
+ * 이 함수 하나를 공유한다 — 뷰어가 옛 `작성자::나라` 키로 따로 묶으면 링 A를 눌러도
+ * 다른 여행·일상 스냅이 섞여 재생됐다(2026-09-29 소셜 탭 점검).
  *
  * 키: `snapDaily` → `handle::daily` / `tripGroupId` → `handle::trip:{id}` /
  *     둘 다 없으면 `handle::country::region` 안에서 7일 초과 간격마다 `::b{n}`.
- * 대표는 묶음 안 **최신** 스냅, `_hasUnviewed`는 묶음 안 어느 하나라도 안 봤으면 true.
- * 순서는 여행 링(기존 규칙: 첫 등장 순, 전부 봤으면 오래된 순) → 일상 링(안 본 것 먼저,
- * 그 다음 오래된 순). 입력은 mutate하지 않는다.
+ * 폴백 버킷은 같은 base끼리의 간격으로 정해지므로 **입력 집합**에 따라 달라진다 —
+ * 링과 뷰어가 같은 키를 얻으려면 같은 필터를 거친 스냅 집합을 넘겨야 한다.
  */
-export function groupSnapRings<T extends SnapRingItem>(
-  snaps: T[],
-  isUnviewed: (s: T) => boolean,
-): SnapRing<T>[] {
-  const handleOf = (s: T) => s.user?.handle ?? '';
-  const timeOf = (s: T) => s.timestamp ?? 0;
-
-  // 1) 키 배정. 폴백(일상도 여행 카드도 아닌)만 7일 버킷 계산을 위해 뒤로 미룬다.
+export function snapRingKeys(snaps: SnapRingItem[]): string[] {
+  const handleOf = (s: SnapRingItem) => s.user?.handle ?? '';
+  const timeOf = (s: SnapRingItem) => s.timestamp ?? 0;
+  // 폴백(일상도 여행 카드도 아닌)만 7일 버킷 계산을 위해 뒤로 미룬다.
   const keys: string[] = new Array(snaps.length);
   const byBase = new Map<string, number[]>();
   snaps.forEach((s, i) => {
@@ -89,6 +86,23 @@ export function groupSnapRings<T extends SnapRingItem>(
       prev = ts;
     }
   });
+  return keys;
+}
+
+/**
+ * 스냅 배열을 링(여행 단위 + 일상) 목록으로 묶는다. 키는 snapRingKeys.
+ * 대표는 묶음 안 **최신** 스냅, `_hasUnviewed`는 묶음 안 어느 하나라도 안 봤으면 true.
+ * 순서는 여행 링(기존 규칙: 첫 등장 순, 전부 봤으면 오래된 순) → 일상 링(안 본 것 먼저,
+ * 그 다음 오래된 순). 입력은 mutate하지 않는다.
+ */
+export function groupSnapRings<T extends SnapRingItem>(
+  snaps: T[],
+  isUnviewed: (s: T) => boolean,
+): SnapRing<T>[] {
+  const timeOf = (s: T) => s.timestamp ?? 0;
+
+  // 1) 키 배정
+  const keys = snapRingKeys(snaps);
 
   // 2) 키별 집계. 등장 순서(order)를 따로 들고 다니는 이유는 여행 링의 기본 정렬이
   //    '첫 등장 순'이기 때문 — Map의 삽입 순서에 기대지 않고 명시한다.
@@ -108,7 +122,7 @@ export function groupSnapRings<T extends SnapRingItem>(
 
   const rings = order.map((k) => {
     const g = groups.get(k)!;
-    return { ...g.rep, _hasUnviewed: g.hasUnviewed, _isDaily: g.isDaily } as SnapRing<T>;
+    return { ...g.rep, _hasUnviewed: g.hasUnviewed, _isDaily: g.isDaily, _ringKey: k } as SnapRing<T>;
   });
 
   // 3) 여행 링과 일상 링을 나눠 정렬. 일상은 항상 뒤 — 여행 이야기가 앞줄을 차지해야 한다.
@@ -186,4 +200,24 @@ export function isSnapTripOngoing(
 
   const today = localMidnight(now);
   return today >= period.startMs - DAY_MS && today <= period.endMs + DAY_MS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 링 줄 최종 순서 — 소셜 탭 링 줄과 스냅 뷰어가 공유(2026-09-29)
+// ─────────────────────────────────────────────────────────────
+// 진행 중인 내 여행 링은 맨 앞(고정 '내 스냅 +' 칸 바로 뒤)으로 끌어온다 — 내 스냅은 늘 '본 것'이라
+// groupSnapRings가 오래된 순으로 두면 방금 찍은 링이 맨 뒤(화면 밖)로 밀린다(QA F-1).
+// 끝난 여행은 그대로(isSnapTripOngoing, 카드 날짜 ±1일). 일상 링은 대상에서 빼 '일상은 여행 링 뒤' 유지.
+// 예전엔 SocialScreen 안에만 있었는데, 뷰어가 '다음 링'으로 넘길 때 같은 순서를 따라야 해서 옮겼다.
+export function orderSnapStrip<T extends SnapRingItem>(
+  rings: SnapRing<T>[],
+  isMine: (s: SnapRing<T>) => boolean,
+  tripGroups: OngoingTripCard[],
+  records: OngoingTripRecord[],
+  now: number,
+): SnapRing<T>[] {
+  const trips = rings.filter((s) => !s._isDaily);
+  const moved = putMineFirst(trips, isMine, (s) => s.timestamp ?? 0);
+  const live = moved.length > 0 && isMine(moved[0]) && isSnapTripOngoing(moved[0], tripGroups, records, now);
+  return live ? [...moved, ...rings.filter((s) => s._isDaily)] : rings;
 }

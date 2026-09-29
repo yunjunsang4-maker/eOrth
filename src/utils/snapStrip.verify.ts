@@ -1,7 +1,7 @@
 /**
  * snapStrip 검증 — node node_modules/tsx/dist/cli.mjs src/utils/snapStrip.verify.ts
  */
-import { putMineFirst, groupSnapRings, isSnapTripOngoing } from './snapStrip';
+import { putMineFirst, groupSnapRings, isSnapTripOngoing, snapRingKeys, orderSnapStrip } from './snapStrip';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -214,6 +214,51 @@ eq(isSnapTripOngoing({ id: 's', tripGroupId: 'x', date: '2026.09.27' }, [{ id: '
 // 널 계열 — 날짜 근거가 전혀 없으면 끝난 것으로(옛 증상 쪽으로 넘어지지 않게)
 eq(ongo({ id: 's' }), false, '진행 중: 카드·date·timestamp 전부 없음 → false');
 eq(ongo({ id: 's', tripGroupId: null, timestamp: 0 }), false, '진행 중: tripGroupId null + timestamp 0 → false');
+
+// ─────────────────────────────────────────────────────────────
+// snapRingKeys / _ringKey — 스냅 뷰어가 링과 같은 묶음을 재생하는 근거(2026-09-29)
+// ─────────────────────────────────────────────────────────────
+// 키 형식 3종 — 뷰어는 이 키로 스토리를 묶으므로 형식이 바뀌면 링과 뷰어가 함께 바뀌어야 한다
+eq(snapRingKeys([
+  snap({ id: 'k-d', snapDaily: true, tripGroupId: 'g1' }),
+  snap({ id: 'k-t', tripGroupId: 'g1' }),
+  snap({ id: 'k-f', regionName: '서울' }),
+]), ['me::daily', 'me::trip:g1', 'me::대한민국::서울::b0'], 'snapRingKeys: 일상 > 여행 카드 > 폴백(버킷 b0)');
+// 원래 결함 — 같은 나라라도 여행 카드가 다르면 키가 달라야 한다(옛 뷰어 키 `handle::나라`는 같았다)
+eq(new Set(snapRingKeys([snap({ id: 'a', tripGroupId: 'g1' }), snap({ id: 'b', tripGroupId: 'g2' })])).size, 2,
+  'snapRingKeys: 같은 나라·다른 카드 → 키 2개');
+// 폴백 7일 초과 분리 — 버킷 번호가 키에 들어간다
+eq(snapRingKeys([snap({ id: 'x0', timestamp: 0 }), snap({ id: 'x8', timestamp: 7 * DAY + 1 })]),
+  ['me::대한민국::::b0', 'me::대한민국::::b1'], 'snapRingKeys: 폴백 7일 초과 → b0/b1');
+// 널 계열 — user가 없으면 handle은 빈 문자열(크래시 금지)
+eq(snapRingKeys([{ id: 'nu', user: null, tripGroupId: 'g1' }]), ['::trip:g1'], 'snapRingKeys: user null → 빈 handle');
+eq(snapRingKeys([]), [], 'snapRingKeys: 빈 배열 → 빈 배열');
+// groupSnapRings의 _ringKey는 snapRingKeys와 같은 값 — 링 줄 순서를 뷰어가 키로 옮겨 쓴다
+eq(groupSnapRings<Snap>([
+  snap({ id: 'r1', timestamp: 10, tripGroupId: 'g1', unviewed: true }),
+  snap({ id: 'r2', timestamp: 20, snapDaily: true }),
+], unviewed).map((r) => r._ringKey), ['me::trip:g1', 'me::daily'], 'groupSnapRings: _ringKey = snapRingKeys 값');
+
+// ─────────────────────────────────────────────────────────────
+// orderSnapStrip — 링 줄 최종 순서(SocialScreen에서 옮김). 뷰어의 '다음 링'도 이 순서
+// ─────────────────────────────────────────────────────────────
+const NOW2 = new Date(2026, 8, 27, 12, 0).getTime();
+const liveCards = [{ id: 'live', records: ['lr'] }, { id: 'old', records: ['or'] }];
+const liveRecs = [{ id: 'lr', date: '2026.09.27' }, { id: 'or', date: '2026.05.01' }];
+const isMe = (s: { user?: { handle?: string } | null }) => s.user?.handle === 'me';
+const rings = (list: Snap[]) => groupSnapRings<Snap>(list, unviewed);
+// 진행 중인 내 여행 링 → 맨 앞으로(일상은 여전히 뒤)
+eq(ids(orderSnapStrip(rings([
+  snap({ id: 'o-other', user: { handle: 'b' }, timestamp: 5, tripGroupId: 'x', unviewed: true }),
+  snap({ id: 'o-live', timestamp: 3, tripGroupId: 'live' }),
+  snap({ id: 'o-daily', user: { handle: 'c' }, timestamp: 9, snapDaily: true }),
+]), isMe, liveCards, liveRecs, NOW2)), ['o-live', 'o-other', 'o-daily'], 'orderSnapStrip: 진행 중 내 여행 링 → 맨 앞');
+// 끝난 내 여행 링은 제자리 — 몇 달 전 링이 앞줄을 차지하지 않게
+eq(ids(orderSnapStrip(rings([
+  snap({ id: 'p-other', user: { handle: 'b' }, timestamp: 5, tripGroupId: 'x', unviewed: true }),
+  snap({ id: 'p-old', timestamp: 3, tripGroupId: 'old' }),
+]), isMe, liveCards, liveRecs, NOW2)), ['p-other', 'p-old'], 'orderSnapStrip: 끝난 내 여행 링 → 순서 그대로');
+eq(orderSnapStrip<Snap>([], isMe, liveCards, liveRecs, NOW2), [], 'orderSnapStrip: 빈 배열 → 빈 배열');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

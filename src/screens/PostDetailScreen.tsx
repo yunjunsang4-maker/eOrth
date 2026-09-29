@@ -39,7 +39,7 @@ import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navig
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
-import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
+import { useRecords, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -65,6 +65,7 @@ import type { BlogBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
+import { snapRingKeys, groupSnapRings, orderSnapStrip } from '../utils/snapStrip';
 import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/social';
 import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
@@ -751,30 +752,48 @@ function SnapStoryViewer({
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
-  // 작성자별로 그룹화된 전체 스냅 목록 (같은 작성자끼리 연속 배치)
-  const allSnaps = useMemo(() => records.filter((r: any) => r.viewType === 'snap'), [records]);
-  // 작성자 + 국가별로 그룹화 (같은 사용자라도 다른 나라면 별도 스토리)
-  const getStoryKey = (s: any) =>
-    `${s.user.handle}::${s.countryName || s.snapDetectedCountry || ''}`;
+  // 스토리 = 소셜 탭 스냅 링 1개(2026-09-29). 예전엔 `작성자::나라`로 따로 묶어, 링(여행 카드·거주지 일상·
+  // 폴백 버킷)과 어긋났다 — 링 A를 눌러도 같은 나라의 다른 여행·일상 스냅이 섞여 재생됐다.
+  // 이제 키는 utils/snapStrip.snapRingKeys, 순서는 groupSnapRings+orderSnapStrip — 링 줄과 같은 함수·같은 입력.
+  //  · 입력: records는 소셜 탭 allVisible과 같은 필터를 거친 snapViewerRecords다. allVisible처럼 최신순으로
+  //    정렬해 넘긴다 — 링 등장 순서(=groupSnapRings의 첫 등장 순)가 입력 순서에 달려 있다.
+  //  · 안 봄 판정·내 글 판정·진행 중 여행 판정도 SocialScreen.snapItems/orderedSnaps와 같은 식.
+  const { viewedSnapIds, tripGroups, records: storeRecords } = useRecords();
+  const allSnaps = useMemo(
+    () => records.filter((r: any) => r.viewType === 'snap').sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
+    [records],
+  );
 
-  // 스토리(유저+국가) 단위 그룹 — 선택한 스토리를 맨 앞으로
+  // 링 순서는 **진입 시 한 번만** 확정한다(initPosRef와 같은 철학). groupSnapRings의 순서는 열람 상태에
+  // 따라 바뀌는데(전부 보면 오래된 순), 뷰어가 보는 즉시 markSnapViewed로 열람 처리하므로 매 렌더
+  // 재계산하면 보는 도중 스토리 순서가 뒤바뀌어 storyIdx가 엉뚱한 링을 가리킨다.
+  // 이후 새로 생긴 링은 뒤에 붙이고, 사라진 링(삭제·신고)은 뺀다.
+  const ringOrderRef = useRef<string[] | null>(null);
+  if (ringOrderRef.current === null && allSnaps.length > 0) {
+    const isMine = (x: any) => x.isMyPost || x.user?.handle === myHandle;
+    const isUnviewed = (x: any) => !isMine(x) && !x.snapViewed && !viewedSnapIds.includes(x.remoteId ?? x.id);
+    ringOrderRef.current = orderSnapStrip<any>(groupSnapRings<any>(allSnaps, isUnviewed), isMine, tripGroups, storeRecords, Date.now())
+      .map((r) => r._ringKey);
+  }
+
   const stories = useMemo(() => {
-    const byKey: Record<string, any[]> = {};
-    const order: string[] = [];
-    const initialSnap = allSnaps.find((r: any) => r.id === initialPostId);
-    const startKey = initialSnap ? getStoryKey(initialSnap) : '';
-    allSnaps.forEach((s: any) => {
-      const k = getStoryKey(s);
-      if (!byKey[k]) { byKey[k] = []; order.push(k); }
-      byKey[k].push(s);
+    const keys = snapRingKeys(allSnaps as any[]);
+    const byKey = new Map<string, any[]>();
+    allSnaps.forEach((snap: any, i) => {
+      const list = byKey.get(keys[i]);
+      if (list) list.push(snap); else byKey.set(keys[i], [snap]);
     });
-    const keys = [startKey, ...order.filter(k => k !== startKey)].filter(k => byKey[k]);
+    const frozen = ringOrderRef.current ?? [];
+    const order = [
+      ...frozen.filter((k) => byKey.has(k)),
+      ...[...byKey.keys()].filter((k) => !frozen.includes(k)),
+    ];
     // 스토리 안 스냅은 제일 먼저 올린 것부터(오름차순) 재생
-    return keys.map(k => ({
+    return order.map((k) => ({
       key: k,
-      snaps: [...byKey[k]].sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0)),
+      snaps: [...byKey.get(k)!].sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0)),
     }));
-  }, [allSnaps, initialPostId]);
+  }, [allSnaps]);
 
   // 초기 위치는 한 번만 확정 (이후 store 변경으로 뷰어가 점프하지 않게).
   // stories가 처음 채워진 렌더에서 계산해, 데이터가 늦게 와도 올바른 위치를 잡는다.
@@ -802,7 +821,9 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments, blockUser } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments, blockUser, reportedCommentIds, reportComment } = useRecords();
+  // 신고할 스냅 댓글 id — 남의 댓글을 꾹 누르면 ReportModal을 연다(App Store 1.2, 게시물 상세와 같은 경로)
+  const [snapCommentReportId, setSnapCommentReportId] = useState<string | null>(null);
   // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
@@ -956,6 +977,10 @@ function SnapStoryViewer({
     return () => { progressAnim.stopAnimation(); };
   }, [storyPlaying, storyIdx, localIdx]);
 
+  // 스냅이 바뀌면 답글 대상을 비운다 — 남아 있으면 다음 스냅에 보낸 댓글이 이전 스냅 댓글의
+  // 답글(parent_id)로 저장된다. 본문은 그대로 둔다(cancelReply와 같은 설계).
+  useEffect(() => { setReplyTo(null); }, [currentSnap?.id]);
+
   // 표시 중인 스냅이 바뀌면 그 스냅의 서버 댓글을 불러온다.
   // PostDetail 본문 이펙트는 '진입한' 스냅 하나만 조회해서, 스토리를 넘기면 다른 스냅의
   // 서버 댓글이 붙지 않아 댓글 수가 0으로 보였다.
@@ -999,13 +1024,15 @@ function SnapStoryViewer({
 
   if (!currentSnap || stories.length === 0) return null;
 
-  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
+  // 차단한 사용자 + 신고한 댓글 필터(App Store 1.2). PostComment.name은 서버 profiles.handle이라
+  // handle로도 넘긴다 — isBlocked는 차단 항목에 handle이 있으면 handle끼리만 비교한다.
   const rawSnapComments = commentsByPost[currentSnap.id] ?? [];
+  const hideSnapComment = (c: any) => isBlocked({ name: c.name, handle: c.name }) || reportedCommentIds.includes(c.id);
   const comments = rawSnapComments
-    .filter((c: any) => !isBlocked({ name: c.name }))
+    .filter((c: any) => !hideSnapComment(c))
     .map((c: any) => ({
       ...c,
-      replies: c.replies ? c.replies.filter((r: any) => !isBlocked({ name: r.name })) : c.replies,
+      replies: c.replies ? c.replies.filter((r: any) => !hideSnapComment(r)) : c.replies,
     }));
   const totalComments = comments.reduce((sum: number, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = currentSnap.isMyPost === true;
@@ -1016,7 +1043,9 @@ function SnapStoryViewer({
     if (sendingCommentRef.current || !commentText.trim()) return;
     sendingCommentRef.current = true;
     setTimeout(() => { sendingCommentRef.current = false; }, 800);
-    addCommentToStore(currentSnap.id, commentText.trim(), replyTo?.id);
+    // remoteId도 넘긴다 — 메이트 여행 상세(게스트) 등 스토어 밖에서 온 스냅은 store가 remoteId를
+    // 못 찾아 댓글이 로컬에만 남았다(소셜 탭 점검 10번). store는 자기 목록에서 찾으면 그걸 우선한다.
+    addCommentToStore(currentSnap.id, commentText.trim(), replyTo?.id, currentSnap.remoteId ?? undefined);
     setReplyTo(null);
     setCommentText('');
   };
@@ -1400,7 +1429,7 @@ function SnapStoryViewer({
           <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}>
             {comments.map((c: any) => (
               <View key={c.id}>
-                <View style={storyS.csCommentItem}>
+                <Pressable style={storyS.csCommentItem} onLongPress={c.isMine ? undefined : () => setSnapCommentReportId(c.id)} delayLongPress={350}>
                   <View style={storyS.csAvatar}><AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} /></View>
                   <View style={{ flex: 1 }}>
                     <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{commentTime(c)}</Text></View>
@@ -1408,15 +1437,15 @@ function SnapStoryViewer({
                     <MentionText text={c.text} style={storyS.csText} />
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}><Text style={storyS.csReplyBtn}>{t('postDetail.reply')}</Text></TouchableOpacity>
                   </View>
-                </View>
+                </Pressable>
                 {c.replies && c.replies.map((r: any) => (
-                  <View key={r.id} style={[storyS.csCommentItem, { marginLeft: 42 }]}>
+                  <Pressable key={r.id} style={[storyS.csCommentItem, { marginLeft: 42 }]} onLongPress={r.isMine ? undefined : () => setSnapCommentReportId(r.id)} delayLongPress={350}>
                     <View style={storyS.csAvatar}><AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} /></View>
                     <View style={{ flex: 1 }}>
                       <View style={storyS.csTopRow}><Text style={storyS.csName}>{r.name}</Text><Text style={storyS.csTime}>{commentTime(r)}</Text></View>
                       <MentionText text={r.text} style={storyS.csText} />
                     </View>
-                  </View>
+                  </Pressable>
                 ))}
               </View>
             ))}
@@ -1507,7 +1536,19 @@ function SnapStoryViewer({
         </View>
       </Modal>
 
-      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={(reason) => { setReportVisible(false); reportPost(currentSnap.id, reason); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={(reason) => { setReportVisible(false); reportPost(currentSnap.id, reason, currentSnap.remoteId ?? currentSnap.id); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
+      {/* 스냅 댓글 신고 — 접수 즉시 시트 목록에서 사라진다(comments 필터의 reportedCommentIds) */}
+      <ReportModal
+        visible={snapCommentReportId !== null}
+        onClose={() => setSnapCommentReportId(null)}
+        onSubmit={(reason) => {
+          const id = snapCommentReportId;
+          setSnapCommentReportId(null);
+          if (id) reportComment(currentSnap.id, id, reason, currentSnap.remoteId ?? currentSnap.id);
+          setToastMsg(t('social.reportReceivedToast'));
+          setTimeout(() => setToastMsg(''), 2000);
+        }}
+      />
       {toastMsg !== '' && <View style={s.toast} pointerEvents="none"><Text style={s.toastText}>{toastMsg}</Text></View>}
       <SnapViewerModal
         visible={viewerListOpen}
@@ -1574,16 +1615,16 @@ export default function PostDetailScreen() {
     [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked, globalHandle]
   );
 
-  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
-  const rawComments = commentsByPost[postId] ?? [];
   // 차단한 사용자 + 신고한 댓글은 즉시 사라져야 한다(App Store 1.2 UGC 요건).
+  // PostComment.name은 서버 profiles.handle이라 handle로도 넘긴다 — isBlocked는 차단 항목에
+  // handle이 있으면 handle끼리만 비교해, name만 넘기면 항상 '차단 아님'이었다.
+  const rawComments = commentsByPost[postId] ?? [];
+  const hideComment = (c: PostComment) => isBlocked({ name: c.name, handle: c.name }) || reportedCommentIds.includes(c.id);
   const comments = rawComments
-    .filter((c) => !isBlocked({ name: c.name }) && !reportedCommentIds.includes(c.id))
+    .filter((c) => !hideComment(c))
     .map((c) => ({
       ...c,
-      replies: c.replies
-        ? c.replies.filter((r) => !isBlocked({ name: r.name }) && !reportedCommentIds.includes(r.id))
-        : c.replies,
+      replies: c.replies ? c.replies.filter((r) => !hideComment(r)) : c.replies,
     }));
   // 신고할 댓글 id (모달 대상) — 게시물 신고와 모달은 같고 대상만 다르다
   const [commentReportId, setCommentReportId] = useState<string | null>(null);
@@ -1727,7 +1768,14 @@ export default function PostDetailScreen() {
     }, [refreshComments, refreshPostCounts])
   );
   // 뷰어 시점에서 비공개 사진을 제거한 사본 — 내 글은 미리보기 뷰어, 타인 글은 나
-  const record = rawRecord ? applyViewer(rawRecord, viewerFor(rawRecord)) : rawRecord;
+  // 블로그·네컷의 '기록 전체 비공개'(isPostHiddenForViewer)가 나를 가리키면 글이 없는 것으로 취급해
+  // 아래 "없는 글" early return을 탄다 — 피드·스냅 목록(snapViewerRecords)과 같은 판정.
+  // 예전엔 사진만 걸러, 딥링크·프로필 경유로 들어오면 숨김 대상에게 본문이 그대로 보였다.
+  // 내 글은 절대 숨기지 않는다 — 미리보기 뷰어(currentViewer)가 숨김 대상이어도 작성자가
+  // 자기 글을 못 열면 수정·삭제 경로가 막힌다(피드는 미리보기라 숨기지만 상세는 예외).
+  const rawIsMine = !!rawRecord && (rawRecord.isMyPost || rawRecord.user?.handle === globalHandle);
+  const hiddenForViewer = !!rawRecord && !rawIsMine && isPostHiddenForViewer(rawRecord, viewerFor(rawRecord));
+  const record = rawRecord && !hiddenForViewer ? applyViewer(rawRecord, viewerFor(rawRecord)) : undefined;
 
   // ⚠️ 훅은 아래 if (!record) early return보다 먼저 선언해야 한다 (rules-of-hooks)
 
@@ -1770,6 +1818,34 @@ export default function PostDetailScreen() {
   const [menuAnchorY, setMenuAnchorY] = useState<number | null>(null);
   const [menuCardH, setMenuCardH] = useState(0); // 카드 실측 높이 (0 = 아직 못 쟀음 → 추정치 사용)
   const moreBtnRef = useRef<View>(null);
+
+  // ── 아래 훅들은 원래 early return(!record) 뒤에 있었다(2026-09-29 이동) ──
+  // record가 있다가 없어지면(삭제·숨김) 또는 없다가 생기면(딥링크 진입 후 피드 로드) 훅 개수가
+  // 달라져 "Rendered fewer/more hooks" 크래시. 선언만 옮기고 쓰는 곳(본문 JSX·핸들러)은 그대로.
+  // 게시 시간 marginLeft 계산용 아이디·국가·시간 실측 폭 (timeMarginLeft 주석 참조)
+  const [handleW, setHandleW] = useState(0);
+  const [countryW, setCountryW] = useState(0);
+  const [timeW, setTimeW] = useState(0);
+  // 답글 숨기기 상태(setCommentHidden 주석 참조) — 이 기기에서만 기억
+  const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(() => new Set());
+  const hiddenKey = `postDetail.hiddenComments:${postId}`;
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(hiddenKey)
+      .then((raw) => { if (alive && raw) setHiddenCommentIds(new Set(JSON.parse(raw) as string[])); })
+      .catch(() => { /* 읽기 실패는 숨김 없음으로 — 부가 기능이라 조용히 빠진다 */ });
+    return () => { alive = false; };
+  }, [hiddenKey]);
+  // 댓글 꾹 누르기 팝오버(openCommentMenu 주석 참조)
+  type CommentLike = { id: string; name: string; text: string; photo?: string; emoji?: string; isMine?: boolean; createdAt: number; time?: string };
+  const commentRowRefs = useRef<Record<string, any>>({});
+  const [commentMenu, setCommentMenu] = useState<{ c: CommentLike; rect: { x: number; y: number; w: number; h: number } } | null>(null);
+  const cmAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!commentMenu) return;
+    cmAnim.setValue(0);
+    Animated.spring(cmAnim, { toValue: 1, useNativeDriver: true, tension: 140, friction: 11 }).start();
+  }, [commentMenu, cmAnim]);
 
   if (!record) {
     return (
@@ -1824,9 +1900,6 @@ export default function PostDetailScreen() {
   const authorFontStyle = handleFontStyle(authorIsMe ? (myPremium ? myHandleFont : null) : record.user.font);
   // 게시 시간의 **오른쪽 끝** = 아이디의 오른쪽 끝(2026-09-20 사용자 지시). 아이디·국가·시간 폭을 실측해
   // 시간의 marginLeft로 밀어 넣는다: 시간 x = 아이디 끝 − 시간 폭. 국가 뒤 6보다 왼쪽이면(아이디가 짧으면) 국가 뒤 6에서 시작.
-  const [handleW, setHandleW] = useState(0);
-  const [countryW, setCountryW] = useState(0);
-  const [timeW, setTimeW] = useState(0);
   const hasCountryLine = !!(record.countries?.length || record.country);
   const timeMarginLeft = Math.max(0, handleW - timeW - (hasCountryLine ? countryW + 6 : 0)); // 국가가 없으면 시간이 첫 항목이라 gap 6이 없다
 
@@ -1909,15 +1982,6 @@ export default function PostDetailScreen() {
   // ── 답글 숨기기(2026-09-20): 댓글 행의 두 번째 액션 '숨기기'는 **그 댓글 아래 답글들**을 접는다(댓글 자체는 남는다).
   //    접힌 상태는 이 기기에서만 기억한다(서버 전파 없음). 접히면 라벨이 "답글 N개 보기"로 바뀐다.
   //    답글 행에는 접을 것이 없어 액션이 없다. 삭제·신고는 댓글을 꾹 눌러 나오는 메뉴로 옮겼다.
-  const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(() => new Set());
-  const hiddenKey = `postDetail.hiddenComments:${postId}`;
-  useEffect(() => {
-    let alive = true;
-    AsyncStorage.getItem(hiddenKey)
-      .then((raw) => { if (alive && raw) setHiddenCommentIds(new Set(JSON.parse(raw) as string[])); })
-      .catch(() => { /* 읽기 실패는 숨김 없음으로 — 부가 기능이라 조용히 빠진다 */ });
-    return () => { alive = false; };
-  }, [hiddenKey]);
   const setCommentHidden = (id: string, hidden: boolean) => {
     tap();
     setHiddenCommentIds((prev) => {
@@ -1930,17 +1994,8 @@ export default function PostDetailScreen() {
   // 꾹 누르면(인스타식): 배경을 흐리고 누른 댓글만 카드로 떠오르며 그 아래 팝오버가 뜬다.
   // 내 댓글 → 삭제(확인 알림은 confirmDeleteComment가 띄운다), 남 댓글 → 신고.
   // 행 위치는 measureInWindow — Modal은 Stage 클램프 밖(창 좌표)이라 창 기준 좌표가 맞다.
-  type CommentLike = { id: string; name: string; text: string; photo?: string; emoji?: string; isMine?: boolean; createdAt: number; time?: string };
-  const commentRowRefs = useRef<Record<string, any>>({});
-  const [commentMenu, setCommentMenu] = useState<{ c: CommentLike; rect: { x: number; y: number; w: number; h: number } } | null>(null);
   // 열고 닫기 연출 — Modal 자체 fade 대신 값 하나(0→1)로 배경 흐림·카드 떠오름·메뉴 스프링을 함께 몬다.
   // 닫을 때는 역재생이 끝난 뒤에 언마운트해야 카드가 툭 사라지지 않는다.
-  const cmAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!commentMenu) return;
-    cmAnim.setValue(0);
-    Animated.spring(cmAnim, { toValue: 1, useNativeDriver: true, tension: 140, friction: 11 }).start();
-  }, [commentMenu, cmAnim]);
   const closeCommentMenu = (after?: () => void) => {
     Animated.timing(cmAnim, { toValue: 0, duration: 170, easing: Easing.out(Easing.quad), useNativeDriver: true })
       .start(() => { setCommentMenu(null); after?.(); });
@@ -2192,7 +2247,9 @@ export default function PostDetailScreen() {
         // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스+동일 필터.
         records={snapRecords}
         navigation={navigation}
-        toggleLike={toggleLike}
+        // 단독 스토리(스토어 밖 스냅)는 store toggleLike가 대상을 못 찾아 아무것도 안 한다(10번) —
+        // 본문과 같은 handleToggleLike(fallbackRecord 낙관 반영 + 서버 동기화)로 보낸다.
+        toggleLike={snapFallbackRef.current ? (id: string) => (id === postId ? handleToggleLike() : toggleLike(id)) : toggleLike}
         deleteRecord={deleteRecord}
         archiveRecord={archiveRecord}
         markSnapViewed={markSnapViewed}
@@ -2989,7 +3046,7 @@ export default function PostDetailScreen() {
         onClose={() => setReportVisible(false)}
         onSubmit={(reason) => {
           setReportVisible(false);
-          reportPost(record.id, reason);
+          reportPost(record.id, reason, record.remoteId ?? record.id);
           setToastMsg(t('social.reportReceivedToast'));
           setTimeout(() => setToastMsg(''), 2000);
         }}
@@ -3070,7 +3127,7 @@ export default function PostDetailScreen() {
         onSubmit={(reason) => {
           const id = commentReportId;
           setCommentReportId(null);
-          if (id) reportComment(postId, id, reason);
+          if (id) reportComment(postId, id, reason, record.remoteId ?? record.id);
           setToastMsg(t('social.reportReceivedToast'));
           setTimeout(() => setToastMsg(''), 2000);
         }}

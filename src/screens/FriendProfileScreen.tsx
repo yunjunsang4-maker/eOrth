@@ -85,7 +85,11 @@ export default function FriendProfileScreen({
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   // handle 파라미터 없이 진입해도(댓글·알림 등 userId만 전달) 프로필 로드 후 본인 판정이 되도록
   // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 메이트신청 버튼·차단 메뉴가 뜬다
-  const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
+  // 내 기록 id로 들어온 경우도 본인이다 — 서버 authorId가 없는 내 글 카드는 `userId: item.id`(기록 id)를 넘기는데,
+  // 그 글에 박힌 handle은 작성 당시 값이라 아이디를 바꾼 뒤엔 myHandle과 달라 남의 프로필로 열렸다
+  // (메이트 신청·차단 버튼 노출 → 자기 자신 차단 가능, 2026-09-29 소셜 탭 점검 12번).
+  const isMyRecordId = !!userId && myRecords.some((r) => r.id === userId || r.remoteId === userId);
+  const isSelf = isMyRecordId || (!!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle));
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [neighborCount, setNeighborCount] = useState(0);
   // 여행수(기록 수) — 서버 동기화값. 비메이트은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.

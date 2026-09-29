@@ -26,6 +26,7 @@ import {
   formatLateSeconds,
 } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
+import { countryLabel } from '../utils/countryLabel';
 import { normalizeHomeRegion } from '../constants/homeRegions';
 import HomeRegionSheet from '../components/HomeRegionSheet';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
@@ -156,7 +157,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   // (시안→마젠타 촬영 그라데이션은 스냅 고유 아이덴티티라 스킨과 무관하게 유지)
   const a = useSkinAccent();
   const st = useMemo(() => makeStyles(a), [a]);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { addRecord } = useRecords();
   const { homeCountryCode, homeRegion, homeRegionPromptShown, setHomeRegionPromptShown } = useSettings();
   const insets = useSafeAreaInsets();
@@ -646,7 +647,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           {!detectedCountry && !selectedCountry && (
             <View style={st.previewBadge}>
               <Text style={st.previewBadgeText}>
-                📍 위치 미확인{homeCountry ? ` · ${homeCountry.flag} ${homeCountry.name}로 기록` : ''}
+                {/* 저장값은 한글 원문이라 표시할 때 countryLabel로 현지화(소셜 탭 점검 15번) */}
+                {t('snap.locationUnknown')}{homeCountry ? t('snap.recordAsHome', { flag: homeCountry.flag, country: countryLabel(homeCountry.name, i18n.language) }) : ''}
               </Text>
             </View>
           )}

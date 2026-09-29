@@ -44,7 +44,7 @@ import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { putMineFirst, groupSnapRings, isSnapTripOngoing } from '../utils/snapStrip';
+import { groupSnapRings, orderSnapStrip } from '../utils/snapStrip';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
@@ -2252,6 +2252,14 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
   ]);
 
+  // 수정 진입은 viewType별 전용 화면 — PostDetail ⋯ 메뉴 '수정'과 같은 분기(블로그·사진첩을
+  // NewRecord로 열면 피드형 편집기로 열려 형식이 깨진다). 원본은 store 기록(item은 applyViewer 사본).
+  const handleEdit = () => {
+    const target = records.find((r) => r.id === item.id) ?? item;
+    if (vt === 'blog') navigation.navigate('BlogRecord', { record: target });
+    else if (vt === 'album') navigation.navigate('TripRecord', { record: target, viewType: 'album' });
+    else navigation.navigate('NewRecord', { editRecord: target });
+  };
   // 메뉴 아이콘은 앱 공용 SVG 아이콘 사용(이모지 대신) — 상세화면(PostDetail) 메뉴와 통일
   const menuOptions: { key: string; icon: React.ReactNode; label: string; danger?: boolean; onPress: () => void }[] = variant === 'archived'
     ? [
@@ -2266,7 +2274,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           label: t(item.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate'),
           onPress: () => onToggleVisibility(item.id) },
         { key: 'archive', icon: <ArchiveIcon size={18} color="#fff" />, label: t('social.archive'), onPress: () => onArchive(item.id) },
-        { key: 'edit', icon: <PencilIcon size={18} color="#fff" />, label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
+        { key: 'edit', icon: <PencilIcon size={18} color="#fff" />, label: t('social.edit'), onPress: handleEdit },
         { key: 'delete', icon: <TrashIcon size={18} color="#FF3B30" />, label: t('social.delete'), danger: true, onPress: confirmDelete },
       ]
     : [
@@ -2293,6 +2301,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const cardStageGutter = useStageGutter();
 
   const panGesture = Gesture.Pan()
+    // 빈 피드의 예시 카드는 끌어서 DM으로 보낼 수 없다 — 받은 사람은 그 글을 열 수 없다(소셜 탭 점검 14번)
+    .enabled(!item.isExample)
     .runOnJS(true)
     .activateAfterLongPress(250)
     .onStart((e) => {
@@ -3211,14 +3221,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 끝난 여행은 그대로 — 몇 달 전 링이 앞줄을 차지하지 않게(isSnapTripOngoing, 카드 날짜 ±1일).
   // 일상 링은 putMineFirst 대상에서 뺀다 — '일상은 여행 링 뒤' 규칙 유지.
   // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링을 소개하는 기존 동작은 유지.
-  const orderedSnaps = useMemo(() => {
-    const isMineSnap = (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle;
-    const trips = snapItems.filter((s: any) => !s._isDaily);
-    const moved = putMineFirst(trips, isMineSnap, (snap: any) => snap.timestamp ?? 0);
-    const live = moved.length > 0 && isMineSnap(moved[0])
-      && isSnapTripOngoing(moved[0] as any, tripGroups, records, Date.now());
-    return live ? [...moved, ...snapItems.filter((s: any) => s._isDaily)] : snapItems;
-  }, [snapItems, globalHandle, tripGroups, records]);
+  // 순서 규칙은 utils/snapStrip.orderSnapStrip — 스냅 뷰어(PostDetailScreen)도 같은 함수로 '다음 링'을 정한다.
+  const orderedSnaps = useMemo(
+    () => orderSnapStrip<any>(snapItems, (snap: any) => snap.isMyPost || snap.user?.handle === globalHandle, tripGroups, records, Date.now()),
+    [snapItems, globalHandle, tripGroups, records],
+  );
   const snapDisplay = [MY_SNAP_PLACEHOLDER, ...(orderedSnaps.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : orderedSnaps)];
 
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
