@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { warn } from '../utils/haptics';
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant, isFrenchLang } from '../utils/langKind';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -388,6 +388,9 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                         : isTraditionalChineseLang(i18n.language) ? 'zh-TW'
                         : spanishVariant(i18n.language) === 'ES' ? 'es-ES'
                         : spanishVariant(i18n.language) === '419' ? 'es-419'
+                        // 앱 코드는 'fr' 하나지만 Intl 에는 지역을 붙인 'fr-FR' 를 넘긴다
+                        // (「19 septembre 2026」 — 맨 'fr' 도 같은 결과지만 의도를 명시해 둔다).
+                        : isFrenchLang(i18n.language) ? 'fr-FR'
                         : 'en-US',
                       { year: 'numeric', month: 'long', day: 'numeric' }
                     ),

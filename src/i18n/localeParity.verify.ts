@@ -1,4 +1,4 @@
-// ko/en/ja/zh-Hant/es/es-ES 번역 리소스 정합성 검증 (jest 미사용).
+// ko/en/ja/zh-Hant/es/es-ES/fr 번역 리소스 정합성 검증 (jest 미사용).
 // 실행: node node_modules/tsx/dist/cli.mjs src/i18n/localeParity.verify.ts
 //
 // i18n 은 fallbackLng: 'ko' 다(index.ts 주석 참고 — badge.* 때문에 바꾸면 회귀).
@@ -14,6 +14,7 @@ import ja from './locales/ja';
 import zhHant from './locales/zh-Hant';
 import es from './locales/es';
 import esES from './locales/es-ES';
+import fr from './locales/fr';
 import { OTHER_CURRENCIES } from '../constants/currencies';
 
 let failed = 0;
@@ -37,8 +38,9 @@ const jaFlat = flatten(ja);
 const zhHantFlat = flatten(zhHant);
 const esFlat = flatten(es);
 const esESFlat = flatten(esES);
+const frFlat = flatten(fr);
 
-// i18next 복수형 접미사. 스페인어는 `clave_one` / `clave_other` 두 벌로 적으므로 ko 대조·커버리지
+// i18next 복수형 접미사. 스페인어·프랑스어는 `clave_one` / `clave_other` 두 벌로 적으므로 ko 대조·커버리지
 // 계산에서는 접미사를 벗긴 **기본 키**로 센다(벗기지 않으면 복수형 키가 전부 고아로 잡힌다).
 // ⚠️ ko.ts 에 이 접미사로 끝나는 키가 생기면 잘못 벗겨진다 — 현재 0개인 것을 확인했고,
 //    생기면 여기서 예외를 두는 대신 ko 쪽 키 이름을 바꾸는 편이 낫다.
@@ -53,6 +55,14 @@ const PARTIAL_LANGS = [
   ['ja', jaFlat],
   ['zh-Hant', zhHantFlat],
   ['es', esFlat],
+  ['fr', frFlat],
+] as const;
+
+// 복수형이 있는 언어(= `_one`/`_other` 두 벌이 필요한 언어). 5-2) 가 이 목록을 순회한다.
+// ko·ja·zh-Hant 는 복수형이 없어 여기 없다. 언어를 더할 때 검사 블록을 복사하지 말고 여기 한 줄만 추가한다.
+const PLURAL_LANGS = [
+  ['es', esFlat],
+  ['fr', frFlat],
 ] as const;
 
 // ─── 1) ko 의 모든 키가 en 에 있는가 ───
@@ -173,48 +183,61 @@ const SIMPLIFIED_CHARS = new Set<string>([
   }
 }
 
-// ─── 5-2) 스페인어 복수형이 두 벌로 갖춰져 있는가 ───
-// 스페인어는 ko/ja/zh 와 달리 단수·복수 형태가 다르다. i18next 접미사(`clave_one`/`clave_other`)로
-// 두 벌을 적지 않으면 「1 viajes」(1개인데 복수형)가 그대로 화면에 나간다. 타입은 못 잡는다 —
-// es.ts 의 WithPlurals 타입은 접미사 키를 **허용**할 뿐 짝을 강제하지 않는다.
+// ─── 5-2) 복수형 언어가 두 벌로 갖춰져 있는가 ───
+// 스페인어·프랑스어는 ko/ja/zh 와 달리 단수·복수 형태가 다르다. i18next 접미사
+// (`clave_one`/`clave_other`)로 두 벌을 적지 않으면 「1 viajes」·「1 voyages」(1개인데 복수형)가
+// 그대로 화면에 나간다. 타입은 못 잡는다 — es.ts 의 WithPlurals 타입은 접미사 키를 **허용**할 뿐
+// 짝을 강제하지 않는다(fr.ts 도 같은 타입을 import 해 쓴다).
 //
 // 검사 두 가지:
 //   (a) `_one` 이 있으면 `_other` 도, 그 반대도 있어야 한다.
 //   (b) `{{count}}` 가 든 키가 접미사 없이 단독으로 있으면 실패 — 수량 명사가 붙는 자리인데
 //       한 벌만 적은 흔적이다. 단 수량 명사 없이 `+{{count}}` 처럼만 쓰는 키는 예외다.
-const ES_COUNT_BARE_ALLOWED = new Set<string>([
+//
+// 허용 목록은 **언어별**이다. 지금은 두 언어가 같은 키 하나뿐이지만, 어떤 언어에서만 수량 명사가
+// 붙는 경우가 생기면 한쪽만 늘릴 수 있어야 한다(합쳐 두면 한 언어의 누락이 다른 언어를 타고 통과한다).
+const COUNT_BARE_ALLOWED: Record<string, Set<string>> = {
   // '{{place}} +{{count}}' — 「파리 +3」처럼 명사 없이 숫자만 덧붙인다. 복수형이 필요 없다
-  'main.countrySheetMorePlaces',
-]);
-{
-  const ones = new Set(Object.keys(esFlat).filter(k => k.endsWith('_one')).map(k => k.slice(0, -4)));
-  const others = new Set(Object.keys(esFlat).filter(k => k.endsWith('_other')).map(k => k.slice(0, -6)));
+  es: new Set(['main.countrySheetMorePlaces']),
+  fr: new Set(['main.countrySheetMorePlaces']),
+};
+for (const [lang, flat] of PLURAL_LANGS) {
+  const allowed = COUNT_BARE_ALLOWED[lang] ?? new Set<string>();
+  const ones = new Set(Object.keys(flat).filter(k => k.endsWith('_one')).map(k => k.slice(0, -4)));
+  const others = new Set(Object.keys(flat).filter(k => k.endsWith('_other')).map(k => k.slice(0, -6)));
   const lonely = [
     ...[...ones].filter(b => !others.has(b)).map(b => `${b}_one (짝 _other 없음)`),
     ...[...others].filter(b => !ones.has(b)).map(b => `${b}_other (짝 _one 없음)`),
   ];
   if (lonely.length) {
-    fail(`es 복수형 짝이 빠진 키 ${lonely.length}개 — 「1 viajes」가 화면에 나간다`);
+    fail(`${lang} 복수형 짝이 빠진 키 ${lonely.length}개 — 「1 voyages」가 화면에 나간다`);
     for (const m of lonely.slice(0, 40)) console.error(`      ${m}`);
   } else {
-    ok(`es 복수형 ${ones.size}쌍이 _one/_other 두 벌 모두 존재`);
+    ok(`${lang} 복수형 ${ones.size}쌍이 _one/_other 두 벌 모두 존재`);
   }
 
-  const bare = Object.entries(esFlat)
-    .filter(([k, v]) => !PLURAL_SUFFIX.test(k) && v.includes('{{count}}') && !ES_COUNT_BARE_ALLOWED.has(k));
+  const bare = Object.entries(flat)
+    .filter(([k, v]) => !PLURAL_SUFFIX.test(k) && v.includes('{{count}}') && !allowed.has(k));
   if (bare.length) {
-    fail(`es 에 {{count}} 가 든 단수/복수 미분리 키 ${bare.length}개 — _one/_other 두 벌로 나누거나 ES_COUNT_BARE_ALLOWED 에 넣을 것`);
+    fail(`${lang} 에 {{count}} 가 든 단수/복수 미분리 키 ${bare.length}개 — _one/_other 두 벌로 나누거나 COUNT_BARE_ALLOWED['${lang}'] 에 넣을 것`);
     for (const [k, v] of bare.slice(0, 40)) console.error(`      ${k} = ${JSON.stringify(v)}`);
   } else {
-    ok(`es 의 {{count}} 키가 모두 복수형 두 벌 (허용 ${ES_COUNT_BARE_ALLOWED.size}개 제외)`);
+    ok(`${lang} 의 {{count}} 키가 모두 복수형 두 벌 (허용 ${allowed.size}개 제외)`);
   }
 
   // 허용 목록 썩음 방지 — 3)·5) 와 같은 이유(키가 사라졌는데 허용만 남으면 다음에 같은 이름이
   // 생겼을 때 조용히 통과한다).
-  const stale = [...ES_COUNT_BARE_ALLOWED]
-    .filter(k => !(k in esFlat) || !esFlat[k].includes('{{count}}') || PLURAL_SUFFIX.test(k));
-  if (stale.length) fail(`es {{count}} 허용 목록에 죽은 항목: ${stale.join(', ')}`);
-  else ok('es {{count}} 허용 목록이 실제 키와 일치');
+  const stale = [...allowed]
+    .filter(k => !(k in flat) || !flat[k].includes('{{count}}') || PLURAL_SUFFIX.test(k));
+  if (stale.length) fail(`${lang} {{count}} 허용 목록에 죽은 항목: ${stale.join(', ')}`);
+  else ok(`${lang} {{count}} 허용 목록이 실제 키와 일치`);
+}
+// 허용 목록에 PLURAL_LANGS 에 없는 언어가 남아 있으면 아무도 안 보는 죽은 항목이다.
+{
+  const known = new Set(PLURAL_LANGS.map(([l]) => l as string));
+  const orphanLangs = Object.keys(COUNT_BARE_ALLOWED).filter(l => !known.has(l));
+  if (orphanLangs.length) fail(`COUNT_BARE_ALLOWED 에 PLURAL_LANGS 밖 언어: ${orphanLangs.join(', ')}`);
+  else ok('COUNT_BARE_ALLOWED 의 언어 키가 PLURAL_LANGS 와 일치');
 }
 
 // ─── 5-3) es-ES(스페인식 덮어쓰기)가 es.ts 에 없는 키를 갖고 있지 않은가 ───
@@ -233,6 +256,71 @@ const ES_COUNT_BARE_ALLOWED = new Set<string>([
     for (const k of orphan.slice(0, 40)) console.error(`      ${k} = ${JSON.stringify(esESFlat[k])}`);
   } else {
     ok(`es-ES 키 ${Object.keys(esESFlat).length}개가 모두 es 에 존재 (덮어쓰기라 커버리지는 안 센다)`);
+  }
+}
+
+// ─── 5-4) 프랑스어 이중 구두점 앞이 NBSP 인가 ───
+// 프랑스어 정서법은 `? ! : ;` 앞과 `«` 뒤·`»` 앞에 공백을 넣는다. 그 공백이 일반 공백(U+0020)이면
+// 줄 끝에서 물음표만 다음 줄로 떨어진다(RN Text 는 일반 공백에서 자유롭게 줄바꿈한다).
+// 공백이 아예 없으면 영어식이라 프랑스어 사용자 눈에 바로 틀려 보인다.
+//
+// ⚠️ 소스에는 실제 NBSP 문자 대신 `\u00A0` 이스케이프를 적는 것이 규약이다(fr.STYLE.md 2-1절).
+//    검사는 런타임 값을 보므로 어느 쪽으로 적었든 통과하지만, 실제 문자로 적으면 에디터에서
+//    일반 공백과 구분되지 않아 다음 수정 때 조용히 깨진다.
+// ⚠️ 이 검사에서 U+202F(가는 NBSP)는 통과시키지 않는다 — RN 폰트 폴백이 불확실해 쓰지 않기로 했다.
+const NBSP = String.fromCharCode(0x00a0); // 상수 자체도 이스케이프로 적을 수 없어 코드로 만든다
+const FR_TIGHT_PUNCT = new Set(['?', '!', ':', ';']);
+{
+  const hits: Array<[string, string, string]> = [];
+  let punctCount = 0; // 검사에 실제로 걸린 구두점 수 — 0 이면 규칙이 무력화된 것이라 함께 본다
+  for (const [k, v] of Object.entries(frFlat)) {
+    let why = '';
+    for (let i = 0; i < v.length && !why; i++) {
+      const ch = v[i];
+      if (FR_TIGHT_PUNCT.has(ch) || ch === '«' || ch === '»') punctCount++;
+      if (FR_TIGHT_PUNCT.has(ch)) {
+        // i === 0 이면 v[-1] 이 undefined 라 자동으로 실패한다(값이 구두점으로 시작할 일은 없다)
+        if (v[i - 1] !== NBSP) why = `'${ch}' 앞이 NBSP 가 아님 (${i}번째 글자)`;
+      } else if (ch === '«' && v[i + 1] !== NBSP) {
+        why = "'«' 뒤가 NBSP 가 아님";
+      } else if (ch === '»' && v[i - 1] !== NBSP) {
+        why = "'»' 앞이 NBSP 가 아님";
+      }
+    }
+    if (why) hits.push([k, v, why]);
+  }
+  if (hits.length) {
+    fail(`fr 값의 이중 구두점 앞뒤 공백이 틀린 키 ${hits.length}개 — 일반 공백이면 줄 끝에서 구두점만 떨어진다(fr.STYLE.md 2-1절)`);
+    for (const [k, v, why] of hits.slice(0, 40)) console.error(`      ${k} = ${JSON.stringify(v)}  ← ${why}`);
+    if (hits.length > 40) console.error(`      … 외 ${hits.length - 40}개`);
+  } else {
+    ok(`fr 이중 구두점 ${punctCount}곳이 모두 NBSP 로 붙어 있음`);
+  }
+}
+
+// ─── 5-5) 보간 변수명이 ko 와 같은가 (en + 부분 번역 언어 전부) ───
+// `{{count}}` 를 `{{cout}}` 로 잘못 적으면 타입·고아 키·복수형 검사 어디에도 걸리지 않고
+// 런타임에 빈 문자열이 나간다(i18next 는 없는 변수를 조용히 비운다). QA 반증 테스트에서
+// 실제로 통과해 버린 구멍이라 여기서 막는다 — 값 안의 `{{…}}` 이름 집합을 ko 의 같은 키와 대조한다.
+// 복수형 접미사 키는 벗긴 기본 키의 ko 값과 비교한다(ko 에는 복수형이 없다).
+// ko 에 변수가 없는데 번역에만 있는 경우도 실패다(호출처가 그 변수를 안 넘기므로 빈 문자열).
+{
+  const VAR = /\{\{\s*([\w.]+)\s*\}\}/g;
+  const varsOf = (v: string) => new Set([...v.matchAll(VAR)].map(m => m[1]));
+  const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
+  const LANGS: ReadonlyArray<readonly [string, Record<string, string>]> = [['en', enFlat] as const, ...PARTIAL_LANGS];
+  for (const [lang, flat] of LANGS) {
+    const bad = Object.entries(flat)
+      .filter(([k]) => baseKey(k) in koFlat)
+      .filter(([k, v]) => !sameSet(varsOf(v), varsOf(koFlat[baseKey(k)])))
+      .map(([k, v]) => `${k}: ${[...varsOf(v)].join(',') || '(없음)'} ≠ ko ${[...varsOf(koFlat[baseKey(k)])].join(',') || '(없음)'}`);
+    if (bad.length) {
+      fail(`${lang} 보간 변수명이 ko 와 다른 키 ${bad.length}개 — 런타임에 빈 문자열이 나간다`);
+      for (const line of bad.slice(0, 40)) console.error(`      ${line}`);
+      if (bad.length > 40) console.error(`      … 외 ${bad.length - 40}개`);
+    } else {
+      ok(`${lang} 보간 변수명이 ko 와 전부 일치`);
+    }
   }
 }
 

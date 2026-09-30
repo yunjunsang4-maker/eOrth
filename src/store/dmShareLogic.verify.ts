@@ -57,10 +57,20 @@ function assert(cond: boolean, msg: string) {
   assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es-MX') === '2:30 p. m.', 'es-MX → 중남미 표기');
   assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'es') === '2:30 p. m.', "지역 없는 'es' → 중남미 표기");
 
+  // 프랑스어는 es-ES 와 같은 24시간 + 0 패딩 없음. 「9 h 05」 공식 표기는 쓰지 않는다(fr.STYLE.md 2-2절)
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'fr') === '9:05', 'fr 오전 — 24시간·오전/오후 표시 없음');
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'fr') === '14:30', 'fr 오후 — 14시로 그대로');
+  assert(nowTimeString(new Date(2025, 0, 1, 0, 0), 'fr') === '0:00', 'fr 자정 — 0시(0 패딩 없음)');
+  assert(nowTimeString(new Date(2025, 0, 1, 23, 59), 'fr') === '23:59', 'fr 23시 59분');
+  // 변형 리소스가 없어 fr-CA 도 같은 표기다(캐나다 관례 차이는 지금 다루지 않는다)
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'fr-CA') === '14:30', 'fr-CA 도 같은 프랑스어 포맷');
+  // ⚠️ 'fry'(서프리지아어)는 프랑스어가 아니다 — startsWith('fr') 로 적었으면 여기서 24시간이 나온다
+  assert(nowTimeString(new Date(2025, 0, 1, 14, 30), 'fry') === '2:30 PM', 'fry(서프리지아어) → 영어 폴백');
+
   // ⚠️ 미지의 언어는 ko가 아니라 영어로 떨어진다(2026-09 3개 국어 배선에서 뒤집힘).
   // 언어가 늘어날 때 "en이 아니면 한국어"가 일본어 사용자에게 한글을 내보냈기 때문이다.
   // 단, 인자 생략(= i18next 초기화 전)은 여전히 ko다 — 앱 기본 언어가 ko이므로.
-  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'fr') === '9:05 AM', '미지의 언어 → 영어 폴백');
+  assert(nowTimeString(new Date(2025, 0, 1, 9, 5), 'de') === '9:05 AM', '미지의 언어 → 영어 폴백');
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5), '') === '오전 9:05', '빈 문자열 → 초기화 전으로 보고 ko');
   assert(nowTimeString(new Date(2025, 0, 1, 9, 5)) === '오전 9:05', 'lang 생략 — 초기화 전이면 ko');
 }

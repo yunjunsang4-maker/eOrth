@@ -4,7 +4,7 @@
 // 이 두 함수가 뒤집히면 국가명·지역명·프레임명·약관 링크가 통째로 반대 언어로 나간다.
 // 특히 널 계열이 ko로 떨어지는 규약이 중요하다 — i18next 초기화 전에는 language가
 // undefined이고, 그때 영어로 떨어지면 한국어 사용자가 첫 프레임에 영문을 본다.
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from './langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant, isFrenchLang } from './langKind';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -103,12 +103,39 @@ eq(spanishVariant(''), null, 'spanishVariant: 빈 문자열 → null');
 eq(spanishVariant(undefined), null, 'spanishVariant: undefined → null');
 eq(spanishVariant(null), null, 'spanishVariant: null → null');
 
-// 네 판정이 동시에 걸리는 값은 없어야 한다(다분기 코드의 전제).
+
+// ─── isFrenchLang ───
+// 앱의 언어 코드는 'fr' 하나다. 이 값이 false 면 날짜 0 패딩·24시간 표기가 통째로 안 나온다
+eq(isFrenchLang('fr'), true, 'isFrenchLang: fr → true (앱 언어 코드)');
+// 기기·서버에서 올 수 있는 변형. 변형 리소스가 없으므로 전부 같게 본다
+eq(isFrenchLang('fr-FR'), true, 'isFrenchLang: fr-FR → true (지역 태그 포함)');
+eq(isFrenchLang('fr-CA'), true, 'isFrenchLang: fr-CA → true (캐나다도 같은 리소스)');
+eq(isFrenchLang('fr-BE'), true, 'isFrenchLang: fr-BE → true (벨기에)');
+// 표기 흔들림 — 저장본·서버 값이 대문자로 올 수 있다
+eq(isFrenchLang('FR'), true, 'isFrenchLang: FR → true (대문자 흔들림)');
+eq(isFrenchLang('FR-ca'), true, 'isFrenchLang: FR-ca → true (대소문자 섞임)');
+
+// ⚠️ startsWith('fr') 로 적으면 이 둘이 프랑스어로 잡힌다 — 실재하는 ISO 639 코드다
+eq(isFrenchLang('fry'), false, "isFrenchLang: fry → false (서프리지아어 · startsWith 오탐 방지)");
+eq(isFrenchLang('frr'), false, "isFrenchLang: frr → false (북프리지아어)");
+
+eq(isFrenchLang('ko'), false, 'isFrenchLang: ko → false');
+eq(isFrenchLang('en'), false, 'isFrenchLang: en → false');
+eq(isFrenchLang('en-FR'), false, 'isFrenchLang: en-FR → false (프랑스에서 쓰는 영어)');
+// 널 계열 — ko 기본이므로 프랑스어가 아니다(isJapaneseLang 과 같은 쪽)
+eq(isFrenchLang(''), false, 'isFrenchLang: 빈 문자열 → false');
+eq(isFrenchLang(undefined), false, 'isFrenchLang: undefined → false');
+eq(isFrenchLang(null), false, 'isFrenchLang: null → false');
+
+
+// 다섯 판정이 동시에 걸리는 값은 없어야 한다(다분기 코드의 전제).
 // spanishVariant 는 boolean 이 아니라 null 여부로 센다.
-for (const l of ['ko', 'ko-KR', 'en', 'ja', 'ja-JP', 'zh-Hant', 'zh-TW', 'zh-CN', 'es-419', 'es-ES', '', 'fr']) {
-  const hits = [isKoreanLang(l), isJapaneseLang(l), isTraditionalChineseLang(l), spanishVariant(l) !== null]
-    .filter(Boolean).length;
-  eq(hits <= 1, true, `배타성: '${l}'은 ko·ja·zh-Hant·es 중 둘 이상 참이 아님`);
+for (const l of ['ko', 'ko-KR', 'en', 'ja', 'ja-JP', 'zh-Hant', 'zh-TW', 'zh-CN', 'es-419', 'es-ES', '', 'fr', 'fr-CA', 'fry']) {
+  const hits = [
+    isKoreanLang(l), isJapaneseLang(l), isTraditionalChineseLang(l),
+    spanishVariant(l) !== null, isFrenchLang(l),
+  ].filter(Boolean).length;
+  eq(hits <= 1, true, `배타성: '${l}'은 ko·ja·zh-Hant·es·fr 중 둘 이상 참이 아님`);
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

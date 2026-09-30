@@ -1,7 +1,7 @@
 import i18n from 'i18next';
 import type { TravelRecord } from './recordStore';
 import type { SharedRecord, Message, Friend } from './dmTypes';
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant, isFrenchLang } from '../utils/langKind';
 
 /**
  * 메시지에 저장되는 시각 문자열.
@@ -31,6 +31,10 @@ export function nowTimeString(d: Date = new Date(), lang: string = i18n.language
   const esv = spanishVariant(lang);
   if (esv === 'ES') return `${hour}:${min}`;
   if (esv === '419') return `${h12}:${min} ${hour < 12 ? 'a. m.' : 'p. m.'}`;
+  // 프랑스어도 24시간 「9:05」다(es-ES 와 같은 식). 0 패딩은 하지 않는다.
+  // ⚠️ 공식 조판 표기 「9 h 05」는 메시지 타임스탬프에 쓰지 않는다(fr.STYLE.md 2-2절) —
+  //    폭이 넓어지고 말풍선 옆 시각이라는 어감이 깨진다.
+  if (isFrenchLang(lang)) return `${hour}:${min}`;
   return `${h12}:${min} ${hour < 12 ? 'AM' : 'PM'}`;
 }
 

@@ -10,8 +10,11 @@ import type ko from './ko';
 /**
  * ko 리소스 트리의 부분집합 + 문자열 키마다 i18next 복수형 접미사(_one/_other) 허용.
  * ko/ja/zh는 복수형이 없어 기본 키 하나지만, 스페인어는 두 벌이 필요하다.
+ *
+ * ⚠️ 프랑스어(fr.ts)도 같은 모양이 필요해 **여기서 export 한다**(타입 정의를 복사하지 않는다).
+ *    값은 없고 타입뿐이라 fr.ts 의 "import 없는 순수 객체" 규약을 깨지 않는다(type import는 예외).
  */
-type WithPlurals<T> = {
+export type WithPlurals<T> = {
   [K in keyof T as K extends string
     ? T[K] extends string ? K | `${K}_one` | `${K}_other` : K
     : K]?: T[K & keyof T] extends string ? string : WithPlurals<T[K & keyof T]>;

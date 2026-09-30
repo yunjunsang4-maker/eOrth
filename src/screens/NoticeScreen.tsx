@@ -14,7 +14,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
 import { visibleNotices, latestPublishedAt, type Notice } from '../utils/noticeFeed';
-import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant } from '../utils/langKind';
+import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant, isFrenchLang } from '../utils/langKind';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 설정 > 공지사항 — 운영자 공지 목록.
@@ -102,6 +102,9 @@ function formatDate(ms: number, lang: string): string {
   if (isJapaneseLang(lang) || isTraditionalChineseLang(lang)) return `${y}年${m}月${day}日`;
   // 스페인어는 두 변형 모두 일/월/년 순 · 0 패딩 없음(es.STYLE.md 2절 `{{d}}/{{m}}/{{y}}`).
   if (spanishVariant(lang)) return `${day}/${m}/${y}`;
+  // 프랑스어도 일/월/년 순이지만 **0 패딩을 한다**(「21/09/2026」 — fr.STYLE.md 2-2절).
+  // 스페인어와 한 줄로 합치지 말 것 — 순서만 같고 패딩이 다르다.
+  if (isFrenchLang(lang)) return `${String(day).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
   return `${y}.${String(m).padStart(2, '0')}.${String(day).padStart(2, '0')}`;
 }
 

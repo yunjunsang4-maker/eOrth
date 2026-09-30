@@ -59,3 +59,16 @@ export const spanishVariant = (lang?: string | null): 'ES' | '419' | null => {
   // 지역 서브태그가 'es'(스페인)면 스페인식. 'es-Latn-ES' 같은 스크립트 끼움도 같게 본다.
   return parts.slice(1).includes('es') ? 'ES' : '419';
 };
+
+/**
+ * 프랑스어 계열인지. 프랑스어 전용 표기(날짜 `dd/mm/yyyy` 0 패딩, 24시간 시각)가 있는 곳에서만 쓴다.
+ *
+ * 앱의 언어 코드는 `'fr'` 하나뿐이고 지역 변형 리소스는 없다(fr.STYLE.md 서두). 그래서
+ * `'fr-CA'`·`'fr-BE'`·`'fr-CH'` 같은 기기·서버 값도 전부 같게 본다 — 표기 차이(캐나다의
+ * 날짜 순서 등)는 지금 다루지 않는다. 변형을 나눠야 하면 spanishVariant 처럼 판정 함수를 늘린다.
+ *
+ * ⚠️ 첫 서브태그가 **정확히 'fr'** 일 때만이다. `startsWith('fr')` 로 적으면
+ *    'fry'(서프리지아어)·'frr'(북프리지아어) 같은 실재하는 ISO 코드가 프랑스어로 잡힌다.
+ */
+export const isFrenchLang = (lang?: string | null): boolean =>
+  !!lang && String(lang).toLowerCase().split('-')[0] === 'fr';
