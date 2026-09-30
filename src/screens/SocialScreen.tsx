@@ -44,7 +44,8 @@ import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { groupSnapRings, orderSnapStrip } from '../utils/snapStrip';
+import { groupSnapRings, orderSnapStrip, snapRingKeys } from '../utils/snapStrip';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
@@ -79,6 +80,26 @@ import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
 import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
+
+// ─── 알약 유리 테두리 — PostDetailScreen AutoPillRing과 같은 구현(내 스냅 링 메뉴 카드용) ───
+// 부모의 첫 자식으로 넣으면 absoluteFill 층이 제 크기를 실측해 대각 그라데이션 링을 얹는다.
+// ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 이중 테두리가 된다.
+// Svg가 터치를 삼키지 않게 View pointerEvents="none"으로 감싼다(RNSVG 새 아키텍처 함정).
+const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width), h = Math.round(e.nativeEvent.layout.height);
+        setSize((p) => (p.w === w && p.h === h ? p : { w, h }));
+      }}
+    >
+      <PillRing width={size.w} height={size.h} radius={radius ?? size.h / 2} diagonal />
+    </View>
+  );
+};
 
 const SCREEN_W = stageWidthNow();
 const SCREEN_W_SOCIAL = stageWidthNow();
@@ -3228,6 +3249,70 @@ function FriendsTab({ navigation }: { navigation: any }) {
   );
   const snapDisplay = [MY_SNAP_PLACEHOLDER, ...(orderedSnaps.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : orderedSnaps)];
 
+  // ─── 내 스냅 링 길게 누르기 → 보관/삭제 팝업(2026-09-30) ───
+  // 링은 대표(rep)만 들고 있으므로 멤버는 groupSnapRings와 **같은 입력**으로 snapRingKeys를 다시 구해
+  // _ringKey가 같은 것만 모은다(PostDetailScreen 스냅 뷰어와 같은 방식 — 입력이 다르면 폴백 7일 버킷이 어긋난다).
+  // 팝업 마크업·스타일 값은 PostDetail SnapStoryViewer ⋯ 메뉴 복제(rm 스타일시트). 위치만 우상단 고정 대신
+  // 누른 링 아래(measureInWindow) — 이 파일 FeedCard ⋯ 드롭다운도 버튼 실측 좌표 아래에 띄운다.
+  const [ringMenu, setRingMenu] = useState<{ ids: string[]; top: number; left?: number; right?: number } | null>(null);
+  const ringRefs = useRef<Record<string, any>>({});
+  const openRingMenu = (ring: any) => {
+    const snaps = allVisible.filter((r) => r.viewType === 'snap');
+    const keys = snapRingKeys(snaps);
+    // 멤버 중 내 글만(방어) — fetchFeed가 내 글을 빼므로 원래 전부 내 것이어야 한다
+    const ids = snaps
+      .filter((r, i) => keys[i] === ring._ringKey && (r.isMyPost || r.user?.handle === globalHandle))
+      .map((r) => r.id);
+    const node = ringRefs.current[ring.id];
+    if (ids.length === 0 || !node) return;
+    grab();
+    node.measureInWindow((x: number, y: number, w: number, h: number) => {
+      const winW = Dimensions.get('window').width;
+      // 카드 폭을 추정하지 않고 링이 있는 쪽 가장자리에 붙인다 — 왼쪽 절반이면 left, 오른쪽이면 right.
+      // 스크롤로 링이 반쯤 잘려 있어도 12 안쪽으로 클램프해 화면 밖으로 안 나간다.
+      const leftHalf = x + w / 2 < winW / 2;
+      setRingMenu({
+        ids,
+        top: Math.max(insets.top + 8, y + h + 4),
+        ...(leftHalf ? { left: Math.max(12, x) } : { right: Math.max(12, winW - (x + w)) }),
+      });
+    });
+  };
+  // 두 동작 모두 멤버를 한 번에 순회한다. deleteRecord/archiveRecord는 set*을 전부 함수형으로 쓰고
+  // (detachRecordsFromTripGroups는 ref도 동기 갱신) 대상은 서로 다른 id라 같은 렌더에서 연달아 불러도 누적된다.
+  const handleRingArchive = () => {
+    const ids = ringMenu?.ids ?? [];
+    setRingMenu(null);
+    if (ids.length === 0) return;
+    Alert.alert(t('social.snapRingArchiveTitle', { count: ids.length }), t('social.snapRingArchiveMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('social.archive'),
+        onPress: () => {
+          ids.forEach((id) => archiveRecord(id));
+          showToast(t('social.snapRingArchivedToast', { count: ids.length }));
+        },
+      },
+    ]);
+  };
+  const handleRingDelete = () => {
+    const ids = ringMenu?.ids ?? [];
+    setRingMenu(null);
+    if (ids.length === 0) return;
+    warn(); // 되돌릴 수 없는 동작을 묻는 중(PostDetail 삭제와 같은 햅틱)
+    Alert.alert(t('social.snapRingDeleteTitle', { count: ids.length }), t('social.deleteConfirmMsgShort'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('social.delete'),
+        style: 'destructive',
+        onPress: () => {
+          ids.forEach((id) => deleteRecord(id));
+          showToast(t('social.snapRingDeletedToast', { count: ids.length }));
+        },
+      },
+    ]);
+  };
+
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
     // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
@@ -3316,12 +3401,16 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     </TouchableOpacity>
                   );
                 }
+                // 내 링만 길게 누르기 메뉴(보관/삭제). 타인 링·예시 스냅은 onLongPress undefined — 반응 없음
+                const ringMine = !snap.isExample && (snap.isMyPost || snap.user.handle === globalHandle);
                 return (
                 <TouchableOpacity
                   key={snap.id}
+                  ref={ringMine ? (n: any) => { ringRefs.current[snap.id] = n; } : undefined}
                   style={s.storyItem}
                   activeOpacity={0.8}
                   onPress={() => navigation.navigate('PostDetail', { postId: snap.id, record: snap.isExample ? snap : undefined })}
+                  onLongPress={ringMine ? () => openRingMenu(snap) : undefined}
                 >
                   <LinearGradient
                     colors={snap._hasUnviewed ? (skinAccent.ringGradient ?? ['#22D3EE', '#A855F7', '#D946EF']) : ['#3A3A4A', '#3A3A4A']}
@@ -3550,6 +3639,21 @@ function FriendsTab({ navigation }: { navigation: any }) {
         </View>
       </Animated.ScrollView>
       <Toast message={toast.message} visible={toast.visible} />
+      {/* 내 스냅 링 메뉴 — PostDetail SnapStoryViewer 메뉴 모달 마크업 그대로(위치만 링 아래) */}
+      <Modal visible={!!ringMenu} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setRingMenu(null)}>
+        <TouchableOpacity style={rm.menuOverlay} activeOpacity={1} onPress={() => setRingMenu(null)} accessibilityViewIsModal>
+          <View style={[rm.menuCard, { position: 'absolute', top: ringMenu?.top ?? 0, left: ringMenu?.left, right: ringMenu?.right }]}>
+            <AutoPillRing radius={10} />
+            <TouchableOpacity style={rm.menuItem} onPress={handleRingArchive} activeOpacity={0.7}>
+              <ArchiveIcon size={16} color="#fff" /><Text style={rm.menuItemText}>{t('postDetail.archiveAction')}</Text>
+            </TouchableOpacity>
+            <View style={rm.menuSectionDivider} />
+            <TouchableOpacity style={rm.menuItem} onPress={handleRingDelete} activeOpacity={0.7}>
+              <TrashIcon size={16} color="#FF3B30" /><Text style={[rm.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
       <QuickShareOverlay
         visible={quick.active}
         record={quick.item ? buildSharedRecord(quick.item) : null}
@@ -4450,4 +4554,23 @@ const vc = StyleSheet.create({
   chipOn: { borderColor: '#BF85FC', backgroundColor: 'rgba(191,133,252,0.18)' },
   chipTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '500' },
   chipTxtOn: { color: '#FFFFFF', fontWeight: '700' },
+});
+
+// ─── 내 스냅 링 길게 누르기 메뉴 — PostDetailScreen 메뉴 모달 스타일 값 그대로(이름도 동일) ───
+// `s`에는 같은 이름(menuItem·menuItemText·menuDivider)의 다른 값(DiaryCard 시트용)이 있어 따로 둔다.
+// menuOverlay는 PostDetail의 우상단 정렬(paddingTop 110·alignItems flex-end)을 뺐다 —
+// 여기선 카드를 링 아래 절대좌표로 놓는다. 딤 색은 같다.
+const rm = StyleSheet.create({
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  // 시안 SVG "Rectangle 240652657"(130×88, rx 10, 흰 10%, 테두리 없음)
+  menuCard: {
+    minWidth: 130, backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 10, // overflow:'hidden' 금지 — AutoPillRing이 잘린다
+  },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center',
+    height: 28, paddingLeft: 12, paddingRight: 12, gap: 8,
+  },
+  menuItemText: { fontSize: 13, color: C.white, fontWeight: '600' },
+  menuSectionDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
 });

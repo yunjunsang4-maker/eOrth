@@ -524,10 +524,11 @@ const ALLOW_WINDOW_W = new Map([
        + '창 폭이 필요하다 — 컬럼 기준인 스냅 버튼은 그 자리에서 gutter를 더해 창 좌표로 환산한다.',
   }],
   ['src/screens/SocialScreen.tsx', {
-    count: 2,
-    why: '둘 다 창 절대 좌표끼리의 비교다. ① 2070행: measureInWindow가 준 x의 유효 범위 검사(창 폭과 비교해야 '
-       + '정상 좌표를 무효로 오판하지 않는다). ② 2718행: cardRect.x(창 좌표)가 화면 좌/우 어느 쪽인지 판정 — '
-       + '창 폭의 절반과 비교해야 맞다. 실제 배치 계산(gutter)은 useStageGutter()로만 한다.',
+    count: 3,
+    why: '셋 다 창 절대 좌표끼리의 비교다. ① 2342행: measureInWindow가 준 x의 유효 범위 검사(창 폭과 비교해야 '
+       + '정상 좌표를 무효로 오판하지 않는다). ② 3024행: cardRect.x(창 좌표)가 화면 좌/우 어느 쪽인지 판정 — '
+       + '창 폭의 절반과 비교해야 맞다. ③ 3270행: 스냅 링 길게 누르기 메뉴 — 링의 measureInWindow x로 좌/우 '
+       + '정렬을 고르고 창 가장자리에 클램프한다(Modal은 창 루트). 실제 배치 계산(gutter)은 useStageGutter()로만 한다.',
   }],
   ['src/components/MainCoachmark.tsx', {
     count: 1,

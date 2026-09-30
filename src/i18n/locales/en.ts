@@ -777,6 +777,17 @@ const en = {
     deletedToast: 'Post deleted',
     archiveConfirmTitle: 'Archive this post?',
     archiveConfirmMsg: 'It will be hidden from the feed. You can restore it from the archive anytime.',
+    // Long-press my snap ring → archive/delete every snap of mine in that ring
+    // i18next plural: 기본 키는 _other 역할, 1개일 때만 _one이 잡힌다
+    snapRingArchiveTitle: 'Archive all {{count}} snaps?',
+    snapRingArchiveTitle_one: 'Archive {{count}} snap?',
+    snapRingArchiveMsg: 'Archived snaps are hidden from the snap row. You can restore them from the archive anytime.',
+    snapRingArchivedToast: '{{count}} snaps archived',
+    snapRingArchivedToast_one: '{{count}} snap archived',
+    snapRingDeleteTitle: 'Delete all {{count}} snaps?',
+    snapRingDeleteTitle_one: 'Delete {{count}} snap?',
+    snapRingDeletedToast: '{{count}} snaps deleted',
+    snapRingDeletedToast_one: '{{count}} snap deleted',
     makePrivate: 'Make private',
     makePublic: 'Share with neighbors',
     madePrivateToast: 'Set to private',

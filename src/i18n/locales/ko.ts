@@ -790,6 +790,12 @@ const ko = {
     deletedToast: '게시물이 삭제되었어요',
     archiveConfirmTitle: '이 게시물을 보관할까요?',
     archiveConfirmMsg: '보관하면 피드에서 숨겨지고, 보관함에서 다시 꺼낼 수 있어요.',
+    // 내 스냅 링 길게 누르기 → 링의 내 스냅 전체 보관/삭제(메뉴 라벨은 postDetail.archiveAction/deleteAction, 삭제 본문은 deleteConfirmMsgShort 재사용)
+    snapRingArchiveTitle: '스냅 {{count}}개를 보관할까요?',
+    snapRingArchiveMsg: '보관하면 스냅 줄에서 숨겨지고, 보관함에서 다시 꺼낼 수 있어요.',
+    snapRingArchivedToast: '스냅 {{count}}개를 보관했어요',
+    snapRingDeleteTitle: '스냅 {{count}}개를 삭제할까요?',
+    snapRingDeletedToast: '스냅 {{count}}개를 삭제했어요',
     makePrivate: '비공개로 전환',
     makePublic: '이웃에게 공개',
     madePrivateToast: '비공개로 전환했어요',
