@@ -54,6 +54,7 @@ import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { stageWidthNow } from '../utils/stage';
 import { dayRangeMs } from '../utils/dateRangePhotoPick';
+import { GlassButton } from '../components/ui';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -1981,14 +1982,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       {/* 하단 고정 저장 바 */}
       <View style={s.saveBar}>
-        <TouchableOpacity
-          style={[s.saveBarBtn, { backgroundColor: skinAccent.accentDeep }, !canSave && s.saveBarBtnDisabled]}
+        {/* 사진첩 기록 '사진 불러오기'와 같은 유리 버튼 + 대각 흰색 링.
+            !canSave는 disabled로 막지 않는다 — 눌러야 handleSaveBarPress가 필수 미충족 안내(hintMsg)를 띄운다. 흐림만 style로 */}
+        <GlassButton
+          label={saving ? t('newRecord.saving') : t('newRecord.save')}
           onPress={handleSaveBarPress}
-          activeOpacity={0.85}
           disabled={saving}
-        >
-          <Text style={s.saveBarBtnTxt}>{saving ? t('newRecord.saving') : t('newRecord.save')}</Text>
-        </TouchableOpacity>
+          style={!canSave ? s.saveBarBtnDisabled : undefined}
+        />
       </View>
 
       {/* 캘린더 바텀시트 */}
@@ -2294,19 +2295,8 @@ const s = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.divider,
   },
-  saveBarBtn: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    backgroundColor: COLORS.purpleDeep,
-  },
   saveBarBtnDisabled: {
     opacity: 0.4,
-  },
-  saveBarBtnTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
   },
 
   // ── 국가 섹션 UI ──

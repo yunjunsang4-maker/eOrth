@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useId, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -43,6 +43,7 @@ import { useSettings } from '../store/settingsStore';
 import { PersonIcon, ChartIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import { buildVisitEvents, yearlyCountsFromEvents } from '../utils/tripVisitStats';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
@@ -164,7 +165,6 @@ function GradientHalfCard({
   children: React.ReactNode;
   style?: any;
 }) {
-  const gradId = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
     <View
@@ -174,33 +174,10 @@ function GradientHalfCard({
       <PressCard style={[styles.card, { flex: 1 }]} onPress={onPress}>
         {children}
       </PressCard>
-      {size.w > 0 && size.h > 0 && (
-        // Svg가 아니라 View로 터치 차단 해제 — RNSVG는 새 아키텍처에서 pointerEvents="none"을
-        // 무시하고 터치를 삼켜 카드 탭(상세 이동)이 막힌다
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={size.w} height={size.h}>
-            <SvgDefs>
-              {/* 원판 테두리와 동일 그라데이션 — 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
-              <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
-                <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
-                <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
-              </SvgLinearGradient>
-            </SvgDefs>
-            <SvgRect
-              x={0.5}
-              y={0.5}
-              width={size.w - 1}
-              height={size.h - 1}
-              rx={HALF_CARD_RADIUS}
-              stroke={`url(#${gradId})`}
-              strokeWidth={1}
-              fill="none"
-            />
-          </Svg>
-        </View>
-      )}
+      {/* 앱 공용 대각 흰색 링 — 옛 #CECFCD 대각 카드 링(0→0.4 투명, 우하단 0.45)에서 2026-09-30 통일.
+          PillRing이 스스로 View(pointerEvents none)로 감싼다 — RNSVG는 새 아키텍처에서 pointerEvents="none"을
+          무시하고 터치를 삼켜 카드 탭(상세 이동)이 막힌다 */}
+      <PillRing width={size.w} height={size.h} radius={HALF_CARD_RADIUS} />
     </View>
   );
 }

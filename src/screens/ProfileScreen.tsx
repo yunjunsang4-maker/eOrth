@@ -29,7 +29,7 @@ import type { ImageSourcePropType } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
@@ -65,6 +65,7 @@ import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
 import { StayPromptModal } from '../components/record/StayPromptModal';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import { shouldNudgeEnd } from '../utils/stayMachine';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
@@ -2369,30 +2370,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             activeOpacity={0.85}
             onLayout={(e) => setMergeBtnSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
           >
-            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208)
-                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
-            {mergeBtnSize.w > 0 && (
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Svg width={mergeBtnSize.w} height={mergeBtnSize.h}>
-                  <Defs>
-                    <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
-                      <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
-                      <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-                    </SvgLinearGradient>
-                  </Defs>
-                  <SvgRect
-                    x={0.5}
-                    y={0.5}
-                    width={mergeBtnSize.w - 1}
-                    height={mergeBtnSize.h - 1}
-                    rx={(mergeBtnSize.h - 1) / 2}
-                    stroke="url(#mergeBtnRing)"
-                    strokeWidth={1}
-                    fill="none"
-                  />
-                </Svg>
-              </View>
-            )}
+            {/* 유리 테두리 — 앱 공용 대각 흰색 링(옛 #CECFCD 위→아래 페이드에서 2026-09-30 통일). 비활성은 링만 0.3.
+                PillRing이 스스로 View(pointerEvents none)로 감싸 새 아키텍처 RNSVG 터치 삼킴을 막는다 */}
+            <PillRing width={mergeBtnSize.w} height={mergeBtnSize.h} radius={mergeBtnSize.h / 2} opacity={mergeSelected.length < 2 ? 0.3 : 1} />
             <Text style={[mergeSt.barBtnTxt, mergeSelected.length < 2 && mergeSt.barBtnTxtDisabled]}>
               {t('profile.mergeBtn', { count: mergeSelected.length })}
             </Text>
@@ -3652,7 +3632,7 @@ const mergeSt = StyleSheet.create({
     right: 16,
     alignItems: 'center',
   },
-  // 유리(글래스) 알약 — 시안 Frame 2147230208의 #CECFCD 그라데이션 테두리 + 흰 텍스트.
+  // 유리(글래스) 알약 — 앱 공용 대각 흰색 링(시안 Frame 2147230208의 #CECFCD 링에서 통일) + 흰 텍스트.
   // 채움은 별/배경이 비치지 않게 불투명 색으로(토글 배경과 맞춤). 그 위에 흰색 10% 글래스 틴트를 얹는다.
   barBtn: {
     width: '100%',

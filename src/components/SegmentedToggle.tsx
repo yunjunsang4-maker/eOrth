@@ -7,7 +7,9 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import Svg, { Defs, Rect } from 'react-native-svg';
+// 앱 공용 대각 흰색 링 — 트랙은 PillRing 그대로, 폭이 애니메이션되는 thumb은 그라데이션만 가져다 쓴다
+import { PillRing, DiagonalRingGradient } from './record/CalendarBottomSheet';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
 import { FONT_SCALE_CAP } from '../ui/Text';
@@ -18,7 +20,7 @@ const AnimatedRect = Animated.createAnimatedComponent(Rect);
  * 지구본/대륙 2단 세그먼트 토글 (Figma Rectangle240652653 재현) — 옵션 2개.
  *
  * 색감: "반투명 보라 두 겹". 트랙·thumb 둘 다 rgba(117,26,173,0.3) (불투명 단색 금지).
- * 테두리: 알약(CustomTabBar)과 동일한 #CECFCD 그라데이션 stroke. thumb 폭/위치는 선택된 라벨 실제 폭에 맞춰 슬라이드.
+ * 테두리: 앱 공용 대각 흰색 링(PillRing — 옛 #CECFCD 위→아래 페이드에서 2026-09-30 통일). thumb 폭/위치는 선택된 라벨 실제 폭에 맞춰 슬라이드.
  */
 
 const PURPLE = 'rgba(117, 26, 173, 0.3)';
@@ -61,9 +63,8 @@ export function SegmentedToggle<T extends string>({
   const [trackW, setTrackW] = useState(0);
   const inited = useRef(false);
 
-  // 테두리 그라디언트 id (인스턴스별 고유 — url(#id) 용이므로 영숫자만)
+  // thumb 테두리 그라디언트 id (인스턴스별 고유 — url(#id) 용이므로 영숫자만)
   const gid = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const borderId = `segBorder${gid}`;
   const thumbBorderId = `segThumbBorder${gid}`;
 
   const tx = useSharedValue(0);
@@ -102,20 +103,18 @@ export function SegmentedToggle<T extends string>({
   };
 
   return (
-    // 트랙(전체 배경 알약) = 반투명 보라 한 겹 + #CECFCD 그라데이션 테두리
+    // 트랙(전체 배경 알약) = 반투명 보라 한 겹 + 공용 대각 흰색 링
     <View
       style={[styles.track, { backgroundColor: skinAccent.pill }]}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
     >
-      {/* 선택 인디케이터 thumb = 같은 반투명 보라 한 겹 더 + 동일한 #CECFCD 그라데이션 테두리 */}
+      {/* 선택 인디케이터 thumb = 같은 반투명 보라 한 겹 더 + 동일한 공용 대각 링.
+          그라데이션 축은 선택 칸의 목표 폭 기준 — 슬라이드(280ms) 중엔 우하단 흰색이 목표 위치에 먼저 가 있을 뿐이다 */}
       {ready && (
         <Animated.View style={[styles.thumb, { backgroundColor: skinAccent.pill }, thumbStyle]} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <Defs>
-              <SvgLinearGradient id={thumbBorderId} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                <Stop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-                <Stop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
-              </SvgLinearGradient>
+              <DiagonalRingGradient id={thumbBorderId} width={layouts[selectedIndex]?.w ?? 0} height={TRACK_H} radius={R} />
             </Defs>
             <AnimatedRect
               animatedProps={thumbBorderProps}
@@ -132,30 +131,8 @@ export function SegmentedToggle<T extends string>({
         </Animated.View>
       )}
 
-      {/* 테두리만 — 알약(CustomTabBar)과 동일한 #CECFCD 그라데이션 stroke */}
-      {trackW > 0 && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={trackW} height={TRACK_H}>
-            <Defs>
-              <SvgLinearGradient id={borderId} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                <Stop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-                <Stop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
-              </SvgLinearGradient>
-            </Defs>
-            <Rect
-              x={0.5}
-              y={0.5}
-              width={trackW - 1}
-              height={TRACK_H - 1}
-              rx={R - 0.5}
-              ry={R - 0.5}
-              fill="none"
-              stroke={`url(#${borderId})`}
-              strokeWidth={1}
-            />
-          </Svg>
-        </View>
-      )}
+      {/* 테두리만 — 공용 대각 흰색 링(PillRing이 스스로 pointerEvents none View로 감싸고 0 폭이면 그리지 않는다) */}
+      <PillRing width={trackW} height={TRACK_H} radius={R} />
 
       {options.map((opt, i) => (
         <Pressable

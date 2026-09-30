@@ -33,6 +33,7 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import type { RootStackScreenProps } from '../navigation/types';
 import { stageWidthNow } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 
 const SW = stageWidthNow();
 // PIP(작은 전면 사진) 크기 — pipWrapContainer 스타일과 동일
@@ -679,47 +680,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             if (width !== retakeSize.w || height !== retakeSize.h) setRetakeSize({ w: width, h: height });
           }}
         >
-          {retakeSize.w > 0 && (
-            // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
-            <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Svg width={retakeSize.w} height={retakeSize.h}>
-              <Defs>
-                {/* 흰색 유리 광택 — 밝은 흰색 → 옅은 흰색 */}
-                <SvgLinearGradient id="retakeBorder" x1="0" y1="0" x2={String(retakeSize.w)} y2={String(retakeSize.h)} gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.75" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.15" />
-                </SvgLinearGradient>
-                {/* 유리 하이라이트 — 위(빛) → 아래(사라짐) */}
-                <SvgLinearGradient id="retakeGlass" x1="0" y1="0" x2="0" y2={String(retakeSize.h)} gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.85" />
-                  <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-                </SvgLinearGradient>
-              </Defs>
-              <Rect
-                x={0.75}
-                y={0.75}
-                width={retakeSize.w - 1.5}
-                height={retakeSize.h - 1.5}
-                rx={17.25}
-                fill="none"
-                stroke="url(#retakeBorder)"
-                strokeWidth={1.5}
-              />
-              {/* 테두리 글래스 하이라이트 */}
-              <Rect
-                x={0.75}
-                y={0.75}
-                width={retakeSize.w - 1.5}
-                height={retakeSize.h - 1.5}
-                rx={17.25}
-                fill="none"
-                stroke="url(#retakeGlass)"
-                strokeWidth={1.5}
-              />
-            </Svg>
-            </View>
-          )}
+          {/* 앱 공용 대각 흰색 링(옛 흰색 대각 광택 테두리 + 위→아래 하이라이트 2겹에서 2026-09-30 통일).
+              모서리 반경은 retakeBtn borderRadius 18. PillRing이 스스로 View(pointerEvents none)로 감싼다 */}
+          <PillRing width={retakeSize.w} height={retakeSize.h} radius={18} />
           <Text style={st.retakeBtnText} {...andFitText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
         <TouchableOpacity

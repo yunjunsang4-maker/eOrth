@@ -60,42 +60,56 @@ const CHIP_PALETTES: Record<string, { bg: string[]; text: string }> = {
 };
 
 /**
- * 알약 테두리 그라데이션 — 기존 앱의 유리 알약(BasicInfo 버튼·탭 바)과 같은 값:
- * #CECFCD → 투명(60% 지점), 위에서 아래로. `diagonal`이면 대신 좌상~우하 대각 대칭(양 끝 흰색,
- * 가운데 투명)으로 그린다 — 블로그 기록 화면 알약 전용이고 달력 알약은 기존 값 그대로다.
+ * 앱 공용 알약·카드 테두리(기준 링, 2026-09-30 전면 통일) — 좌상단·우하단 모서리만 #FFFFFF, 가운데 투명한
+ * 45° 대각 그라데이션. 예전 #CECFCD 위→아래 페이드 링(탭 바·토글·온보딩 버튼·달력 알약)과 #CECFCD 대각 카드 링
+ * (통계 반쪽 카드·DetailBox)은 전부 이 링으로 바꿨다 — 사용자 지시 "그라데이션이 다르게 들어간 것 모두 통일".
  * 폭·높이는 **숫자**로 받는다 — 안드로이드는 Rect의
  * width="100%"가 폭 변경 뒤 갱신되지 않아 옛 윤곽이 겹쳐 보인다(탭 바 사고). RNSVG는 pointerEvents를
  * 무시하므로 View(pointerEvents none)로 감싼다.
  */
-/** diagonal 링에서 좌상단·우하단 모서리로부터 흰색이 남는 픽셀 거리. 알약 폭과 무관한 절대값이라 국가·날짜 칩처럼
+/** 흰색이 남는 최소 픽셀 거리(작은 알약 기준). 알약 폭과 무관한 절대값이라 국가·날짜 칩처럼
  *  넓은 알약에서도 모서리만 밝다(비율 단위였을 때는 위 변 40%가 희게 깔려 왼쪽 전체가 밝아 보였다 — 사용자 지적). */
 const CORNER_PX = 20;
 
-export function PillRing({ width, height, radius, strokeWidth = 1, diagonal = false, cornerPx = CORNER_PX }: { width: number; height: number; radius: number; strokeWidth?: number; diagonal?: boolean; /** diagonal 흰색 거리 — 카드처럼 모서리 반경이 큰 곳은 20px이면 곡선 밖이라 거의 안 보인다 */ cornerPx?: number }) {
+/** 흰색 거리 기본값 = 반지름×4/3(블로그 저장 알약 h30·r15 → 20px 비율), 최소 20px.
+ *  고정 20px면 반지름이 큰 알약·카드에선 흰 부분이 모서리 곡선 안에 묻혀 안 보였다(사용자 지적 2026-09-30).
+ *  r≤15인 링은 예전과 똑같이 20px이다. */
+export const ringCornerPx = (radius: number) => Math.max(CORNER_PX, (radius * 4) / 3);
+
+/** 기준 링의 그라데이션 정의만 — Defs 안에 넣는다. PillRing이 쓰고, 폭이 애니메이션되는 Rect
+ *  (탭 바·세그먼트 토글)도 목표 폭을 넘겨 같은 값을 쓴다(단일 출처).
+ *  userSpaceOnUse(픽셀 단위) 45° 축: 점 (x,y)의 진행도 t=(x+y)/(w+h)라 (0,0)=0, (w,h)=1이고 등고선이 진짜 45°다.
+ *  objectBoundingBox는 가로로 긴 알약에서 축이 눕혀져 흰색이 위 변을 따라 길게 번지므로 쓰지 않는다.
+ *  흰색은 모서리에서 x+y<cornerPx 안쪽만 — 알약이 아무리 넓어도 같은 크기로 남는다. */
+export function DiagonalRingGradient({ id, width, height, radius, cornerPx, opacity = 1 }: { id: string; width: number; height: number; radius: number; cornerPx?: number; /** 비활성 버튼처럼 링만 흐리게 할 때 */ opacity?: number }) {
+  const c = cornerPx ?? ringCornerPx(radius);
+  const cornerT = Math.min(0.5, c / Math.max(1, width + height)); // 아주 작은 알약은 양쪽 흰색이 가운데서 만난다
+  return (
+    <SvgLinearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={(width + height) / 2} y2={(width + height) / 2}>
+      <Stop offset={0} stopColor="#FFFFFF" stopOpacity={opacity} />
+      <Stop offset={cornerT} stopColor="#FFFFFF" stopOpacity={0} />
+      <Stop offset={1 - cornerT} stopColor="#FFFFFF" stopOpacity={0} />
+      <Stop offset={1} stopColor="#FFFFFF" stopOpacity={opacity} />
+    </SvgLinearGradient>
+  );
+}
+
+export function PillRing({ width, height, radius, strokeWidth = 1, cornerPx, opacity }: {
+  width: number; height: number; radius: number; strokeWidth?: number;
+  /** 옛 호출부 호환용(무시됨) — 이제 모든 링이 대각 링이다. 옛 #CECFCD 위→아래 링 분기는 2026-09-30 삭제 */
+  diagonal?: boolean;
+  /** 흰색 거리 — 생략하면 ringCornerPx(radius). 지구본 스킨 카드처럼 사용자가 조정한 값만 명시한다 */
+  cornerPx?: number;
+  opacity?: number;
+}) {
   const id = useId();
   if (width <= 0 || height <= 0) return null;
   const half = strokeWidth / 2;
-  const cornerT = Math.min(0.5, cornerPx / (width + height)); // 아주 작은 알약(w+h<40)은 양쪽 흰색이 가운데서 만난다
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg width={width} height={height}>
         <Defs>
-          {/* userSpaceOnUse(픽셀 단위) 45° 축: 점 (x,y)의 진행도 t=(x+y)/(w+h)라 (0,0)=0, (w,h)=1이고 등고선이 진짜 45°다.
-              objectBoundingBox는 가로로 긴 알약에서 축이 눕혀져 흰색이 위 변을 따라 길게 번지므로 쓰지 않는다.
-              흰색은 모서리에서 x+y<CORNER_PX 안쪽만 — 알약이 아무리 넓어도 같은 크기로 남는다. */}
-          {diagonal ? (
-            <SvgLinearGradient id={id} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={(width + height) / 2} y2={(width + height) / 2}>
-              <Stop offset={0} stopColor="#FFFFFF" stopOpacity={1} />
-              <Stop offset={cornerT} stopColor="#FFFFFF" stopOpacity={0} />
-              <Stop offset={1 - cornerT} stopColor="#FFFFFF" stopOpacity={0} />
-              <Stop offset={1} stopColor="#FFFFFF" stopOpacity={1} />
-            </SvgLinearGradient>
-          ) : (
-            <SvgLinearGradient id={id} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-              <Stop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-              <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-            </SvgLinearGradient>
-          )}
+          <DiagonalRingGradient id={id} width={width} height={height} radius={radius} cornerPx={cornerPx} opacity={opacity} />
         </Defs>
         <Rect x={half} y={half} width={width - strokeWidth} height={height - strokeWidth} rx={radius - half} ry={radius - half}
           fill="none" stroke={`url(#${id})`} strokeWidth={strokeWidth} />
@@ -117,7 +131,7 @@ export function AutoPillRing() {
         setSize((p) => (p.w === w && p.h === h ? p : { w, h })); // 같은 값 setState 루프 방지
       }}
     >
-      <PillRing width={size.w} height={size.h} radius={size.h / 2} diagonal />
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} />
     </View>
   );
 }

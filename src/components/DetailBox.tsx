@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from '../ui/Text';
-import Svg, {
-  Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
-  Stop as SvgStop,
-  Rect as SvgRect,
-} from 'react-native-svg';
+import { PillRing } from './record/CalendarBottomSheet';
 import { Colors } from '../constants';
 
 // 시안 카드: 흰 3% 패널 + 그라데이션 1px 스트로크(rx 28). 높이는 onLayout로 측정.
-// 테두리는 연도별 방문 통계 카드(GradientHalfCard)와 동일한 #CECFCD 대각선 그라데이션(스킨 무관).
+// 테두리는 앱 공용 대각 흰색 링(PillRing, 스킨 무관) — 옛 #CECFCD 대각 카드 링에서 2026-09-30 통일.
 export default function DetailBox({
   title,
   children,
@@ -32,31 +27,9 @@ export default function DetailBox({
         }
       >
         {children}
-        {size.w > 0 && size.h > 0 && (
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Svg width={size.w} height={size.h}>
-              <SvgDefs>
-                {/* 연도별 방문 통계(GradientHalfCard) 테두리와 동일 그라데이션 — #CECFCD 대각선(좌상단 진하게, 가운데 투명, 우하단 약하게) */}
-                <SvgLinearGradient id="detailBoxRing" x1="0" y1="0" x2="1" y2="1">
-                  <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                  <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
-                  <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
-                  <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgRect
-                x={0.5}
-                y={0.5}
-                width={size.w - 1}
-                height={size.h - 1}
-                rx={28}
-                stroke="url(#detailBoxRing)"
-                strokeWidth={1}
-                fill="none"
-              />
-            </Svg>
-          </View>
-        )}
+        {/* PillRing이 스스로 pointerEvents none View로 감싸 터치를 막지 않는다. 카드 overflow hidden은 그대로 —
+            링은 0.5px 안쪽(rx 27.5)에 그려져 모서리 클립 안에 들어간다(예전 링과 같은 위치) */}
+        <PillRing width={size.w} height={size.h} radius={28} />
       </View>
     </View>
   );

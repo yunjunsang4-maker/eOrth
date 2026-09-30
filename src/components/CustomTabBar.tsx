@@ -17,14 +17,14 @@ import { useCoachActive } from './coachOverlayState';
 import { useTabBarHidden } from './tabBarVisibility';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
+// 앱 공용 대각 흰색 링 그라데이션(단일 출처). 이 Rect들은 폭이 애니메이션되므로 PillRing 대신 그라데이션만 가져다 쓴다
+import { DiagonalRingGradient } from './record/CalendarBottomSheet';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
   Mask as SvgMask,
   Rect as SvgRect,
   Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
-  Stop as SvgStop,
 } from 'react-native-svg';
 import Animated, {
   useSharedValue,
@@ -199,6 +199,10 @@ const TabItem: React.FC<{
   // 라벨 실측 폭 — 활성 알약 폭 90 고정에 라벨 시작 41이면 'Analysis'(8자)는 오른쪽이 잘려
   // 한쪽으로 치우쳐 보였다. 실측 폭 + 좌우 여백이 90을 넘으면 그만큼 알약을 넓힌다.
   const labelW = useSharedValue(0);
+  // 링 그라데이션용 JS 미러 — 그라데이션 축은 목표(활성) 폭으로 고정한다. 테두리는 depthStyle로 활성일 때만
+  // 보이므로(opacity=progress) 폭 모프 중 잠깐 우하단 흰색 위치가 목표 폭 기준인 건 눈에 띄지 않는다.
+  const [labelWJs, setLabelWJs] = useState(0);
+  const ringW = isGlobe ? G_ACTIVE_W : Math.max(H_ACTIVE_W, LABEL_LEFT + labelWJs + ICON_LEFT);
   const hActiveW = () => {
     'worklet';
     return Math.max(H_ACTIVE_W, LABEL_LEFT + labelW.value + ICON_LEFT);
@@ -249,16 +253,13 @@ const TabItem: React.FC<{
       accessibilityState={isFocused ? { selected: true } : {}}
     >
       <Animated.View style={[isGlobe ? styles.pillGlobe : styles.pillH, pillStyle]}>
-        {/* 활성 알약: 보라 면 + #CECFCD 그라데이션 '테두리만'(stroke) + 검정 드롭섀도 */}
+        {/* 활성 알약: 보라 면 + 앱 공용 대각 흰색 링 '테두리만'(stroke) + 검정 드롭섀도 */}
         <Animated.View style={[StyleSheet.absoluteFill, depthStyle]} pointerEvents="none">
           <View style={[styles.bodyFill, { borderRadius: R, backgroundColor: pillColor }]} />
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <SvgDefs>
-              {/* 배경 테두리와 동일한 #CECFCD → 투명 그라데이션 */}
-              <SvgLinearGradient id={`pillBorder-${uid}`} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
-              </SvgLinearGradient>
+              {/* 앱 공용 대각 흰색 링(옛 #CECFCD 위→아래 페이드에서 2026-09-30 통일) */}
+              <DiagonalRingGradient id={`pillBorder-${uid}`} width={ringW} height={H} radius={R} />
             </SvgDefs>
             <AnimatedRect
               animatedProps={pillBorderProps}
@@ -298,7 +299,7 @@ const TabItem: React.FC<{
               style={styles.label}
               numberOfLines={1}
               {...andFitText}
-              onTextLayout={(e) => { const w = e.nativeEvent.lines[0]?.width ?? 0; if (w > 0) labelW.value = Math.ceil(w); }}
+              onTextLayout={(e) => { const w = e.nativeEvent.lines[0]?.width ?? 0; if (w > 0) { labelW.value = Math.ceil(w); setLabelWJs(Math.ceil(w)); } }}
             >{label}</Text>
           </Animated.View>
         </View>
@@ -386,6 +387,8 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   // 컨테이너·유리 매트만 348dp로 늘어나고 테두리는 323dp에서 끊겨 오른쪽에 테두리 곡선이
   // 두 겹으로 보였다. 상태로 커밋된 폭(barWCommitted)을 정적 prop 으로 직접 준다.
   // iOS 는 animatedProps 가 정상 동작하므로 undefined 를 넘겨 기존 경로를 그대로 쓴다.
+  // 테두리 링 그라데이션 축 폭 — 양 플랫폼 공통으로 커밋된 목표 폭(컨테이너와 같은 클램프)
+  const barRingW = Math.min(barWCommitted, STAGE_W - BAR_SIDE_MIN * 2);
   const borderStaticW = Platform.OS === 'ios'
     ? undefined
     : Math.max(0, Math.min(barWCommitted, STAGE_W - BAR_SIDE_MIN * 2) - 1.5);
@@ -627,17 +630,13 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         {tabs}
       </View>
 
-      {/* 테두리만 — stroke 전용(fill="none"), 선형 그라데이션 #CECFCD → #CECFCD(투명) */}
+      {/* 테두리만 — stroke 전용(fill="none"), 앱 공용 대각 흰색 링(좌상단·우하단 흰색, 가운데 투명) */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%">
           <SvgDefs>
-            {/* Figma 원본 그라데이션 (expo-linear-gradient 값 → SVG objectBoundingBox 매핑)
-                colors ['#CECFCD','rgba(206,207,205,0)'] / locations [0,0.607]
-                start (0.216,-0.08) → end (0.283,1.10) */}
-            <SvgLinearGradient id="tabBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-              <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-              <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
-            </SvgLinearGradient>
+            {/* 옛 Figma #CECFCD 위→아래 페이드(0.216,-0.08→0.283,1.10)를 2026-09-30 공용 대각 링으로 통일.
+                축은 커밋된 목표 폭 기준 — iOS 폭 모프(323↔348) 중엔 우하단 흰색이 최대 25px 먼저 가 있을 뿐이다 */}
+            <DiagonalRingGradient id="tabBorderGrad" width={barRingW} height={BAR_H} radius={BAR_R} />
           </SvgDefs>
           <AnimatedRect
             // 안드로이드엔 animatedProps 를 아예 넘기지 않는다 — 넘기면 정적 width 까지 덮어써

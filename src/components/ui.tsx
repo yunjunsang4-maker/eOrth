@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,10 +7,11 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import { Colors, BorderRadius, Typography, Spacing } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
+// 앱 공용 대각 흰색 링. CalendarBottomSheet는 ui.tsx를 (전이적으로도) import하지 않아 순환이 없다(2026-09-30 확인).
+import { PillRing } from './record/CalendarBottomSheet';
 
 // ─── Primary Button ────────────────────────────────────────────────────────────
 interface PrimaryButtonProps {
@@ -57,8 +58,8 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
 };
 
 // ─── Glass Button (앱 기본 버튼) ───────────────────────────────────────────────
-// 온보딩 '다음' 버튼 디자인(AppIntro/Login) — 흰색 10% 유리 채움 + #CECFCD 대각선
-// 그라데이션 테두리(탭바·토글과 동일). 진행/다음 계열 기본 버튼으로 쓴다.
+// 온보딩 '다음' 버튼 디자인(AppIntro/Login) — 흰색 10% 유리 채움 + 앱 공용 대각 흰색 링(PillRing).
+// 진행/다음 계열 기본 버튼으로 쓴다. 옛 #CECFCD 위→아래 링과 `ring="diagonal"` 분기는 2026-09-30 통일로 삭제.
 interface GlassButtonProps {
   label: string;
   onPress: () => void;
@@ -75,8 +76,6 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
   style,
 }) => {
   const [size, setSize] = useState({ w: 0, h: 0 });
-  // 인스턴스마다 고유 그라데이션 id (여러 버튼이 있어도 url(#id) 충돌 방지)
-  const gid = 'glassBtnRing' + useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -88,20 +87,9 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       accessibilityLabel={label}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
     >
-      {size.w > 0 && (
-        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={size.w} height={size.h}>
-            <SvgDefs>
-              <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
-                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-              </SvgLinearGradient>
-            </SvgDefs>
-            <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
-          </Svg>
-        </View>
-      )}
+      {/* 비활성은 옛 링과 같게 링만 0.3 (버튼 전체 0.5와 곱해진다). PillRing이 스스로 Svg를 pointerEvents none View로 감싸고,
+          흰색 거리는 기본값(반지름×4/3)이라 큰 알약에서도 곡선에 묻히지 않는다 */}
+      <PillRing width={size.w} height={size.h} radius={size.h / 2} opacity={disabled ? 0.3 : 1} />
       {loading ? (
         <ActivityIndicator color={Colors.white} size="small" />
       ) : (
@@ -248,7 +236,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
+    // overflow:'hidden' 금지 — PillRing 규칙(부모가 자르면 링 가장자리가 잘린다). 자식은 글자·스피너뿐이라 클립이 필요 없다
   },
   glassBtnDisabled: {
     opacity: 0.5,

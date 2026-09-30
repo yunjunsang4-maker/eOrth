@@ -18,10 +18,6 @@ import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { select, success } from '../utils/haptics';
 import Svg, {
-  Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
-  Stop as SvgStop,
-  Rect as SvgRect,
   Path as SvgPath,
   Circle as SvgCircle,
 } from 'react-native-svg';
@@ -84,6 +80,7 @@ import { sweepRecoStates } from '../services/photoAI/recoStorage';
 import { sweepSignalCaches } from '../services/photoAI/signalCache';
 import { sweepRecoOrphans } from '../utils/recoOrphanSweep';
 import type { RootStackScreenProps } from '../navigation/types';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
 // 사진 수 상한 없음: 기간 내 사진은 전부 스캔한다 (과거엔 maxAssets 상한 도달 시
@@ -264,11 +261,10 @@ function ImportOrbVisualBase({ width = ORB_W }: { width?: number }) {
 // 기본 얕은 비교로 충분하다.
 const ImportOrbVisual = React.memo(ImportOrbVisualBase);
 
-// 분석 기간 칩 — 상단좌측이 밝고 하단우측으로 어두워지는 그라데이션 테두리(입체감).
-function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boolean; idSuffix: string; onPress: () => void }) {
+// 분석 기간 칩 — 앱 공용 대각 흰색 링(옛 흰→회색 대각 링에서 2026-09-30 통일).
+function PeriodChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
   const [w, setW] = useState(0);
   const H = 25;
-  const gid = `periodChipRing_${idSuffix}`;
   return (
     <TouchableOpacity
       style={[styles.periodChip, on && styles.periodChipOn]}
@@ -276,25 +272,8 @@ function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boole
       activeOpacity={0.8}
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
     >
-      {w > 0 && (
-        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={w} height={H}>
-            <SvgDefs>
-              <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-                <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
-                <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
-                <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
-                <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
-              </SvgLinearGradient>
-            </SvgDefs>
-            <SvgRect
-              x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
-              fill="none" stroke={`url(#${gid})`} strokeWidth={1}
-            />
-          </Svg>
-        </View>
-      )}
+      {/* PillRing이 스스로 View(pointerEvents none)로 감싼다 — 새 아키텍처 RNSVG 터치 삼킴 방지 */}
+      <PillRing width={w} height={H} radius={H / 2} />
       <Text style={styles.periodTxt}>{label}</Text>
     </TouchableOpacity>
   );
@@ -1497,7 +1476,6 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                       key={p.key}
                       label={periodLabel(p, t)}
                       on={period.key === p.key}
-                      idSuffix={p.key}
                       onPress={() => setPeriod(p)}
                     />
                   ))}

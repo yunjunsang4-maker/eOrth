@@ -22,7 +22,6 @@ import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
-  Rect as SvgRect,
   Circle as SvgCircle,
   Path as SvgPath,
 } from 'react-native-svg';
@@ -50,8 +49,9 @@ import { minimumSignupAge } from '../constants/minimumAge';
 // 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
 import { DEVICE_DEFAULT_HOME_COUNTRY, LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 
-// 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
+// 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + 앱 공용 대각 흰색 링(옛 #CECFCD 위→아래 링에서 2026-09-30 통일)
 function GlassButton({ label, onPress, disabled, loading, style }: {
   label: string;
   onPress: () => void;
@@ -73,19 +73,8 @@ function GlassButton({ label, onPress, disabled, loading, style }: {
       ) : (
         <Text style={glassBtn.label}>{label}</Text>
       )}
-      {btnW > 0 && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={btnW} height={56}>
-            <SvgDefs>
-              <SvgLinearGradient id="basicBtnRing" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-              </SvgLinearGradient>
-            </SvgDefs>
-            <SvgRect x={0.5} y={0.5} width={btnW - 1} height={55} rx={28} stroke="url(#basicBtnRing)" strokeWidth={1} fill="none" />
-          </Svg>
-        </View>
-      )}
+      {/* PillRing이 스스로 View(pointerEvents none)로 감싸고 0 폭이면 그리지 않는다 */}
+      <PillRing width={btnW} height={56} radius={28} />
     </TouchableOpacity>
   );
 }
