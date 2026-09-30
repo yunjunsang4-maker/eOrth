@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  Easing,
   Modal,
   PanResponder,
   Platform,
@@ -805,18 +806,35 @@ export default function MainScreen({ navigation, route }: Props) {
   // 스킨 카드 덱 슬라이드 — 카드별 translateX(선택 스킨=맨 앞). 폭은 셋 다 같고 x만 옮겨 '앞으로 밀려 나오는' 느낌
   const deckX = useRef<Record<string, Animated.Value>>({}).current;
   const deckSlotX = (slot: number) => -(GLOBE_SKINS.length - 1 - slot) * DS_DECK_PEEK;
+  // 덱은 globeSkin이 아니라 로컬 deckSkin을 따른다 — 탭 즉시 덱만 먼저 움직이고, 무거운 setGlobeSkin
+  // (설정 Provider 5개 state + 아이콘 팔레트 + 지구본 WebView 재테마 + 영속화)은 슬라이드가 끝난 뒤 적용한다.
+  // 같은 커밋에서 돌리면 스프링이 그 무거운 렌더가 끝난 뒤에야 시작돼 '툭 멈췄다 움직이는' 끊김이 났다.
+  // 외부에서 globeSkin이 바뀌면(하이드레이트·취소 원복) 덱도 따라간다.
+  const [deckSkin, setDeckSkin] = useState(globeSkin);
+  useEffect(() => { setDeckSkin(globeSkin); }, [globeSkin]);
+  const pendingSkin = useRef<string | null>(null); // 슬라이드 끝에 적용할 스킨(취소 시 null로 버림)
+  const setGlobeSkinRef = useRef(setGlobeSkin);
+  setGlobeSkinRef.current = setGlobeSkin; // 슬라이드 중 색이 바뀌어도 최신 세터(최신 색 저장)로 적용
   // 스킨별 덱 순서(앞→뒤)는 DS_DECK_ORDER. 표에 없는 스킨은 선택 스킨 + GLOBE_SKINS 순서.
   const deckOrder = useMemo(() => {
-    const fixed = DS_DECK_ORDER[globeSkin];
+    const fixed = DS_DECK_ORDER[deckSkin];
     if (fixed) return fixed;
-    const front = GLOBE_SKINS.find(s => s.id === globeSkin) ?? GLOBE_SKINS[0];
+    const front = GLOBE_SKINS.find(s => s.id === deckSkin) ?? GLOBE_SKINS[0];
     return [front, ...GLOBE_SKINS.filter(s => s !== front)].map(s => s.id);
-  }, [globeSkin]);
+  }, [deckSkin]);
   deckOrder.forEach((id, slot) => { if (!deckX[id]) deckX[id] = new Animated.Value(deckSlotX(slot)); });
   useEffect(() => {
+    // 스프링(friction 9·tension 70)은 ~2.5% 오버슈트 + 정지 판정까지 ~0.8초 꼬리가 남아 끝이 늘어졌다 →
+    // 처음이 가장 빠른 ease-out 고정 길이로. 연타하면 새 timing이 진행 중인 것을 멈추고 현재 위치에서 이어간다.
     Animated.parallel(deckOrder.map((id, slot) =>
-      Animated.spring(deckX[id], { toValue: deckSlotX(slot), useNativeDriver: true, friction: 9, tension: 70 }),
-    )).start();
+      Animated.timing(deckX[id], { toValue: deckSlotX(slot), duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+    )).start(() => {
+      // finished 여부와 무관하게 적용 — 모달 닫힘(확인)·지구본 형태 전환으로 덱이 언마운트돼 중단돼도 선택은 살아야 한다.
+      // 연타로 중단된 경우엔 이미 다음 스킨이 pending이라 그 스킨이 적용된다(중간 스킨은 건너뜀).
+      const p = pendingSkin.current;
+      pendingSkin.current = null;
+      if (p) setGlobeSkinRef.current(p); // 테마드 세터가 스킨별 저장 색 복원까지 수행
+    });
   }, [deckOrder]); // eslint-disable-line react-hooks/exhaustive-deps
   // 색상별 국가 목록 스크롤 상태 — 넘칠 때만, 끝에 닿기 전까지만 하단 딤을 켠다
   const [chipScroll, setChipScroll] = useState({ y: 0, viewH: 0, contentH: 0 });
@@ -841,11 +859,15 @@ export default function MainScreen({ navigation, route }: Props) {
   } | null>(null);
   const openDisplaySettings = () => {
     dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionDisplayModes, regionColors, skinColorStore };
+    // 안드로이드 Modal은 닫히는 즉시 자식을 언마운트해 슬라이드가 중간에 멈춘 채 남는다 — 열 때 제자리로
+    deckOrder.forEach((id, slot) => deckX[id]?.setValue(deckSlotX(slot)));
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
     const s = dsSnapshot.current;
+    pendingSkin.current = null; // 슬라이드 중 취소 — 아직 적용 안 된 스킨은 버린다
     if (s) {
+      setDeckSkin(s.globeSkin); // pending이 버려지면 globeSkin이 안 바뀌어 동기화 effect가 안 돌 수 있다
       // 스킨 먼저 복원 — setGlobeSkin(테마드 세터)이 색 스왑+아이콘 팔레트를 수행하므로, 그 뒤에 스냅샷 색으로 덮어써야 한다
       if (s.globeSkin !== globeSkin) setGlobeSkin(s.globeSkin);
       setGlobeDisplayMode(s.globeDisplayMode);
@@ -2603,13 +2625,15 @@ export default function MainScreen({ navigation, route }: Props) {
                             {SKIN_CARD_ART[s.id] ? (
                               // 시안 SVG 그대로 — 앞 카드로 보이는 영역에 사진, 스킨별 fill-opacity.
                               // 반투명(0.8)이 뒤 카드를 비추지 않게 어두운 바탕(#0B0A0E) 위에 얹는다.
-                              <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0B0A0E' }]}>
+                              // 바탕은 사진 영역에만 깐다 — 카드 전체(absoluteFill)에 깔면 사진 왼쪽 빈 구간(평소엔 잘리거나
+                              // 앞 카드에 가려짐)이 슬라이드 중 맨 위로 올라온 카드에서 검은 띠로 드러나 '툭' 끊겨 보였다.
+                              <View style={{ position: 'absolute', top: 0, bottom: 0, right: 0, left: DS_DECK_BLEED + (GLOBE_SKINS.length - 1) * DS_DECK_PEEK, backgroundColor: '#0B0A0E' }}>
                                 <Image
                                   source={SKIN_CARD_ART[s.id].src}
                                   resizeMode="stretch"
                                   style={{
                                     position: 'absolute',
-                                    left: DS_DECK_BLEED + (GLOBE_SKINS.length - 1) * DS_DECK_PEEK,
+                                    left: 0,
                                     width: DS_DECK_W - (GLOBE_SKINS.length - 1) * DS_DECK_PEEK,
                                     top: SKIN_CARD_ART[s.id].yOff * DS_DECK_H,
                                     height: SKIN_CARD_ART[s.id].hScale * DS_DECK_H,
@@ -2645,7 +2669,9 @@ export default function MainScreen({ navigation, route }: Props) {
                             accessibilityState={{ selected: i === 0 }}
                             onPress={() => {
                               if (locked) { cancelDisplaySettings(); navigation.navigate('Premium'); return; }
-                              setGlobeSkin(s.id); // 테마드 세터가 스킨별 저장 색 복원까지 수행
+                              // 덱만 즉시 전환(슬라이드 시작), 실제 스킨 적용은 슬라이드 끝(deckOrder effect)에서
+                              pendingSkin.current = s.id;
+                              setDeckSkin(s.id);
                             }}
                             accessibilityRole="button"
                             accessibilityLabel={t(s.labelKey)}
