@@ -1944,14 +1944,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다. 다른 배경 요소(블롭·오로라 그라데이션)는 제거됨 */}
       <StarFieldBackground />
 
-      <ScrollView
-        style={[styles.container, { backgroundColor: 'transparent' }]}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
-        showsVerticalScrollIndicator={false}
-        scrollEnabled={!isDragging}
-        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} progressViewOffset={insets.top} />}
-      >
-        {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정 */}
+        {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정.
+            통계·소셜 탭과 같이 ScrollView 바깥(위)에 둬서 스크롤해도 고정된다. */}
         {pushed ? (
           <View style={[styles.headerRow, { paddingTop: insets.top + 11, paddingLeft: 12 }]}>
             <TouchableOpacity
@@ -2000,6 +1994,15 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         </View>
         )}
 
+      <ScrollView
+        style={[styles.container, { backgroundColor: 'transparent' }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!isDragging}
+        // progressViewOffset 제거: 헤더가 ScrollView 밖(위)으로 빠져 스크롤 상단이 이미 안전영역 아래다.
+        // insets.top을 그대로 두면 스피너가 그만큼 더 내려가 엉뚱한 곳에 뜬다(iOS·안드로이드 모두 적용되는 prop).
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
         {/* 프로필 헤더 (아바타 + 정보) */}
         <View style={styles.profileRow}>
           <GrainOverlay opacity={0.03} dotCount={60} />
@@ -2471,6 +2474,8 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
+    // headerRow.marginBottom 24→6으로 줄인 18을 여기로 옮김(쉴 때 배치 유지, 잘리는 선만 소셜과 일치)
+    paddingTop: 18,
     paddingBottom: 32,
   },
 
@@ -2479,12 +2484,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    // 목업(iPhone 17 - 52.svg) 정확 배치: 부모 content paddingHorizontal(16) 상쇄 후
-    // 워드마크 Svg 좌측 36px(잉크 ≈37.7), 기어 우측 24px
-    marginHorizontal: -16,
+    // 목업(iPhone 17 - 52.svg) 정확 배치: 워드마크 Svg 좌측 36px(잉크 ≈37.7), 기어 우측 24px.
+    // ScrollView 밖 고정 헤더라 부모 패딩이 없다 → 예전 marginHorizontal:-16 상쇄는 제거.
+    // 고정 헤더 높이를 소셜과 맞춤: 소셜 = insets.top + 17 + 35(DM 버튼 4+27+4) + 12 = insets.top + 64.
+    // 프로필 = insets.top + 11 + 47(워드마크 Svg) + marginBottom → 6이면 64로 같다(예전 24는 82로 18 길었음).
+    // 줄인 18은 styles.content.paddingTop으로 옮겨 스크롤 0 위치의 프로필 행은 변경 전과 동일 —
+    // 스크롤 시 콘텐츠가 잘리는 선만 18 올라간다.
     paddingLeft: 36,
     paddingRight: 24,
-    marginBottom: 24,
+    marginBottom: 6,
   },
   settingBtn: {
     width: 40,
