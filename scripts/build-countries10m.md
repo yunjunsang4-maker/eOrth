@@ -24,4 +24,6 @@ node -e "const fs=require('fs');const s=fs.readFileSync('ne10m.topo.json','utf8'
 - 앱 사용: WebView가 `need10mCountries` 요청 → RN이 `COUNTRIES_10M_TOPO` 전송 → HTML `topoDecode(JSON.parse(topo),'countries')`.
 - `name`은 앱 규약(영문 표준명)과 일치, `name_ko`는 한글명.
 - 결과 크기 ~1.35MB(30%). 기존 vendorLand10m(4MB)+vendorBorders10m(4.8MB)을 대체하므로 순 번들 감소.
+  (2026-10-02: 그 두 파일은 도달 불가라 에셋으로 옮기지 않고 삭제됐고(복원은 git 이력의 .ts에서), vendorWorld50m·vendorAdmin1은 JS 번들에서 빠져
+  `assets/geo/*.geodata` Metro 에셋이 됐다 — GlobeView가 expo-asset으로 읽는다. 이 파일(vendorCountries10m)은 countryLocate.ts의 동기 require 때문에 TS 모듈로 남는다.)
 - scripts/geo-tmp/ 는 재생성 가능한 스크래치라 커밋 제외(.gitignore).

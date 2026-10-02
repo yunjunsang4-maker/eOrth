@@ -1,6 +1,8 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Asset } from 'expo-asset';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { useAnimationsActive } from '../hooks/useAnimationsActive';
 import { subscribeCoachFreezeGlobe } from './coachOverlayState';
 import { THREE_SRC } from '../data/vendorThree';
@@ -17,6 +19,34 @@ const D3_INLINE = escScript(D3_SRC);
 const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
 // 딥줌 도시 라벨 데이터 — 3D 지구본에만 주입(네온 폼 제외)
 const CITY_LABELS_INLINE = escScript(JSON.stringify(CITY_LABELS));
+
+// 딥줌 지도 데이터(50m·admin1) — WebView가 need* 메시지로 요청하면 읽어서 보낸다.
+// 예전엔 src/data/vendor*.ts 문자열 모듈(4종 합계 ~12MB)이라 Hermes 번들에 들어가 OTA마다 통째로
+// 내려갔다. 지금은 Metro 에셋(assets/geo/*.geodata — metro.config.js에서 assetExts 추가)이다.
+// · .json 확장자를 쓰면 Metro가 소스로 번들에 넣어 버리므로 전용 확장자를 쓴다.
+// · 파일 내용은 예전 export 문자열 값과 바이트 단위로 같은 JSON 텍스트 — WebView 수신부가
+//   문자열을 받아 JSON.parse하므로 읽은 문자열을 그대로 보낸다(메시지 shape 불변).
+// · require는 Metro가 정적으로 수집해야 하므로 경로를 리터럴로 둔다.
+// vendorCountries10m은 옮기지 않았다 — countryLocate.ts가 동기 require로 쓰고 node 검증도 의존한다.
+const GEO_ASSETS = {
+  need50m: { mod: require('../../assets/geo/world50m.geodata'), reply: 'world50m', key: 'topo' },
+  needAdmin1: { mod: require('../../assets/geo/admin1.geodata'), reply: 'admin1Lines', key: 'lines' },
+} as const;
+type GeoRequest = keyof typeof GEO_ASSETS;
+// 읽은 문자열은 앱 수명 동안 캐시(예전 require 캐시와 같은 수명) — WebView 재생성(폼 전환·크래시
+// 복구) 때 수 MB를 다시 읽지 않게. 실패한 Promise는 지워서 다음 요청 때 다시 읽게 한다.
+const _geoText: Partial<Record<GeoRequest, Promise<string>>> = {};
+function loadGeoText(req: GeoRequest): Promise<string> {
+  const cached = _geoText[req];
+  if (cached) return cached;
+  const p = Asset.fromModule(GEO_ASSETS[req].mod).downloadAsync().then(asset => {
+    if (!asset.localUri) throw new Error('localUri 없음');
+    return readAsStringAsync(asset.localUri);
+  });
+  _geoText[req] = p;
+  p.catch(() => { if (_geoText[req] === p) delete _geoText[req]; });
+  return p;
+}
 
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
 export type GlobeVariant = 'aurora' | 'classic';
@@ -4207,30 +4237,33 @@ export default function GlobeView({
       sendAll();
       return; // 내부 신호는 부모로 올리지 않음
     }
-    if (data?.type === 'need50m') {
-      // 딥줌 LOD 데이터 요청 — 740KB 문자열이라 처음 필요할 때만 lazy require해 전송
-      const { WORLD_50M_TOPO } = require('../data/vendorWorld50m');
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'world50m', topo: WORLD_50M_TOPO }));
+    // 딥줌 지도 데이터 요청(need50m·needAdmin1) — 에셋 파일을 비동기로
+    // 읽어 { type: world50m|admin1Lines, topo|lines: JSON 문자열 }로 전송.
+    // hasOwnProperty: WebView가 보낸 임의 문자열이 'constructor' 같은 프로토타입 키에 걸리지 않게.
+    //
+    // 실패 시 재시도 구조(⚠️ 알고 둘 것): WebView는 요청 직후 *Requested=true로 잠그고, 응답을
+    // '받았는데 파싱 실패'한 경우에만 풀어 준다. RN이 응답을 못 보내면(읽기 실패) 그 WebView 수명
+    // 동안은 다시 요청하지 않는다 — 해당 딥줌 레이어만 빠지고 지구본은 계속 돈다. WebView가 새로
+    // 만들어지면(폼 전환·크래시 복구 key 변경) 플래그가 초기화돼 다시 요청하고, 실패 캐시는
+    // loadGeoText가 지워 두었으므로 그때 다시 읽는다.
+    //
+    // 응답 도착 전에 WebView가 재생성되면 응답은 '새' WebView(webViewRef.current)로 간다. 수신부는
+    // 데이터만 저장하므로 요청 전에 받아도 무해하고, 로드 중이라 유실되면 새 WebView가 나중에
+    // 다시 요청해 캐시에서 받는다. 언마운트 후 도착하면 ref가 null이라 아무것도 안 한다.
+    if (typeof data?.type === 'string' && Object.prototype.hasOwnProperty.call(GEO_ASSETS, data.type)) {
+      const req = data.type as GeoRequest;
+      const { reply, key } = GEO_ASSETS[req];
+      loadGeoText(req).then(
+        text => { webViewRef.current?.postMessage(JSON.stringify({ type: reply, [key]: text })); },
+        err => { if (__DEV__) console.warn(`[GlobeView] ${req} 지도 데이터 읽기 실패 — 이 WebView에선 해당 딥줌 레이어 없이 진행`, err); },
+      );
       return; // 내부 신호
     }
-    if (data?.type === 'needAdmin1') {
-      // 주/도 지역구분선 요청 — 1.7MB 문자열, 딥줌 진입 시에만 lazy 전송
-      const { ADMIN1_LINES_JSON } = require('../data/vendorAdmin1');
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'admin1Lines', lines: ADMIN1_LINES_JSON }));
-      return; // 내부 신호
-    }
-    if (data?.type === 'needBorders10m') {
-      // 10m 최정밀 구분선(해안+국경) 요청 — 최심 줌 접근 시에만 lazy 전송
-      const { BORDERS_10M_JSON } = require('../data/vendorBorders10m');
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'borders10m', lines: BORDERS_10M_JSON }));
-      return; // 내부 신호
-    }
-    if (data?.type === 'needLand10m') {
-      // 딥줌 지역(region) 텍스처의 10m 육지 마스크 요청 — 최심 줌 접근 시에만 lazy 전송
-      const { LAND_10M_JSON } = require('../data/vendorLand10m');
-      webViewRef.current?.postMessage(JSON.stringify({ type: 'land10m', rings: LAND_10M_JSON }));
-      return; // 내부 신호
-    }
+    // needBorders10m·needLand10m은 데이터를 삭제해 응답하지 않는다(2026-10-02) — 현재 두 폼 모두 도달 불가
+    // (aurora는 벡터 대륙 게이트, classic 유리는 최대 줌이 임계 미만). 딥줌 상한을 올려 되살리려면
+    // git 이력의 src/data/vendorBorders10m.ts·vendorLand10m.ts(1b7d922에 존재) 문자열 값을 .geodata로 옮겨 GEO_ASSETS에
+    // 다시 넣을 것(.geodata 자체는 커밋된 적 없음). 부모로는 안 올린다.
+    if (data?.type === 'needBorders10m' || data?.type === 'needLand10m') return; // 내부 신호
     if (data?.type === 'need10mCountries') {
       // 10m 나라별 폴리곤(일체형 벡터 대륙 채움+테두리) 요청 — 딥줌 진입 시 lazy 전송
       const { COUNTRIES_10M_TOPO } = require('../data/vendorCountries10m');
