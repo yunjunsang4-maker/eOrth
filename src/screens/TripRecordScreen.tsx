@@ -29,7 +29,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useComments, useRecordActions } from '../store/recordStore';
 import { TrashIcon, CommentIcon, BackChevronIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -44,7 +44,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const styles = useMemo(() => makeStyles(a), [a]);
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
-  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment, tripGroups, updateTripGroup, setCountryCover } = useRecords();
+  const { records, tripGroups } = useRecordData();
+  const { commentsByPost } = useComments();
+  const { deleteRecord, updateRecord, toggleLike, addComment, updateTripGroup, setCountryCover } = useRecordActions();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 

@@ -15,7 +15,7 @@ import { Text, TextInput } from '../ui/Text';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
 import { TrashIcon, BackChevronIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
@@ -85,7 +85,8 @@ export default function TripGroupScreen() {
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();
   const { groupId } = route.params;
 
-  const { tripGroups, records, deleteTripGroup, updateTripGroup } = useRecords();
+  const { tripGroups, records } = useRecordData();
+  const { deleteTripGroup, updateTripGroup } = useRecordActions();
   const group = tripGroups.find((g) => g.id === groupId);
 
   const [menuVisible, setMenuVisible] = useState(false);

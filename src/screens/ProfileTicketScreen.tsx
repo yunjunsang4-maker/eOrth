@@ -12,7 +12,7 @@ import QRCode from 'react-native-qrcode-svg';
 import Svg, { Path, G } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { getMyJoinedAt } from '../services/profile';
 import { KO_TO_EN } from './MainScreen';
 import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
@@ -95,7 +95,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { handle, installedAt } = useSettings();
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
   const { tripCount, neighborCount } = route.params;
   const ticketRef = useRef<View>(null);
   const hasHandle = !!handle;

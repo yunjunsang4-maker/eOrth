@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSettings, genHandle } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useActiveStay } from '../store/recordStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { isSupabaseConfigured } from '../services/supabase';
 import { upsertMyProfile } from '../services/profile';
@@ -15,7 +15,7 @@ import i18n from '../i18n';
 export default function ProfileSync() {
   const entered = useIsAppEntered();
   const { handle, handleChosen, bio, onboardedAt, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
-  const { activeStayGroup } = useRecords();
+  const { activeStayGroup } = useActiveStay();
 
   // 진행 중(active) 체류만 push — paused(잠깐 귀국)·종료는 null
   const stayCode = activeStayGroup?.stay?.status === 'active'

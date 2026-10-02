@@ -16,7 +16,7 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useFeed, useSocialGraph } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
 import { fetchAppNotifications, markNotificationsRead, markAllNotificationsRead, type AppNotificationType } from '../services/social';
@@ -199,7 +199,9 @@ const NotiBar = ({ n, idx, skinAccent, thumb, timeText, loading, onPress }: {
 export default function NotificationScreen({ navigation }: Props) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
-  const { records, feedPosts, isMuted, isBlocked } = useRecords();
+  const { records } = useRecordData();
+  const { feedPosts } = useFeed();
+  const { isMuted, isBlocked } = useSocialGraph();
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 

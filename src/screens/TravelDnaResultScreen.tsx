@@ -30,7 +30,7 @@ import { IntroAmbient } from './introVisuals';
 import { useSkinAccent } from '../constants/skinTheme';
 import { DNA_AXES, DNA_LABELS, DNA_LABEL_MIN_STRENGTH, DNA_QUESTIONS, type DnaAxisId } from '../constants/travelDna';
 import { useTravelDna } from '../store/travelDnaStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { isSupabaseConfigured } from '../services/supabase';
 import { fetchMateSuggestions, type MateSuggestionRow } from '../services/social';
 import { matchPercent } from '../utils/matchScore';
@@ -95,7 +95,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
   const insets = useSafeAreaInsets();
   const skin = useSkinAccent(); // 지구본 스킨 → 앱 강조색. 스킨을 바꾸면 이 화면도 따라간다
   const { scores, label, answered, isFull, isComplete, refresh } = useTravelDna();
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
   const fromOnboarding = route.params?.from === 'onboarding';
   const en = !isKoreanLang(i18n.language); // DNA 라벨은 ko/en 두 벌뿐 — ja는 영문 라벨을 본다
   const percent = Math.round((answered / DNA_QUESTIONS.length) * 100);

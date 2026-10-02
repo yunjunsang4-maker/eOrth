@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { defaultCurrencyForCountry } from '../constants/currencies';
-import { useRecords, type Visibility } from '../store/recordStore';
+import { useRecordData, useActiveStay, useSocialGraph, useRecordActions, type Visibility } from '../store/recordStore';
 import { DEFAULT_PHOTO_FRAME, normalizePhotoFrame, serializePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList } from '../components/record/DraggableLists';
@@ -258,7 +258,10 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup, getCountryPhoto, getCountryPhotoRecord, setCountryCover } = useRecords();
+  const { records, getCountryPhoto, getCountryPhotoRecord } = useRecordData();
+  const { activeStayGroup } = useActiveStay();
+  const { neighbors } = useSocialGraph();
+  const { addRecord, updateRecord, addTripGroup, setCountryCover } = useRecordActions();
   // 동행자 값(혼자/메이트…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {

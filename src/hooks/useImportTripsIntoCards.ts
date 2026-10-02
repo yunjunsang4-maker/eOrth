@@ -9,7 +9,7 @@
 import { useCallback, useRef } from 'react';
 import { COUNTRIES } from '../constants/countries';
 import { useSettings } from '../store/settingsStore';
-import { useRecords, type TravelRecord } from '../store/recordStore';
+import { useActiveStay, useRecordActions, type TravelRecord } from '../store/recordStore';
 import type { ScannedTrip } from '../utils/pastTripScan';
 import { copyTripCover } from '../utils/importPhotoStore';
 import { classifyImportTarget } from '../utils/importRouting';
@@ -32,7 +32,8 @@ export interface ImportTripsResult {
 
 export function useImportTripsIntoCards() {
   const { homeCountryCode } = useSettings();
-  const { addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
+  const { activeStayGroup } = useActiveStay();
+  const { addImportedAlbum, addTripGroup, absorbIntoStay } = useRecordActions();
   // 체류 카드는 이 콜백이 만들어진 렌더가 아니라 '호출 시점'의 것이어야 한다.
   // useCallback 의존성에 넣으면 스캔 중 체류가 바뀔 때마다 콜백이 새로 만들어져
   // 호출부의 참조가 흔들린다 — 대신 ref로 최신 값을 본다(원본 화면의 클로저와 같은 값).

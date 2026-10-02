@@ -3,7 +3,7 @@ import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '../ui/Text';
 import * as NativeSplash from 'expo-splash-screen';
 import { APP_START_MS } from '../utils/appStart';
-import { useRecords } from '../store/recordStore';
+import { useRecordActions } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
@@ -51,7 +51,7 @@ type Props = RootStackScreenProps<'Splash'>;
 export default function SplashScreen({ navigation }: Props) {
   const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
   const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
-  const { resetRecords } = useRecords();
+  const { resetRecords } = useRecordActions();
   const { resetSettings, onboardedAt, setOnboardedAt } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
   // (effect는 마운트 1회만 도는데, 그 사이 계정 경계 처리가 onboardedAt을 바꿀 수 있다)

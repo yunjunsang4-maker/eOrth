@@ -19,7 +19,7 @@ import {
   type NeighborProfile,
   type IncomingNeighborRequest,
 } from '../services/social';
-import { useRecords } from '../store/recordStore';
+import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { tap, warn } from '../utils/haptics';
 import { PersonIcon, BackChevronIcon, CommentIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -46,7 +46,8 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // 메이트 관계 액션은 store 경유 — store의 메이트 목록·배지와 동기화
-  const { removeNeighbor, acceptNeighbor, declineNeighbor, isBlocked } = useRecords();
+  const { isBlocked } = useSocialGraph();
+  const { removeNeighbor, acceptNeighbor, declineNeighbor } = useRecordActions();
   const [followers, setFollowers] = useState<NeighborProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false); // 오류 ↔ "메이트 없음" 구분

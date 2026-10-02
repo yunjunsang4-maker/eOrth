@@ -19,7 +19,7 @@ import { GlobeIcon, SearchIcon, BackChevronIcon } from '../components/icons';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
@@ -336,7 +336,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
-  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, isBlocked, records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
+  const { isNeighbor, isNeighborRequested, isNeighborRequestReceived, isBlocked } = useSocialGraph();
+  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, refreshNeighbors } = useRecordActions();
   // 여행 DNA — 완료 전까지만 배너 노출(매칭 동기가 가장 큰 자리)
   const { isComplete: dnaComplete, isFull: dnaFull } = useTravelDna();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중

@@ -22,7 +22,7 @@ import type { TFunction } from 'i18next';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { tap, warn } from '../utils/haptics';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecordData, useFeed, useRecordActions, TravelRecord } from '../store/recordStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
@@ -312,7 +312,9 @@ export default function DMScreen({ navigation, route }: Props) {
   // 폴드·태블릿에서 말풍선과 어긋난다 — 레터박스 폭만큼 안쪽으로 민다
   const stageGutter = useStageGutter();
   const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
-  const { records, feedPosts, blockUser, reportPost } = useRecords();
+  const { records } = useRecordData();
+  const { feedPosts } = useFeed();
+  const { blockUser, reportPost } = useRecordActions();
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();

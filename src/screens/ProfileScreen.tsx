@@ -43,7 +43,7 @@ import {
   LiquidPressable,
   LiquidCardGlow,
 } from '../components/LiquidEffects';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useActiveStay, useRecordActions } from '../store/recordStore';
 import { useTravelDna } from '../store/travelDnaStore';
 import { emitToast } from '../store/toastStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
@@ -1656,7 +1656,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, refreshMyPostCounts, syncMyRecords, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
+  const { records, tripGroups, archivedIds, stayPromptCountry } = useRecordData();
+  const { activeStayGroup } = useActiveStay();
+  const { mergeTripGroups, refreshNeighbors, refreshMyPostCounts, syncMyRecords, startStay, endStay, setStayPromptCountry } = useRecordActions();
   // 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사)
   const { label: dnaLabel, isComplete: dnaComplete } = useTravelDna();
   // 미완료일 때만 칩을 은은하게 맥동시켜 검사를 유도한다 — 온보딩에서 축약 설문을 뺐으므로

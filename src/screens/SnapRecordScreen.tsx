@@ -19,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { PinIcon } from '../components/icons';
-import { useRecords } from '../store/recordStore';
+import { useRecordActions } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import {
   detectCurrentCountry,
@@ -159,7 +159,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const a = useSkinAccent();
   const st = useMemo(() => makeStyles(a), [a]);
   const { t, i18n } = useTranslation();
-  const { addRecord } = useRecords();
+  const { addRecord } = useRecordActions();
   const { homeCountryCode, homeRegion, homeRegionPromptShown, setHomeRegionPromptShown } = useSettings();
   const insets = useSafeAreaInsets();
 

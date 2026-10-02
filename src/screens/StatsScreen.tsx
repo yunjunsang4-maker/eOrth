@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import MainCoachmark, { CoachStep } from '../components/MainCoachmark';
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
@@ -287,7 +287,7 @@ export default function StatsScreen() {
   const tabBarClearance = useTabBarClearance();
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
   const { profilePhoto, globeSkin, homeCountryCode, tutorialsSeen, markTutorialSeen } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트) + 튜토리얼 게이트
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로

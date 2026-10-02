@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { GlassButton } from '../components/ui';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useRecordActions } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
@@ -103,7 +103,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const CARD_ASPECT = CARD_W / CARD_H;
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
-  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, updateRecord, records } = useRecords();
+  const { tripGroups, records } = useRecordData();
+  const { addImportedAlbum, addTripGroup, updateTripGroup, updateRecord } = useRecordActions();
   // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
   const { isPremium } = useSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);

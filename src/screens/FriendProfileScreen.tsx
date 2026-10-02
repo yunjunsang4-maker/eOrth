@@ -20,7 +20,7 @@ import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
 import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, WarningIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
@@ -79,7 +79,7 @@ export default function FriendProfileScreen({
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
   const { handle: myHandle, profilePhoto: myPhoto, bio: myBio, homeCountryCode: myHomeCountryCode } = useSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
-  const { records: myRecords, tripGroups } = useRecords();
+  const { records: myRecords, tripGroups } = useRecordData();
 
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
@@ -116,7 +116,7 @@ export default function FriendProfileScreen({
   useEffect(() => { loadProfile(); }, [loadProfile]);
   // 진입 시 메이트·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
   // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 메이트 상태가 낡아 있는 문제 방지
-  const { refreshNeighbors } = useRecords();
+  const { refreshNeighbors } = useRecordActions();
   useEffect(() => { refreshNeighbors(); }, [refreshNeighbors]);
 
   // 당겨서 새로고침 — 프로필·글·메이트 수 재조회
@@ -238,7 +238,8 @@ export default function FriendProfileScreen({
   const friendDnaLabel = labelFromKey(profileRow?.dna_type_key);
 
   // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
-  const { neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, isNeighbor, isNeighborRequested, isNeighborRequestReceived, blockUser, toggleMute, isMuted } = useRecords();
+  const { neighbors, isNeighbor, isNeighborRequested, isNeighborRequestReceived, isMuted } = useSocialGraph();
+  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, blockUser, toggleMute } = useRecordActions();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
   const realId = userId ?? profileRow?.id ?? null;

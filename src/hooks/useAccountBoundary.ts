@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useRecordActions } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { useMoments } from '../store/momentStore';
 import { useTravelDna } from '../store/travelDnaStore';
@@ -30,7 +30,8 @@ export function useAccountBoundary(): () => Promise<void> {
     setHandle, setBio, setProfilePhoto, setHomeCountryCode,
     setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
-  const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
+  const { records } = useRecordData();
+  const { resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecordActions();
   const { resetConversations } = useDM();
   const { resetMoments, applyMomentsBackup } = useMoments();
   const { clear: clearTravelDna } = useTravelDna();

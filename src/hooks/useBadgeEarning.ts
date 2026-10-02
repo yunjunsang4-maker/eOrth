@@ -1,5 +1,5 @@
 import { useMemo, useEffect } from 'react';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useSocialGraph } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { computeEarnedBadgeIds, BadgeCatalogEntry } from '../utils/badgeRules';
 import { COUNTRIES } from '../constants/countries';
@@ -8,7 +8,8 @@ import { COUNTRIES } from '../constants/countries';
 // 표시(earnedBadgeIds·통계)는 ProfileScreen이 자체 계산하므로 이 훅은 '평가'만 한다.
 // enabled=false(인증 전 등)면 판정·저장을 하지 않는다.
 export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = true): void {
-  const { records, neighbors } = useRecords();
+  const { records } = useRecordData();
+  const { neighbors } = useSocialGraph();
   const { badgeEarnedAt, markBadgesEarned, loginStreak, installedAt, homeCountryCode } = useSettings();
 
   // 거주국 코드 → 한글 이름 변환 (방문국 집계 제외용)

@@ -28,7 +28,7 @@ import { compressImage, compressImages } from '../utils/imageCompress';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
-import { useRecords, type Visibility } from '../store/recordStore';
+import { useRecordData, useSocialGraph, useRecordActions, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
@@ -391,7 +391,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 밝은 바탕을 더해 시안보다 밝고 회색기가 돌아 제거(사용자 확정: 유리 제거·#CECFCD 링 유지).
   const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)'; // 시안 rgba(117,26,173,0.2)
   const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
-  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
+  const { drafts, records } = useRecordData();
+  const { neighbors } = useSocialGraph();
+  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft } = useRecordActions();
   // 아무것도 안 고른 상태의 출발 통화는 거주국 기준 — 'KRW' 고정은 해외 거주자에게 틀린 값이었다.
   // (여행국이 정해지면 아래 자동 추천 useEffect가 덮는다)
   const { homeCountryCode } = useSettings();

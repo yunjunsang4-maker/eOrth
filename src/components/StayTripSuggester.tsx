@@ -30,7 +30,7 @@ import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import i18n from '../i18n';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useActiveStay } from '../store/recordStore';
 import { detectCurrentCountry, requestNotificationPermission } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
 import { countryLabel } from '../utils/countryLabel';
@@ -52,7 +52,8 @@ let checking = false;
 
 export default function StayTripSuggester() {
   const { homeCountryCode, notifPrefs } = useSettings();
-  const { activeStayGroup, records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
+  const { activeStayGroup } = useActiveStay();
   // 기록·카드 목록은 매 기록마다 바뀐다 — deps에 넣으면 effect가 난사된다. 스캔 시점의
   // 최신 목록만 있으면 되므로 ref로 본다(TravelImportScreen의 recordsRef와 같은 이유).
   const recordsRef = useRef(records);

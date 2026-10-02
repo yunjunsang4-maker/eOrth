@@ -29,7 +29,7 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
 import { IntroAmbient } from './introVisuals';
-import { useRecords } from '../store/recordStore';
+import { useRecordActions } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
@@ -127,7 +127,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setHandleChosen,
     setOnboardedAt,
   } = useSettings();
-  const { startStay } = useRecords();
+  const { startStay } = useRecordActions();
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
   // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능
   const [handle, setHandle] = useState(storeHandle || '');

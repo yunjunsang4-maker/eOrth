@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useActiveStay } from '../store/recordStore';
 import { detectCurrentCountry, isAbroad, requestNotificationPermission, willArrivalNotify } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
 import { postMomentNotification, isMomentNotificationPresented, dismissMomentNotification } from '../services/momentService';
@@ -19,7 +19,7 @@ const LOCATION_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 export default function MomentNotifier() {
   const { t } = useTranslation();
   const { homeCountryCode, arrivalDetect, notifPrefs } = useSettings();
-  const { activeStayGroup } = useRecords();
+  const { activeStayGroup } = useActiveStay();
   const lastLocCheckRef = useRef(0);
   const abroadRef = useRef<boolean | null>(null); // 마지막 위치 판정 캐시
   // 마지막으로 조회한 나라 코드 — abroadRef와 짝. 양보 판정(willArrivalNotify)이 나라를 알아야

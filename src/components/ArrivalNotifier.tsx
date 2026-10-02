@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useActiveStay } from '../store/recordStore';
 import { DETECTOR_KEYS } from '../store/persist';
 import { detectCurrentCountry, isAbroad, requestNotificationPermission } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
@@ -49,7 +49,7 @@ let generation = 0;
 export default function ArrivalNotifier() {
   const { t } = useTranslation();
   const { homeCountryCode, arrivalDetect, notifPrefs } = useSettings();
-  const { activeStayGroup } = useRecords();
+  const { activeStayGroup } = useActiveStay();
 
   // 진행 중 체류국은 해외로 치지 않는다 (다른 감지기와 동일 규칙)
   const stayCountryCode = useMemo(() => {

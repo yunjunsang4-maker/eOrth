@@ -18,7 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { select, warn } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { useRecords } from '../store/recordStore';
+import { useActiveStay, useRecordActions } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -140,7 +140,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   useBlockHardwareBack();
   const { t } = useTranslation();
   const { trips } = route.params as { trips: ImportTrip[] };
-  const { addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
+  const { activeStayGroup } = useActiveStay();
+  const { addImportedAlbum, addTripGroup, absorbIntoStay } = useRecordActions();
   const insets = useSafeAreaInsets();
   const { isPremium, homeCountryCode, setLastImportAt } = useSettings();
   // 사진첩(앨범) 상한을 쓴다 — 이 화면이 만드는 건 피드 기록이 아니라 앨범이기 때문이다

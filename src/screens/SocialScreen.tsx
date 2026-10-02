@@ -34,7 +34,7 @@ import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon, HomeIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
-import { useRecords, countTotalComments } from '../store/recordStore';
+import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, countTotalComments } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
@@ -252,7 +252,7 @@ function ShareBottomSheet({
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { neighbors } = useRecords();
+  const { neighbors } = useSocialGraph();
   // 공유 대상은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거) — 프로필 이모지·사진 반영
   const shareFriends = neighbors.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
@@ -449,7 +449,7 @@ function CommentBottomSheet({
   // ── 상태 ──
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const inputRef = useRef<TextInput>(null);
-  const { neighbors, isBlocked } = useRecords();
+  const { neighbors, isBlocked } = useSocialGraph();
   const { handle: myHandle } = useSettings();
   const [cursor, setCursor] = useState(0);
   // 칩 줄은 "입력 중"에만 뜬다 — activeMention 은 텍스트+커서만 보므로, `@ab` 까지 치고
@@ -731,7 +731,9 @@ function FeedCard({
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment, refreshComments } = useRecords();
+  const { records } = useRecordData();
+  const { commentsByPost } = useComments();
+  const { addComment, refreshComments } = useRecordActions();
   const comments = commentsByPost[item.id] ?? [];
   // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
   const commentCount = feedCommentCount(item, commentsByPost[item.id]);
@@ -1037,7 +1039,8 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost, addComment, refreshComments } = useRecords();
+  const { commentsByPost } = useComments();
+  const { addComment, refreshComments } = useRecordActions();
   const comments = commentsByPost[item.id] ?? [];
   // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
   const commentCount = feedCommentCount(item, commentsByPost[item.id]);
@@ -1260,7 +1263,9 @@ function BlogCard({
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment, refreshComments } = useRecords();
+  const { records } = useRecordData();
+  const { commentsByPost } = useComments();
+  const { addComment, refreshComments } = useRecordActions();
   const comments = commentsByPost[item.id] ?? [];
   // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
   const commentCount = feedCommentCount(item, commentsByPost[item.id]);
@@ -1566,7 +1571,9 @@ function AlbumCard({
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records, commentsByPost, addComment, refreshComments } = useRecords();
+  const { records } = useRecordData();
+  const { commentsByPost } = useComments();
+  const { addComment, refreshComments } = useRecordActions();
   const comments = commentsByPost[item.id] ?? [];
   // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
   const commentCount = feedCommentCount(item, commentsByPost[item.id]);
@@ -2227,7 +2234,7 @@ function CutCanvasPreview({ cutPhoto, thumbs }: { cutPhoto: any; thumbs?: Record
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-  const { records } = useRecords();
+  const { records } = useRecordData();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
   const vt = item.viewType || 'feed';
@@ -2869,7 +2876,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, refreshMyPostCounts, refreshNeighbors, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  const { records, archivedIds, tripGroups } = useRecordData();
+  const { currentViewer, feedPosts, feedHasMore, feedLoadingMore, feedInitialLoading, viewedSnapIds } = useFeed();
+  const { isBlocked, neighbors, reportedPostIds } = useSocialGraph();
+  const { toggleLike, blockUser, deleteRecord, archiveRecord, refreshFeed, refreshMyPostCounts, refreshNeighbors, loadMoreFeed, reportPost, updateRecord } = useRecordActions();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {

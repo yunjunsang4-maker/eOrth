@@ -31,7 +31,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 // countryTagLabel(국기+이름 한 문자열)은 위 셰이핑 결함 때문에 이 화면에서 더는 쓰지 않는다
@@ -408,7 +408,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
   // drafts·countryCovers는 고아 복사본 청소(sweepRecoOrphans)의 참조 판정용 —
   // 임시저장 글과 나라 대표핀도 복사본 uri를 품을 수 있어, 빼먹으면 그 폴더를 지워버린다.
-  const { records, tripGroups, drafts, countryCovers } = useRecords();
+  const { records, tripGroups, drafts, countryCovers } = useRecordData();
   // 선택한 여행 → 카드 생성. 저장 단계는 전부 이 훅 안에 있다.
   const importTrips = useImportTripsIntoCards();
   const recordsRef = useRef(records);

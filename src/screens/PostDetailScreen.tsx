@@ -39,7 +39,7 @@ import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navig
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
-import { useRecords, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
+import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -760,7 +760,8 @@ function SnapStoryViewer({
   //  · 입력: records는 소셜 탭 allVisible과 같은 필터를 거친 snapViewerRecords다. allVisible처럼 최신순으로
   //    정렬해 넘긴다 — 링 등장 순서(=groupSnapRings의 첫 등장 순)가 입력 순서에 달려 있다.
   //  · 안 봄 판정·내 글 판정·진행 중 여행 판정도 SocialScreen.snapItems/orderedSnaps와 같은 식.
-  const { viewedSnapIds, tripGroups, records: storeRecords } = useRecords();
+  const { tripGroups, records: storeRecords } = useRecordData();
+  const { viewedSnapIds } = useFeed();
   const allSnaps = useMemo(
     () => records.filter((r: any) => r.viewType === 'snap').sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
     [records],
@@ -823,7 +824,9 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments, blockUser, reportedCommentIds, reportComment } = useRecords();
+  const { commentsByPost, reportedCommentIds } = useComments();
+  const { neighbors, isBlocked } = useSocialGraph();
+  const { addComment: addCommentToStore, reportPost, refreshComments, blockUser, reportComment } = useRecordActions();
   // 신고할 스냅 댓글 id — 남의 댓글을 꾹 누르면 ReportModal을 연다(App Store 1.2, 게시물 상세와 같은 경로)
   const [snapCommentReportId, setSnapCommentReportId] = useState<string | null>(null);
   // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
@@ -1593,7 +1596,11 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, currentViewer, refreshComments, refreshPostCounts, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
+  const { records, archivedIds } = useRecordData();
+  const { feedPosts, currentViewer } = useFeed();
+  const { commentsByPost, reportedCommentIds } = useComments();
+  const { neighbors, isBlocked, reportedPostIds } = useSocialGraph();
+  const { toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, addComment: addCommentToStore, toggleCommentLike, deleteComment, refreshComments, refreshPostCounts, reportPost, blockUser, reportComment } = useRecordActions();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();

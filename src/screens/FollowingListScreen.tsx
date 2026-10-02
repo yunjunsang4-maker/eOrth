@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
-import { useRecords } from '../store/recordStore';
+import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { PersonIcon, BackChevronIcon, CommentIcon } from '../components/icons';
 import UserActionSheet from '../components/UserActionSheet';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
@@ -37,7 +37,8 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
   const skinAccent = useSkinAccent(); // 메이트 아이디·로딩 표시를 지구본 스킨색으로
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { neighbors, removeNeighbor, blockUser } = useRecords();
+  const { neighbors } = useSocialGraph();
+  const { removeNeighbor, blockUser } = useRecordActions();
 
   // DM으로 이동 — username은 handle과 동일 값이라 name/handle 겸용
   const openDM = (friend: (typeof neighbors)[number]) => {

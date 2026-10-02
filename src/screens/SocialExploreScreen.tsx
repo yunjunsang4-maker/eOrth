@@ -13,7 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecordData, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { stageWidthNow } from '../utils/stage';
@@ -155,7 +155,7 @@ function AdBanner() {
 export default function SocialExploreScreen() {
   const s = useSt();
   const { t } = useTranslation();
-  const { records } = useRecords();
+  const { records } = useRecordData();
   // 사진첩(album)은 소셜탭 미노출 — 메이트 프로필·여행 카드에서만 (SocialScreen 피드와 동일 정책)
   const publicRecords = records.filter((r) => r.visibility === 'neighbors' && r.viewType !== 'album');
   const largeCard = publicRecords[0];

@@ -24,7 +24,7 @@ import { EorthLogo } from '../components/EorthLogo';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordActions } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
 import {
@@ -53,7 +53,7 @@ export default function LoginScreen({ navigation }: Props) {
   // i18n.language는 약관·방침의 한/영 게시본을 고르는 데 쓴다(legalLinks).
   const { t, i18n } = useTranslation();
   const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettings();
-  const { resetRecords } = useRecords();
+  const { resetRecords } = useRecordActions();
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
 

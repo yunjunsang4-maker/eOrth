@@ -70,7 +70,7 @@ import { EorthLogo } from '../components/EorthLogo';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import SponsoredPackageCard from '../components/SponsoredPackageCard';
 import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
@@ -521,7 +521,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 스냅 버튼 바닥(안전영역 포함 절대값) — RecordFab이 그리는 좌표와 같은 훅에서 나온다.
   const snapBottom = useRecordFabBottom() + SNAP_ABOVE_FAB;
   const { t, i18n } = useTranslation();
-  const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested, getCountryPhoto } = useRecords();
+  const { records, tripGroups, getCountryPhoto } = useRecordData();
+  const { isNeighbor, isNeighborRequested } = useSocialGraph();
+  const { requestNeighbor } = useRecordActions();
   // 기록의 지역/국가명 현지화 — 한국어가 아니면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
   // 한글 국가명 → 영어. MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
   // (판정이 "en인가"가 아닌 "ko인가"인 이유는 utils/langKind.ts 주석 — ja도 영문 국가명을 본다)

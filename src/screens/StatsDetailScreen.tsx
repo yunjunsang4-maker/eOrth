@@ -27,7 +27,7 @@ import Svg, {
 } from 'react-native-svg';
 import { Colors, Typography } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { DETAIL_PARTICLES } from '../data/statsDetailGlobe';
@@ -144,7 +144,7 @@ export default function StatsDetailScreen() {
   }, [t]);
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups } = useRecordData();
   const { homeCountryCode } = useSettings();
 
   // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)

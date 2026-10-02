@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast, type ToastVisual } from '../store/toastStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useFeed, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { navigationRef } from '../navigation/navigationRef';
 import { fetchAppNotifications, subscribeNotifications, type AppNotification } from '../services/social';
@@ -31,7 +31,10 @@ const TYPE_MAP: Record<
 export default function NotiToastHost() {
   const { t } = useTranslation();
   const { pushToast } = useToast();
-  const { records, feedPosts, isMuted, isBlocked, refreshNeighbors } = useRecords();
+  const { records } = useRecordData();
+  const { feedPosts } = useFeed();
+  const { isMuted, isBlocked } = useSocialGraph();
+  const { refreshNeighbors } = useRecordActions();
   const entered = useIsAppEntered();
 
   // 최신 값을 콜백에서 쓰기 위한 ref — 구독은 마운트 시 1회만 걸고 재구독하지 않는다

@@ -20,7 +20,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { LANGUAGE_LABELS } from '../i18n';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useActiveStay, useRecordActions } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
 import { COUNTRIES } from '../constants/countries';
 import type { StayType } from '../utils/stayMachine';
@@ -206,7 +206,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     }
   };
 
-  const { records, activeStayGroup, startStay, endStay } = useRecords();
+  const { records } = useRecordData();
+  const { activeStayGroup } = useActiveStay();
+  const { startStay, endStay } = useRecordActions();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
   const [fontModalVisible, setFontModalVisible] = useState(false);

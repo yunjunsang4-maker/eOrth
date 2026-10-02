@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import { findWronglyImportedKpRecords } from '../utils/kpImportCleanup';
@@ -78,6 +78,7 @@ import {
 import { REGION_KEY_SCHEMA, migrateRegionNameEn } from '../utils/regionKeyMigration';
 import { ISO2_TO_GEO } from '../constants/homeRegions'; // Task 1에서 export로 바꿔둔 것
 import { removeComment, restoreComment } from './commentListLogic';
+import { makeStableActions } from './stableActions';
 
 /** 한글 국가명 → ISO3 (지역 키 마이그레이션용). term 첫 토큰이 ISO2다: 'jp 일본 japan' */
 const KO_TO_ISO3: Record<string, string> = Object.fromEntries(
@@ -466,7 +467,43 @@ interface RecordContextType {
   rebackupAlbumOriginals: () => Promise<{ upgraded: number; failed: number }>;
 }
 
-const RecordContext = createContext<RecordContextType | null>(null);
+// ── Context 슬라이스 ──
+// 예전에는 위 타입 전체를 한 객체로 한 Context에 넣었다. 그러면 피드 로딩 플래그 하나만 바뀌어도
+// useRecords()를 쓰는 50개 파일(상시 마운트된 감지기·지구본 MainScreen 포함)이 전부 리렌더됐다.
+// 이제 값이 함께 바뀌는 묶음별로 Context를 나눈다. 각 슬라이스 값은 자기 상태만 deps로 useMemo되어,
+// 다른 슬라이스의 상태가 바뀌어도 참조가 그대로다(구독자 리렌더 없음).
+//   · 읽는 함수(isBlocked·getCountryPhoto 등)는 근거 상태와 같은 슬라이스에 둔다 — 상태가 바뀔 때
+//     참조도 바뀌어야 React Compiler가 `isBlocked(x)` 결과를 낡은 채로 메모하지 않는다.
+//   · 쓰는 함수(액션)는 RecordActions 하나에 모아 참조를 영구 고정한다(stableActions.ts 참조).
+type RecordDataSlice = Pick<RecordContextType,
+  'records' | 'tripGroups' | 'archivedIds' | 'drafts' | 'countryCovers' | 'stayPromptCountry'
+  | 'getCountryPhoto' | 'getCountryPhotoRecord'>;
+// 진행 중 체류 카드만 따로 — 상시 마운트된 감지기 5개(Arrival·Snap·Return·Moment·ProfileSync)가
+// 이것만 본다. activeStayGroup은 tripGroups.find() 결과라, 다른 카드가 바뀌어도 체류 카드 객체가
+// 그대로면 참조가 같다 → 기록·카드 편집 때 감지기가 리렌더되지 않는다.
+type ActiveStaySlice = Pick<RecordContextType, 'activeStayGroup'>;
+type FeedSlice = Pick<RecordContextType,
+  'feedPosts' | 'feedHasMore' | 'feedLoadingMore' | 'feedInitialLoading' | 'currentViewer' | 'viewedSnapIds'>;
+type CommentsSlice = Pick<RecordContextType, 'commentsByPost' | 'reportedCommentIds'>;
+type SocialGraphSlice = Pick<RecordContextType,
+  'neighbors' | 'outgoingNeighborRequests' | 'incomingNeighborRequests' | 'blockedUsers' | 'mutedHandles'
+  | 'reportedPostIds' | 'isBlocked' | 'isMuted' | 'isNeighbor' | 'isNeighborRequested' | 'isNeighborRequestReceived'>;
+// 백업 내보내기는 여러 슬라이스의 상태(보관·차단·신고·음소거·본스냅·대표사진)를 한꺼번에 읽는다.
+// 어느 슬라이스에 붙여도 그 슬라이스 구독자 전원이 스냅 열람마다 리렌더되므로 혼자 둔다(AppStateSync 전용).
+type LocalStateBackupSlice = Pick<RecordContextType, 'exportLocalStateBackup'>;
+// 나머지 전부가 액션 — 데이터 슬라이스에 넣지 않은 필드는 자동으로 여기 온다. 함수가 아닌 필드가
+// 빠져 여기로 오면 makeStableActions의 타입 제약이 컴파일 에러로 잡는다.
+export type RecordActions = Omit<RecordContextType,
+  keyof RecordDataSlice | keyof ActiveStaySlice | keyof FeedSlice | keyof CommentsSlice
+  | keyof SocialGraphSlice | keyof LocalStateBackupSlice>;
+
+const RecordDataContext = createContext<RecordDataSlice | null>(null);
+const ActiveStayContext = createContext<ActiveStaySlice | null>(null);
+const FeedContext = createContext<FeedSlice | null>(null);
+const CommentsContext = createContext<CommentsSlice | null>(null);
+const SocialGraphContext = createContext<SocialGraphSlice | null>(null);
+const LocalStateBackupContext = createContext<LocalStateBackupSlice | null>(null);
+const RecordActionsContext = createContext<RecordActions | null>(null);
 
 // JSON 직렬화 시 TripGroup.createdAt(Date)은 ISO 문자열이 되므로 복원 시 Date로 되살린다
 interface RecordPersistPayload {
@@ -3794,20 +3831,115 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
   }, [hydrated, handle, profilePhoto, handleFont, isPremium]);
 
+  // ── 슬라이스별 Context 값 ── (아래 훅들은 hydrated 조기 반환보다 앞에 있어야 한다 — 훅 순서 고정)
+  // 액션: 매 렌더 최신 클로저를 ref에 넣고, 마운트 시 1회 만든 래퍼를 준다. 래퍼 참조는 영구 고정,
+  // 호출 시점에는 항상 가장 최근 렌더의 클로저가 실행된다(낡은 상태를 읽지 않는다).
+  // 렌더 중 ref 대입: 이 Provider는 React Compiler 대상이 아니고(건너뜀), 자식의 effect가 같은
+  // 커밋 안에서 액션을 불러도 이번 렌더의 클로저가 실행되도록 effect가 아니라 렌더에서 넣는다.
+  // (useLayoutEffect로 옮기면 자식 layout effect가 부모보다 먼저 돌아 한 렌더 낡은 클로저를 부른다.)
+  const latestActionsRef = useRef<RecordActions>(null!);
+  latestActionsRef.current = {
+    addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archiveRecord, unarchiveRecord,
+    blockUser, unblockUser, reportPost, reportComment, toggleMute,
+    requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, refreshNeighbors,
+    addComment, toggleCommentLike, deleteComment,
+    addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups,
+    startStay, endStay, absorbIntoStay, setStayPromptCountry,
+    saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords,
+    setCurrentViewer, refreshFeed, loadMoreFeed, refreshComments, refreshMyPostCounts, refreshPostCounts,
+    hydrateMyRecords, syncMyRecords, rearmTripRestore, applyLocalStateBackup, rebackupAlbumOriginals, setCountryCover,
+  };
+  const [recordActions] = useState(() => makeStableActions(latestActionsRef));
+
+  const recordData = useMemo<RecordDataSlice>(
+    () => ({ records, tripGroups, archivedIds, drafts, countryCovers, stayPromptCountry, getCountryPhoto, getCountryPhotoRecord }),
+    [records, tripGroups, archivedIds, drafts, countryCovers, stayPromptCountry, getCountryPhoto, getCountryPhotoRecord],
+  );
+  const activeStay = useMemo<ActiveStaySlice>(() => ({ activeStayGroup }), [activeStayGroup]);
+  const feed = useMemo<FeedSlice>(
+    () => ({ feedPosts, feedHasMore, feedLoadingMore, feedInitialLoading, currentViewer, viewedSnapIds }),
+    [feedPosts, feedHasMore, feedLoadingMore, feedInitialLoading, currentViewer, viewedSnapIds],
+  );
+  const comments = useMemo<CommentsSlice>(
+    () => ({ commentsByPost, reportedCommentIds }),
+    [commentsByPost, reportedCommentIds],
+  );
+  // isBlocked 등은 정의부에서 이미 근거 상태를 deps로 한 useCallback이다
+  const socialGraph = useMemo<SocialGraphSlice>(
+    () => ({
+      neighbors, outgoingNeighborRequests, incomingNeighborRequests, blockedUsers, mutedHandles, reportedPostIds,
+      isBlocked, isMuted, isNeighbor, isNeighborRequested, isNeighborRequestReceived,
+    }),
+    [neighbors, outgoingNeighborRequests, incomingNeighborRequests, blockedUsers, mutedHandles, reportedPostIds,
+      isBlocked, isMuted, isNeighbor, isNeighborRequested, isNeighborRequestReceived],
+  );
+  // exportLocalStateBackup은 일반 클로저라 매 렌더 새것이다. 그 함수가 읽는 7개 상태가 바뀔 때만
+  // 새 참조를 내보낸다 — 메모된 클로저는 deps가 마지막으로 바뀐 렌더의 것이라 그 7개 값이 최신이다.
+  // 이 deps는 exportLocalStateBackup 본문(위 정의)과 반드시 같은 목록이어야 한다.
+  const localStateBackup = useMemo<LocalStateBackupSlice>(
+    () => ({ exportLocalStateBackup }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [archivedIds, blockedUsers, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, countryCovers],
+  );
+
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: '#0A0A0F' }} />;
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, incomingNeighborRequests, isNeighbor, isNeighborRequested, isNeighborRequestReceived, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, feedInitialLoading, refreshComments, refreshMyPostCounts, refreshPostCounts, hydrateMyRecords, syncMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
-      {children}
-    </RecordContext.Provider>
+    <RecordActionsContext.Provider value={recordActions}>
+      <RecordDataContext.Provider value={recordData}>
+        <ActiveStayContext.Provider value={activeStay}>
+          <FeedContext.Provider value={feed}>
+            <CommentsContext.Provider value={comments}>
+              <SocialGraphContext.Provider value={socialGraph}>
+                <LocalStateBackupContext.Provider value={localStateBackup}>
+                  {children}
+                </LocalStateBackupContext.Provider>
+              </SocialGraphContext.Provider>
+            </CommentsContext.Provider>
+          </FeedContext.Provider>
+        </ActiveStayContext.Provider>
+      </RecordDataContext.Provider>
+    </RecordActionsContext.Provider>
   );
 }
 
-export function useRecords() {
-  const ctx = useContext(RecordContext);
-  if (!ctx) throw new Error('useRecords must be used within RecordProvider');
-  return ctx;
+function useSlice<T>(ctx: React.Context<T | null>, hookName: string): T {
+  const v = useContext(ctx);
+  if (!v) throw new Error(`${hookName} must be used within RecordProvider`);
+  return v;
+}
+
+// 슬라이스 훅 — 필요한 슬라이스만 구독한다. 구독하지 않은 슬라이스의 상태가 바뀌면 리렌더되지 않는다.
+/** 쓰는 함수 전부. 참조가 영구 고정이라 deps에 넣어도 effect가 다시 돌지 않는다. */
+export const useRecordActions = () => useSlice(RecordActionsContext, 'useRecordActions');
+/** 내 기록·여행 카드·보관·임시저장·대표사진(+ getCountryPhoto 계열) */
+export const useRecordData = () => useSlice(RecordDataContext, 'useRecordData');
+/** 진행 중 체류 카드만 — 상시 감지기용 */
+export const useActiveStay = () => useSlice(ActiveStayContext, 'useActiveStay');
+/** 서버 피드·뷰어·본 스냅 */
+export const useFeed = () => useSlice(FeedContext, 'useFeed');
+/** 댓글·신고한 댓글 */
+export const useComments = () => useSlice(CommentsContext, 'useComments');
+/** 메이트·신청·차단·음소거·신고한 글(+ isBlocked 계열) */
+export const useSocialGraph = () => useSlice(SocialGraphContext, 'useSocialGraph');
+/** 앱 상태 통합 백업 내보내기 — AppStateSync 전용 */
+export const useLocalStateBackup = () => useSlice(LocalStateBackupContext, 'useLocalStateBackup');
+
+/**
+ * 하위 호환 — 모든 슬라이스를 합쳐 예전과 같은 shape로 돌려준다. **모든 슬라이스를 구독**하므로
+ * 어느 상태가 바뀌어도 리렌더된다(예전과 동일). 새 코드는 위 슬라이스 훅을 쓸 것.
+ */
+export function useRecords(): RecordContextType {
+  return {
+    ...useRecordData(),
+    ...useActiveStay(),
+    ...useFeed(),
+    ...useComments(),
+    ...useSocialGraph(),
+    ...useLocalStateBackup(),
+    ...useRecordActions(),
+  };
 }

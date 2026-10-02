@@ -15,7 +15,7 @@ import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon, PersonIcon, BackChevronIcon } from '../components/icons';
-import { useRecords } from '../store/recordStore';
+import { useRecordData } from '../store/recordStore';
 import { fetchCountryVisitors, type CountryVisitor } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
 import { andFitText } from '../utils/fitText';
@@ -46,7 +46,7 @@ export default function CountryScreen({ navigation, route }: Props) {
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
 
   // 이 국가의 내 실제 여행 기록으로 통계·목록 구성 (데모 시드 제거)
-  const { records } = useRecords();
+  const { records } = useRecordData();
   const countryRecords = records.filter(
     (r) => r.isMyPost !== false && r.countryName === country.name
   );

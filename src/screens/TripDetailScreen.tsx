@@ -23,7 +23,7 @@ import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon } from '../components/icons';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecordData, useComments, useRecordActions, TravelRecord } from '../store/recordStore';
 import { PillRing } from '../components/record/CalendarBottomSheet';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
 import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
@@ -372,7 +372,8 @@ export default function TripDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip, guestRecords } = route.params;
   const isGuest = !!guestRecords; // 타인의 여행 — 읽기 전용
-  const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup, archivedIds } = useRecords();
+  const { records, tripGroups, archivedIds } = useRecordData();
+  const { updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup } = useRecordActions();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
 
@@ -1198,7 +1199,7 @@ export default function TripDetailScreen() {
 
 // 실제 댓글 수 (시드 숫자 record.comments 대신 commentsByPost 기준 — 답글 포함)
 function useCommentCount(recordId: string): number {
-  const { commentsByPost } = useRecords();
+  const { commentsByPost } = useComments();
   const list = commentsByPost[recordId] ?? [];
   return list.reduce((sum, c) => sum + 1 + (c.replies?.length ?? 0), 0);
 }

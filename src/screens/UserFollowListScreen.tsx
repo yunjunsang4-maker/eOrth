@@ -13,7 +13,7 @@ import { Text } from '../ui/Text';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { fetchNeighborsOf, type NeighborProfile } from '../services/social';
-import { useRecords } from '../store/recordStore';
+import { useSocialGraph } from '../store/recordStore';
 import { PersonIcon, BackChevronIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -33,7 +33,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { userId } = route.params;
-  const { isBlocked } = useRecords();
+  const { isBlocked } = useSocialGraph();
   const [list, setList] = useState<NeighborProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

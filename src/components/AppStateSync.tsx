@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useLocalStateBackup } from '../store/recordStore';
 import { useCardOrder } from '../store/cardOrderStore';
 import { useMoments } from '../store/momentStore';
 import { saveAppState } from '../services/appState';
@@ -22,7 +22,7 @@ export function setAppStateBackupArmed(v: boolean) {
 
 export default function AppStateSync() {
   const { exportSettingsBackup } = useSettings();
-  const { exportLocalStateBackup } = useRecords();
+  const { exportLocalStateBackup } = useLocalStateBackup();
   const cardOrder = useCardOrder();
   const { exportMomentsBackup } = useMoments();
 

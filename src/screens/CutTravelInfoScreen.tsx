@@ -19,7 +19,7 @@ import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import type { TFunction } from 'i18next';
-import { useRecords, type Visibility } from '../store/recordStore';
+import { useRecordData, useSocialGraph, useRecordActions, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
@@ -193,7 +193,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const customSkin = !!skinAccent.ringGradient;
   const chipBg = customSkin ? skinAccent.tint(0.2) : 'rgba(117,26,173,0.2)'; // 시안 rgba(117,26,173,0.2)
   const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
-  const { addRecord, addTripGroup, neighbors, records } = useRecords();
+  const { records } = useRecordData();
+  const { neighbors } = useSocialGraph();
+  const { addRecord, addTripGroup } = useRecordActions();
   // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;

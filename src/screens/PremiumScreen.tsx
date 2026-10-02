@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
-import { useRecords } from '../store/recordStore';
+import { useRecordData, useRecordActions } from '../store/recordStore';
 import { StarIcon } from '../components/icons';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FontShowcaseCard from '../components/premium/FontShowcaseCard';
@@ -36,7 +36,8 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 강조·테두리를 지구본 스킨색으로
   const { isPremium, setIsPremium } = useSettings();
-  const { records, rebackupAlbumOriginals } = useRecords();
+  const { records } = useRecordData();
+  const { rebackupAlbumOriginals } = useRecordActions();
 
   // 압축본으로 백업돼 있는 내 사진첩 수 — 프리미엄이면 원본 재백업 대상
   const compressedAlbums = records.filter(

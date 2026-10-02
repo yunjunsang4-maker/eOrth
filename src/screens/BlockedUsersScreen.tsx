@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
-import { useRecords } from '../store/recordStore';
+import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { BlockIcon, PersonIcon, BackChevronIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -31,7 +31,8 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
   const a = useSkinAccent();
   const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
-  const { blockedUsers, unblockUser } = useRecords();
+  const { blockedUsers } = useSocialGraph();
+  const { unblockUser } = useRecordActions();
 
   // handle 우선 — 동명(name) 계정이 있어도 어떤 계정을 해제하는지 식별·매칭이 정확하다
   const handleUnblock = (name: string, handle?: string) => {

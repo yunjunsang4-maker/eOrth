@@ -10,7 +10,7 @@ import {
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
@@ -38,7 +38,8 @@ const noop = () => {}; // 아카이브 화면에서 안 쓰는 콜백(빠른공�
 export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
   const { t } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { records, archivedIds, unarchiveRecord, deleteRecord, toggleLike } = useRecords();
+  const { records, archivedIds } = useRecordData();
+  const { unarchiveRecord, deleteRecord, toggleLike } = useRecordActions();
   const { diaryCardMode, showCounts } = useSettings();
   const { pushToast } = useToast(); // 공용 토스트(자체 구현 대체)
   // DiaryCard의 빠른공유 팬 제스처가 요구하는 드래그 좌표 — 이 화면에선 no-op이라 더미 값이면 충분

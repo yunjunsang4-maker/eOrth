@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useDM } from '../store/dmStore';
-import { useRecords } from '../store/recordStore';
+import { useSocialGraph } from '../store/recordStore';
 import { useToast } from '../store/toastStore';
 import { navigationRef } from '../navigation/navigationRef';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
@@ -20,7 +20,7 @@ const previewOf = (m: Message, t: TFunction): string => {
 export default function DMToastHost() {
   const { t } = useTranslation();
   const { conversations, friends } = useDM();
-  const { isMuted, isBlocked } = useRecords();
+  const { isMuted, isBlocked } = useSocialGraph();
   const { pushToast } = useToast();
   const entered = useIsAppEntered();
   const seenRef = useRef<Record<string, number> | null>(null);
