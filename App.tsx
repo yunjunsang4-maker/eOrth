@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import * as NativeSplash from 'expo-splash-screen';
 import './src/utils/appStart'; // JS 시작 시각 기록 — 반드시 스플래시 제어보다 먼저
 import { StatusBar } from 'expo-status-bar';
-import { useFonts } from 'expo-font';
+import { useFonts, loadAsync as loadFontsAsync } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { STAGE_MAX_W } from './src/utils/stage';
@@ -79,6 +79,9 @@ export default function App() {
   // AppNavigator와 같은 탭을 두 번 라우팅했고, 콜드스타트 응답을 먼저 비워
   // AppNavigator의 콜드스타트 판독과 경합했다. 새 알림 타입도 AppNavigator에 추가할 것.
 
+  // 시작 시 기다리는 글꼴은 첫 화면(Splash·인트로·로그인·Main 기본 UI)이 실제로 쓰는 것만:
+  // Inter 5종(constants/theme.ts Typography.fontFamily — 전 화면 공용) + Montserrat-Black(CustomTabBar 로고 등).
+  // 예전엔 25종(~34MB)을 전부 기다리느라 그동안 스피너만 떠 있었다.
   const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular: require('./assets/fonts/Inter_400Regular.ttf'),
     Inter_500Medium: require('./assets/fonts/Inter_500Medium.ttf'),
@@ -86,27 +89,39 @@ export default function App() {
     Inter_700Bold: require('./assets/fonts/Inter_700Bold.ttf'),
     Inter_800ExtraBold: require('./assets/fonts/Inter_800ExtraBold.ttf'),
     'Montserrat-Black': require('./assets/fonts/Montserrat-Black.ttf'),
-    NanumGothic_400Regular: require('./assets/fonts/NanumGothic_400Regular.ttf'),
-    NanumMyeongjo_400Regular: require('./assets/fonts/NanumMyeongjo_400Regular.ttf'),
-    NanumBrushScript_400Regular: require('./assets/fonts/NanumBrushScript_400Regular.ttf'),
-    NanumPenScript_400Regular: require('./assets/fonts/NanumPenScript_400Regular.ttf'),
-    NanumSquare: require('./assets/fonts/NanumSquareR.ttf'),
-    NanumSquareRound: require('./assets/fonts/NanumSquareRoundR.ttf'),
-    NanumBarunGothic: require('./assets/fonts/NanumBarunGothic.ttf'),
-    NanumBarunpen: require('./assets/fonts/NanumBarunpen.ttf'),
-    MaruBuri: require('./assets/fonts/MaruBuri-Regular.ttf'),
-    // 아이디 표시 폰트(프리미엄) — 영어 전용, constants/handleFonts.ts에서 사용
-    Pacifico: require('./assets/fonts/Pacifico-Regular.ttf'),
-    Caveat: require('./assets/fonts/Caveat-VariableFont_wght.ttf'),
-    BebasNeue: require('./assets/fonts/BebasNeue-Regular.ttf'),
-    CourierPrime: require('./assets/fonts/CourierPrime-Regular.ttf'),
-    Righteous: require('./assets/fonts/Righteous-Regular.ttf'),
-    AmaticSC: require('./assets/fonts/AmaticSC-Regular.ttf'),
-    PermanentMarker: require('./assets/fonts/PermanentMarker-Regular.ttf'),
-    PlayfairDisplay: require('./assets/fonts/PlayfairDisplay-VariableFont_wght.ttf'),
-    Orbitron: require('./assets/fonts/Orbitron-VariableFont_wght.ttf'),
-    Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
   });
+
+  // 나머지 19종(블로그 글꼴 types/blogBlocks.ts, 프리미엄 아이디 폰트 constants/handleFonts.ts)은
+  // 핵심 글꼴이 끝난 뒤 백그라운드로 올린다 — 같이 시작하면 디스크 읽기를 다퉈 핵심 6종이 늦어진다.
+  // ⚠️ 키(글꼴 이름)는 기록·서버(user.font 등)에 저장된 값이라 절대 바꾸지 말 것.
+  // ponytail: 로드가 끝나기 전에 그려진 해당 글꼴 텍스트는 시스템 폰트로 보일 수 있고 다시 그려지기 전까지 유지될 수 있다(실기기 미검증) — 문제 되면 그 화면에서 로드 완료를 기다리게 할 것.
+  // 실패해도 앱은 계속 간다(해당 글꼴만 시스템 폰트) — 아래 '폰트 실패에도 시스템 폰트로 진행' 원칙과 같다.
+  const coreFontsSettled = fontsLoaded || !!fontError;
+  useEffect(() => {
+    if (!coreFontsSettled) return;
+    loadFontsAsync({
+      NanumGothic_400Regular: require('./assets/fonts/NanumGothic_400Regular.ttf'),
+      NanumMyeongjo_400Regular: require('./assets/fonts/NanumMyeongjo_400Regular.ttf'),
+      NanumBrushScript_400Regular: require('./assets/fonts/NanumBrushScript_400Regular.ttf'),
+      NanumPenScript_400Regular: require('./assets/fonts/NanumPenScript_400Regular.ttf'),
+      NanumSquare: require('./assets/fonts/NanumSquareR.ttf'),
+      NanumSquareRound: require('./assets/fonts/NanumSquareRoundR.ttf'),
+      NanumBarunGothic: require('./assets/fonts/NanumBarunGothic.ttf'),
+      NanumBarunpen: require('./assets/fonts/NanumBarunpen.ttf'),
+      MaruBuri: require('./assets/fonts/MaruBuri-Regular.ttf'),
+      // 아이디 표시 폰트(프리미엄) — 영어 전용, constants/handleFonts.ts에서 사용
+      Pacifico: require('./assets/fonts/Pacifico-Regular.ttf'),
+      Caveat: require('./assets/fonts/Caveat-VariableFont_wght.ttf'),
+      BebasNeue: require('./assets/fonts/BebasNeue-Regular.ttf'),
+      CourierPrime: require('./assets/fonts/CourierPrime-Regular.ttf'),
+      Righteous: require('./assets/fonts/Righteous-Regular.ttf'),
+      AmaticSC: require('./assets/fonts/AmaticSC-Regular.ttf'),
+      PermanentMarker: require('./assets/fonts/PermanentMarker-Regular.ttf'),
+      PlayfairDisplay: require('./assets/fonts/PlayfairDisplay-VariableFont_wght.ttf'),
+      Orbitron: require('./assets/fonts/Orbitron-VariableFont_wght.ttf'),
+      Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
+    }).catch((e) => { if (__DEV__) console.warn('[Font] 백그라운드 글꼴 로드 실패 — 해당 글꼴은 시스템 폰트로 진행', e); });
+  }, [coreFontsSettled]);
 
   // 폰트 로드 실패(에셋 손상·번들 누락)에도 앱은 시스템 폰트로 진행한다 —
   // error를 무시하면 로딩 스피너에 영구 고착돼 앱을 아예 못 쓴다.
