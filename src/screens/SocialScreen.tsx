@@ -1982,6 +1982,8 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 // 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
 // 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
 function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
+  // React Compiler 제외: timeAgo()는 전역 i18n·Date.now()를 읽어 컴파일 시 item.timestamp에만 메모돼 새로고침·언어 변경에도 "n분 전"이 굳는다(2026-10-02 산출물 확인).
+  'use no memo';
   const { t, i18n } = useTranslation();
   const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const skinAccent = useSkinAccent();

@@ -178,6 +178,9 @@
     },
     "updates": {
       "url": "https://u.expo.dev/eb1ae94e-593c-4b43-ab51-d99b3546a098"
+    },
+    "experiments": {
+      "reactCompiler": true
     }
   }
 }
