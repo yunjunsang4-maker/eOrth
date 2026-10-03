@@ -3,16 +3,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from teach import learn, set_answer, apply_to_taxonomy, existing_pairs, CONCEPTS, REJECT, MARK_START, MARK_END
+from teach import learn, set_answer, apply_to_taxonomy, existing_pairs, is_rejected, CONCEPTS, REJECT, MARK_START, MARK_END
 
 L = lambda *pairs: [{'label': a, 'confidence': b} for a, b in pairs]
 
 # ── 학습 규칙 ──
 t = {}
-set_answer(t, 'u1', 'hip', L(('rooftop', 0.5), ('night', 0.3)), 'd1', 'trip')
-set_answer(t, 'u2', 'hip', L(('rooftop', 0.6), ('city', 0.2)), 'd2', 'trip')
-set_answer(t, 'u3', 'emotional', L(('rooftop', 0.1), ('sunset', 0.9)), 'd3', 'trip')
-set_answer(t, 'u4', 'food', L(('bakery', 0.9)), 'd4', 'trip')
+set_answer(t, 'u1', ['hip'], L(('rooftop', 0.5), ('night', 0.3)), 'd1', 'trip')
+set_answer(t, 'u2', ['hip'], L(('rooftop', 0.6), ('city', 0.2)), 'd2', 'trip')
+set_answer(t, 'u3', ['emotional'], L(('rooftop', 0.1), ('sunset', 0.9)), 'd3', 'trip')
+set_answer(t, 'u4', ['food'], L(('bakery', 0.9)), 'd4', 'trip')
 got = dict((kw, (c, w)) for kw, c, w in learn(t))
 assert got['rooftop'][0] == 'hip', got                     # 1.1 vs 0.1 → p≈0.92
 assert 0.55 <= got['rooftop'][1] <= 0.6, got
@@ -21,13 +21,35 @@ assert 'bakery' not in got, got
 
 # 비율 미달(2장인데 반반)은 미채택
 t2 = {}
-set_answer(t2, 'a', 'hip', L(('bar', 0.5)), 'x', 't')
-set_answer(t2, 'b', 'food', L(('bar', 0.5)), 'y', 't')
+set_answer(t2, 'a', ['hip'], L(('bar', 0.5)), 'x', 't')
+set_answer(t2, 'b', ['food'], L(('bar', 0.5)), 'y', 't')
 assert learn(t2) == [], learn(t2)
 
-# 답 삭제
-set_answer(t, 'u4', None, [], '', '')
+# 답 삭제(빈 목록)
+set_answer(t, 'u4', [], [], '', '')
 assert 'u4' not in t
+
+# ── 중복 선택(2026-09-21) — 컨셉별 독립 비율. 둘 다 찍은 라벨은 두 컨셉을 다 얻는다 ──
+t4 = {}
+set_answer(t4, 'm1', ['night', 'hip'], L(('neon', 0.8), ('street', 0.5)), 'd1', 't')
+set_answer(t4, 'm2', ['night', 'hip'], L(('neon', 0.7)), 'd2', 't')
+set_answer(t4, 'm3', ['hip'], L(('street', 0.6)), 'd3', 't')
+got4 = {}
+for kw, c, w in learn(t4): got4.setdefault(kw, {})[c] = w
+assert set(got4['neon']) == {'night', 'hip'}, got4          # 2장 모두 두 컨셉 → 둘 다 p=1.0
+assert got4['neon']['night'] == 0.6 and got4['neon']['hip'] == 0.6, got4
+assert set(got4['street']) == {'hip'}, got4                 # hip 1.1/1.1, night 0.5/1.1=0.45 → night 미채택
+assert t4['m1']['concepts'] == ['night', 'hip']
+assert set_answer({}, 'dup', ['hip', 'hip', 'fun'], [], '', '')['dup']['concepts'] == ['hip', 'fun']   # 중복 제거·순서 유지
+# 탈락은 단독 — 컨셉과 섞어 보내도 [REJECT]만 남는다
+assert set_answer({}, 'rj', ['hip', REJECT], [], '', '')['rj']['concepts'] == [REJECT]
+# 옛 정답('concept' 문자열)은 load_teach가 올린다 — 여기선 같은 규칙을 직접 검사
+from teach import load_teach
+import json, tempfile, os
+fd, tmp = tempfile.mkstemp(suffix='.json'); os.close(fd)
+Path(tmp).write_text(json.dumps({'old': {'uri': 'old', 'concept': 'transit', 'labels': []}}), 'utf-8')
+old = load_teach(tmp); os.remove(tmp)
+assert old['old']['concepts'] == ['transit'] and 'concept' not in old['old'], old
 
 # ── 앱 표 치환 ──
 ts = """import x;
@@ -56,7 +78,7 @@ assert n3 == 0 and 'bakery' not in new3
 # ── 수동 탈락 ──
 # 골든셋에 들어가면 안 되는 사진(흐림·무관·스크린샷)을 사람이 직접 뺀 표시다.
 assert REJECT not in CONCEPTS                              # 컨셉이 아니다 — 판정 대상에 섞이면 안 된다
-# 앱 RECO_CONCEPTS와 같은 17종. 랩 목록이 앱보다 좁으면 사람이 찍을 수 없는 컨셉이 생기고,
+# 앱 RECO_CONCEPTS와 같은 18종. 랩 목록이 앱보다 좁으면 사람이 찍을 수 없는 컨셉이 생기고,
 # 넓으면 set_answer가 통과시킨 정답이 앱 표에 반영될 때 컨셉 키가 없어 죽는다.
 #
 # **순서까지 단정한다**(2026-09-18 QA 참고 7). 예전엔 set 동치 + len만 봐서 순서가
@@ -69,36 +91,41 @@ assert CONCEPTS == (
     'emotional', 'hip', 'fun', 'food', 'info', 'transit', 'activity',
     'people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping',
     'vivid', 'mono',
+    'daily',
+    'landscape',
 ), CONCEPTS
-assert len(CONCEPTS) == 17, CONCEPTS       # 개수를 문서로 남긴다(위 tuple이 이미 고정한다)
+assert len(CONCEPTS) == 19, CONCEPTS       # 개수를 문서로 남긴다(위 tuple이 이미 고정한다)
 # 톤 컨셉 3종은 키워드 표가 없다 — 랩에서 찍어도 learn()이 라벨→컨셉을 배울 재료가
 # 없을 뿐이고(라벨이 붙은 사진이면 배운다), 사람이 찍는 것 자체는 막지 않는다.
-set_answer({}, 'tone1', 'mono', L(('sky', 0.5)), 'dtone', 'trip')
+set_answer({}, 'tone1', ['mono'], L(('sky', 0.5)), 'dtone', 'trip')
 
 t3 = {}
-set_answer(t3, 'r1', 'hip', L(('rooftop', 0.6)), 'd1', 'trip')
-set_answer(t3, 'r2', 'hip', L(('rooftop', 0.6)), 'd2', 'trip')
-set_answer(t3, 'r3', REJECT, L(('blurry', 0.9)), 'd3', 'trip')
-set_answer(t3, 'r4', REJECT, L(('blurry', 0.9)), 'd4', 'trip')
+set_answer(t3, 'r1', ['hip'], L(('rooftop', 0.6)), 'd1', 'trip')
+set_answer(t3, 'r2', ['hip'], L(('rooftop', 0.6)), 'd2', 'trip')
+set_answer(t3, 'r3', [REJECT], L(('blurry', 0.9)), 'd3', 'trip')
+set_answer(t3, 'r4', [REJECT], L(('blurry', 0.9)), 'd4', 'trip')
 got3 = dict((kw, (c, w)) for kw, c, w in learn(t3))
 assert got3['rooftop'][0] == 'hip', got3
 # 탈락 사진은 2장이라 MIN_PHOTOS를 채우지만, learn()이 통째로 건너뛰므로 배우지 않는다
 assert 'blurry' not in got3, got3
+assert is_rejected(t3['r3']) and not is_rejected(t3['r1'])
 
 # 탈락 토글 취소(= 답 삭제)
-set_answer(t3, 'r3', None, [], '', '')
+set_answer(t3, 'r3', [], [], '', '')
 assert 'r3' not in t3 and 'r4' in t3
 
 # 모르는 값은 여전히 거부한다 — REJECT를 허용하느라 검증이 통째로 풀리면 오타가 조용히 저장된다
 try:
-    set_answer(t3, 'r5', 'nope', [], '', '')
+    set_answer(t3, 'r5', ['hip', 'nope'], [], '', '')
     raise AssertionError('모르는 컨셉이 통과했다')
 except ValueError:
     pass
 
 # 새 컨셉 2종
-set_answer(t3, 'r6', 'transit', L(('airport', 0.9)), 'd6', 'trip')
-set_answer(t3, 'r7', 'activity', L(('hiking', 0.9)), 'd7', 'trip')
-assert t3['r6']['concept'] == 'transit' and t3['r7']['concept'] == 'activity'
+set_answer(t3, 'r6', ['transit'], L(('airport', 0.9)), 'd6', 'trip')
+set_answer(t3, 'r7', ['activity'], L(('hiking', 0.9)), 'd7', 'trip')
+assert t3['r6']['concepts'] == ['transit'] and t3['r7']['concepts'] == ['activity']
+set_answer(t3, 'r8', ['daily'], L(('living room', 0.9)), 'd8', 'trip')
+assert t3['r8']['concepts'] == ['daily']
 
 print('teach_verify ok')

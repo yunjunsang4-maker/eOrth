@@ -17,6 +17,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 os.environ.setdefault('KMP_DUPLICATE_LIB_OK', 'TRUE')  # Anaconda MKL + torch OpenMP 이중 로드 회피
 LAB = Path(__file__).parent.resolve()
@@ -87,7 +88,7 @@ def list_trips():
 
 def taught_counts(t):
     """(정답 장수, 수동 탈락 장수). 탈락을 정답에 섞어 세면 '정답 N장'이 부풀려진다."""
-    rejected = sum(1 for e in t.values() if e.get('concept') == teach.REJECT)
+    rejected = sum(1 for e in t.values() if teach.is_rejected(e))
     return len(t) - rejected, rejected
 
 
@@ -174,8 +175,20 @@ class Handler(BaseHTTPRequestHandler):
                 # 열 때마다 다시 판정한다(2초) — 프로그램 밖에서 앱 파일·정답 데이터가 바뀌어도 화면이 낡지 않게
                 result = run_pipeline(name)
                 t = teach.load_teach()
-                result['answers'] = {uri: e['concept'] for uri, e in t.items()}
+                result['answers'] = {uri: e['concepts'] for uri, e in t.items()}
                 return self._send(200, result)
+            if path.startswith('/orig/'):
+                # /orig/<여행>/<사진 id> → 원본 파일. signals.json에 적힌 사진만 내보낸다(임의 경로 접근 차단)
+                name, _, pid = path[len('/orig/'):].partition('/')
+                sig = json.loads((trip_out(name) / 'signals.json').read_text('utf-8'))
+                photo = next((p for p in sig['photos'] if p['id'] == pid), None)
+                f = Path(url2pathname(urlparse(photo['uri']).path)) if photo else None
+                if f is None or not f.is_file():
+                    return self._send(404, {'error': '원본을 찾지 못했습니다'})
+                ext = f.suffix.lower().lstrip('.')
+                ctype = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp',
+                         'heic': 'image/heic'}.get(ext, 'application/octet-stream')
+                return self._send(200, f.read_bytes(), ctype)
             if path.startswith('/out/'):
                 rel = Path(path[len('/out/'):])
                 f = (OUT / rel).resolve()
@@ -204,19 +217,19 @@ class Handler(BaseHTTPRequestHandler):
                 threading.Thread(target=analyze_worker, args=(d, bool(body.get('force'))), daemon=True).start()
                 return self._send(200, {'trip': Path(d).name})
             if path == '/api/teach':
-                name, uri, concept = body['trip'], body['uri'], body.get('concept')
+                name, uri, concepts = body['trip'], body['uri'], body.get('concepts') or []
                 out = trip_out(name)
                 sig = json.loads((out / 'signals.json').read_text('utf-8'))
                 photo = next((p for p in sig['photos'] if p['uri'] == uri), None)
                 if photo is None:
                     return self._send(404, {'error': '사진을 찾지 못했습니다'})
                 t = teach.load_teach()
-                teach.set_answer(t, uri, concept, photo.get('signal', {}).get('sceneLabels', []),
+                teach.set_answer(t, uri, concepts, photo.get('signal', {}).get('sceneLabels', []),
                                  photo.get('signal', {}).get('dhash', ''), name)
                 teach.save_teach(t)
                 learned = relearn()
                 result = run_pipeline(name)
-                result['answers'] = {u: e['concept'] for u, e in t.items()}
+                result['answers'] = {u: e['concepts'] for u, e in t.items()}
                 taught, rejected = taught_counts(t)
                 return self._send(200, {'result': result, 'learned': learned,
                                         'taught': taught, 'rejected': rejected})

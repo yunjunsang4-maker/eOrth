@@ -1,31 +1,108 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>eOrth 사진 AI 랩</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@700;800;900&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-:root{--bg:#0A0A0F;--card:#2E2E3B;--purple:#BF85FC;--deep:#6B21A8;--dim:#A1A1B0;--line:#1A1A26;--red:#FF3B30;--green:#4ADE80}
-*{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:#fff;font:14px/1.45 -apple-system,"Segoe UI","Malgun Gothic",sans-serif}
-main{max-width:1500px;margin:0 auto;padding:18px 20px 60px}
-h1{font-size:20px;margin:0}h2{font-size:16px;margin:26px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+/* 앱 디자인 토큰(CLAUDE.md) + 랜딩·작업 궤도와 같은 서체. 앱이 다크 전용이라 이 화면도 다크 하나다. */
+:root{--bg:#0A0A0F;--panel:#121219;--card:#2E2E3B;--purple:#BF85FC;--deep:#6B21A8;--dim:#A1A1B0;--faint:#6E6E80;--line:#1A1A26;
+      --red:#FF3B30;--green:#4ADE80;--text:#F3F1F8;--pill:rgba(255,255,255,.07);
+      --display:"Gothic A1","Malgun Gothic",system-ui,sans-serif;--body:"IBM Plex Sans KR","Malgun Gothic",system-ui,sans-serif;
+      --mono:"IBM Plex Mono",Consolas,ui-monospace,monospace;color-scheme:dark}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg) radial-gradient(70% 460px at 50% -140px,rgba(107,33,168,.34),transparent 70%) no-repeat;color:var(--text);font:14px/1.5 var(--body)}
+main{max-width:1500px;margin:0 auto;padding:22px 24px 72px}
+h1{font:900 22px/1.15 var(--display);margin:0;letter-spacing:-.01em}
+h2{font:800 17px/1.2 var(--display);margin:34px 0 12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h2 small{font:500 12px var(--body);color:var(--faint)}
 .dim{color:var(--dim)}.purple{color:var(--purple)}.red{color:var(--red)}.green{color:var(--green)}
-button{background:var(--card);color:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 14px;cursor:pointer;font:inherit}
-button:hover{border-color:var(--purple)}button.primary{background:var(--deep);border-color:var(--deep)}button:disabled{opacity:.5;cursor:default}
-input[type=text],select{background:var(--card);color:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit}
-.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--purple);outline-offset:2px}
+button{background:var(--pill);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 16px;cursor:pointer;font:inherit;font-weight:500;
+       transition:border-color .15s,background .15s,box-shadow .15s}
+button:hover{border-color:var(--purple);background:rgba(191,133,252,.10)}
+button.primary{background:var(--purple);border-color:var(--purple);color:#16081F;font-weight:600;box-shadow:0 0 18px rgba(191,133,252,.38)}
+button.primary:hover{background:#D3A8FF;border-color:#D3A8FF}
+button:disabled{opacity:.45;cursor:default;box-shadow:none}
+input[type=text],select{background:rgba(255,255,255,.05);color:var(--text);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:8px 14px;font:inherit}
+select option{background:#1B1B24}
+input[type=text]::placeholder{color:var(--faint)}
+input[type=text]:focus,select:focus{border-color:var(--purple);outline:none;box-shadow:0 0 0 3px rgba(191,133,252,.18)}
+input[type=checkbox]{accent-color:var(--purple)}
+label{color:var(--dim);font-size:13px}
+
+/* 앱의 대각 흰색 링 테두리(AutoPillRing) */
+.ring{border:1px solid transparent;background:linear-gradient(var(--panel),var(--panel)) padding-box,
+      linear-gradient(135deg,rgba(255,255,255,.32),rgba(255,255,255,.05) 38%,rgba(255,255,255,.05) 62%,rgba(255,255,255,.2)) border-box}
+
+.topbar{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:14px}
+.orb{width:38px;height:38px;border-radius:50%;flex:none;background:radial-gradient(circle at 34% 30%,#F1E4FF 0,#BF85FC 30%,#6B21A8 68%,#1B0B30 100%);
+     box-shadow:0 0 20px rgba(191,133,252,.5),inset -5px -6px 10px rgba(10,10,15,.55)}
+.eyebrow{font:500 11px var(--mono);letter-spacing:.12em;color:var(--purple)}
+.tagline{color:var(--dim);font-size:13px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.box{background:var(--card);border-radius:12px;padding:12px 14px;margin:10px 0}
-.warn{background:#1c1330;border:1px solid var(--deep);border-radius:8px;padding:8px 12px;margin:10px 0;color:#e8d7ff}
-.prog{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:6px 0}.prog i{display:block;height:100%;background:var(--purple);transition:width .2s}
-.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
-.trip{background:var(--card);border-radius:12px;padding:12px;cursor:pointer;border:1px solid transparent}.trip:hover{border-color:var(--purple)}
-.stat{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0}.stat b{font-size:18px}
+.box{border-radius:20px;padding:16px 18px;margin:12px 0;display:grid;gap:12px}
+.boxtitle{font:800 15px var(--display)}
+.note{font-size:12px;color:var(--faint)}
+.warn{display:flex;gap:10px;align-items:flex-start;background:rgba(191,133,252,.07);border:1px solid rgba(191,133,252,.26);border-radius:12px;padding:9px 13px;color:#E8D7FF;font-size:13px}
+.warn::before{content:"";width:6px;height:6px;margin-top:7px;flex:none;border-radius:50%;background:var(--purple);box-shadow:0 0 8px var(--purple)}
+.prog{height:8px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden;margin:4px 0}
+.prog i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--deep),var(--purple));box-shadow:0 0 12px rgba(191,133,252,.6);transition:width .25s}
+
+/* 숫자 타일 */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{display:grid;gap:2px;align-content:start;padding:12px 16px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);min-width:0}
+.tile>span{font-size:12px;color:var(--dim);font-weight:500}
+.tile>b{font:900 26px/1.2 var(--display);font-variant-numeric:tabular-nums}
+.tile>b.sm{font:600 15px/1.9 var(--body)}
+.tile small{font-size:12px;color:var(--faint)}
+.tile small b{font-weight:600;color:var(--dim)}
+.tile .arrow{color:var(--faint);font-weight:400;margin:0 6px;font-size:18px}
+
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.trip{display:grid;gap:6px;justify-items:start;border-radius:18px;padding:16px 18px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.trip:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(107,33,168,.30)}
+.trip b{font:800 17px var(--display)}
+.trip .path{font:11px var(--mono);color:var(--faint);overflow-wrap:anywhere}
+
+.triphead{gap:12px}
+.tt{display:grid;gap:2px;min-width:0}
+.tt b{font:900 22px/1.2 var(--display)}
+.tt span{font-size:12px;overflow-wrap:anywhere}
+
+/* 사진 목록 위 고정 도구줄 — 사진 수백 장을 내려가도 거르기·정렬이 손에 남는다 */
+.toolbar{position:sticky;top:0;z-index:20;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:10px 14px;margin:0 -14px 14px;
+         background:rgba(10,10,15,.80);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,.06)}
+.legend{margin-left:auto;display:flex;gap:14px;font-size:12px;color:var(--faint)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;border:2px solid var(--c);margin-right:6px;vertical-align:-1px}
+
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
-.chip{font-size:12px;padding:1px 7px;border-radius:10px;border:1px solid var(--line);color:var(--dim)}
-.chip.on{border-color:var(--purple);color:#fff}.chip.learn{border-color:var(--green);color:#fff}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
-.photo{background:var(--card);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;border:2px solid transparent}
-.photo.failed{border-color:var(--red)}.photo.wrong{border-color:#8a2f2a}.photo.right{border-color:#2f6b45}.photo.hide{display:none}
-.photo img{width:100%;aspect-ratio:4/3;object-fit:cover;background:#000}
+.chip{font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.05);border:1px solid transparent;color:var(--dim)}
+.chip.on{background:rgba(191,133,252,.14);color:#E3CCFF}
+.chip.learn{background:rgba(74,222,128,.10);border-color:rgba(74,222,128,.5);color:#C9F7D9}
+.box .chips .chip{font-size:12px;padding:3px 10px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.photo{background:var(--panel);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;border:2px solid rgba(255,255,255,.06);transition:border-color .15s,box-shadow .15s}
+.photo:hover{border-color:rgba(191,133,252,.35)}
+.photo.failed{border-color:rgba(255,59,48,.8)}
+.photo.wrong{border-color:rgba(255,59,48,.6);box-shadow:0 8px 24px rgba(255,59,48,.10)}
+.photo.right{border-color:rgba(74,222,128,.6);box-shadow:0 8px 24px rgba(74,222,128,.10)}
+.photo.hide{display:none}
+.photo img{width:100%;aspect-ratio:4/3;object-fit:cover;background:#000;cursor:zoom-in;display:block;transition:filter .2s}
+.photo img:hover{filter:brightness(1.08)}
+/* 원본 보기 — 원본 해상도 파일을 받아 창 크기에 맞춰 한 화면에 통째로 보여준다(스크롤 없음).
+   아래 캡션 줄(약 36px)을 피하려고 아래 여백을 더 둔다. 배경 클릭·ESC로 닫힘 */
+.lb{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px 24px 52px;background:rgba(5,5,8,.9);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:50;cursor:zoom-out}.lb.hide{display:none}
+.lb img{display:block;max-width:100%;max-height:100%;object-fit:contain;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.6)}
+.lb img.thumb{height:100%;width:auto}/* 원본이 없어 대신 띄운 작은 썸네일(240px대)은 창 높이까지 키운다 */.lb .cap{position:fixed;left:0;right:0;bottom:0;padding:9px 16px;background:rgba(10,10,15,.75);color:var(--dim);font:12px var(--mono);pointer-events:none}
 .body{padding:10px}.head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.photo .head b{font:500 12px var(--mono);color:var(--text)}.photo .head span{font:11px var(--mono);color:var(--faint);flex:none}
+.verdict{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:8px 0;font-size:12px}
+.pill{padding:2px 9px;border-radius:999px;background:var(--pill);color:var(--dim)}
+.pill.top{background:rgba(191,133,252,.16);color:#E3CCFF;font-weight:600}.pill.top .mono{color:var(--purple);font-weight:500;margin-left:3px}
+.pill.bad{background:rgba(255,59,48,.14);color:#FF8A80}.pill.ok{background:rgba(74,222,128,.13);color:var(--green)}
 /* 라벨 칸 54px: 최장 라벨 '선명한 색'·'액티비티'가 11px에서 한 줄에 들어간다(34px은 2줄로 접혔다).
    카드 최소폭 270px − border 4px − body padding 20px = 내부 246px 기준으로
    54(라벨) + 34(값) + gap 12 = 100px을 빼도 막대 track이 146px 남는다.
@@ -35,53 +112,72 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
    상위 N개만 그리는 접기는 넣지 않았다 — 정답을 찍는 사람이 "0.00인 컨셉이 정말 0인지"를
    눈으로 확인하는 것이 이 화면의 용도라, 숨기면 오판을 못 잡는다. */
 .bar{display:grid;grid-template-columns:54px 1fr 34px;gap:6px;align-items:center;font-size:11px;line-height:1.2}
-.bar>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bt{height:7px;background:var(--line);border-radius:4px;overflow:hidden;position:relative}.bt i{position:absolute;left:0;top:0;height:100%;background:#6f6f85}.bt i.top{background:var(--purple)}.bt i.base{background:transparent;border-right:2px solid #fff8}
-.bv{text-align:right;color:var(--dim)}
+.bar>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+.bar.top>span:first-child{color:var(--text);font-weight:600}
+.bt{height:6px;background:rgba(255,255,255,.06);border-radius:999px;overflow:hidden;position:relative}
+.bt i{position:absolute;left:0;top:0;height:100%;background:#4E4E64;border-radius:inherit}
+.bt i.top{background:linear-gradient(90deg,var(--deep),var(--purple));box-shadow:0 0 8px rgba(191,133,252,.7)}
+.bt i.base{background:transparent;border-right:2px solid rgba(255,255,255,.6);border-radius:0}
+.bv{text-align:right;color:var(--faint);font:10.5px var(--mono)}.bar.top .bv{color:var(--purple)}
 /* 컨셉 17개 + [탈락] 1개 = 18버튼. 카드 최소폭 270px - body padding 20px = 내부 250px 기준으로
    한 줄 4개가 딱 맞는다: 4*calc(25% - 3px) + gap 3*4px = 250px. 넓은 카드에서는 grow가 채운다.
    '선명한 색'(11px nowrap ≈ 47px + 좌우 padding 6px)이 최소칸 56px 안에 들어가 잘리지 않는다. */
-.answers{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0 4px}.answers button{flex:1 1 calc(25% - 3px);min-width:56px;padding:6px 3px;font-size:11px;white-space:nowrap;border-radius:6px}.answers button.sel{background:var(--deep);border-color:var(--purple)}
-.answers button.rej{color:var(--red);border-color:#4a1f1d}.answers button.rej:hover{border-color:var(--red)}.answers button.rej.sel{background:var(--red);border-color:var(--red);color:#fff}
-.photo.rejected{border-color:var(--red);opacity:.72}
-.badges{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.badge{font-size:11px;background:var(--deep);border-radius:4px;padding:1px 6px}
-.q{font-size:12px}
-.card{background:var(--card);border-radius:12px;padding:10px 12px;margin:8px 0}.card .thumbs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.card img{height:96px;border-radius:6px}
-.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--deep);color:#fff;padding:10px 18px;border-radius:10px;opacity:0;transition:opacity .2s;pointer-events:none}.toast.show{opacity:1}
+.answers{display:flex;flex-wrap:wrap;gap:4px;margin:10px 0 6px}
+.answers button{flex:1 1 calc(25% - 3px);min-width:56px;padding:6px 3px;font-size:11px;white-space:nowrap;border-radius:8px;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.08)}
+.answers button:hover{border-color:rgba(191,133,252,.6);background:rgba(191,133,252,.10)}
+.answers button.sel{background:linear-gradient(135deg,var(--deep),#9B5DE5);border-color:var(--purple);color:#fff;font-weight:600;box-shadow:0 0 10px rgba(191,133,252,.35)}
+.answers button.rej{color:#FF8A80;border-color:rgba(255,59,48,.28)}.answers button.rej:hover{border-color:var(--red);background:rgba(255,59,48,.10)}
+.answers button.rej.sel{background:var(--red);border-color:var(--red);color:#fff;box-shadow:0 0 10px rgba(255,59,48,.4)}
+.photo.rejected{border-color:var(--red);opacity:.6}
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}.badge{font-size:11px;background:rgba(107,33,168,.35);color:#E3CCFF;border-radius:6px;padding:1px 7px}
+.q{font:10.5px/1.5 var(--mono);color:var(--faint);margin-top:6px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+
+.card{border-radius:18px;padding:14px 16px;margin:10px 0}
+.card .head b{display:flex;align-items:center;gap:10px;font:800 15px var(--display)}
+.card .head span{font:11px var(--mono)}
+.rank{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--purple);color:#16081F;font:900 13px var(--display);box-shadow:0 0 12px rgba(191,133,252,.45);flex:none}
+.card .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.card img{height:104px;border-radius:10px;transition:transform .15s}.card img:hover{transform:scale(1.04)}
+.margin{margin-top:12px;font-size:13px;color:var(--dim)}.margin b{font-family:var(--mono)}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(6px);background:var(--card);color:#fff;padding:10px 20px;border-radius:999px;
+       border:1px solid rgba(191,133,252,.35);box-shadow:0 8px 28px rgba(0,0,0,.5);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;z-index:60}
+.toast.show{opacity:1;transform:translateX(-50%)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 [hidden]{display:none!important}
 </style></head><body><main>
 
 <div class="topbar">
-  <h1>eOrth 사진 AI 랩</h1>
-  <span class="dim">사진에 정답을 찍으면 프로그램이 배우고, 만족하면 앱에 넣습니다</span>
+  <div class="brand">
+    <span class="orb" aria-hidden="true"></span>
+    <div><div class="eyebrow">eOrth · Photo AI Lab</div><h1>사진 AI 랩</h1></div>
+  </div>
+  <span class="tagline">사진에 정답을 찍으면 프로그램이 배우고, 만족하면 앱에 넣습니다</span>
   <span style="flex:1"></span>
   <button id="btnHome" hidden>← 홈</button>
 </div>
 
 <section id="home">
-  <div class="box">
+  <div class="box ring">
+    <div class="row"><b class="boxtitle">새 여행 분석</b><span class="note">폴더 하나가 여행 하나입니다. 첫 실행은 CLIP 모델 준비로 1~2분 더 걸립니다.</span></div>
     <div class="row">
       <button class="primary" id="btnPick">사진 폴더 선택…</button>
       <input type="text" id="dirInput" placeholder="또는 폴더 경로를 붙여넣기 (예: D:/사진/오사카)" style="flex:1;min-width:280px">
-      <label class="dim"><input type="checkbox" id="force"> 전부 다시 분석</label>
+      <label><input type="checkbox" id="force"> 전부 다시 분석</label>
       <button id="btnAnalyze">분석 시작</button>
     </div>
     <div id="progBox" hidden>
-      <div class="row"><span id="progText"></span></div>
+      <div class="row"><b id="progText"></b></div>
       <div class="prog"><i id="progBar" style="width:0"></i></div>
       <div class="dim" id="progMsg"></div>
     </div>
     <div class="red" id="progErr" hidden></div>
   </div>
 
-  <div class="box">
-    <div class="stat">
-      <div>가르친 사진 <b id="stTaught">0</b>장</div>
-      <div class="dim">수동 탈락 <b id="stRejected">0</b>장</div>
-      <div>배운 키워드 <b id="stLearned">0</b>개</div>
-      <div class="dim" id="stModel"></div>
-    </div>
-    <div class="dim">폴더 하나가 여행 하나입니다. 첫 실행은 CLIP 모델 준비로 1~2분 더 걸립니다.</div>
+  <div class="tiles">
+    <div class="tile"><span>가르친 사진</span><b id="stTaught">0</b><small>장</small></div>
+    <div class="tile"><span>수동 탈락</span><b id="stRejected">0</b><small>장 · 학습에서 제외</small></div>
+    <div class="tile"><span>배운 키워드</span><b class="purple" id="stLearned">0</b><small>개</small></div>
+    <div class="tile"><span>모델</span><b class="sm" id="stModel"></b></div>
   </div>
 
   <h2>최근 여행</h2>
@@ -89,37 +185,39 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 </section>
 
 <section id="trip" hidden>
-  <div class="box">
-    <div class="row"><b id="tName" style="font-size:16px"></b><span class="dim" id="tDir"></span><span style="flex:1"></span>
+  <div class="box ring">
+    <div class="row triphead"><div class="tt"><b id="tName"></b><span class="mono dim" id="tDir"></span></div><span style="flex:1"></span>
       <button id="btnReanalyze">다시 분석</button><button id="btnReport">HTML 리포트 열기</button></div>
-    <div class="stat">
-      <div>사진 <b id="tPhotos"></b> · 통과 <b id="tUsable"></b></div>
-      <div>라벨 해석률 <b class="purple" id="tPct"></b> <span class="dim" id="tPctSub"></span></div>
-      <div>정답 찍은 사진 <b id="tN"></b>장</div>
-      <div>정확도 앱 규칙 <b id="accBase">—</b> → 학습 반영 <b class="green" id="accLearned">—</b></div>
+    <div class="tiles">
+      <div class="tile"><span>사진</span><b id="tPhotos"></b><small>품질 통과 <b id="tUsable"></b>장</small></div>
+      <div class="tile"><span>라벨 해석률</span><b class="purple" id="tPct"></b><small id="tPctSub"></small></div>
+      <div class="tile"><span>정답 찍은 사진</span><b id="tN"></b><small>장</small></div>
+      <div class="tile"><span>정확도</span><b><span id="accBase">—</span><span class="arrow">→</span><span class="green" id="accLearned">—</span></b><small>앱 규칙 → 학습 반영</small></div>
     </div>
     <div class="dim" id="rejStat"></div>
     <div class="warn">데스크탑 CLIP 대체 모델의 결과입니다. 라벨 어휘가 iOS Vision과 달라 앱 이식 시 실기기에서 다시 확인하세요.</div>
   </div>
 
-  <div class="box">
-    <div class="row"><b>배운 키워드</b><span class="dim" id="learnSub"></span><span style="flex:1"></span>
+  <div class="box ring">
+    <div class="row"><b class="boxtitle">배운 키워드</b><span class="dim" id="learnSub"></span><span style="flex:1"></span>
       <button class="primary" id="btnApply">앱에 반영</button></div>
     <div class="chips" id="learnedChips"></div>
-    <div class="dim" style="font-size:12px">정답이 2장 이상 쌓인 라벨만 배웁니다. 초록 테두리 = 학습으로 새로 해석되는 라벨. [앱에 반영]은 <span id="taxPath"></span>의 학습 구간을 채웁니다(커밋은 직접).</div>
+    <div class="note">정답이 2장 이상 쌓인 라벨만 배웁니다. 초록 테두리 = 학습으로 새로 해석되는 라벨. [앱에 반영]은 <span class="mono" id="taxPath"></span>의 학습 구간을 채웁니다(커밋은 직접).</div>
   </div>
 
-  <h2>사진별 분류 — 카드 아래 버튼으로 정답을 찍으세요</h2>
-  <div class="row" style="margin-bottom:10px">
+  <h2>사진별 분류 <small>카드 아래 버튼으로 정답을 찍으세요</small></h2>
+  <div class="toolbar">
     <label>보기 <select id="filter"><option value="all">전체</option><option value="untaught">정답 안 찍은 것</option><option value="wrong">학습 반영해도 틀린 것</option><option value="taught">정답 찍은 것</option><option value="rejected">탈락시킨 것</option></select></label>
     <label>정렬 <select id="sort"><option value="t">촬영순</option><option value="c">컨셉 점수</option><option value="b">베스트컷 점수</option></select></label>
-    <span class="dim" id="count"></span>
+    <b class="mono" id="count"></b>
+    <span class="legend"><span><i style="--c:var(--green)"></i>판정이 정답과 같음</span><span><i style="--c:var(--red)"></i>틀림·탈락</span></span>
   </div>
   <div class="grid" id="grid"></div>
+  <div class="lb hide" id="lb"><img id="lbImg" alt=""><div class="cap" id="lbCap"></div></div>
 
-  <h2>추천 카드 (앱에 보이는 최종 결과)</h2>
+  <h2>추천 카드 <small>앱에 보이는 최종 결과</small></h2>
   <div id="cards"></div>
-  <div id="margin"></div>
+  <div class="margin" id="margin"></div>
 </section>
 
 <div class="toast" id="toast"></div>
@@ -127,14 +225,14 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 <script>
 (function(){
   // 화면에 넣는 모든 데이터는 esc()로 이스케이프한다 — 출처는 로컬 파이썬 서버(같은 PC)뿐이다.
-  // 앱 RECO_CONCEPTS 17종과 순서·개수가 같아야 한다(끝에 추가만 — topOf 동률 우선순위가 이 순서다)
+  // 앱 RECO_CONCEPTS 19종과 순서·개수가 같아야 한다(끝에 추가만 — topOf 동률 우선순위가 이 순서다)
   var CONCEPTS=['emotional','hip','fun','food','info','transit','activity',
-                'people','night','animal','cafe','culture','nature','stay','shopping','vivid','mono'];
+                'people','night','animal','cafe','culture','nature','stay','shopping','vivid','mono','daily','landscape'];
   // 'info'는 키만 info이고 표시는 '명소'다 — 키를 바꾸면 teach.json에 쌓인 정답이 죽는다(recoTypes.ts 주석)
   // 표기는 앱 i18n(reco.conceptNoun.*)·report.ts의 CONCEPT_KO와 같게 맞춘다
-  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'미식',info:'명소',transit:'여정',activity:'액티비티',
+  var KO={emotional:'감성',hip:'힙',fun:'유쾌',food:'음식',info:'명소',transit:'여정',activity:'액티비티',
           people:'인물',night:'야경',animal:'동물',cafe:'카페',culture:'문화',nature:'자연',
-          stay:'숙소',shopping:'쇼핑',vivid:'선명한 색',mono:'무채색'};
+          stay:'숙소',shopping:'쇼핑',vivid:'선명한 색',mono:'무채색',daily:'일상',landscape:'풍경'};
   var REJECT='reject';   // teach.py의 REJECT와 같은 값. 컨셉이 아니라 사람이 찍는 '탈락' 표시다
   var VIEW={feed:'피드',blog:'블로그',cut:'컷'};
   var $=function(id){return document.getElementById(id)};
@@ -159,7 +257,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
       $('stModel').textContent=s.modelReady?'모델 준비됨':'모델은 첫 분석 때 로드';
       $('taxPath').textContent=s.taxonomyPath;
       setHtml($('trips'),s.trips.map(function(t){
-        return '<div class="trip" data-name="'+esc(t.name)+'"><b>'+esc(t.name)+'</b><div class="dim" style="font-size:12px">'+esc(t.sourceDir)+'</div><div class="dim">사진 '+t.photos+'장</div></div>';
+        return '<div class="trip ring" data-name="'+esc(t.name)+'"><b>'+esc(t.name)+'</b><div class="path">'+esc(t.sourceDir)+'</div><span class="chip on">사진 '+t.photos+'장</span></div>';
       }).join('')||'<div class="dim">아직 분석한 여행이 없습니다. 위에서 폴더를 고르세요.</div>');
       if(s.progress.busy)watchProgress();
     });
@@ -214,7 +312,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
     $('tN').textContent=r.accuracy.n;$('accBase').textContent=pct(r.accuracy.base);$('accLearned').textContent=pct(r.accuracy.learned);
     // 수동 탈락과 자동 품질 판정의 일치율 — 이 두 줄을 눈으로 대조하는 것이 탈락 기능의 목적이다
     var rejN=0,rejQ=0;
-    r.photos.forEach(function(p){if(ans[p.uri]===REJECT){rejN++;if((p.quality||{}).passed===false)rejQ++}});
+    r.photos.forEach(function(p){if((ans[p.uri]||[])[0]===REJECT){rejN++;if((p.quality||{}).passed===false)rejQ++}});
     $('rejStat').textContent=rejN
       ?'수동 탈락 '+rejN+'장 중 자동 품질 판정도 걸러낸 것 '+rejQ+'장 (일치율 '+Math.round(rejQ/rejN*100)+'%)'
       :'수동 탈락 없음 — 흐리거나 무관한 사진을 [탈락]으로 빼면 자동 품질 판정과 대조할 수 있습니다';
@@ -224,21 +322,22 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
 
     var byUri={};r.photos.forEach(function(p){byUri[p.uri]=p});
     setHtml($('grid'),r.photos.map(function(p){
-      var s=r.concepts[p.id], sb=r.conceptsBase[p.id], top=topOf(s), a=ans[p.uri]||null;
+      // a = 정답 컨셉 집합(중복 선택). 탈락이면 [REJECT] 하나뿐이다
+      var s=r.concepts[p.id], sb=r.conceptsBase[p.id], top=topOf(s), a=ans[p.uri]||[];
       var sem=p.semantic||{}, sig=p.signal||{}, q=p.quality||{};
       var badges=[];if((sig.faceCount||0)>0)badges.push('얼굴 '+sig.faceCount);if(sem.isSmiling)badges.push('웃음');if(sem.isFood)badges.push('음식');if(sem.isLandscape)badges.push('풍경');if(sem.isLandmark)badges.push('랜드마크');if(sem.isDocument)badges.push('문서');if(sig.hasText)badges.push('텍스트');
       var chips=(sig.sceneLabels||[]).map(function(l){var k=l.label.toLowerCase();var cls=r.interpreted[l.label]?'on':(learnedMap[k]?'learn':'');return '<span class="chip '+cls+'" title="신뢰도 '+l.confidence.toFixed(2)+(learnedMap[k]?' · 학습: '+KO[learnedMap[k][1]]:'')+'">'+esc(l.label)+'</span>'}).join('');
-      var bars=CONCEPTS.map(function(c){return '<div class="bar"><span>'+KO[c]+'</span><span class="bt"><i class="'+(c===top.concept&&!top.allZero?'top':'')+'" style="width:'+Math.round(s[c]*100)+'%"></i>'+(sb[c]!==s[c]?'<i class="base" style="width:'+Math.round(sb[c]*100)+'%"></i>':'')+'</span><span class="bv">'+s[c].toFixed(2)+'</span></div>'}).join('');
-      var rejected=a===REJECT;
+      var bars=CONCEPTS.map(function(c){return '<div class="bar'+(c===top.concept&&!top.allZero?' top':'')+'"><span>'+KO[c]+'</span><span class="bt"><i class="'+(c===top.concept&&!top.allZero?'top':'')+'" style="width:'+Math.round(s[c]*100)+'%"></i>'+(sb[c]!==s[c]?'<i class="base" style="width:'+Math.round(sb[c]*100)+'%"></i>':'')+'</span><span class="bv">'+s[c].toFixed(2)+'</span></div>'}).join('');
+      var rejected=a[0]===REJECT, taught=a.length>0&&!rejected;
       // 수동 탈락은 컨셉 정답이 아니므로 정/오 판정에서 뺀다(맞다/틀리다가 성립하지 않는다)
-      var judged=(a&&!rejected)?(!top.allZero&&top.concept===a?'right':'wrong'):'';
+      var judged=taught?(!top.allZero&&a.indexOf(top.concept)>=0?'right':'wrong'):'';
       var failed=q.passed===false;
-      return '<div class="photo '+judged+(rejected?' rejected':'')+(failed?' failed':'')+'" data-uri="'+esc(p.uri)+'" data-t="'+p.creationTime+'" data-c="'+(top.allZero?0:top.score)+'" data-b="'+(r.bestScore[p.id]||0)+'" data-a="'+(a||'')+'" data-j="'+judged+'">'+
-        '<img src="/out/'+encodeURIComponent(trip)+'/'+esc(p.thumbnailUri||'')+'" loading="lazy" alt="">'+
+      return '<div class="photo '+judged+(rejected?' rejected':'')+(failed?' failed':'')+'" data-uri="'+esc(p.uri)+'" data-t="'+p.creationTime+'" data-c="'+(top.allZero?0:top.score)+'" data-b="'+(r.bestScore[p.id]||0)+'" data-a="'+esc(a.join(','))+'" data-j="'+judged+'">'+
+        '<img src="/out/'+encodeURIComponent(trip)+'/'+esc(p.thumbnailUri||'')+'" loading="lazy" alt="" data-id="'+esc(p.id)+'" data-w="'+(p.width||0)+'" data-h="'+(p.height||0)+'" title="누르면 원본 크기로">'+
         '<div class="body"><div class="head"><b title="'+esc(p.id)+'">'+esc(p.id)+'</b><span class="dim">'+when(p.creationTime)+'</span></div>'+
-        '<div>'+(top.allZero?'<span class="dim">신호 없음</span>':'판정 <b class="purple">'+KO[top.concept]+'</b> '+top.score.toFixed(2))+(failed?' <span class="red">품질 탈락</span>':'')+(rejected?' <span class="red">수동 탈락</span>':'')+(a&&!rejected?' · 정답 <b>'+KO[a]+'</b> '+(judged==='right'?'<span class="green">✓</span>':'<span class="red">✗</span>'):'')+'</div>'+
+        '<div class="verdict">'+(top.allZero?'<span class="pill">신호 없음</span>':'<span class="pill top">판정 '+KO[top.concept]+'<span class="mono">'+top.score.toFixed(2)+'</span></span>')+(failed?'<span class="pill bad">품질 탈락</span>':'')+(rejected?'<span class="pill bad">수동 탈락</span>':'')+(taught?'<span class="pill '+(judged==='right'?'ok':'bad')+'">정답 '+a.map(function(c){return KO[c]}).join('·')+' '+(judged==='right'?'✓':'✗')+'</span>':'')+'</div>'+
         bars+
-        '<div class="answers">'+CONCEPTS.map(function(c){return '<button data-c="'+c+'" class="'+(a===c?'sel':'')+'">'+KO[c]+'</button>'}).join('')+
+        '<div class="answers">'+CONCEPTS.map(function(c){return '<button data-c="'+c+'" class="'+(a.indexOf(c)>=0?'sel':'')+'">'+KO[c]+'</button>'}).join('')+
           '<button data-c="'+REJECT+'" class="rej'+(rejected?' sel':'')+'" title="골든셋에서 뺀다 — 흐림·무관·스크린샷. 다시 누르면 취소">탈락</button></div>'+
         '<div class="chips">'+(chips||'<span class="dim">라벨 없음</span>')+'</div>'+
         '<div class="badges">'+badges.map(function(b){return '<span class="badge">'+b+'</span>'}).join('')+'</div>'+
@@ -246,7 +345,7 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
     }).join(''));
 
     setHtml($('cards'),r.cards.map(function(c,i){
-      return '<div class="card"><div class="head"><b>'+(i+1)+'. '+(VIEW[c.viewType]||c.viewType)+' × '+KO[c.concept]+'</b><span class="dim">'+c.score.toFixed(3)+' · '+c.photoUris.length+'장 · '+esc(c.id)+'</span></div><div class="thumbs">'+
+      return '<div class="card ring"><div class="head"><b><span class="rank">'+(i+1)+'</span>'+(VIEW[c.viewType]||c.viewType)+' × '+KO[c.concept]+'</b><span class="dim">'+c.score.toFixed(3)+' · '+c.photoUris.length+'장 · '+esc(c.id)+'</span></div><div class="thumbs">'+
         c.photoUris.map(function(u){var p=byUri[u];return p&&p.thumbnailUri?'<img src="/out/'+encodeURIComponent(trip)+'/'+esc(p.thumbnailUri)+'" title="'+esc(p.id)+'">':''}).join('')+'</div></div>';
     }).join('')||'<div class="dim">카드 없음 — 통과한 사진이 없거나 후보가 없음</div>');
     var m=r.candidates.length>=2?r.candidates[0].score-r.candidates[1].score:null;
@@ -261,19 +360,38 @@ input[type=text],select{background:var(--card);color:#fff;border:1px solid var(-
     $('count').textContent=shown+'장 표시';
   }
 
+  // 썸네일 클릭 → 원본을 /orig/<여행>/<id>로 받아 창 크기에 맞춰 띄운다.
+  // 원본 폴더가 옮겨지거나 지워지면 /orig가 404 → 빈 화면 대신 썸네일로 대신 보여주고 이유를 적는다
+  $('lbImg').addEventListener('error',function(){
+    var img=$('lbImg');if(!img.dataset.fallback||img.src.indexOf('/out/')>=0)return;
+    img.src=img.dataset.fallback;img.classList.add('thumb');
+    $('lbCap').textContent=img.dataset.id+' · 원본 파일을 찾지 못해 작은 썸네일을 보여줍니다 — 분석한 원본 폴더('+((result&&result.meta.sourceDir)||'')+')가 그 자리에 있는지 확인하세요 · 클릭 또는 ESC로 닫기';
+  });
   $('grid').addEventListener('click',function(e){
+    var im=e.target.closest('.photo img');
+    if(im){var w=+im.dataset.w,h=+im.dataset.h;$('lbImg').classList.remove('thumb');$('lbImg').dataset.fallback=im.src;$('lbImg').dataset.id=im.dataset.id;
+      $('lbImg').src='/orig/'+encodeURIComponent(trip)+'/'+encodeURIComponent(im.dataset.id);
+      $('lbCap').textContent=im.dataset.id+(w&&h?' · '+w+'×'+h:'')+' · 클릭 또는 ESC로 닫기';$('lb').classList.remove('hide');return}
     var b=e.target.closest('.answers button');if(!b)return;
-    var card=b.closest('.photo'), uri=card.dataset.uri, c=b.dataset.c, cur=card.dataset.a;
-    var next=cur===c?null:c;
+    var card=b.closest('.photo'), uri=card.dataset.uri, c=b.dataset.c, cur=card.dataset.a?card.dataset.a.split(','):[];
+    // 컨셉은 토글로 겹쳐 고른다. 탈락은 단독 — 누르면 기존 정답을 지우고, 탈락 상태에서 컨셉을 누르면 탈락이 풀린다
+    var next;
+    if(c===REJECT)next=cur[0]===REJECT?[]:[REJECT];
+    else if(cur[0]===REJECT)next=[c];
+    else next=cur.indexOf(c)>=0?cur.filter(function(x){return x!==c}):cur.concat([c]);
     card.querySelectorAll('.answers button').forEach(function(x){x.disabled=true});
-    api('POST','/api/teach',{trip:trip,uri:uri,concept:next}).then(function(r){
+    api('POST','/api/teach',{trip:trip,uri:uri,concepts:next}).then(function(r){
       result=r.result;learned=r.learned;$('stTaught').textContent=r.taught;$('stRejected').textContent=r.rejected||0;$('stLearned').textContent=learned.length;
       var y=window.scrollY;renderTrip();window.scrollTo(0,y);
-      toast(next===REJECT?'탈락 처리 — 학습에서 제외됩니다'
-        :next?'정답 "'+KO[next]+'" 저장 · 배운 키워드 '+learned.length+'개'
+      toast(next[0]===REJECT?'탈락 처리 — 학습에서 제외됩니다'
+        :next.length?'정답 "'+next.map(function(x){return KO[x]}).join('·')+'" 저장 · 배운 키워드 '+learned.length+'개'
         :'취소');
     }).catch(function(e){toast('저장 실패: '+e.message);card.querySelectorAll('.answers button').forEach(function(x){x.disabled=false})});
   });
+
+  function closeLb(){$('lb').classList.add('hide');$('lbImg').removeAttribute('src')}
+  $('lb').addEventListener('click',closeLb);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('lb').classList.contains('hide'))closeLb()});
 
   loadState().then(function(){
     var m=location.search.match(/[?&]trip=([^&]+)/);   // ?trip=이름 으로 바로 열기

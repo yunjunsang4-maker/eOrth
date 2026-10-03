@@ -28,7 +28,7 @@ const SLOT_COUNTS = [2, 3, 4, 6, 9];
 /** 학습된 키워드(teach.py learned.json): [keyword, concept, weight] */
 export type Overlay = [string, RecoConcept, number][];
 /** 사용자 정답: uri → 컨셉 (teach.json의 부분집합) */
-export type TeachMap = Record<string, RecoConcept>;
+export type TeachMap = Record<string, RecoConcept[]>;   // 사진당 정답 컨셉 집합(중복 선택)
 
 export interface LabResult {
   photos: PhotoMeta[];
@@ -77,7 +77,7 @@ function accuracyOf(photos: PhotoMeta[], scores: Map<string, ConceptScores>, tea
     n++;
     const s = scores.get(p.id)!;
     const allZero = RECO_CONCEPTS.every((c) => s[c] === 0);
-    if (!allZero && topOf(s).concept === ans) hit++; else wrong.push(p.id);
+    if (!allZero && ans.includes(topOf(s).concept)) hit++; else wrong.push(p.id);
   }
   return { rate: n ? hit / n : null, wrong, n };
 }
@@ -151,10 +151,11 @@ const CONCEPT_KO: Record<RecoConcept, string> = {
   // 'info'는 키만 info이고 표시는 '명소'다(recoTypes.ts 주석 — teach.json 호환 때문에 키를 못 바꾼다)
   // 표기는 앱 i18n(reco.conceptNoun.*)과 같게 맞춘다 — 랩에서 찍은 정답과 앱 문구가 갈리면
   // 리포트를 보며 가중치를 조정할 때 어느 컨셉인지 헷갈린다.
-  emotional: '감성', hip: '힙', fun: '유쾌', food: '미식', info: '명소',
+  emotional: '감성', hip: '힙', fun: '유쾌', food: '음식', info: '명소',
   transit: '여정', activity: '액티비티',
   people: '인물', night: '야경', animal: '동물', cafe: '카페', culture: '문화',
   nature: '자연', stay: '숙소', shopping: '쇼핑', vivid: '선명한 색', mono: '무채색',
+  daily: '일상', landscape: '풍경',
 };
 const VIEW_KO: Record<string, string> = { feed: '피드', blog: '블로그', cut: '컷' };
 
@@ -333,13 +334,13 @@ if (args.includes('--golden-check')) {
   };
   const readJsonIf = (p: string | undefined): unknown => (p && existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : undefined);
   const overlay = (readJsonIf(optVal('--overlay')) as Overlay | undefined) ?? [];
-  const teachRaw = (readJsonIf(optVal('--teach')) as Record<string, { concept: RecoConcept }> | undefined) ?? {};
+  const teachRaw = (readJsonIf(optVal('--teach')) as Record<string, { concept?: string; concepts?: string[] }> | undefined) ?? {};
   // 수동 탈락('reject')은 컨셉이 아니다. 걸러내지 않으면 accuracyOf가 "무조건 틀린 답"으로
-  // 세어 정확도가 탈락 장수만큼 깎인다.
+  // 세어 정확도가 탈락 장수만큼 깎인다. 옛 정답(concept 문자열 1개)도 그대로 읽는다.
   const teach: TeachMap = Object.fromEntries(
     Object.entries(teachRaw)
-      .filter(([, e]) => (RECO_CONCEPTS as string[]).includes(e.concept))
-      .map(([uri, e]) => [uri, e.concept])
+      .map(([uri, e]) => [uri, (e.concepts ?? [e.concept]).filter((c): c is RecoConcept => (RECO_CONCEPTS as string[]).includes(c ?? ''))] as const)
+      .filter(([, cs]) => cs.length > 0)
   );
 
   const sig = JSON.parse(readFileSync(join(outDir, 'signals.json'), 'utf8'));

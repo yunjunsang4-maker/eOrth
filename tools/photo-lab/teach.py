@@ -1,13 +1,15 @@
 """가르치기 — 사용자가 찍은 정답(사진별 컨셉)에서 라벨→컨셉 키워드를 배우고, 앱 표에 쓴다.
 
-정답은 컨셉 17종 중 하나이거나 REJECT('reject', 수동 탈락)이다. 탈락은 학습에서 제외한다.
+정답은 컨셉 19종의 **부분집합**(중복 선택 가능)이거나 REJECT('reject', 수동 탈락)이다. 탈락은 학습에서 제외한다.
 
   python tools/photo-lab/teach.py learn      # data/teach.json → data/learned.json
   python tools/photo-lab/teach.py apply      # learned.json → src/services/photoAI/labelTaxonomy.ts (마커 구간 교체)
 
 학습 규칙(설계 §학습):
-- 라벨 L마다 컨셉별 신뢰도 합 S[L][C], 등장 사진 수 n[L].
-- n[L] ≥ 2 이고 최다 컨셉 비율 p ≥ 0.6 이면 채택, weight = round(0.3 + 0.3·p, 2).
+- 라벨 L마다 컨셉별 신뢰도 합 S[L][C], 라벨 신뢰도 총합 T[L], 등장 사진 수 n[L].
+- n[L] ≥ 2 이고 컨셉 C의 비율 p = S[L][C]/T[L] ≥ 0.6 이면 (L, C) 채택, weight = round(0.3 + 0.3·p, 2).
+  컨셉마다 독립 판정이라 사진마다 두 컨셉을 함께 찍으면 라벨 하나가 두 컨셉을 다 얻을 수 있다(의도).
+  단일 선택만 있으면 예전 '최다 컨셉 ≥ 0.6' 규칙과 결과가 같다.
 - 사진 한 장에서만 나온 라벨은 채택하지 않는다(과적합 방지).
 가산만 한다 — 앱 표의 기존 항목을 빼는 학습은 없다(사람이 표에서 직접 지운다).
 """
@@ -29,6 +31,8 @@ CONCEPTS = (
     # 2026-09-18 세분화. 앱 RECO_CONCEPTS와 순서·개수가 같아야 한다(끝에 추가만).
     'people', 'night', 'animal', 'cafe', 'culture', 'nature', 'stay', 'shopping',
     'vivid', 'mono',
+    'daily',   # 2026-09-21 일상
+    'landscape',   # 2026-10-02 풍경
 )
 # 수동 탈락 — 컴셉이 아니라 "이 사진은 골든셈에 넣지 않는다"는 사람의 표시다.
 # CONCEPTS에 넣지 않는다 — 넣으면 판정 대상 컴셉으로 새어들어간다.
@@ -46,7 +50,12 @@ MARK_END = '  // ── photo-lab 학습 끝 ──'
 def load_teach(path=TEACH_PATH):
     if not Path(path).exists():
         return {}
-    return json.loads(Path(path).read_text('utf-8'))
+    t = json.loads(Path(path).read_text('utf-8'))
+    # 2026-09-21 이전 정답은 'concept' 문자열 하나 — 읽을 때 'concepts' 목록으로 올린다
+    for e in t.values():
+        if 'concepts' not in e:
+            e['concepts'] = [e.pop('concept')]
+    return t
 
 
 def save_teach(teach, path=TEACH_PATH):
@@ -54,15 +63,23 @@ def save_teach(teach, path=TEACH_PATH):
     Path(path).write_text(json.dumps(teach, ensure_ascii=False, indent=1), 'utf-8')
 
 
-def set_answer(teach, uri, concept, labels, dhash, trip):
-    """concept=None 이면 답 삭제. 라벨을 함께 저장해 여행 폴더 없이도 학습한다."""
-    if concept is None:
+def is_rejected(entry):
+    return REJECT in entry.get('concepts', ())
+
+
+def set_answer(teach, uri, concepts, labels, dhash, trip):
+    """concepts: 컨셉 키 목록(중복 선택) 또는 [REJECT]. 비면 답 삭제. 라벨을 함께 저장해 여행 폴더 없이도 학습한다."""
+    concepts = list(dict.fromkeys(concepts or []))   # 순서 유지 중복 제거
+    if not concepts:
         teach.pop(uri, None)
         return teach
-    if concept not in CONCEPTS and concept != REJECT:
-        raise ValueError(f'모르는 컨셉: {concept}')
+    if REJECT in concepts:
+        concepts = [REJECT]   # 탈락은 다른 컨셉과 공존하지 않는다
+    for c in concepts:
+        if c not in CONCEPTS and c != REJECT:
+            raise ValueError(f'모르는 컨셉: {c}')
     teach[uri] = {
-        'uri': uri, 'dhash': dhash, 'concept': concept, 'trip': trip,
+        'uri': uri, 'dhash': dhash, 'concepts': concepts, 'trip': trip,
         'labels': [{'label': l['label'], 'confidence': float(l['confidence'])} for l in (labels or [])],
         'at': int(time.time() * 1000),
     }
@@ -76,31 +93,33 @@ def set_answer(teach, uri, concept, labels, dhash, trip):
 def learn(teach):
     """teach 사전 → [[keyword, concept, weight], …] (키워드 사전순)."""
     score = defaultdict(lambda: defaultdict(float))
+    total = defaultdict(float)
     photos = defaultdict(int)
     for e in teach.values():
         # 수동 탈락 사진에서 키워드를 배우면 안 된다 — 흐림·무관·스크린샷의 라벨이
         # 그대로 컨셉 키워드가 되어 앱 표를 오염시킨다.
-        if e.get('concept') == REJECT:
+        if is_rejected(e):
             continue
         seen = set()
         for l in e.get('labels', []):
             kw = l['label'].strip().lower()
             if not kw or l['confidence'] <= 0:
                 continue
-            score[kw][e['concept']] += l['confidence']
+            for c in e['concepts']:
+                score[kw][c] += l['confidence']
             if kw not in seen:
+                total[kw] += l['confidence']
                 photos[kw] += 1
                 seen.add(kw)
     out = []
     for kw, by in score.items():
         if photos[kw] < MIN_PHOTOS:
             continue
-        total = sum(by.values())
-        best = max(by, key=by.get)
-        p = by[best] / total if total else 0
-        if p < MIN_RATIO:
-            continue
-        out.append([kw, best, round(0.3 + 0.3 * p, 2)])
+        for c, s in by.items():
+            p = s / total[kw] if total[kw] else 0
+            if p < MIN_RATIO:
+                continue
+            out.append([kw, c, round(0.3 + 0.3 * p, 2)])
     return sorted(out)
 
 
@@ -165,7 +184,7 @@ if __name__ == '__main__':
         learned = learn(t)
         write_learned(learned)
         # 탈락은 정답이 아니다 — 같이 세면 '정답 N장'이 부풀려진다(학습에서도 제외된다).
-        rejected = sum(1 for e in t.values() if e.get('concept') == REJECT)
+        rejected = sum(1 for e in t.values() if is_rejected(e))
         print(f'정답 {len(t) - rejected}장(탈락 {rejected}장 제외) → 학습 키워드 {len(learned)}개 → {LEARNED_PATH}')
     elif cmd == 'apply':
         print(f'앱 표에 {apply()}개 항목 반영 → {TAXONOMY_PATH}')
