@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
+import Reanimated, { useSharedValue, useAnimatedStyle, useAnimatedReaction, withTiming, runOnJS, Easing as REasing } from 'react-native-reanimated';
 import { select, success } from '../utils/haptics';
 import Svg, {
   Path as SvgPath,
@@ -491,21 +492,22 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
   // 스캔 중 실시간으로 발견한 해외 나라(중복 제외) — 국기 칩으로 톡톡 등장
   const [discovered, setDiscovered] = useState<{ code: string; flag: string; name: string }[]>([]);
-  // 진행률을 부드럽게 뒤따르는 Animated 값 — 바 채움(width)과 % 카운트업에 함께 쓴다
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  // 진행률을 부드럽게 뒤따르는 값 — 바 채움(width)과 % 카운트업에 함께 쓴다.
+  // 예전엔 RN Animated.Value(width 보간이라 JS 드라이버)였다. 스캔은 JS를 오래 붙잡는 작업이라
+  // 바가 가장 필요할 때 가장 끊겼다 → Reanimated 공유값으로 UI 스레드에서 채운다.
+  const progressAnim = useSharedValue(0);
   const [displayPct, setDisplayPct] = useState(0);
-  useEffect(() => {
-    // 리스너는 애니메이션 프레임마다(초 60회) 불린다. 그때마다 setState 하면 같은 정수를
-    // 수십 번 다시 넣어 화면 전체가 재렌더된다 — 정수가 실제로 바뀔 때만 올린다.
-    let last = -1;
-    const id = progressAnim.addListener(({ value }) => {
-      const v = Math.round(value);
-      if (v === last) return;
-      last = v;
-      setDisplayPct(v);
-    });
-    return () => progressAnim.removeListener(id);
-  }, [progressAnim]);
+  // 옛 addListener와 같은 규칙: 반올림한 정수가 실제로 바뀔 때만 setState 한다.
+  // 리액션은 프레임마다(초 60회) 돌지만 JS로 넘어가는 건 정수가 바뀔 때뿐이라
+  // 같은 정수를 수십 번 다시 넣어 화면 전체가 재렌더되는 일은 그대로 막힌다.
+  // ⚠️ 바는 이제 JS와 무관하게 움직이므로, JS가 바쁜 순간엔 % 글자가 바보다 잠깐 늦을 수 있다
+  //    (예전엔 둘 다 같이 멈췄다).
+  useAnimatedReaction(
+    () => Math.round(progressAnim.value),
+    (v, prev) => {
+      if (v !== prev) runOnJS(setDisplayPct)(v);
+    },
+  );
   // 진행률의 단일 창구. ① 뒤로 가지 않고 ② 정수 값이 실제로 바뀔 때만 setState 한다.
   // (예전엔 탐침마다 setProgress를 불러 같은 값을 수백 번 다시 넣었다 — 화면 전체 재렌더)
   // ref를 쓰는 이유: 같은 프레임 안에서 연달아 불려도 직전 값을 즉시 읽어야 한다.
@@ -519,18 +521,15 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const resetProgress = () => {
     progressRef.current = 0;
     setProgress(0);
-    progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
+    progressAnim.value = 0; // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋(진행 중 애니메이션도 끊긴다)
     setDisplayPct(0);
   };
   useEffect(() => {
-    Animated.timing(progressAnim, {
-      toValue: progress,
-      duration: 450,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false, // width 보간이라 네이티브 드라이버 불가
-    }).start();
+    // 시간·곡선은 옛 Animated.timing 그대로(450ms, out(cubic)) — 현재 값에서 이어서 간다
+    progressAnim.value = withTiming(progress, { duration: 450, easing: REasing.out(REasing.cubic) });
   }, [progress, progressAnim]);
-  const barWidth = progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
+  // 옛 interpolate([0,100] → ['0%','100%'])와 같은 식(progress는 bumpProgress가 0~100으로 클램프)
+  const barStyle = useAnimatedStyle(() => ({ width: `${progressAnim.value}%` }));
 
   // 여행 합치기 (같은 국가가 여러 여행으로 나뉜 경우 — 예: 교환학생 거점 국가)
   const [mergeVisible, setMergeVisible] = useState(false);
@@ -1535,7 +1534,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
             {/* 그라데이션 채움 + 진행 끝 발광 */}
             <View style={styles.progressContainer}>
-              <Animated.View style={[styles.progressFill, { width: barWidth }]}>
+              <Reanimated.View style={[styles.progressFill, barStyle]}>
                 <LinearGradient
                   colors={['#FF14E4', '#00D8F3']}
                   start={{ x: 0, y: 0 }}
@@ -1543,7 +1542,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                   style={styles.progressGrad}
                 />
                 <View style={styles.progressGlow} />
-              </Animated.View>
+              </Reanimated.View>
             </View>
 
             {/* 실시간 발견 나라 국기 칩 */}

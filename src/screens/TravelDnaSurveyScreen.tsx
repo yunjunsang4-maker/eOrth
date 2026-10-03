@@ -6,6 +6,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Alert, BackHandler, Animated, Easing } from 'react-native';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, Easing as REasing } from 'react-native-reanimated';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -79,19 +80,21 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const text = isKoreanLang(i18n.language) ? q.ko : q.en; // 문항은 ko/en 두 벌뿐 — ja는 영문
 
   // 진행 바 — 인덱스가 바뀔 때마다 목표 비율로 슬라이드. width는 레이아웃 속성이라
-  // 네이티브 드라이버로 못 돌린다(scaleX 변환으로 우회할 수도 있지만, 이 애니메이션은
-  // 문항마다 한 번(≈220ms)만 짧게 뛰고 제스처처럼 연속 구동되지 않으므로 JS 드라이버
-  // 비용이 무시할 만하다 — transformOrigin 이슈 없는 useNativeDriver:false를 택함).
-  const barAnim = useRef(new Animated.Value((idx + 1) / questions.length)).current;
+  // RN Animated 네이티브 드라이버로는 못 돌린다(예전엔 useNativeDriver:false로 JS가 매 프레임
+  // 계산했다 — 고르자마자 다음 문항 렌더가 같은 JS 프레임을 먹어 220ms 슬라이드가 끊겼다).
+  // Reanimated로 UI 스레드에서 같은 곡선을 돈다: 시간·곡선(220ms, out(cubic))·클램프 그대로.
+  // (scaleX 변환 우회는 transformOrigin 이슈가 있어 여전히 쓰지 않는다)
+  const barProgress = useSharedValue((idx + 1) / questions.length);
   useEffect(() => {
-    Animated.timing(barAnim, {
-      toValue: (idx + 1) / questions.length,
+    barProgress.value = withTiming((idx + 1) / questions.length, {
       duration: 220,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-  }, [idx, questions.length, barAnim]);
-  const barWidth = barAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'], extrapolate: 'clamp' });
+      easing: REasing.out(REasing.cubic),
+    });
+  }, [idx, questions.length, barProgress]);
+  // 옛 interpolate(['0%','100%'], clamp)와 같은 식
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${Math.min(1, Math.max(0, barProgress.value)) * 100}%`,
+  }));
 
   // 문항 전환 페이드+슬라이드 — idx만 보고 반응하므로 '다음'이든 '이전'(뒤로가기·이전 버튼)이든
   // 동일하게 적용된다. choose()의 저장/가드 로직은 전혀 건드리지 않고 시각 효과만 얹는다.
@@ -194,7 +197,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
       </View>
 
       <View style={st.barTrack}>
-        <Animated.View style={[st.barFill, { backgroundColor: skin.accent, width: barWidth }]} />
+        <Reanimated.View style={[st.barFill, { backgroundColor: skin.accent }, barStyle]} />
       </View>
 
       <Animated.View style={[st.body, qStyle]}>

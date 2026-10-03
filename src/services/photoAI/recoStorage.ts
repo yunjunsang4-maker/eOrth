@@ -99,7 +99,7 @@ export function getRecoState(tripGroupId: string): Promise<RecoState | null> {
   return readEnvelope<RecoState>(stateKey(tripGroupId));
 }
 export function saveRecoState(state: RecoState): Promise<void> {
-  return writeEnvelope(stateKey(state.tripGroupId), state);
+  return writeEnvelope(stateKey(state.tripGroupId), state).then(() => import('../../store/recoStateSignal')).then((m) => { try { m.notifyRecoStateSaved(state.tripGroupId); } catch {} }); // 쓰기 완료 알림(RecoSection) — 리스너 예외가 '저장 실패'로 둔갑하지 않게 삼킨다 폴링 대체, store/recoStateSignal.ts) — 동적 import는 recoSource.ts와 같은 방식
 }
 
 /** 여행 카드가 삭제될 때 추천 상태도 지운다(설계 §6 — 청소는 pool과 짝이다) */

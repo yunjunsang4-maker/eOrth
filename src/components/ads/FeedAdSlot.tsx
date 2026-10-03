@@ -7,7 +7,9 @@ import type { HouseAd } from '../../constants/houseAds';
 
 // 광고 슬롯 하나를 그리는 래퍼.
 //
-// 존재 이유: SocialScreen의 columns[ci].map(...) 안에서는 훅을 호출할 수 없다.
+// 존재 이유: SocialScreen 피드는 FlashList의 renderItem(renderFeedCell)으로 셀을 그리는데, renderItem은
+// 컴포넌트가 아닌 함수라 그 안에서 훅을 호출할 수 없다. 호출부는 key={광고 아이템 id}를 줘서
+// FlashList 셀 재활용 때 이 컴포넌트의 슬롯별 state가 다른 슬롯으로 새지 않게 한다.
 // 소스 결정(훅)과 렌더 분기를 이 컴포넌트가 떠안는다.
 
 interface Props {

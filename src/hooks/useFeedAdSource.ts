@@ -23,10 +23,26 @@ export type FeedAdSource =
 // (AsyncStorage 캐시가 뒤에 또 있지만, 같은 화면의 슬롯 3~4개가 각자 비동기로
 //  읽는 것을 막아 첫 렌더를 매끄럽게 한다.)
 let campaignsPromise: Promise<AdCampaign[]> | null = null;
+// 받은 목록을 동기로도 들고 있는다 — 슬롯이 다시 마운트될 때 첫 렌더부터 판정해 하우스가 한 프레임 비치지 않게.
+let campaignsLoaded: AdCampaign[] | null = null;
 function loadCampaignsOnce(): Promise<AdCampaign[]> {
-  if (!campaignsPromise) campaignsPromise = fetchAdCampaigns();
+  if (!campaignsPromise) campaignsPromise = fetchAdCampaigns().then((list) => { campaignsLoaded = list; return list; });
   return campaignsPromise;
 }
+
+// 슬롯별 AdMob 광고 — 컴포넌트가 아니라 모듈에 둔다(2026-10-03 소셜 피드 FlashList 가상화).
+// 예전 피드는 모든 카드를 계속 마운트해서 슬롯 컴포넌트 수명 = 피드 수명이었고, 요청은 슬롯당 1회였다.
+// 가상화 뒤에는 광고 칸이 화면에서 멀어지면 언마운트되고 돌아오면 다시 마운트된다 — 광고를 훅 state에만
+// 두면 그때마다 destroy·재요청이 일어나 요청 수가 늘고(match rate 하락), 스크롤을 오갈 때마다 광고가 바뀐다.
+// 그래서 요청 Promise를 슬롯 번호로 보관해 재마운트는 같은 광고를 다시 쓴다. 실패(미필·오프라인)는
+// 보관하지 않아 다음 마운트 때 다시 요청한다(아래 effect의 catch).
+// 미해결(QA L2'): AdMob 네이티브 광고는 1시간이면 만료되는데 여기선 갈지 않는다(예전에도 탭이 마운트돼
+// 있는 동안 같은 광고였다 — 기존 부채의 연장).
+// ponytail: 앱 수명 동안 보관·해제 안 함 — 최대 MAX_ADMOB_SLOTS(3)개라 메모리는 무시할 수준. 예전엔 소셜 탭이
+//           다시 마운트(계정 전환 등)되면 새로 요청했지만 이제는 앱 재시작까지 같은 광고다. 오래된 광고를
+//           갈아야 하면 여기서 시각을 같이 저장해 만료 시 destroy 후 delete할 것.
+const slotAdRequests = new Map<number, Promise<NativeAd | null>>();
+const slotAdLoaded = new Map<number, NativeAd | null>();
 
 // AdMob 요청은 상위 슬롯 3개까지만. 피드가 길면 슬롯이 계속 생기는데 전부 요청하면
 // 요청 대비 노출 비율(match rate)이 떨어져 필률이 깎인다.
@@ -55,8 +71,9 @@ export function useFeedAdSource(slot: number): FeedAdSource {
   const { i18n } = useTranslation();
   const { currentVisitedCountryCode, homeCountryCode } = useHomeSettings();
   const { records } = useRecordData();
-  const [campaigns, setCampaigns] = useState<AdCampaign[] | null>(null);
-  const [nativeAd, setNativeAd] = useState<NativeAd | null>(null);
+  // 초기값을 모듈 보관분에서 — 재마운트(가상화)된 슬롯이 하우스 → 실광고로 한 번 더 바뀌지 않게
+  const [campaigns, setCampaigns] = useState<AdCampaign[] | null>(() => (AFFILIATE_ADS_ENABLED ? campaignsLoaded : []));
+  const [nativeAd, setNativeAd] = useState<NativeAd | null>(() => slotAdLoaded.get(slot) ?? null);
 
   useEffect(() => {
     if (!AFFILIATE_ADS_ENABLED) { setCampaigns([]); return; }
@@ -100,35 +117,44 @@ export function useFeedAdSource(slot: number): FeedAdSource {
     const ads = getGoogleMobileAds();
     if (!ads) return;
     let alive = true;
-    let created: NativeAd | null = null;
 
-    // 초기화가 끝나기 전의 요청은 Google이 지원하지 않는다 — 앱 시작 직후 소셜 탭으로
-    // 바로 들어온 경우를 대비해 공유 초기화 Promise를 먼저 기다린다(이미 끝났으면 즉시 통과).
-    // ATT 결과도 함께 기다린다 — 결정 전에 요청하면 그 회차가 동의와 무관하게 나간다.
-    Promise.all([ensureAdsInitialized() ?? Promise.resolve(), requestTrackingPermission()])
-      .then(([, trackingGranted]) => {
-        if (!alive) return null;             // 기다리는 사이 언마운트됐으면 요청하지 않는다
-        return ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
+    // 슬롯당 요청은 1회 — 이미 보냈거나 받은 슬롯이면 그 결과를 기다리기만 한다(slotAdRequests 주석).
+    let request = slotAdRequests.get(slot);
+    if (!request) {
+      // 초기화가 끝나기 전의 요청은 Google이 지원하지 않는다 — 앱 시작 직후 소셜 탭으로
+      // 바로 들어온 경우를 대비해 공유 초기화 Promise를 먼저 기다린다(이미 끝났으면 즉시 통과).
+      // ATT 결과도 함께 기다린다 — 결정 전에 요청하면 그 회차가 동의와 무관하게 나간다.
+      // (예전엔 기다리는 사이 언마운트되면 요청을 접었다. 이제 결과가 모듈에 남아 재마운트 때 쓰이므로
+      //  끝까지 보낸다 — 화면 근처(drawDistance)에서만 마운트되므로 곧 다시 보일 슬롯이다.)
+      request = Promise.all([ensureAdsInitialized() ?? Promise.resolve(), requestTrackingPermission()])
+        .then(([, trackingGranted]) => ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
           // 추적 동의를 받은 경우에만 개인화 광고. 거부·미결정·안드로이드 기본은 비개인화 —
           // 동의 없이 개인화 광고를 내보내면 정책 위반이다.
           requestNonPersonalizedAdsOnly: !trackingGranted,
-        });
-      })
-      .then((ad) => {
-        if (!ad) return;                     // 언마운트로 건너뛴 경우
-        created = ad;
-        if (__DEV__) console.log(`[AdMob] slot ${slot} 수신:`, ad.headline);
-        if (alive) setNativeAd(ad);
-        else ad.destroy();                   // 이미 언마운트됐으면 즉시 해제
-      })
-      .catch((e) => {
-        // 미필·네트워크 오류 → 하우스로 떨어진다. 조용히 삼키면 검증 때 원인을 알 수 없어
-        // 개발 빌드에서만 사유를 남긴다(프로덕션 동작은 그대로).
-        if (__DEV__) console.log(`[AdMob] slot ${slot} 요청 실패:`, e?.message ?? e);
-      });
+        }))
+        .then((ad): NativeAd | null => {
+          if (__DEV__) console.log(`[AdMob] slot ${slot} 수신:`, ad.headline);
+          return ad;
+        })
+        .catch((e) => {
+          // 미필·네트워크 오류 → 하우스로 떨어진다. 조용히 삼키면 검증 때 원인을 알 수 없어
+          // 개발 빌드에서만 사유를 남긴다(프로덕션 동작은 그대로).
+          if (__DEV__) console.log(`[AdMob] slot ${slot} 요청 실패:`, e?.message ?? e);
+          // 실패는 보관하지 않는다 — 앱 시작 직후 오프라인이었다고 앱 재시작까지 하우스로 굳지 않게,
+          // 이 슬롯이 다음에 마운트될 때(화면 근처로 다시 올 때) 다시 요청한다(QA L2).
+          // 요청 중 중복 방지는 그대로다: 이 catch가 돌기 전까지는 Promise가 보관소에 남아 있다.
+          // ponytail: 쿨다운 없음 — 미필이 계속되면 슬롯이 다시 마운트될 때마다 1회씩 재요청한다.
+          slotAdRequests.delete(slot);
+          return null;
+        })
+        .then((ad) => { if (ad) slotAdLoaded.set(slot, ad); return ad; });
+      slotAdRequests.set(slot, request);
+    }
+    request.then((ad) => { if (alive && ad) setNativeAd(ad); });
 
-    // destroy를 빠뜨리면 네이티브 메모리가 샌다.
-    return () => { alive = false; created?.destroy(); };
+    // 언마운트해도 destroy하지 않는다 — 광고 객체 소유자는 이 컴포넌트가 아니라 모듈 보관소다.
+    // (예전엔 여기서 destroy했다. 지금 destroy하면 재마운트 때 해제된 광고를 다시 그리게 된다)
+    return () => { alive = false; };
   }, [slot, campaignsReady, affiliateFills]);
 
   // 로딩 중에는 하우스를 먼저 그린다 — 폴라로이드 크기가 같아 레이아웃이 흔들리지 않는다.

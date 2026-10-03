@@ -33,6 +33,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
   interpolate, Extrapolation, withTiming, withSpring, runOnJS,
+  runOnUI, cancelAnimation, Easing as REasing, ReduceMotion,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
@@ -62,7 +63,6 @@ import TimeAgoText from '../components/TimeAgoText';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useProfileSettings } from '../store/settingsStore';
-import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
 import { isFramed, frameHeight, frameFillColor, normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import type { BlogBlock } from '../types/blogBlocks';
@@ -720,7 +720,9 @@ function SnapViewerModal({
                 <Text style={viewerS.name}>{v.name}</Text>
                 <Text style={viewerS.handleText}>@{v.handle}</Text>
               </View>
-              <Text style={viewerS.time}>{v.time}</Text>
+              {/* 조회 시각(ms)을 받아 TimeAgoText가 분마다 스스로 다시 그린다 — 예전엔 부모가 timeAgo() 문자열로
+                  바꿔 넘겨 모달을 연 채 두면 "방금 전"이 그대로였다 */}
+              <TimeAgoText ts={v.time} style={viewerS.time} />
             </View>
           ))}
         </ScrollView>
@@ -946,8 +948,12 @@ function SnapStoryViewer({
 
   // ── 스토리 자동 넘김 + 진행 바 + 길게 눌러 일시정지 ──
   const STORY_DURATION = 5000; // 스냅 1장 노출 시간(ms)
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const progressWidth = progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+  // 진행 바 — 스냅 1장(5초) 내내 차오르는 width 애니메이션. RN Animated로는 레이아웃 속성이라
+  // JS 드라이버(useNativeDriver:false)여서, 스토리를 보는 동안 JS가 쉬지 않고 매 프레임 계산했다.
+  // Reanimated 공유값으로 UI 스레드에서 돈다. 선형·남은 시간 계산·완료 시 다음 넘김 규칙은 그대로.
+  const progress = useSharedValue(0);
+  // 옛 interpolate([0,1] → ['0%','100%'])와 같은 식
+  const progressStyle = useAnimatedStyle(() => ({ width: `${progress.value * 100}%` }));
   const [paused, setPaused] = useState(false);
   const [dragPaused, setDragPaused] = useState(false); // 아래로 끌어 닫기 드래그 중 일시정지
   // 꾹 누르는 동안 UI 전체 페이드 아웃 — 사진만 보기 (인스타 스토리 패턴)
@@ -962,7 +968,7 @@ function SnapStoryViewer({
     !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen && !shareSheetOpen;
 
   // 스냅이 바뀌면 진행도 리셋
-  useEffect(() => { progressAnim.setValue(0); }, [storyIdx, localIdx]);
+  useEffect(() => { progress.value = 0; }, [storyIdx, localIdx, progress]); // progress(공유값)는 렌더 간 고정
 
   // 다음 스냅 이미지 미리 받기 — 자동 넘김 전환 시 깜빡임/로딩 감소
   useEffect(() => {
@@ -976,18 +982,32 @@ function SnapStoryViewer({
 
   // 재생 중일 때 현재 값에서 이어서 진행, 완료되면 다음으로
   useEffect(() => {
-    if (!storyPlaying) { progressAnim.stopAnimation(); return; }
-    progressAnim.stopAnimation((v: number) => {
-      const remaining = STORY_DURATION * (1 - v);
-      Animated.timing(progressAnim, {
-        toValue: 1,
-        duration: Math.max(0, remaining),
-        easing: Easing.linear,
-        useNativeDriver: false,
-      }).start(({ finished }) => { if (finished) advanceRef.current('next'); });
-    });
-    return () => { progressAnim.stopAnimation(); };
-  }, [storyPlaying, storyIdx, localIdx]);
+    if (!storyPlaying) { cancelAnimation(progress); return; }
+    // UI 스레드가 5초를 끝낸 뒤 JS가 runOnJS(advanceNext)를 처리하기 전에 탭·꾹 누름·시트 열기가
+    // 먼저 처리되면, 이 effect가 정리된 뒤에도 넘김이 불려 한 장을 건너뛴다(옛 RN Animated는 완료
+    // 콜백과 정리가 같은 JS 스레드에서 직렬이라 불가능했다). 정리된 effect의 콜백은 버린다.
+    // 버려도 갇히지 않는다 — 값은 이미 1이라 다시 재생하면 valueSetter가 같은 값으로 보고
+    // callback(true)를 즉시 불러 새 effect의 advanceNext로 정확히 1회 넘어간다.
+    let alive = true;
+    const advanceNext = () => { if (alive) advanceRef.current('next'); };
+    // 옛 stopAnimation(콜백으로 현재 값 v) → 남은 시간으로 timing 재시작을 UI 스레드에서 한 번에 한다.
+    // 현재 값은 UI 스레드에 있으므로 거기서 읽어야 정확하다(JS에서 읽으면 한 프레임 낡을 수 있다).
+    // 위 리셋(progress.value = 0)·정리(cancelAnimation)와 같은 UI 큐에 순서대로 쌓이므로
+    // "리셋 → 처음부터 5초" 순서가 옛 코드와 같다. 새 withTiming을 넣으면 진행 중인 것은 자동 취소된다.
+    runOnUI(() => {
+      'worklet';
+      const remaining = STORY_DURATION * (1 - progress.value);
+      progress.value = withTiming(
+        1,
+        // reduceMotion: Never — 이 withTiming은 장식이 아니라 스냅 노출 타이머다. 미지정이면 시스템
+        // '동작 줄이기'를 따라 첫 프레임에 끝나 스냅이 연쇄로 넘어가고 뷰어가 닫힌다(옛 RN Animated는 안 봤다).
+        { duration: Math.max(0, remaining), easing: REasing.linear, reduceMotion: ReduceMotion.Never },
+        // finished=false(일시정지·스냅 전환으로 취소)면 넘기지 않는다 — 옛 start 콜백과 같다
+        (finished) => { if (finished) runOnJS(advanceNext)(); },
+      );
+    })();
+    return () => { alive = false; cancelAnimation(progress); };
+  }, [storyPlaying, storyIdx, localIdx, progress]);
 
   // 스냅이 바뀌면 답글 대상을 비운다 — 남아 있으면 다음 스냅에 보낸 댓글이 이전 스냅 댓글의
   // 답글(parent_id)로 저장된다. 본문은 그대로 둔다(cancelReply와 같은 설계).
@@ -1185,7 +1205,7 @@ function SnapStoryViewer({
               return (
                 <View key={k} style={storyS.progressSeg}>
                   {isActive ? (
-                    <Animated.View style={[storyS.progressFill, { width: progressWidth }]} />
+                    <Reanimated.View style={[storyS.progressFill, progressStyle]} />
                   ) : (
                     <View style={[storyS.progressFill, { width: isPast ? '100%' : '0%' }]} />
                   )}
@@ -1568,7 +1588,7 @@ function SnapStoryViewer({
         viewers={(currentSnap.snapViewers ?? []).map((v: { handle: string; name: string; time: number }) => ({
           name: v.name,
           handle: v.handle,
-          time: timeAgo(v.time),
+          time: v.time, // 상대 시간 문자열이 아니라 시각(ms) — SnapViewerModal의 TimeAgoText가 그린다
           // 조회자 기록에는 사진이 없다 — 메이트 스토어에서 핸들로 찾는다(메이트가 아니면 실루엣)
           photo: neighbors.find((n) => n.username === v.handle)?.photo,
         }))}

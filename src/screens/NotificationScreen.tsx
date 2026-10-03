@@ -29,6 +29,7 @@ import AuthorAvatar from '../components/AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon, BackChevronIcon } from '../components/icons';
 import { useEntranceAnimation } from '../components/LiquidEffects';
 import type { TravelRecord } from '../store/recordStore';
+import { useMinuteTick } from '../components/TimeAgoText';
 
 // 알림이 가리키는 게시물의 대표 사진 — 어느 기록에 대한 알림인지 한눈에 읽히게.
 // 형식마다 사진이 담기는 자리가 달라 순서대로 훑는다(TripDetail의 pickPhoto와 동일 규칙).
@@ -198,6 +199,15 @@ const NotiBar = ({ n, idx, skinAccent, thumb, timeText, loading, onPress }: {
 
 export default function NotificationScreen({ navigation }: Props) {
   const { t, i18n } = useTranslation();
+  // 상대 시간(fmtAgo)·시간 구간 소제목(bucketOf)·1주 보존 필터(cats)·날짜 머리말은 전부 렌더 때 현재 시각을
+  // 읽고 타이머가 없다 — 화면을 연 채 두면 "방금 전"이 그대로였다. 공용 분 시계를 구독해 분마다 다시 그린다.
+  // 시간 텍스트만 따로 갱신(TimeAgoText)하지 않는 이유: fmtAgo는 timeAgo와 문구가 다르고("어제" 분기, 주·월 없음),
+  // 소제목이 같은 시각으로 묶여 있어 둘이 따로 갱신되면 "오늘" 소제목 아래 "어제"가 뜰 수 있다.
+  // 비용: 분당 1회 화면 렌더(이 화면은 컴파일되지 않는다 — try 구문). 알림은 1주 보존·게시물별 묶음이라
+  // 수십~백여 행이고, cats 재계산은 정렬 몇 번이다.
+  // ⚠️ fmtAgo·bucketOf는 Date.now()를 직접 읽는다 — 이 화면이 컴파일되기 시작하면 renderItems가 굳으니
+  //    그때는 minute을 인자로 넘길 것.
+  const minute = useMinuteTick();
   const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
   const { records } = useRecordData();
   const { feedPosts } = useFeed();
@@ -343,6 +353,7 @@ export default function NotificationScreen({ navigation }: Props) {
   // '추억 리마인드' — 내 기록 중 오늘과 같은 월·일(과거 연도)인 여행을 'N년 전 오늘' 알림으로 만든다.
   // 상대방이 필요한 좋아요·댓글·메이트과 달리 내 데이터만으로 생성 가능.
   const memoryNotis = useMemo<Noti[]>(() => {
+    void minute; // 분 시계 — 자정을 넘기면 '오늘과 같은 월·일'이 바뀐다(new Date()는 deps가 못 본다)
     const today = new Date();
     const mm = today.getMonth();
     const dd = today.getDate();
@@ -372,7 +383,7 @@ export default function NotificationScreen({ navigation }: Props) {
       });
     return out;
     // t·언어도 의존 — 빠지면 언어를 바꿔도 추억 알림 문구가 이전 언어로 남는다
-  }, [records, t, i18n.language, memoryRead]);
+  }, [records, t, i18n.language, memoryRead, minute]);
 
   // 알림의 대상 게시물 조회 — 내 기록은 remoteId(서버 id)로, 이웃 글은 피드 캐시에서.
   // 알림을 만들 때가 아니라 렌더 시점에 찾는다 — 기록·피드가 나중에 로드돼도 썸네일이 채워진다.
@@ -426,6 +437,7 @@ export default function NotificationScreen({ navigation }: Props) {
 
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
+    void minute; // 분 시계 — deps가 Date.now()를 못 보므로 이 값으로 1주 보존 경계를 분마다 다시 거른다
     const now = Date.now();
     const fresh = [...memoryNotis, ...serverNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
@@ -439,7 +451,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, [memoryNotis, serverNotis, groupNotis]);
+  }, [memoryNotis, serverNotis, groupNotis, minute]);
 
   // 시간 구간 소제목을 끼워 알림 목록을 렌더 — 매거진 목차 안의 '언제' 축
   // (NotiAvatar·NotiBar는 모듈 레벨 — 여기서 선언하면 렌더마다 목록이 리마운트된다)

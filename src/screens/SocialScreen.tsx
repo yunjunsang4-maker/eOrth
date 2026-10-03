@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import FeedSkeleton from '../components/FeedSkeleton';
 import AppRefreshControl from '../components/AppRefreshControl';
 import MateRecoConsentBanner from '../components/MateRecoConsentBanner';
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
+import { buildMasonryCells, estimateFeedCellHeight, FEED_DRAW_DISTANCE, type FeedCell } from '../components/social/feedMasonry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -65,7 +67,7 @@ import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
-import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { stageWidthNow, useStageGutter, useStageWidth, STAGE_MAX_W } from '../utils/stage';
 import { useTabBarClearance } from '../utils/tabBar';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
@@ -543,6 +545,11 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuVisible]);
 
+  // 피드 FlashList 재활용으로 이 카드 인스턴스가 다른 글을 받으면 열려 있던 메뉴·신고 창을 닫는다.
+  // (창이 열려 있으면 스크롤이 막혀 보통은 일어나지 않지만, 창이 열린 채 그 글이 동기화로 지워지면
+  //  셀이 다른 글에 재배정돼 '삭제·차단' 메뉴가 엉뚱한 글을 가리킨다. 예전엔 카드가 언마운트돼 창도 사라졌다)
+  useEffect(() => { setMenuVisible(false); setReportVisible(false); }, [item.id]);
+
   const onMore = () => { if (item.isExample) return; setMenuVisible(true); };
 
   const handleShare = async () => {
@@ -629,7 +636,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         // 창 중앙에 있어 stageOffsetX만큼 떨어진 값)까지 '무효'로 오판해 폴백 좌표로 덮어쓴다.
         const windowW = Dimensions.get('window').width;
         if (correctedX <= 0 || correctedX > windowW) {
-          // 폴백값(16, 16+correctedW+10)은 컬럼 로컬 좌표(friendsScroll 좌패딩 기준)다 —
+          // 폴백값(16, 16+correctedW+10)은 컬럼 로컬 좌표(피드 좌패딩 16 기준 — 지금은 d.cellLeft/cellRight)다 —
           // correctedX는 창 절대 좌표라는 계약(QuickShareOverlay의 cardLocalX 변환·위 유효성
           // 검사와 동일)을 지키려면 gutter를 더해 창 좌표로 옮겨야 한다.
           correctedX = cardStageGutter + (columnIndex === 0 ? 16 : 16 + correctedW + 10);
@@ -667,7 +674,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       const hasFrame = !!(item.cutPhoto?.frameId && getCutFrame(item.cutPhoto.frameId));
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          {hasFrame ? <CutCanvasPreview cutPhoto={item.cutPhoto} thumbs={item.thumbs} /> : <CutGridPreview cutPhoto={item.cutPhoto} thumbs={item.thumbs} />}
+          {/* key=item.id: 피드 셀 재활용 시 이전 글의 네컷 사진이 남지 않게 캔버스를 새로 만든다 */}
+          {hasFrame ? <CutCanvasPreview key={item.id} cutPhoto={item.cutPhoto} thumbs={item.thumbs} /> : <CutGridPreview key={item.id} cutPhoto={item.cutPhoto} thumbs={item.thumbs} />}
           {cutMeta}
         </DiaryTappable>
       );
@@ -678,7 +686,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     if (uri) {
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          <FeedPhoto uri={uri} thumbs={item.thumbs} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} />
+          <FeedPhoto key={uri} uri={uri} thumbs={item.thumbs} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} />
           {cutMeta}
         </DiaryTappable>
       );
@@ -696,7 +704,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       return (
         <DiaryTappable style={d.scrap} tilt={tilt} onSingle={open} onDouble={like}>
           <View style={d.tape} />
-          <FeedPhoto uri={photo} thumbs={item.thumbs} style={d.scrapImg} />
+          <FeedPhoto key={photo} uri={photo} thumbs={item.thumbs} style={d.scrapImg} />
           {!!title && <Text style={[d.scrapTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
           {!!excerpt && <Text style={d.scrapExcerpt} numberOfLines={3}>{excerpt}</Text>}
           {meta}
@@ -772,7 +780,9 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         <View pointerEvents="none" style={[d.polaTape, tapeVariant === 1 && { top: -13 }]}>
           <FeedTape variant={tapeVariant} />
         </View>
-        {photo ? <FeedPhoto uri={photo} thumbs={item.thumbs} style={d.polaImg} /> : <View style={[d.polaImg, d.polaEmpty]} />}
+        {/* key=사진 주소: expo-image는 재활용된 뷰에 새 주소가 와도 로드 전까지 이전 사진을 그린다(피드 FlashList 셀 재활용 —
+            recyclingKey와 같은 목적. FeedPhoto가 그 prop을 안 받아 key로 새 뷰를 만든다). 앨범·네컷 폴백도 같다 */}
+        {photo ? <FeedPhoto key={photo} uri={photo} thumbs={item.thumbs} style={d.polaImg} /> : <View style={[d.polaImg, d.polaEmpty]} />}
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
@@ -876,8 +886,14 @@ export const estDiaryHeight = (item: any, mode: string): number => {
 };
 
 const d = StyleSheet.create({
-  masonry: { flexDirection: 'row', gap: 10 },
-  col: { flex: 1, gap: 12 },
+  // 피드 FlashList masonry 셀 — 예전 friendsScroll 좌우 패딩(16) + 두 기둥 사이 gap(10)을 열마다 반씩 나눠
+  // 카드 폭이 예전 (폭-32-10)/2와 같다. 위 12는 예전 기둥 gap(카드 사이에만) — 열의 첫 카드엔 주지 않는다.
+  cellLeft: { paddingLeft: Spacing[4], paddingRight: 5 },
+  cellRight: { paddingLeft: 5, paddingRight: Spacing[4] },
+  cellGap: { paddingTop: 12 },
+  // 셀 밖(첫 로딩 자리표시·빈 피드 안내·하단 스피너)은 예전 friendsScroll처럼 좌우 16
+  feedSide: { paddingHorizontal: Spacing[4] },
+  feedTopGap: { height: Spacing[4] },
   // 예시 콘텐츠 공식 배지 — 피드/스냅 예시용. 기능 소개 카드 배지는 Figma 시안(흰 pill + Montserrat-Black 'eOrth')이라 별도다.
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
 
@@ -1146,6 +1162,28 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
 // 렌더 map에서 _mySnapEntry로 분기하므로 실제 기록 shape를 흉내 낼 필요가 없다.
 const MY_SNAP_PLACEHOLDER: any = { id: '__my-snap-entry__', _mySnapEntry: true };
 
+// ─── 피드 FlashList 고정 인자(모듈 상수라 참조가 매 렌더 같다) ───
+const feedCellKey = (cell: FeedCell<any>) => cell.key;
+// 셀 종류별 높이 평균(FlashList 추정치)이 섞이지 않게 형식별로 나눈다 — 미측정 셀의 자리 추정이 덜 틀린다
+const feedCellType = (cell: FeedCell<any>): string => {
+  if (cell.kind === 'gap') return 'gap';
+  const it = cell.item;
+  if (it._adSlot) return 'ad';
+  if (it._mateSlot) return 'mate';
+  if (it._featureCard) return 'feature';
+  return it.viewType || 'feed';
+};
+// FEED_DRAW_DISTANCE(렌더 범위 여유)는 feedMasonry.ts에 둔다 — 빈칸 회귀 verify가 같은 값을 쓰게.
+const FEED_MVCP_OFF = { disabled: true } as const;
+// 네컷 카드 사진 영역 비율 — 카드가 실제로 그리는 것과 같은 출처(CutCanvasPreview: 프레임 레이아웃 우선,
+// 레거시는 cutPhoto.layout, 둘 다 없으면 0.7)
+const cutAspectOf = (item: any): number => {
+  const frame = item.cutPhoto?.frameId ? getCutFrame(item.cutPhoto.frameId) : undefined;
+  return (frame && (CUT_LAYOUTS as any)[frame.layout]?.aspect)
+    || (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect)
+    || 0.7;
+};
+
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
@@ -1235,7 +1273,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const { sendRecord } = useDMActions();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   // 무한 스크롤 — 바닥 근처에 닿으면 다음 페이지를 이어받는다.
-  // (FlatList가 아니라 ScrollView라 onEndReached가 없어 스크롤 좌표로 직접 판정한다)
+  // 피드는 FlashList지만 onEndReached를 쓰지 않고 이 판정을 그대로 둔다(2026-10-03 가상화 때 결정):
+  //  · onEndReached의 '끝'은 카드 영역 끝이라 하단 여백(빈 피드 안내·스피너·100·탭바 여백)이 빠져
+  //    1200의 의미가 달라진다 — 여기 contentSize는 ScrollView 전체라 예전과 같은 거리다.
+  //  · onEndReached는 끝 구간에 들어갈 때 한 번만 부른다. loadMoreFeed는 실패하면 "다음 스크롤에서
+  //    재시도"(recordStore)라, 끝에 머문 채 스크롤하면 매번 다시 시도하던 동작이 사라진다.
   const FEED_END_THRESHOLD = 1200; // px — 카드 2~3장 남았을 때 미리 받아 끊김을 줄인다
   const onFeedScroll = useCallback((e: any) => {
     if (activeMenuId !== null) setActiveMenuId(null);
@@ -1246,7 +1288,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
   }, [activeMenuId, loadMoreFeed]);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollY = useRef(new Animated.Value(0)).current;
+  // (예전 scrollY Animated.Value + headerScale/headerOpacity 보간은 어디에도 연결돼 있지 않던 죽은 코드라
+  //  FlashList 전환 때 지웠다 — FlashList의 onScroll은 JS 핸들러로 불려 네이티브 Animated.event를
+  //  그대로 넘길 수 없다. 헤더 패럴랙스를 되살리려면 AnimatedFlashList + 헤더에 실제 연결이 필요하다)
 
   // ── 빠른공유 드래그 상태 ──
   const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -1609,55 +1653,137 @@ function FriendsTab({ navigation }: { navigation: any }) {
     ]);
   };
 
-  // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
-  const columns = useMemo(() => {
+  // 높이 추정 기반 2단 균형 분배 → FlashList masonry 셀 배열.
+  // 추정은 estDiaryHeight(보관함 화면용, 그대로 둠)가 아니라 실제 셀 스타일에서 유도한
+  // estimateFeedCellHeight — 추정이 틀리면 두 열 높이가 벌어져 FlashList가 한 열을 늦게 그린다(QA M1).
+  // 왜 FlashList 자체 배치를 안 쓰는지·추정값 근거는 components/social/feedMasonry.ts 주석(+verify).
+  // (2026-10-03 추정을 고치면서 열 배정은 FlashList 전환 전과 달라졌다 — 사용자 동의: 예전 배정도 틀린 추정 기반)
+  const stageW = useStageWidth();
+  const feedCells = useMemo(() => {
     // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
-    const feedSource = isEmptyFeed
+    const feedSource: any[] = isEmptyFeed
       ? [exampleFeed, { _featureCard: true, id: 'feature-card' }]
       : timelineWithMate;
-    const cols: any[][] = [[], []];
-    const h = [0, 0];
-    feedSource.forEach((item) => {
-      const c = h[0] <= h[1] ? 0 : 1;
-      cols[c].push(item);
-      h[c] += item._adSlot
-        ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
-        : item._mateSlot
-          ? 102 + mateSuggestions.length * 48 // 추천 메이트 카드: 패딩+제목+CTA ≈102 + 행당 48(링 아바타+서브라인)
-          : item._featureCard
-            ? 233 // 기능 소개 카드 — 카드 폭 166 ÷ 시안 비율 0.713
-            : estDiaryHeight(item, diaryCardMode);
-    });
-    return cols;
-  }, [isEmptyFeed, timelineWithMate, diaryCardMode, exampleFeed, mateSuggestions.length]);
+    const ctx = { cardW: (stageW - 42) / 2, full: diaryCardMode === 'full', mates: mateSuggestions.length, cutAspect: cutAspectOf };
+    return buildMasonryCells<any>(feedSource, (item) => estimateFeedCellHeight(item, ctx));
+  }, [isEmptyFeed, timelineWithMate, diaryCardMode, exampleFeed, mateSuggestions.length, stageW]);
 
-  // 헤더 패럴랙스 (몰입형 스크롤링)
-  const headerScale = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [1, 0.92],
-    extrapolate: 'clamp',
-  });
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [1, 0.6],
-    extrapolate: 'clamp',
-  });
+  // 셀 하나 그리기 — 예전 columns[ci].map() 본문 그대로, ci 자리에 cell.col.
+  // 셀 재활용: FlashList는 화면 밖으로 나간 셀의 컴포넌트를 다른 게시물에 재사용한다(새 구간 진입이
+  //   마운트가 아니라 재렌더). 그래서 셀 루트에는 key를 주지 않는다 — 대신 '이전 글의 값이 보일 수 있는'
+  //   상태만 따로 끊는다(2026-10-03 QA I1 반영):
+  //   · FeedAdSlot은 key={item.id} — 슬롯 번호에 묶인 nativeAd·degraded state가 다른 슬롯으로 새지 않게.
+  //   · DiaryCard 안: 사진(expo-image는 새 주소를 받아도 로드 전까지 이전 사진을 그린다)·네컷 캔버스는
+  //     key로, 메뉴·신고 모달 열림은 item.id 변경 시 닫는 effect로 끊는다(DiaryCard 본문 주석).
+  //   · 나머지(하트 팝·눌림 Animated 값, 더블탭 타이머, 네컷 폭 w)는 일시적이거나 탭한 글 기준이라 그대로.
+  // 좌우 여백은 예전 friendsScroll 패딩(16) + 두 기둥 사이 gap(10)을 열마다 반씩, 위 여백 12는
+  // 예전 기둥 `gap: 12`(카드 사이에만)을 그 열의 첫 카드를 뺀 나머지에 준다.
+  const renderFeedCell = useCallback(({ item: cell }: ListRenderItemInfo<FeedCell<any>>) => {
+    // 순번 맞춤용 높이 0 칸(feedMasonry.ts) — 아무것도 그리지 않는다
+    if (cell.kind === 'gap') return null;
+    const item = cell.item;
+    const ci = cell.col;
+    let content: React.ReactNode;
+    if (item._featureCard) {
+      content = <FeatureShowcaseCard onPremiumPress={() => navigation.navigate('Premium')} />;
+    } else if (item._mateSlot) {
+      content = (
+        <MateSuggestCard
+          suggestions={mateSuggestions}
+          onPressUser={(m) => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
+          onPressCta={() => navigation.navigate('FriendSearch')}
+        />
+      );
+    } else if (item._adSlot) {
+      content = (
+        <FeedAdSlot
+          key={item.id}
+          slot={item.adSlotIndex as number}
+          houseAd={item.ad as HouseAd}
+          tilt={item.adTilt as number}
+        />
+      );
+    } else {
+      const card = (
+        <DiaryCardMemo
+          item={item}
+          mode={diaryCardMode}
+          navigation={navigation}
+          toggleLike={cbToggleLike}
+          showCounts={showCounts}
+          onArchive={cbArchive}
+          onDelete={cbDelete}
+          onBlock={cbBlock}
+          onReport={cbReport}
+          onToggleVisibility={cbToggleVisibility}
+          onQuickStart={cbQuickStart}
+          onQuickMove={cbQuickMove}
+          onQuickEnd={cbQuickEnd}
+          onQuickCancel={cbQuickCancel}
+          dragPos={dragPos}
+          columnIndex={ci}
+        />
+      );
+      // 스티커 광고: 게시물 위에 겹쳐 붙임 (시안 iPhone 17 - 54)
+      content = item._overlayAd ? (
+        <View style={{ position: 'relative' }}>
+          {card}
+          <FeedAdCard
+            ad={item._overlayAd as HouseAd}
+            variant="sticker"
+            overlay
+            overlaySide={ci === 0 ? 'right' : 'left'}
+            tilt={item._overlayTilt}
+            onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
+          />
+        </View>
+      ) : card;
+    }
+    return (
+      <View style={[ci === 0 ? d.cellLeft : d.cellRight, !cell.first && d.cellGap]}>
+        {content}
+      </View>
+    );
+    // 실제로 바뀌는 건 앞의 셋뿐 — cb*·dragPos는 참조 고정(fnRef 박제·useRef), navigation은 화면 수명 동안 고정.
+    // (eslint-disable 대신 전부 나열 — 함수 안 react-hooks 억제는 React Compiler 건너뜀 사유가 된다)
+  }, [diaryCardMode, showCounts, mateSuggestions, navigation, dragPos, cbToggleLike, cbArchive, cbDelete, cbBlock, cbReport, cbToggleVisibility, cbQuickStart, cbQuickMove, cbQuickEnd, cbQuickCancel]);
 
   return (
     <View style={{ flex: 1 }}>
-      <Animated.ScrollView
+      {/*
+        소셜 피드 가상화(2026-10-03) — 예전 Animated.ScrollView + 두 기둥 map은 불러온 카드를 전부 마운트한 채
+        쌓았다. FlashList masonry는 화면 근처(drawDistance)만 마운트한다.
+        · optimizeItemArrangement={false}: 2.0.2는 생략 시 true(실측 높이 '짧은 열')다 — 열을 feedMasonry가
+          정하므로 반드시 순번 교대여야 한다.
+        · maintainVisibleContentPosition 끔: v2 기본값은 켜짐(채팅식 앵커)이라, 당겨서 새로고침으로 위에 새 글이
+          붙으면 보던 카드에 화면을 고정해 새 글이 화면 위로 숨는다. 예전 ScrollView처럼 오프셋을 그대로 둔다.
+        · drawDistance: 두 열이 추정 높이 오차만큼 벌어지면 가시 범위 이진 탐색이 한쪽 열 카드를 놓쳐 빈칸이 보인다 —
+          여유를 넉넉히 준다(FEED_DRAW_DISTANCE 주석, feedMasonry.ts 상단 ⚠️ 주석).
+        · onScroll은 JS로 불린다(FlashList가 받아 다시 호출) — 끝 감지 onFeedScroll을 그대로 쓴다.
+        · refreshControl은 FlashList가 내부 RN ScrollView에 그대로 넘긴다 — AppRefreshControl의 안드로이드
+          children 통과 규약(파일 상단 주석) 그대로 적용된다.
+        · iOS 탭바 축소 브리지(modules/tab-scroll-bridge)는 VC 높이 절반 이상인 첫 UIScrollView를 BFS로 고른다 —
+          FlashList 내부도 RN ScrollView라 한 단계 깊어질 뿐 같은 규칙으로 잡힌다(실기기 미확인).
+      */}
+      <FlashList
+        data={feedCells}
+        renderItem={renderFeedCell}
+        keyExtractor={feedCellKey}
+        getItemType={feedCellType}
+        masonry
+        numColumns={2}
+        optimizeItemArrangement={false}
+        maintainVisibleContentPosition={FEED_MVCP_OFF}
+        drawDistance={FEED_DRAW_DISTANCE}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: tabBarClearance }}
-        onScroll={Animated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          {
-            useNativeDriver: true,
-            listener: onFeedScroll,
-          }
-        )}
+        onScroll={onFeedScroll}
         scrollEventThrottle={16}
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
+        // 첫 로딩 자리표시 — 예전엔 두 기둥 위에 그렸다. 첫 로딩 중엔 셀이 0개라 빈 목록 자리와 같은 위치다
+        ListEmptyComponent={isFeedLoading ? <View style={d.feedSide}><FeedSkeleton /></View> : null}
+        ListHeaderComponent={
+        <>
         {/* 유예 상태인 기존 이용자에게만 뜬다 — 컴포넌트가 스스로 판정하고, 아니면 null 이다 */}
         <MateRecoConsentBanner />
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
@@ -1764,78 +1890,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
             </ScrollView>
           </View>
         )}
-
-        {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
-        <View style={s.friendsScroll}>
-          {isFeedLoading && <FeedSkeleton />}
-          <View style={d.masonry}>
-            {[0, 1].map((ci) => (
-              <View key={ci} style={d.col}>
-                {columns[ci].map((item: any) => {
-                  if (item._featureCard) {
-                    return <FeatureShowcaseCard key={item.id} onPremiumPress={() => navigation.navigate('Premium')} />;
-                  }
-                  if (item._mateSlot) {
-                    return (
-                      <MateSuggestCard
-                        key={item.id}
-                        suggestions={mateSuggestions}
-                        onPressUser={(m) => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
-                        onPressCta={() => navigation.navigate('FriendSearch')}
-                      />
-                    );
-                  }
-                  if (item._adSlot) {
-                    return (
-                      <FeedAdSlot
-                        key={item.id}
-                        slot={item.adSlotIndex as number}
-                        houseAd={item.ad as HouseAd}
-                        tilt={item.adTilt as number}
-                      />
-                    );
-                  }
-                  const card = (
-                    <DiaryCardMemo
-                      item={item}
-                      mode={diaryCardMode}
-                      navigation={navigation}
-                      toggleLike={cbToggleLike}
-                      showCounts={showCounts}
-                      onArchive={cbArchive}
-                      onDelete={cbDelete}
-                      onBlock={cbBlock}
-                      onReport={cbReport}
-                      onToggleVisibility={cbToggleVisibility}
-                      onQuickStart={cbQuickStart}
-                      onQuickMove={cbQuickMove}
-                      onQuickEnd={cbQuickEnd}
-                      onQuickCancel={cbQuickCancel}
-                      dragPos={dragPos}
-                      columnIndex={ci}
-                    />
-                  );
-                  // 스티커 광고: 게시물 위에 겹쳐 붙임 (시안 iPhone 17 - 54)
-                  if (item._overlayAd) {
-                    return (
-                      <View key={item.id} style={{ position: 'relative' }}>
-                        {card}
-                        <FeedAdCard
-                          ad={item._overlayAd as HouseAd}
-                          variant="sticker"
-                          overlay
-                          overlaySide={ci === 0 ? 'right' : 'left'}
-                          tilt={item._overlayTilt}
-                          onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
-                        />
-                      </View>
-                    );
-                  }
-                  return <React.Fragment key={item.id}>{card}</React.Fragment>;
-                })}
-              </View>
-            ))}
-          </View>
+        {/* 예전 friendsScroll의 paddingTop(16) — 여행 다이어리(2단 매거진) 위 여백 */}
+        <View style={d.feedTopGap} />
+        </>
+        }
+        // 여행 다이어리 아래 — 예전 friendsScroll 안 두 기둥 뒤에 있던 것들(좌우 패딩 16 유지)
+        ListFooterComponent={
+        <View style={d.feedSide}>
           {isEmptyFeed && (
             /* 빈 피드 기본 콘텐츠 — 예시 카드 아래에 배치: 안내 + 기록 유도 CTA + 추천 메이트 + 메이트 찾기 보조 링크 */
             <View style={s.emptyWrap}>
@@ -1909,7 +1970,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
           )}
           <View style={{ height: 100 }} />
         </View>
-      </Animated.ScrollView>
+        }
+      />
       <Toast message={toast.message} visible={toast.visible} />
       {/* 내 스냅 링 메뉴 — PostDetail SnapStoryViewer 메뉴 모달 마크업 그대로(위치만 링 아래) */}
       <Modal visible={!!ringMenu} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setRingMenu(null)}>
@@ -2140,11 +2202,7 @@ const s = StyleSheet.create({
     borderColor: '#0A0A0F',
   },
 
-  // 메이트 피드
-  friendsScroll: {
-    paddingHorizontal: Spacing[4],
-    paddingTop: Spacing[4],
-  },
+  // (메이트 피드 friendsScroll 패딩은 FlashList 전환으로 d.cellLeft/cellRight/feedSide/feedTopGap에 나뉘어 옮겨졌다)
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',

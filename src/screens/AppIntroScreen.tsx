@@ -11,6 +11,7 @@ import {
 import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
+import Reanimated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { tap } from '../utils/haptics';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -61,23 +62,35 @@ function MarkedTitle({ raw }: { raw: string }) {
   );
 }
 
-// 페이지 닷 — 활성 시 스프링으로 7→16pt 늘어나며 마젠타로 차오름 (레이아웃 속성이라 JS 드라이버)
+// 페이지 닷 스프링 — 옛 `Animated.spring({ speed: 16, bounciness: 7 })`를 RN이 내부에서 쓰는
+// SpringConfig.fromBouncinessAndSpeed(7, 16)로 환산한 값 그대로(RN도 질량 1로 가정).
+// 눈대중 값이 아니다 — RN 원본 함수를 직접 돌린 결과다(ζ≈0.705, 0→1 최대 1.044까지 넘침).
+const DOT_SPRING = { stiffness: 427.06411764705877, damping: 29.131138885965683, mass: 1 };
+// '#3D3D55' → '#EC34F7'의 RGB 채널
+const DOT_RGB_FROM = [61, 61, 85];
+const DOT_RGB_TO = [236, 52, 247];
+
+// 페이지 닷 — 활성 시 스프링으로 7→16pt 늘어나며 마젠타로 차오름.
+// width·색은 레이아웃/색 속성이라 RN Animated로는 JS 드라이버(매 프레임 JS 계산)였다 →
+// Reanimated로 UI 스레드에서 같은 스프링을 돈다.
 function PageDot({ active }: { active: boolean }) {
-  const a = useRef(new Animated.Value(active ? 1 : 0)).current;
+  const a = useSharedValue(active ? 1 : 0);
   useEffect(() => {
-    Animated.spring(a, { toValue: active ? 1 : 0, useNativeDriver: false, speed: 16, bounciness: 7 }).start();
+    a.value = withSpring(active ? 1 : 0, DOT_SPRING);
   }, [active, a]);
-  return (
-    <Animated.View
-      style={[
-        styles.dot,
-        {
-          width: a.interpolate({ inputRange: [0, 1], outputRange: [7, 16] }),
-          backgroundColor: a.interpolate({ inputRange: [0, 1], outputRange: ['#3D3D55', '#EC34F7'] }),
-        },
-      ]}
-    />
-  );
+  const dotStyle = useAnimatedStyle(() => {
+    const v = a.value;
+    // RN interpolate의 색 보간과 같은 식으로 직접 계산한다 — 채널별 선형(넘침 구간도 외삽) →
+    // Math.round → normalizeColor의 0~255 클램프. Reanimated interpolateColor를 쓰면 안 된다:
+    // 기본이 감마 2.2 보간이고 범위 밖을 끝값으로 고정해, 넘침 구간의 색이 달라진다.
+    const ch = (i: number) =>
+      Math.min(255, Math.max(0, Math.round(DOT_RGB_FROM[i] + (DOT_RGB_TO[i] - DOT_RGB_FROM[i]) * v)));
+    return {
+      width: 7 + 9 * v, // interpolate([0,1] → [7,16]), 기본 extend와 같다
+      backgroundColor: `rgba(${ch(0)}, ${ch(1)}, ${ch(2)}, 1)`,
+    };
+  });
+  return <Reanimated.View style={[styles.dot, dotStyle]} />;
 }
 
 // 하단 이동 화살표의 셰브론 — react-native-svg Path로 그린다(이모지·텍스트 화살표 금지).

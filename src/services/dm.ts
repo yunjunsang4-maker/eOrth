@@ -15,6 +15,16 @@ import type { Message, MsgType, SharedRecord } from '../store/dmTypes';
 
 const toMsgType = (t: string): MsgType => (t === 'image' || t === 'record' ? t : 'text');
 
+/**
+ * dm_messages 조회 select 목록 — 예전엔 `select('*')`였다.
+ * = mapRowToMessage가 읽는 키(id·type·text·sender_id·created_at·image_url·record) — fetchInboxSince가 따로 읽는
+ * sender_id도 여기 포함된다. thread_id·read_at은 앱이 읽지 않는다.
+ * ⚠️ mapRowToMessage에서 row.X를 새로 읽으면 여기에도 넣을 것 — 빠지면 tsc는 통과하고 런타임에 undefined다
+ *    (row가 any). selectColumns.verify.ts가 두 집합과 schema.sql을 대조한다.
+ * 실시간 구독(subscribeInbox)의 payload.new는 select와 무관하게 행 전체가 온다.
+ */
+export const DM_MESSAGE_COLUMNS = 'id, sender_id, type, text, image_url, record, created_at';
+
 // dm_messages 행 → Message
 export function mapRowToMessage(row: any, uid: string): Message {
   return {
@@ -75,7 +85,7 @@ export async function fetchMessages(threadId: string): Promise<Message[]> {
   if (!uid) return [];
   try {
     const { data } = await supabase
-      .from('dm_messages').select('*').eq('thread_id', threadId).order('created_at', { ascending: true });
+      .from('dm_messages').select(DM_MESSAGE_COLUMNS).eq('thread_id', threadId).order('created_at', { ascending: true });
     return (data ?? []).map((r: any) => mapRowToMessage(r, uid));
   } catch {
     return [];
@@ -133,7 +143,7 @@ export async function fetchInboxSince(
   try {
     const { data, error } = await supabase
       .from('dm_messages')
-      .select('*')
+      .select(DM_MESSAGE_COLUMNS)
       .gt('created_at', new Date(sinceMs).toISOString())
       .neq('sender_id', uid)
       .order('created_at', { ascending: true })

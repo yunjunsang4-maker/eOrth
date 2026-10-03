@@ -14,6 +14,7 @@ import { isPhotoVisionAvailable } from '../../../modules/photo-vision';
 import { FORMAT_RECO_ENABLED } from '../../constants/featureFlags';
 import { runFormatReco } from '../../services/photoAI/recoEngine';
 import { appendRecoLog, dismissRecoCard, getRecoState } from '../../services/photoAI/recoStorage';
+import { subscribeRecoStateSaved } from '../../store/recoStateSignal';
 import type { RecoCard, RecoConcept, RecoState, RecoViewType } from '../../services/photoAI/recoTypes';
 import { isPendingStale, isUnavailableRetryDue } from '../../services/photoAI/recoTypes';
 import { resolveRecoPhotos, sourceFingerprint } from '../../services/photoAI/recoSource';
@@ -136,11 +137,22 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
 
   useEffect(() => { load(); }, [load]);
 
-  // pending이면 5초 간격 폴링 (분석은 수십 초 내 완료)
+  // pending이면 엔진이 상태를 저장할 때마다(진행률 하트비트·완료) 다시 읽는다 — 예전 5초 폴링의 대체.
+  // 쓰는 쪽은 recoEngine.runFormatReco뿐이고 같은 JS 런타임이다(백그라운드 태스크는 추천 상태를 안 쓴다 —
+  // store/recoStateSignal.ts). 그래서 포그라운드 복귀 재읽기도 필요 없다: 백그라운드 동안 멈춘 분석은
+  // 복귀 후 같은 런타임에서 이어 저장하며 알린다.
+  // pending일 때만 듣는 이유(폴링과 같은 조건): 그 밖의 저장은 카드 닫기(dismissRecoCard)뿐인데, 연타 시
+  // 저장소 쪽 읽고-쓰기가 겹쳐 앞선 닫음이 저장에서 빠질 수 있다 — 그걸 다시 읽어 오면 화면에서 닫은 카드가 되살아난다.
   useEffect(() => {
     if (state?.status !== 'pending') return;
-    const timer = setInterval(() => { getRecoState(tripGroupId).then((s) => s && setState(s)); }, 5000);
-    return () => clearInterval(timer);
+    const reread = (gid: string) => {
+      getRecoState(gid).then((s) => { if (s && tripGroupIdRef.current === gid) setState(s); });
+    };
+    const off = subscribeRecoStateSaved((gid) => { if (gid === tripGroupId) reread(gid); });
+    // 구독 직후 1회 따라잡기 — 화면이 pending을 읽은 뒤 구독하기 전에 엔진이 마지막 저장(ready)을 하면
+    // 그 알림은 아무도 못 듣고, 이후 저장이 없어 '분석 중'에 고착된다(예전 폴링은 다음 틱에 복구했다)
+    reread(tripGroupId);
+    return off;
   }, [state?.status, tripGroupId]);
 
   const visible = useMemo(

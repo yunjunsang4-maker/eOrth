@@ -17,7 +17,7 @@ export interface ProfileRow {
   emoji: string | null;
   bio: string | null;
   onboarded_at: string | null; // 온보딩 완료 시각(ISO). null=미완료 — 예전 birthday 역할을 대신한다
-  country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
+  country?: string | null; // 거주 국가 코드(예: KR). public_profiles 뷰에도 노출된다(PUBLIC_PROFILE_COLUMNS 참조)
   profile_photo: string | null;
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
   stay_country?: string | null; // 장기체류 국가 ISO 코드 — 메이트에게만 공개(public_profiles 조건부 노출)
@@ -25,6 +25,24 @@ export interface ProfileRow {
   dna_type_key?: string | null; // 여행 DNA 유형 키 — public_profiles가 공개하는 유일한 설문 필드(축 점수는 비공개)
   mate_reco_optin?: boolean | null; // 메이트 추천 활용 동의 — null=미결정(유예). fetchMateRecoOptin 주석 참조
 }
+
+/**
+ * ProfileRow를 채우는 조회의 select 목록 — 예전엔 `select('*')`였다.
+ *
+ * 규칙: 목록 = ProfileRow의 키 ∩ 그 원천(테이블/뷰)에 실제로 있는 컬럼. 소비자는 전부 ProfileRow 타입으로만
+ * 읽으므로(tsc가 보장) 타입에 없는 컬럼(created_at·updated_at·deletion_* 등)은 받아 봐야 버려진다.
+ *  - 본인(profiles 테이블): dna_type_key는 테이블에 없다(public_profiles 뷰가 travel_dna에서 계산) — `*`일 때도 안 왔다.
+ *  - 타인(public_profiles 뷰): onboarded_at·mate_reco_optin은 뷰에 없다(소유자 전용) — `*`일 때도 안 왔다.
+ *    ⚠️ 뷰에 없는 컬럼을 넣으면 쿼리 전체가 실패한다(PII 제외 뷰, RLS 하드닝).
+ *
+ * ⚠️ 빠뜨린 컬럼은 tsc가 못 잡고 런타임에 undefined로만 드러난다(`*`든 목록이든 응답 타입은 같다).
+ *    ProfileRow에 키를 더하거나 뺄 때는 이 두 줄도 고칠 것 — selectColumns.verify.ts가
+ *    "ProfileRow 키 ∩ schema.sql 컬럼 = 이 목록"을 대조해 어긋나면 실패한다.
+ */
+export const OWN_PROFILE_COLUMNS =
+  'id, handle, emoji, bio, profile_photo, onboarded_at, country, handle_font, stay_country, stay_status, mate_reco_optin';
+export const PUBLIC_PROFILE_COLUMNS =
+  'id, handle, emoji, bio, profile_photo, handle_font, country, stay_country, stay_status, dna_type_key';
 
 /**
  * 현재 로그인 사용자 id (없으면 null) — 로컬 세션에서 읽는다.
@@ -79,7 +97,7 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   if (!uid) return null;
   try {
     const { data } = await withTimeout(
-      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      supabase.from('profiles').select(OWN_PROFILE_COLUMNS).eq('id', uid).maybeSingle(),
       READ_TIMEOUT_MS,
     );
     return (data as ProfileRow) ?? null;
@@ -172,7 +190,7 @@ export async function getMyProfileStatus(): Promise<{ reached: boolean; profile:
   if (!uid) return { reached: false, profile: null };
   try {
     const { data, error } = await withTimeout(
-      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      supabase.from('profiles').select(OWN_PROFILE_COLUMNS).eq('id', uid).maybeSingle(),
       READ_TIMEOUT_MS,
     );
     if (error) return { reached: false, profile: null };
@@ -196,8 +214,8 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   // 문자열을 검색하면 정확히 그 아이디인 사람이 20건 밖으로 밀려 아예 안 보일 수 있다.
   // (handle은 UNIQUE라 정확 일치는 최대 1건 — 비용이 사실상 없다)
   const [exactRes, partialRes] = await Promise.all([
-    supabase.from('public_profiles').select('*').ilike('handle', escaped).limit(1),
-    supabase.from('public_profiles').select('*').ilike('handle', `%${escaped}%`).limit(20),
+    supabase.from('public_profiles').select(PUBLIC_PROFILE_COLUMNS).ilike('handle', escaped).limit(1),
+    supabase.from('public_profiles').select(PUBLIC_PROFILE_COLUMNS).ilike('handle', `%${escaped}%`).limit(20),
   ]);
   // 부분 검색 실패만 오류로 취급(기존 동작 유지). 정확 조회 실패는 부분 결과로 진행한다.
   if (partialRes.error) throw partialRes.error;
@@ -269,7 +287,7 @@ export async function isHandleAvailable(handle: string): Promise<boolean | null>
 export async function getProfileById(id: string): Promise<ProfileRow | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.from('public_profiles').select('*').eq('id', id).maybeSingle();
+    const { data } = await supabase.from('public_profiles').select(PUBLIC_PROFILE_COLUMNS).eq('id', id).maybeSingle();
     return (data as ProfileRow) ?? null;
   } catch {
     return null;
@@ -312,7 +330,7 @@ export async function getProfileByHandle(handle: string): Promise<ProfileRow | n
   if (!/^[A-Za-z0-9_]{1,30}$/.test(h)) return null;
   try {
     const { data } = await supabase
-      .from('public_profiles').select('*')
+      .from('public_profiles').select(PUBLIC_PROFILE_COLUMNS)
       .ilike('handle', escapeLike(h))
       .maybeSingle();
     return (data as ProfileRow) ?? null;

@@ -19,6 +19,7 @@ import {
 import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, Easing as REasing } from 'react-native-reanimated';
 import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
@@ -1108,16 +1109,21 @@ export default function MainScreen({ navigation, route }: Props) {
     return { visited: visitedRegionCount(regionCountry, recordedRegions.map(r => r.nameEn)), total };
   }, [regionCountry, recordedRegions]);
 
-  // 진행도 바 — 값이 바뀌면 방문 비율까지 부드럽게 차오른다 (width 보간은 레이아웃 속성이라 JS 드라이버)
-  const regionBarAnim = useRef(new Animated.Value(0)).current;
+  // 진행도 바 — 값이 바뀌면 방문 비율까지 부드럽게 차오른다.
+  // width는 레이아웃 속성이라 RN Animated로는 JS 드라이버였다(지구본 위에서 600ms 동안 JS가
+  // 매 프레임 계산). Reanimated로 UI 스레드에서 돈다. 곡선은 옛 Animated.timing 기본값 그대로 —
+  // 지정이 없으면 RN은 Easing.inOut(Easing.ease)를 쓴다(TimingAnimation.js). Reanimated 기본
+  // (inOut(quad))과 다르므로 반드시 명시한다.
+  const regionBar = useSharedValue(0);
   useEffect(() => {
-    if (!regionProgress) { regionBarAnim.setValue(0); return; }
-    Animated.timing(regionBarAnim, {
-      toValue: regionProgress.total > 0 ? regionProgress.visited / regionProgress.total : 0,
-      duration: 600,
-      useNativeDriver: false,
-    }).start();
-  }, [regionProgress, regionBarAnim]);
+    if (!regionProgress) { regionBar.value = 0; return; }
+    regionBar.value = withTiming(
+      regionProgress.total > 0 ? regionProgress.visited / regionProgress.total : 0,
+      { duration: 600, easing: REasing.inOut(REasing.ease) },
+    );
+  }, [regionProgress, regionBar]);
+  // 옛 interpolate([0,1] → ['0%','100%'])와 같은 식(기본 extend — 값은 0~1을 벗어나지 않는다)
+  const regionBarStyle = useAnimatedStyle(() => ({ width: `${regionBar.value * 100}%` }));
 
   // 현재 나라의 퍼즐 그림 — 사용자 사진 전용(기본 아트 폐지). 없으면 undefined →
   // CountryMapView가 퍼즐 레이어를 그리지 않고, 시트에 사진 선택 안내가 뜬다.
@@ -1937,18 +1943,13 @@ export default function MainScreen({ navigation, route }: Props) {
                         {t('main.regionProgressOf', { total: regionProgress.total })}
                       </Text>
                       <View style={styles.regionProgressTrack}>
-                        <Animated.View
-                          style={{
-                            height: '100%',
-                            width: regionBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-                          }}
-                        >
+                        <Reanimated.View style={[{ height: '100%' }, regionBarStyle]}>
                           <LinearGradient
                             colors={skinAccent.btnGradient}
                             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
                             style={{ flex: 1 }}
                           />
-                        </Animated.View>
+                        </Reanimated.View>
                       </View>
                     </View>
                   </LinearGradient>

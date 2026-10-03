@@ -36,6 +36,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
 import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { useLocalDayStart } from '../components/TimeAgoText';
 
 const SW = stageWidthNow();
 const SH = Dimensions.get('window').height;
@@ -307,6 +308,13 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const { t } = useTranslation();
+  // 날짜 구분선(dayLabel: 오늘/어제/날짜)은 렌더 때 new Date()로 계산되고 타이머가 없다 — 대화를 연 채
+  // 자정을 넘기면 '오늘'이 어제 메시지에 그대로 붙어 있었다. 공용 분 시계를 '날짜가 바뀔 때만' 구독해
+  // 자정에 한 번 다시 그린다(분마다가 아니다). 값은 쓰지 않는다 — dayLabel이 직접 현재 시각을 읽는다
+  // (TimeAgoText가 useMinuteTick + timeAgo로 하는 것과 같은 구조). 이 화면은 React Compiler가 건너뛰므로
+  // (함수 안 eslint-disable) 다시 렌더되면 renderMessage가 새로 만들어져 FlatList 행도 다시 그려진다.
+  // ⚠️ 이 화면이 컴파일되기 시작하면 renderMessage가 메모돼 굳는다 — 그때는 이 값을 dayLabel 인자로 넘길 것.
+  useLocalDayStart();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   // Modal은 루트 클램프 밖(창 루트)이라 창 가장자리 기준으로 붙인 컨텍스트 메뉴가
   // 폴드·태블릿에서 말풍선과 어긋난다 — 레터박스 폭만큼 안쪽으로 민다
