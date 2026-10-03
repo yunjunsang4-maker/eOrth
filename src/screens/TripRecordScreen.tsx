@@ -20,7 +20,7 @@ import { Text, TextInput } from '../ui/Text';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
 import { getMaxAlbumPhotos } from '../constants/limits';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings } from '../store/settingsStore';
 import {
   sectionSlices, addPhotosToSection,
   deleteSection, newSectionId, normalizeSections, reorderWithinRange,
@@ -31,7 +31,7 @@ import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecordData, useComments, useRecordActions } from '../store/recordStore';
 import { TrashIcon, CommentIcon, BackChevronIcon } from '../components/icons';
-import { timeAgo } from '../utils/timeAgo';
+import TimeAgoText from '../components/TimeAgoText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
@@ -81,7 +81,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리한다.
   const medias = record.medias ?? [];
   // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
-  const { isPremium } = useSettings();
+  const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
   const sections = record.albumSections && record.albumSections.length > 0
     ? normalizeSections(record.albumSections, medias.length)
@@ -498,7 +498,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
                   <View style={{ flex: 1 }}>
                     <View style={styles.commentTop}>
                       <Text style={styles.commentName}>{c.name}</Text>
-                      <Text style={styles.commentTime}>{c.time ?? timeAgo(c.createdAt)}</Text>
+                      <Text style={styles.commentTime}>{c.time ?? <TimeAgoText ts={c.createdAt} />}</Text>
                     </View>
                     <Text style={styles.commentText}>{c.text}</Text>
                     {c.replies?.map((r) => (
@@ -507,7 +507,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
                         <View style={{ flex: 1 }}>
                           <View style={styles.commentTop}>
                             <Text style={styles.commentName}>{r.name}</Text>
-                            <Text style={styles.commentTime}>{r.time ?? timeAgo(r.createdAt)}</Text>
+                            <Text style={styles.commentTime}>{r.time ?? <TimeAgoText ts={r.createdAt} />}</Text>
                           </View>
                           <Text style={styles.commentText}>{r.text}</Text>
                         </View>

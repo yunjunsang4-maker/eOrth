@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useNotifSettings } from '../store/settingsStore';
 import { useActiveStay } from '../store/recordStore';
 import { detectCurrentCountry, isAbroad, requestNotificationPermission, willArrivalNotify } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
@@ -18,7 +18,8 @@ const LOCATION_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 
 export default function MomentNotifier() {
   const { t } = useTranslation();
-  const { homeCountryCode, arrivalDetect, notifPrefs } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { arrivalDetect, notifPrefs } = useNotifSettings();
   const { activeStayGroup } = useActiveStay();
   const lastLocCheckRef = useRef(0);
   const abroadRef = useRef<boolean | null>(null); // 마지막 위치 판정 캐시

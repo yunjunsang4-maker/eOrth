@@ -13,7 +13,7 @@ import { Text, TextInput } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../utils/stage';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useSettingsActions } from '../store/settingsStore';
 import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
 import { detectCurrentCountry } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
@@ -45,7 +45,8 @@ export default function HomeRegionSheet({
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-  const { homeCountryCode, homeRegion, setHomeRegion } = useSettings();
+  const { homeCountryCode, homeRegion } = useHomeSettings();
+  const { setHomeRegion } = useSettingsActions();
   // 이 시트의 거주국 단일 출처. 아래 네 곳(지역 프리셋·국가명·거주국 밖 판정·도시 정규화)이
   // 전부 이 값을 봐야 한다 — 하나라도 스토어 값을 그대로 보면 나라와 지역이 어긋난 값이 저장된다.
   const effectiveCountry = countryCode ?? homeCountryCode;

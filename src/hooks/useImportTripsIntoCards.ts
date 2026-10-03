@@ -8,7 +8,7 @@
  */
 import { useCallback, useRef } from 'react';
 import { COUNTRIES } from '../constants/countries';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings } from '../store/settingsStore';
 import { useActiveStay, useRecordActions, type TravelRecord } from '../store/recordStore';
 import type { ScannedTrip } from '../utils/pastTripScan';
 import { copyTripCover } from '../utils/importPhotoStore';
@@ -31,7 +31,7 @@ export interface ImportTripsResult {
 }
 
 export function useImportTripsIntoCards() {
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
   const { activeStayGroup } = useActiveStay();
   const { addImportedAlbum, addTripGroup, absorbIntoStay } = useRecordActions();
   // 체류 카드는 이 콜백이 만들어진 렌더가 아니라 '호출 시점'의 것이어야 한다.

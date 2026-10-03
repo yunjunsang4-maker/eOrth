@@ -21,7 +21,7 @@ import { useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useNotifSettings } from '../store/settingsStore';
 import { useActiveStay } from '../store/recordStore';
 import { DETECTOR_KEYS } from '../store/persist';
 import { COUNTRIES } from '../constants/countries';
@@ -42,7 +42,8 @@ const ABROAD_LAST_KEY = DETECTOR_KEYS.returnAbroadLast;
 let lastCheckAt = 0;
 
 export default function ReturnDetector() {
-  const { homeCountryCode, notifPrefs } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { notifPrefs } = useNotifSettings();
   const { activeStayGroup } = useActiveStay();
 
   // 진행 중(active) 체류국 ISO2 코드

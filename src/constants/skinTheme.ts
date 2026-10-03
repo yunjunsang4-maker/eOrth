@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useSettings } from '../store/settingsStore';
+import { useSkinSettings } from '../store/settingsStore';
 
 // 지구본 스킨 → 앱 강조색 테마 토대.
 // 앱 전역 요소를 스킨 색으로 통일하기 위한 단계적 마이그레이션의 기준점.
@@ -44,6 +44,6 @@ export function getSkinAccent(skin: string): SkinAccent {
 
 /** 현재 지구본 스킨 기준 앱 강조색 — 스킨이 바뀌면 자동 갱신 */
 export function useSkinAccent(): SkinAccent {
-  const { globeSkin } = useSettings();
+  const { globeSkin } = useSkinSettings();
   return useMemo(() => getSkinAccent(globeSkin), [globeSkin]);
 }

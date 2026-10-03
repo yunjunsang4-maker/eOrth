@@ -16,7 +16,7 @@ import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, Calendar
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useSettings } from '../store/settingsStore';
+import { useNotifSettings, useSettingsActions } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 import { shouldShowLocationBanner } from '../utils/locationDetectorBanner';
@@ -88,7 +88,8 @@ const ToggleRow = ({
 
 export default function NotificationSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  const { arrivalDetect, setArrivalDetect, snapEnabled, setSnapEnabled, notifPrefs, setNotifPref } = useSettings();
+  const { arrivalDetect, snapEnabled, notifPrefs } = useNotifSettings();
+  const { setArrivalDetect, setSnapEnabled, setNotifPref } = useSettingsActions();
 
   // 도착 감지를 켜는 순간 = 위치 권한을 요청할 자연스러운 지점.
   // 앱 시작 시에는 권한을 묻지 않도록 바꿨기 때문에(snapService.detectCurrentCountry),

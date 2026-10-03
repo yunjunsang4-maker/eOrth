@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { useDM } from '../store/dmStore';
+import { useDMData } from '../store/dmStore';
 import { useSocialGraph } from '../store/recordStore';
 import { useToast } from '../store/toastStore';
 import { navigationRef } from '../navigation/navigationRef';
@@ -19,7 +19,7 @@ const previewOf = (m: Message, t: TFunction): string => {
 // 지금 보고 있는 대화/인증 전/시드 메시지는 알리지 않는다. 표시·순차 처리는 ToastHost가 담당.
 export default function DMToastHost() {
   const { t } = useTranslation();
-  const { conversations, friends } = useDM();
+  const { conversations, friends } = useDMData();
   const { isMuted, isBlocked } = useSocialGraph();
   const { pushToast } = useToast();
   const entered = useIsAppEntered();

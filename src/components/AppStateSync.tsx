@@ -7,7 +7,7 @@
  * 서버 백업을 덮어쓰는 사고 방지(여행카드 유실 실사고의 교훈, 2026-07-10).
  */
 import { useEffect, useRef } from 'react';
-import { useSettings } from '../store/settingsStore';
+import { useSettingsBackup } from '../store/settingsStore';
 import { useLocalStateBackup } from '../store/recordStore';
 import { useCardOrder } from '../store/cardOrderStore';
 import { useMoments } from '../store/momentStore';
@@ -21,7 +21,7 @@ export function setAppStateBackupArmed(v: boolean) {
 }
 
 export default function AppStateSync() {
-  const { exportSettingsBackup } = useSettings();
+  const { exportSettingsBackup } = useSettingsBackup();
   const { exportLocalStateBackup } = useLocalStateBackup();
   const cardOrder = useCardOrder();
   const { exportMomentsBackup } = useMoments();

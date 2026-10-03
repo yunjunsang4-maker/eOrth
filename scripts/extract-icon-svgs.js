@@ -1,11 +1,21 @@
 // icons/index.tsx의 react-native-svg JSX를 표준 SVG 문자열로 변환해 JSON으로 출력
-// 실행: node scripts/extract-icon-svgs.js  → scripts/icon-svgs.json
+// 실행: node scripts/extract-icon-svgs.js [출력경로]  → 기본 scripts/icon-svgs.json
 const fs = require('fs');
 const path = require('path');
 
-const src = fs.readFileSync(path.join(__dirname, '../src/components/icons/index.tsx'), 'utf8');
+const OUT = process.argv[2] ? path.resolve(process.argv[2]) : path.join(__dirname, 'icon-svgs.json');
 
-// 기본 팔레트 (COLORS 기본값)
+// 아이콘 두 형태를 모두 읽는다:
+//  옛 형태  ({ size = 64, color, dotColor = COLORS.dot }) => ( <Svg …> )      — 모듈 COLORS를 직접 읽음
+//  새 형태  (props) => { const pal = usePalette(); const palDot = pal.dot; const { … } = props; return ( <Svg …> ) }
+//           — 스킨 팔레트 구독(icons/palette.ts). 팔레트 값은 렌더 때 정해지므로 정적 추출에선
+//             기본 팔레트(purple)로 환원한다: pal.x → COLORS.x, palDot → COLORS.dot. 그 뒤는 옛 형태와 같은 변환.
+const src = fs
+  .readFileSync(path.join(__dirname, '../src/components/icons/index.tsx'), 'utf8')
+  .replace(/\bpal\.(\w+)/g, 'COLORS.$1')
+  .replace(/\bpalDot\b/g, 'COLORS.dot');
+
+// 기본 팔레트 (COLORS 기본값 = icons/palette.ts PALETTES.purple)
 const COLORS = {
   purpleTop: '#E0C9FF', purpleMid: '#A78BFA', purpleBot: '#7C3AED',
   goldTop: '#FFE98A', goldBot: '#E5B100',
@@ -14,7 +24,7 @@ const COLORS = {
 };
 
 // export const XxxIcon ... => ( <Svg ...> ... </Svg> ); 블록 추출
-const re = /export const (\w+):[^=]*=\s*\(\{[^}]*\}\)\s*=>\s*(\{[\s\S]*?return\s*\(|\()\s*<Svg([\s\S]*?)<\/Svg>\s*\)/g;
+const re = /export const (\w+):[^=]*=\s*(?:\(\{[^}]*\}\)|\(props\))\s*=>\s*(\{[\s\S]*?return\s*\(|\()\s*<Svg([\s\S]*?)<\/Svg>\s*\)/g;
 
 function jsxToSvg(name, svgAttrs, inner) {
   let body = '<svg' + svgAttrs + '</svg>';
@@ -84,7 +94,12 @@ for (const [k, v] of Object.entries(out)) {
   if (/=\{|\{[a-zA-Z]/.test(v)) issues.push(k);
 }
 
-fs.writeFileSync(path.join(__dirname, 'icon-svgs.json'), JSON.stringify(out, null, 1), 'utf8');
-console.log('icons:', Object.keys(out).length);
+// 추출 누락 검사: export된 *Icon 수와 다르면 형태가 또 바뀐 것이다(예전엔 81개 중 8개만 뽑히고도 조용했다)
+const exported = (src.match(/^export const \w+Icon\b/gm) || []).length;
+const missing = exported - Object.keys(out).length;
+
+fs.writeFileSync(OUT, JSON.stringify(out, null, 1), 'utf8');
+console.log('icons:', Object.keys(out).length, '/ export된 아이콘:', exported, '→', OUT);
+if (missing) console.warn(`⚠️ 아이콘 ${missing}개를 추출하지 못했다 — 정규식이 새 선언 형태를 못 읽는지 확인할 것`);
 console.log('names:', Object.keys(out).join(', '));
 console.log('issues(미해결 JSX 표현식):', issues.join(', ') || '없음');

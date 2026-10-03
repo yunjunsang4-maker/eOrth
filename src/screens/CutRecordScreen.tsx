@@ -24,10 +24,11 @@ import { compressImage } from '../utils/imageCompress';
 import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas, { cutHasBottomBand, type CutStamp } from '../components/CutPhotoCanvas';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame, frameLabel } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings } from '../store/settingsStore';
 import {
   CalendarIcon as SvgCalendarIcon,
   PencilIcon as SvgPencilIcon,
@@ -111,8 +112,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   const chipFg = customSkin ? skinAccent.accent : '#E0C9FF';
   const selectedCountry = route.params?.selectedCountry ?? null;
   // 스트립 로고 제거(프리미엄) — 프리미엄이고 설정 토글이 켜져 있을 때만 로고 미포함
-  const { isPremium, stripLogoRemoval } = useSettings();
+  const { isPremium, stripLogoRemoval } = useProfileSettings();
   const hideLogo = isPremium && stripLogoRemoval;
+  const lateFonts = useLateFontsLoaded(); // 문구 폰트 등록 전엔 기본 폰트로 — constants/lateFonts.ts
 
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
   const tabLabel = (cat: '기본' | '테마') => (cat === '기본' ? t('cut.tabBasic') : t('cut.tabTheme'));
@@ -599,7 +601,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
             <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-              style={[st.capInput, handleFontStyle(captionFont)]}
+              style={[st.capInput, handleFontStyle(captionFont, lateFonts)]}
               value={captionDraft}
               onChangeText={setCaptionDraft}
               placeholder={t('cut.captionPlaceholder')}
@@ -619,7 +621,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                     activeOpacity={0.8}
                     onPress={() => setCaptionFont(f.id === 'default' ? null : f.id)}
                   >
-                    <Text style={[st.capFontChipTxt, handleFontStyle(f.id)]} numberOfLines={1}>
+                    <Text style={[st.capFontChipTxt, handleFontStyle(f.id, lateFonts)]} numberOfLines={1}>
                       {captionDraft.trim() || t(f.labelKey)}
                     </Text>
                   </TouchableOpacity>

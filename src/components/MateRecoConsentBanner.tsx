@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { Text } from '../ui/Text';
 import { andFitText } from '../utils/fitText';
-import { useSettings } from '../store/settingsStore';
+import { usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { fetchMateRecoOptin, saveMateRecoOptin } from '../services/profile';
 import { emitToast } from '../store/toastStore';
 
@@ -31,7 +31,8 @@ const REASK_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export default function MateRecoConsentBanner() {
   const { t } = useTranslation();
-  const { mateRecoAskedAt, setMateRecoAskedAt } = useSettings();
+  const { mateRecoAskedAt } = usePrefSettings();
+  const { setMateRecoAskedAt } = useSettingsActions();
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View } from 'react-native';
 import { usePersistence, STORE_KEYS } from './persist';
 import { remapDocUri } from '../utils/remapDocumentUris';
@@ -13,6 +13,7 @@ import { normalizeRegionGlobalMode, type RegionGlobalMode } from '../utils/regio
 import { normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
 import { remapRetiredColor, remapRetiredColorMap, remapRetiredSkinStore } from '../utils/retiredSkinColors';
 import { REGION_COUNTRIES } from '../constants/regionCountries';
+import { makeStableActions } from './stableActions';
 
 // 대륙 모드 즐겨찾기의 유효 코드 집합 — 여기 없는 ISO3는 그리드가 국가를 못 찾아
 // 즐겨찾기 칸이 조용히 사라진 것처럼 보인다. 그래서 입력·복원 양쪽에서 걸러낸다.
@@ -306,7 +307,56 @@ interface SettingsPersistPayload {
   lastPhotoFrame?: PhotoFrame | null; // 피드 사진 프레임 마지막 선택 (과거 저장본엔 없음)
 }
 
-const SettingsContext = createContext<SettingsContextType | null>(null);
+// ── Context 슬라이스 ── (recordStore와 같은 방식 — 그쪽 주석과 stableActions.ts 참조)
+// 예전에는 위 타입 전체를 한 객체로 한 Context에 넣었다. 그러면 배지 하나·공지 읽음 하나만 바뀌어도
+// useSettings()를 쓰는 화면 전부와, useSkinAccent()를 거치는 컴포넌트(65개 파일·91곳, 탭바·피드 카드 포함),
+// 그리고 RecordProvider 자신까지 리렌더됐다. 이제 함께 쓰이고 함께 바뀌는 묶음별로 Context를 나눈다.
+// 각 슬라이스 값은 자기 상태만 deps로 useMemo되어, 다른 슬라이스가 바뀌어도 참조가 그대로다.
+//   · 읽는 함수(exportSettingsBackup)는 근거 상태가 바뀔 때 참조도 바뀌는 슬라이스에 둔다.
+//   · 쓰는 함수(setter 전부 포함)는 SettingsActions 하나에 모아 참조를 영구 고정한다.
+// 지구본 스킨만 — useSkinAccent()(강조색, 65개 파일)가 이것만 본다. 지구본 색 편집과 분리해야
+// 메인에서 국가 색을 바꿀 때 앱 전체의 강조색 소비자가 리렌더되지 않는다.
+type SkinSettingsSlice = Pick<SettingsContextType, 'globeSkin'>;
+// 지구본·대륙 표시 설정 — 사실상 MainScreen 전용. 편집 중 자주 바뀐다.
+type GlobeSettingsSlice = Pick<SettingsContextType,
+  'globeVariant' | 'globeDisplayMode' | 'globeColor' | 'countryColors' | 'countryDisplayModes'
+  | 'regionGlobalMode' | 'regionDisplayModes' | 'regionColors' | 'puzzleImages' | 'puzzleSources'
+  | 'regionPhotos' | 'taggedRegions' | 'dismissedRegionTagChips' | 'regionFavoriteCodes' | 'skinColorStore'>;
+// 내 계정·표시 정체성 — 아이디는 거의 항상 폰트·프리미엄과 같이 그려진다(피드 카드·댓글·ProfileSync).
+// 피드 카드마다 구독하므로 자주 바뀌는 값(배지·공지·프레임 등)을 여기 넣으면 안 된다.
+type ProfileSettingsSlice = Pick<SettingsContextType,
+  'handle' | 'bio' | 'profilePhoto' | 'handleLastChanged' | 'handleChosen' | 'signUpMethod' | 'signUpEmail'
+  | 'onboardedAt' | 'isPremium' | 'handleFont' | 'stripLogoRemoval' | 'qrDesign'>;
+// 거주국·거주 지역·현재 여행국 — RecordProvider와 상시 감지기들이 본다
+type HomeSettingsSlice = Pick<SettingsContextType,
+  'homeCountryCode' | 'homeRegion' | 'homeRegionPromptShown' | 'currentVisitedCountryCode'>;
+// 알림·감지 토글 — 상시 감지기들과 푸시 토큰 동기화가 본다
+type NotifSettingsSlice = Pick<SettingsContextType, 'notifPrefs' | 'snapEnabled' | 'arrivalDetect'>;
+// 배지 진행도 — 획득 순간에 몰아서 바뀐다(토스트 큐 포함)
+type BadgeSettingsSlice = Pick<SettingsContextType,
+  'representativeBadgeIds' | 'badgeEarnedAt' | 'pendingBadgeToasts' | 'shareSentCount' | 'loginStreak' | 'installedAt'>;
+// 그 밖의 앱 취향·1회성 표시 기록 — 드물게 바뀌고 소비자가 흩어져 있다
+type PrefSettingsSlice = Pick<SettingsContextType,
+  'showCounts' | 'diaryCardMode' | 'hapticsEnabled' | 'language' | 'verifiedNaverBlogIds' | 'tutorialsSeen'
+  | 'lastImportAt' | 'lastSeenNoticeAt' | 'mateRecoAskedAt' | 'stayNudgeDismissedFor' | 'lastPhotoFrame'>;
+// 백업 내보내기는 위 여러 슬라이스(+ 비공개 상태 regionKeySchema·lastVisitDay)를 한꺼번에 읽는다.
+// 어느 슬라이스에 붙여도 그 구독자가 전 설정 변경에 리렌더되므로 혼자 둔다(AppStateSync 전용).
+type SettingsBackupSlice = Pick<SettingsContextType, 'exportSettingsBackup'>;
+// 나머지 전부가 액션 — 데이터 슬라이스에 넣지 않은 필드는 자동으로 여기 온다. 함수가 아닌 필드가
+// 빠져 여기로 오면 makeStableActions의 타입 제약이 컴파일 에러로 잡는다.
+export type SettingsActions = Omit<SettingsContextType,
+  keyof SkinSettingsSlice | keyof GlobeSettingsSlice | keyof ProfileSettingsSlice | keyof HomeSettingsSlice
+  | keyof NotifSettingsSlice | keyof BadgeSettingsSlice | keyof PrefSettingsSlice | keyof SettingsBackupSlice>;
+
+const SkinSettingsContext = createContext<SkinSettingsSlice | null>(null);
+const GlobeSettingsContext = createContext<GlobeSettingsSlice | null>(null);
+const ProfileSettingsContext = createContext<ProfileSettingsSlice | null>(null);
+const HomeSettingsContext = createContext<HomeSettingsSlice | null>(null);
+const NotifSettingsContext = createContext<NotifSettingsSlice | null>(null);
+const BadgeSettingsContext = createContext<BadgeSettingsSlice | null>(null);
+const PrefSettingsContext = createContext<PrefSettingsSlice | null>(null);
+const SettingsBackupContext = createContext<SettingsBackupSlice | null>(null);
+const SettingsActionsContext = createContext<SettingsActions | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [showCounts, setShowCounts] = useState(true);
@@ -345,7 +395,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // ── 영토 표시 설정 (영속) ──
   const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
   const [globeSkin, setGlobeSkin] = useState('aurora'); // 지구본 스킨 — 기본(오로라)
-  // 아이콘 팔레트를 스킨에 동기화 — setState '전에' 모듈 COLORS를 갈아끼워 재렌더 시 새 색이 반영되게 한다
+  // 아이콘 팔레트를 스킨에 동기화 — 아이콘이 팔레트 저장소를 직접 구독하므로(icons/palette.ts) 부모 리렌더와
+  // 무관하게 바뀐다. 렌더 본문에서 부르지 말 것(구독자 알림이 렌더 중 setState가 된다).
   const applyIconPalette = (skin: string) => setPalette(skin === 'cyan' ? 'cyan' : skin === 'mint' ? 'mint' : 'purple');
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
   const [globeColor, setGlobeColor] = useState('#A47DE9'); // 보라 활성화색 기본 (aurora 팔레트 4종 중)
@@ -887,131 +938,182 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // lastPhotoFrame도 복원하지 않는다(exportSettingsBackup에 싣지 않는 것과 짝).
   };
 
+  // ── 슬라이스별 Context 값 ── (아래 훅들은 hydrated 조기 반환보다 앞에 있어야 한다 — 훅 순서 고정)
+  // 액션: 매 렌더 최신 클로저를 ref에 넣고, 마운트 시 1회 만든 래퍼를 준다(recordStore와 같은 패턴).
+  // 대부분은 원래 참조가 안정된 useState setter·useCallback이지만, 일반 클로저였던
+  // setHomeCountryCode(거주국이 바뀌면 거주 지역 리셋)·resetSettings·applySettingsBackup과
+  // deps가 있던 setGlobeSkin(테마드)도 래퍼를 거쳐 참조가 영구 고정되고, 호출 시점에는
+  // 가장 최근 렌더의 클로저(최신 homeCountryCode·현재 스킨의 색)가 실행된다.
+  // 렌더 중 ref 대입: 이 Provider는 React Compiler 대상이 아니다(badgeEarnedAtRef 렌더 중 대입으로
+  // 이미 건너뜀). 자식 effect가 같은 커밋에서 액션을 불러도 이번 렌더의 클로저가 돌도록 렌더에서 넣는다.
+  const latestActionsRef = useRef<SettingsActions>(null!);
+  latestActionsRef.current = {
+    setShowCounts,
+    setHomeCountryCode: setHomeCountryCodeWithRegionReset,
+    setHomeRegion,
+    setHomeRegionPromptShown,
+    setSnapEnabled,
+    setHapticsEnabled,
+    setDiaryCardMode,
+    setLanguage,
+    setHandle,
+    setBio,
+    setProfilePhoto,
+    setHandleLastChanged,
+    setHandleChosen,
+    setSignUpMethod,
+    setSignUpEmail,
+    setArrivalDetect,
+    setCurrentVisitedCountryCode,
+    addVerifiedNaverBlogId,
+    setGlobeVariant,
+    setGlobeSkin: setGlobeSkinThemed,
+    setGlobeDisplayMode,
+    setGlobeColor,
+    setCountryColors,
+    setCountryDisplayModes,
+    setRegionGlobalMode,
+    setRegionDisplayModes,
+    setRegionColors,
+    setPuzzleImages,
+    setPuzzleSources,
+    setRegionPhotos,
+    setTaggedRegions,
+    setDismissedRegionTagChips,
+    toggleRegionFavorite,
+    setSkinColorStore,
+    setRepresentativeBadgeIds,
+    markBadgesEarned,
+    dismissBadgeToast,
+    incrementShareSent,
+    setNotifPref,
+    setIsPremium,
+    setHandleFont,
+    setStripLogoRemoval,
+    setQrDesign,
+    markTutorialSeen,
+    resetTutorialsSeen,
+    setLastImportAt,
+    setLastSeenNoticeAt,
+    setOnboardedAt,
+    setMateRecoAskedAt,
+    setStayNudgeDismissedFor,
+    setLastPhotoFrame,
+    resetSettings,
+    applySettingsBackup,
+  };
+  const [settingsActions] = useState(() => makeStableActions(latestActionsRef));
+
+  const skinSettings = useMemo<SkinSettingsSlice>(() => ({ globeSkin }), [globeSkin]);
+  const globeSettings = useMemo<GlobeSettingsSlice>(
+    () => ({
+      globeVariant, globeDisplayMode, globeColor, countryColors, countryDisplayModes,
+      regionGlobalMode, regionDisplayModes, regionColors, puzzleImages, puzzleSources,
+      regionPhotos, taggedRegions, dismissedRegionTagChips, regionFavoriteCodes, skinColorStore,
+    }),
+    [globeVariant, globeDisplayMode, globeColor, countryColors, countryDisplayModes,
+      regionGlobalMode, regionDisplayModes, regionColors, puzzleImages, puzzleSources,
+      regionPhotos, taggedRegions, dismissedRegionTagChips, regionFavoriteCodes, skinColorStore],
+  );
+  const profileSettings = useMemo<ProfileSettingsSlice>(
+    () => ({
+      handle, bio, profilePhoto, handleLastChanged, handleChosen, signUpMethod, signUpEmail, onboardedAt,
+      // 출시 기념 무료 개방 중에는 저장값과 무관하게 항상 프리미엄으로 취급한다.
+      // (저장값 자체는 건드리지 않아 플래그를 내리면 원래 상태로 돌아온다)
+      isPremium: LAUNCH_FREE_PREMIUM || isPremium,
+      handleFont, stripLogoRemoval, qrDesign,
+    }),
+    [handle, bio, profilePhoto, handleLastChanged, handleChosen, signUpMethod, signUpEmail, onboardedAt,
+      isPremium, handleFont, stripLogoRemoval, qrDesign],
+  );
+  const homeSettings = useMemo<HomeSettingsSlice>(
+    () => ({ homeCountryCode, homeRegion, homeRegionPromptShown, currentVisitedCountryCode }),
+    [homeCountryCode, homeRegion, homeRegionPromptShown, currentVisitedCountryCode],
+  );
+  const notifSettings = useMemo<NotifSettingsSlice>(
+    () => ({ notifPrefs, snapEnabled, arrivalDetect }),
+    [notifPrefs, snapEnabled, arrivalDetect],
+  );
+  const badgeSettings = useMemo<BadgeSettingsSlice>(
+    () => ({ representativeBadgeIds, badgeEarnedAt, pendingBadgeToasts, shareSentCount, loginStreak, installedAt }),
+    [representativeBadgeIds, badgeEarnedAt, pendingBadgeToasts, shareSentCount, loginStreak, installedAt],
+  );
+  const prefSettings = useMemo<PrefSettingsSlice>(
+    () => ({
+      showCounts, diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
+      lastImportAt, lastSeenNoticeAt, mateRecoAskedAt, stayNudgeDismissedFor, lastPhotoFrame,
+    }),
+    [showCounts, diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
+      lastImportAt, lastSeenNoticeAt, mateRecoAskedAt, stayNudgeDismissedFor, lastPhotoFrame],
+  );
+  // exportSettingsBackup은 일반 클로저라 매 렌더 새것이다. 그 함수가 읽는 상태가 바뀔 때만 새 참조를
+  // 내보낸다 — 메모된 클로저는 deps가 마지막으로 바뀐 렌더의 것이라 읽는 값이 전부 최신이다.
+  // ⚠️ 이 deps는 exportSettingsBackup 본문(위 정의)이 읽는 상태와 반드시 같은 목록이어야 한다.
+  //    백업에 필드를 더하면 여기도 더할 것 — 빠뜨리면 그 값만 바뀌었을 때 백업 업로드가 안 일어난다.
+  //    (isPremium은 LAUNCH_FREE_PREMIUM을 섞기 전의 저장값이다 — 본문도 원시 상태를 읽는다)
+  const settingsBackup = useMemo<SettingsBackupSlice>(
+    () => ({ exportSettingsBackup }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showCounts, snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect, homeRegion,
+      globeVariant, globeSkin, globeDisplayMode, globeColor,
+      countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
+      taggedRegions, dismissedRegionTagChips, regionFavoriteCodes, regionKeySchema,
+      representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
+      notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
+      tutorialsSeen],
+  );
+
   // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: '#0A0A0F' }} />;
   }
 
   return (
-    <SettingsContext.Provider
-      value={{
-        showCounts,
-        setShowCounts,
-        homeCountryCode,
-        setHomeCountryCode: setHomeCountryCodeWithRegionReset,
-        homeRegion,
-        setHomeRegion,
-        homeRegionPromptShown,
-        setHomeRegionPromptShown,
-        snapEnabled,
-        setSnapEnabled,
-        hapticsEnabled,
-        setHapticsEnabled,
-        diaryCardMode,
-        setDiaryCardMode,
-        language,
-        setLanguage,
-        handle,
-        setHandle,
-        bio,
-        setBio,
-        profilePhoto,
-        setProfilePhoto,
-        handleLastChanged,
-        setHandleLastChanged,
-        handleChosen,
-        setHandleChosen,
-        signUpMethod,
-        setSignUpMethod,
-        signUpEmail,
-        setSignUpEmail,
-        arrivalDetect,
-        setArrivalDetect,
-        currentVisitedCountryCode,
-        setCurrentVisitedCountryCode,
-        verifiedNaverBlogIds,
-        addVerifiedNaverBlogId,
-        globeVariant,
-        setGlobeVariant,
-        globeSkin,
-        setGlobeSkin: setGlobeSkinThemed,
-        globeDisplayMode,
-        setGlobeDisplayMode,
-        globeColor,
-        setGlobeColor,
-        countryColors,
-        setCountryColors,
-        countryDisplayModes,
-        setCountryDisplayModes,
-        regionGlobalMode,
-        setRegionGlobalMode,
-        regionDisplayModes,
-        setRegionDisplayModes,
-        regionColors,
-        setRegionColors,
-        puzzleImages,
-        setPuzzleImages,
-        puzzleSources,
-        setPuzzleSources,
-        regionPhotos,
-        setRegionPhotos,
-        taggedRegions,
-        setTaggedRegions,
-        dismissedRegionTagChips,
-        setDismissedRegionTagChips,
-        regionFavoriteCodes,
-        toggleRegionFavorite,
-        skinColorStore,
-        setSkinColorStore,
-        representativeBadgeIds,
-        setRepresentativeBadgeIds,
-        badgeEarnedAt,
-        markBadgesEarned,
-        pendingBadgeToasts,
-        dismissBadgeToast,
-        shareSentCount,
-        incrementShareSent,
-        loginStreak,
-        installedAt,
-        notifPrefs,
-        setNotifPref,
-        // 출시 기념 무료 개방 중에는 저장값과 무관하게 항상 프리미엄으로 취급한다.
-        // (저장값 자체는 건드리지 않아 플래그를 내리면 원래 상태로 돌아온다)
-        isPremium: LAUNCH_FREE_PREMIUM || isPremium,
-        setIsPremium,
-        handleFont,
-        setHandleFont,
-        stripLogoRemoval,
-        setStripLogoRemoval,
-        qrDesign,
-        setQrDesign,
-        tutorialsSeen,
-        markTutorialSeen,
-        resetTutorialsSeen,
-        lastImportAt,
-        setLastImportAt,
-        lastSeenNoticeAt,
-        setLastSeenNoticeAt,
-        onboardedAt,
-        setOnboardedAt,
-        mateRecoAskedAt,
-        setMateRecoAskedAt,
-        stayNudgeDismissedFor,
-        setStayNudgeDismissedFor,
-        lastPhotoFrame,
-        setLastPhotoFrame,
-        resetSettings,
-        exportSettingsBackup,
-        applySettingsBackup,
-      }}
-    >
-      {children}
-    </SettingsContext.Provider>
+    <SettingsActionsContext.Provider value={settingsActions}>
+      <SkinSettingsContext.Provider value={skinSettings}>
+        <GlobeSettingsContext.Provider value={globeSettings}>
+          <ProfileSettingsContext.Provider value={profileSettings}>
+            <HomeSettingsContext.Provider value={homeSettings}>
+              <NotifSettingsContext.Provider value={notifSettings}>
+                <BadgeSettingsContext.Provider value={badgeSettings}>
+                  <PrefSettingsContext.Provider value={prefSettings}>
+                    <SettingsBackupContext.Provider value={settingsBackup}>
+                      {children}
+                    </SettingsBackupContext.Provider>
+                  </PrefSettingsContext.Provider>
+                </BadgeSettingsContext.Provider>
+              </NotifSettingsContext.Provider>
+            </HomeSettingsContext.Provider>
+          </ProfileSettingsContext.Provider>
+        </GlobeSettingsContext.Provider>
+      </SkinSettingsContext.Provider>
+    </SettingsActionsContext.Provider>
   );
 }
 
-export function useSettings() {
-  const ctx = useContext(SettingsContext);
-  if (!ctx) throw new Error('useSettings must be used within SettingsProvider');
-  return ctx;
+function useSlice<T>(ctx: React.Context<T | null>, hookName: string): T {
+  const v = useContext(ctx);
+  if (!v) throw new Error(`${hookName} must be used within SettingsProvider`);
+  return v;
 }
+
+// 슬라이스 훅 — 필요한 슬라이스만 구독한다. 구독하지 않은 슬라이스의 상태가 바뀌면 리렌더되지 않는다.
+/** 쓰는 함수 전부(setter 포함). 참조가 영구 고정이라 deps에 넣어도 effect가 다시 돌지 않는다. */
+export const useSettingsActions = () => useSlice(SettingsActionsContext, 'useSettingsActions');
+/** 지구본 스킨만 — 강조색(useSkinAccent)용 */
+export const useSkinSettings = () => useSlice(SkinSettingsContext, 'useSkinSettings');
+/** 지구본·대륙 표시(형태·표시 방식·색·퍼즐·지역 사진·태깅·즐겨찾기·스킨별 색) */
+export const useGlobeSettings = () => useSlice(GlobeSettingsContext, 'useGlobeSettings');
+/** 내 아이디·소개·사진·가입 정보·온보딩 완료·프리미엄·아이디 폰트 */
+export const useProfileSettings = () => useSlice(ProfileSettingsContext, 'useProfileSettings');
+/** 거주국·거주 지역·현재 여행국 */
+export const useHomeSettings = () => useSlice(HomeSettingsContext, 'useHomeSettings');
+/** 알림 토글·스냅·도착 감지 */
+export const useNotifSettings = () => useSlice(NotifSettingsContext, 'useNotifSettings');
+/** 배지(대표·획득 시각·토스트 큐)·공유 횟수·연속 접속·설치 시각 */
+export const useBadgeSettings = () => useSlice(BadgeSettingsContext, 'useBadgeSettings');
+/** 카드 표시·햅틱·언어·블로그 인증·튜토리얼·불러오기/공지/배너/넛지/사진 프레임 기록 */
+export const usePrefSettings = () => useSlice(PrefSettingsContext, 'usePrefSettings');
+/** 설정 통합 백업 내보내기 — AppStateSync 전용 */
+export const useSettingsBackup = () => useSlice(SettingsBackupContext, 'useSettingsBackup');
+// (예전 전체 합성 훅 useSettings()는 호출부가 0이 되어 2026-10-03 삭제 — 슬라이스 훅만 쓴다)

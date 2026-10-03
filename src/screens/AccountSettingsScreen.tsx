@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
 import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -95,7 +95,8 @@ const CardRow = ({
 export default function AccountSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 토글 트랙 색 — 설정 전역 토글 디자인 통일(스킨색 트랙 + 흰 썸)
-  const { signUpMethod, signUpEmail, setSignUpEmail } = useSettings();
+  const { signUpMethod, signUpEmail } = useProfileSettings();
+  const { setSignUpEmail } = useSettingsActions();
   // 실제 identity 연동 API 미연동 — 연동 상태는 가입 수단에서 파생(가짜 토글 상태 금지, H2)
   const googleLinked = signUpMethod === 'google';
 

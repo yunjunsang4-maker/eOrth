@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { useSettings } from '../store/settingsStore';
+import { useNotifSettings, usePrefSettings } from '../store/settingsStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { registerPushToken, syncPushPrefs } from '../services/pushToken';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
@@ -22,7 +22,8 @@ import { supabase, isSupabaseConfigured } from '../services/supabase';
 const PREFS_DEBOUNCE_MS = 2000;
 
 export default function PushTokenSync() {
-  const { notifPrefs, language } = useSettings();
+  const { notifPrefs } = useNotifSettings();
+  const { language } = usePrefSettings();
   const entered = useIsAppEntered();
   // 등록한 사용자 uid를 기억 (계정 전환 감지용 — uid 변경 시 재등록)
   const registeredForUidRef = useRef<string | null>(null);

@@ -21,7 +21,7 @@ import { countryLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
 import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, WarningIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
 import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -39,6 +39,7 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 import { countryInfoFromCode } from '../utils/pastTripScan';
 import { COUNTRIES } from '../constants/countries';
 import { profileLink } from '../utils/appLinks';
@@ -77,7 +78,8 @@ export default function FriendProfileScreen({
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio, homeCountryCode: myHomeCountryCode } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useProfileSettings();
+  const { homeCountryCode: myHomeCountryCode } = useHomeSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
   const { records: myRecords, tripGroups } = useRecordData();
 
@@ -230,8 +232,9 @@ export default function FriendProfileScreen({
   };
 
   // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값(구독 중일 때만), 타인이면 프로필의 handle_font
-  const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
-  const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
+  const { handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
+  const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font, lateFonts);
 
   // 상대의 여행 DNA 유형 — public_profiles 뷰의 dna_type_key만 공개(축 점수는 비공개, 설계 §9).
   // 미완료·해석 불가면 labelFromKey가 null을 주고, 그때는 칩 자체를 렌더하지 않는다(빈 상태는 본인 전용).

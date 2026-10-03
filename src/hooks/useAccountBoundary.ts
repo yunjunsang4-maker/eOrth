@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { useRecordData, useRecordActions } from '../store/recordStore';
-import { useDM } from '../store/dmStore';
+import { useDMActions } from '../store/dmStore';
 import { useMoments } from '../store/momentStore';
 import { useTravelDna } from '../store/travelDnaStore';
 import { clearPersistedStores } from '../store/persist';
@@ -25,14 +25,11 @@ const LAST_UID_KEY = '@eorth/lastUserId';
  * stale 데이터를 서버로 밀어올리지 않는다.
  */
 export function useAccountBoundary(): () => Promise<void> {
-  const {
-    onboardedAt, setOnboardedAt,
-    setHandle, setBio, setProfilePhoto, setHomeCountryCode,
-    setHandleFont, resetSettings, applySettingsBackup,
-  } = useSettings();
+  const { onboardedAt } = useProfileSettings();
+  const { setOnboardedAt, setHandle, setBio, setProfilePhoto, setHomeCountryCode, setHandleFont, resetSettings, applySettingsBackup } = useSettingsActions();
   const { records } = useRecordData();
   const { resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecordActions();
-  const { resetConversations } = useDM();
+  const { resetConversations } = useDMActions();
   const { resetMoments, applyMomentsBackup } = useMoments();
   const { clear: clearTravelDna } = useTravelDna();
 

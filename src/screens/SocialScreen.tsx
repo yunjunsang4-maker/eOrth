@@ -10,8 +10,6 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
-  KeyboardAvoidingView,
-  Keyboard,
   Platform,
   Dimensions,
   Image,
@@ -21,24 +19,24 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
-import { Text, TextInput } from '../ui/Text';
+import { Text } from '../ui/Text';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
-import { useDM } from '../store/dmStore';
+import { useDMData, useDMActions } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
 import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon, HomeIcon } from '../components/icons';
-import { Typography, Spacing, BorderRadius } from '../constants';
-import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, countTotalComments } from '../store/recordStore';
+import { ShareIcon as ShareSvgIcon, TrashIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon, HomeIcon } from '../components/icons';
+import { Typography, Spacing } from '../constants';
+import { useRecordData, useFeed, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
 import type { TabScreenProps } from '../navigation/types';
-import { useSettings } from '../store/settingsStore';
-import { timeAgo } from '../utils/timeAgo';
+import { useProfileSettings, usePrefSettings } from '../store/settingsStore';
+import TimeAgoText from '../components/TimeAgoText';
 import { isKoreanLang } from '../utils/langKind';
 import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
@@ -46,18 +44,16 @@ import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { groupSnapRings, orderSnapStrip, snapRingKeys } from '../utils/snapStrip';
 import { PillRing } from '../components/record/CalendarBottomSheet';
-import MentionText from '../components/MentionText';
-import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
-import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
-import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
+import { FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { APP_STORE_URL, PLAY_STORE_URL } from '../constants/legalLinks';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
 import { fetchFriendSuggestions, type FriendSuggestion, fetchMateSuggestions, type MateSuggestionRow } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 import { countryEnglishName } from '../constants/countries';
-import { countryLabel as locCountry, countryTagLabel } from '../utils/countryLabel';
+import { countryLabel as locCountry } from '../utils/countryLabel';
 import { regionDisplayName } from '../utils/regionLabel';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
@@ -74,8 +70,7 @@ import { useTabBarClearance } from '../utils/tabBar';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
-import * as Clipboard from 'expo-clipboard';
-import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
@@ -101,7 +96,6 @@ const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
   );
 };
 
-const SCREEN_W = stageWidthNow();
 const SCREEN_W_SOCIAL = stageWidthNow();
 
 // ─────────────────────────────────────────────
@@ -111,59 +105,10 @@ const C = {
   bg: '#0A0A0F',
   card: '#1A0A2E',
   accent: '#BF85FC',
-  accentDim: 'rgba(191,133,252,0.15)',
   accentBorder: 'rgba(191,133,252,0.25)',
   dim: '#A1A1B0',
   white: '#FFFFFF',
 };
-
-// ─────────────────────────────────────────────
-// 댓글 — recordStore.commentsByPost 공유 (게시물별 저장, PostDetail과 동기화)
-// ─────────────────────────────────────────────
-// replies 포함 — 인라인 시트도 상세 화면처럼 답글을 그린다(예전엔 최상위 댓글만 보였다)
-type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number; photo?: string; replies?: SheetComment[] };
-const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
-
-// 피드 카드에 표시할 댓글 수.
-// ⚠️ 예전엔 `commentsByPost[item.id].length`였다. 그러면 ①상세를 열기 전엔 로컬 목록이 비어
-//    있어 남의 글 댓글 수가 항상 0이고 ②답글이 빠져 상세 화면 숫자와 어긋났다.
-//    기준은 서버 comments_count(item.comments)다 — 댓글이 로드되면 스토어 effect
-//    (recordStore의 commentsByPost 동기화)가 이 값을 로컬 총계로 맞춰 준다.
-// max는 **방어적 중복**이다. 그 스토어 effect가 commentsByPost가 정의되는 즉시 item.comments를
-// 로컬 총계로 덮으므로, 실제로 두 항은 '같거나(로드됨) 로컬이 0(미로드)'이라 max가 값을
-// 바꾸는 경우는 사실상 없다. 동기화 effect가 사라지거나 늦어지는 변경이 생겨도 카드 숫자가
-// 0으로 떨어지지 않게 남겨 둔다.
-// ⚠️ max가 막아 주지 못하는 것: 내가 차단한 사람의 댓글은 RLS(comments_select_visible)가
-//    빼는데 서버 comments_count는 전부 센다. 그래서 시트를 열면 숫자가 5→4처럼 줄 수 있다.
-//    상세 화면에 원래 있던 비대칭이고 여기서 고칠 문제가 아니다(서버 집계를 바꿔야 한다).
-const feedCommentCount = (item: any, local?: SheetComment[]) =>
-  Math.max(item?.comments ?? 0, countTotalComments(local as any));
-
-// 인라인 댓글 시트가 열릴 때 서버 댓글을 다시 받는다.
-// 예전엔 이 화면에 refreshComments 호출이 **0건**이었다 — 상세를 연 적 없는 글은 남이 단
-// 댓글이 통째로 안 보였고, 상세에서 한 번 본 글도 그 뒤 달린 댓글이 반영되지 않았다.
-// 이미 로드된 글도 다시 조회한다. 조회 중에도 기존 목록은 그대로 두고(깜빡임 방지),
-// 첫 로드이면서 목록이 비어 있을 때만 스피너를 띄운다(호출부의 loading && !loaded 판정).
-function useSheetCommentRefresh(
-  item: any,
-  visible: boolean,
-  refreshComments: (postId: string, remoteId?: string) => Promise<void>
-) {
-  const [loading, setLoading] = useState(false);
-  const aliveRef = useRef(true);
-  useEffect(() => () => { aliveRef.current = false; }, []);
-  useEffect(() => {
-    if (!visible) return; // visible false→true 전이에서만
-    // 예시 콘텐츠는 서버 글이 아니다(PostDetail 본문 이펙트와 동일한 게이트).
-    // 아직 발행 전인 로컬 글은 remoteId가 없어 조회가 조용히 실패하고 로컬 목록이 유지된다.
-    if (!item?.id || item?.isExample) return;
-    setLoading(true);
-    refreshComments(item.id, item.remoteId ?? item.id)
-      .finally(() => { if (aliveRef.current) setLoading(false); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
-  return loading;
-}
 
 // ─────────────────────────────────────────────
 // 바텀시트 공통 껍데기
@@ -233,1675 +178,6 @@ function SheetShell({
 }
 
 // ─────────────────────────────────────────────
-// 공유 바텀시트
-// ─────────────────────────────────────────────
-function ShareBottomSheet({
-  visible,
-  onClose,
-  onLinkCopied,
-  postId,
-  navigation,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onLinkCopied: () => void;
-  postId?: string;
-  navigation: any;
-}) {
-  const { t, i18n } = useTranslation();
-  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-  const [prepareVisible, setPrepareVisible] = useState(false);
-  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { neighbors } = useSocialGraph();
-  // 공유 대상은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거) — 프로필 이모지·사진 반영
-  const shareFriends = neighbors.map((f) => ({
-    id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
-  }));
-
-  // 외부 공유 주소 — 예전엔 미등록 도메인(eorth.app)의 고정 경로를 내보내 어떤 게시물이든
-  // 같은 죽은 링크가 나갔다. 게시물별 웹 페이지가 준비되기 전까지는 스토어 링크를 쓴다.
-  const shareUrl = () => (Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL);
-
-  const handleSNS = () => {
-    // 테스트/베타 빌드에서는 외부 SNS 공유를 막고 '준비 중'만 안내한다.
-    if (!SNS_SHARE_ENABLED) {
-      setPrepareVisible(true);
-      return;
-    }
-    // 프로덕션: OS 공유 시트로 인스타그램·틱톡 등 외부 앱 공유
-    Share.share({ message: shareUrl() }).catch(() => {});
-    onClose();
-  };
-
-  const handleCopyLink = async () => {
-    await Clipboard.setStringAsync(shareUrl());
-    onClose();
-    onLinkCopied();
-  };
-
-  const handleFriendSend = () => {
-    setFriendPickerVisible(true);
-  };
-
-  const handleSelectFriend = (friend: typeof shareFriends[0]) => {
-    // 내부 View 오버레이 닫기
-    setFriendPickerVisible(false);
-    // 시트가 완전히 닫힌 뒤 이동한다 — 닫히는 중에 화면을 밀면 iOS 에서 전환이 씹힌다.
-    // SheetShell 이 퇴장 애니메이션 후 onClosed 를 양 플랫폼에서 불러주므로
-    // 예전의 'iOS onDismiss + 안드로이드 타이머' 이중 처리는 필요 없다.
-    pendingNavRef.current = () => {
-      navigation.navigate('DM', {
-        friend: { ...friend, lastMessage: '', time: '', unread: 0 },
-        sharePostId: postId,
-      });
-    };
-    onClose();
-  };
-
-  const SHARE_OPTIONS = [
-    { key: 'friends', icon: '👥', label: t('social.friendsSend'), onPress: handleFriendSend },
-    { key: 'instagram', icon: '📷', label: t('social.instagram'), onPress: handleSNS },
-    { key: 'tiktok', icon: '🎵', label: t('social.tiktok'), onPress: handleSNS },
-    { key: 'link', icon: '🔗', label: t('social.copyLink'), onPress: handleCopyLink },
-  ];
-
-  // 네비게이션 대기 ref — Modal의 onDismiss에서 실행
-  const pendingNavRef = useRef<(() => void) | null>(null);
-
-  const handleDismiss = () => {
-    if (pendingNavRef.current) {
-      const nav = pendingNavRef.current;
-      pendingNavRef.current = null;
-      nav();
-    }
-  };
-
-  return (
-    <SheetShell
-      visible={visible}
-      onRequestClose={() => {
-        // 안내·메이트 선택 오버레이가 떠 있을 땐 배경 탭·뒤로가기로 시트가 닫히지 않게 한다
-        if (!prepareVisible && !friendPickerVisible) onClose();
-      }}
-      onClosed={handleDismiss}
-      overlay={
-        <>
-          {/* 서비스 준비 중 — View 오버레이 (Modal 아님) */}
-          {prepareVisible && (
-            <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
-              <View style={ss.prepareCard}>
-                <Text style={ss.prepareEmoji}>🚧</Text>
-                <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
-                <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
-                <TouchableOpacity style={ss.prepareBtn} onPress={() => setPrepareVisible(false)} activeOpacity={0.85}>
-                  <Text style={ss.prepareBtnText} {...andFitText}>{t('common.confirm')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* 메이트 선택 — View 오버레이 (Modal 아님) */}
-          {friendPickerVisible && (
-            <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
-              <View style={ss.friendPickerCard}>
-                <Text style={ss.friendPickerTitle}>{t('social.friendPickerTitle')}</Text>
-                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-                  {shareFriends.length === 0 ? (
-                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-                      {t('social.noFollowedFriends')}
-                    </Text>
-                  ) : shareFriends.map(f => (
-                    <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
-                      <View style={ss.friendAvatarWrap}>
-                        <View style={ss.friendAvatar}>
-                          {/* 공통 아바타 — 사진 없으면 사람 실루엣(이모지 폴백 금지) */}
-                          <AuthorAvatar photo={f.photo} size={42} />
-                        </View>
-                        {f.online && <View style={ss.friendOnline} />}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={ss.friendName}>{f.name}</Text>
-                        <Text style={ss.friendHandle}>@{f.handle}</Text>
-                      </View>
-                      <Text style={ss.friendSendIcon}>→</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <TouchableOpacity style={ss.friendCancelBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
-                  <Text style={ss.friendCancelText}>{t('common.cancel')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </>
-      }
-    >
-        {/* 바텀시트 — 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-        <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
-          {/* 핸들 바 */}
-          <View style={ss.handle} />
-
-          {/* 타이틀 */}
-          <Text style={ss.sheetTitle}>{t('social.shareTitle')}</Text>
-
-          {/* 공유 옵션 */}
-          <View style={ss.optionsRow}>
-            {SHARE_OPTIONS.map((opt) => (
-              <TouchableOpacity key={opt.key} style={ss.optionItem} onPress={opt.onPress} activeOpacity={0.75}>
-                <View style={ss.optionIconWrap}>
-                  <Text style={ss.optionIcon}>{opt.icon}</Text>
-                </View>
-                <Text style={ss.optionLabel}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* 취소 */}
-          <TouchableOpacity style={ss.cancelCard} onPress={onClose} activeOpacity={0.75}>
-            <Text style={ss.cancelText}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
-        </View>
-    </SheetShell>
-  );
-}
-
-// ─────────────────────────────────────────────
-// 댓글 바텀시트
-// ─────────────────────────────────────────────
-function CommentBottomSheet({
-  visible,
-  onClose,
-  comments,
-  onSend,
-  commentText,
-  setCommentText,
-  loading = false,
-  postAuthor,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  comments: SheetComment[];
-  /**
-   * (본문, 답글 대상 댓글 id) — 답글 상태는 **시트가 스스로** 들고 있고 호출부는 저장만 한다.
-   * 카드 4종(피드·스냅·블로그·앨범)이 저마다 답글 상태를 들면 같은 코드가 네 벌이 되고
-   * 한 곳만 고치는 사고가 난다.
-   */
-  onSend: (text: string, parentId?: string) => void;
-  commentText: string;
-  setCommentText: (t: string) => void;
-  /** 서버 댓글 조회 중 — 목록이 비어 있을 때만 스피너로 드러낸다(있으면 기존 목록 유지) */
-  loading?: boolean;
-  /** 글 작성자 — @자동완성 후보에 넣는다(메이트가 아니어도 태그할 수 있어야 한다) */
-  postAuthor?: { handle: string; photo?: string };
-}) {
-  const { t, i18n } = useTranslation();
-  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-  // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
-  const [kbVisible, setKbVisible] = useState(false);
-  useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const s1 = Keyboard.addListener(showEvt, () => setKbVisible(true));
-    const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
-    return () => { s1.remove(); s2.remove(); };
-  }, []);
-
-  // ── 상태 ──
-  const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
-  const inputRef = useRef<TextInput>(null);
-  const { neighbors, isBlocked } = useSocialGraph();
-  const { handle: myHandle } = useSettings();
-  const [cursor, setCursor] = useState(0);
-  // 칩 줄은 "입력 중"에만 뜬다 — activeMention 은 텍스트+커서만 보므로, `@ab` 까지 치고
-  // 안드로이드 뒤로가기로 키보드만 내리면 칩 줄이 그대로 남는다(포커스 조건이 그걸 막는다).
-  const [inputFocused, setInputFocused] = useState(false);
-  // 연타 가드 — 상세·스토리와 같은 이유다. 서버 addComment 에 멱등키가 없어, 두 번 눌린 사이에
-  // 같은 댓글이 두 번 저장되면 중복 행이 그대로 남는다(입력 비우기에만 의존하면 못 막는다).
-  const sendingRef = useRef(false);
-  // 시트를 닫으면 답글 대상도 버린다 — 남겨 두면 다음에 연 **다른 글**의 댓글에 엉뚱한 부모가 붙는다
-  // 포커스 표식도 함께 내린다 — Modal이 닫힐 때 TextInput의 blur가 오지 않는 경우가 있어,
-  // 남겨 두면 다시 열자마자(입력 전인데도) 칩 줄이 뜬다
-  useEffect(() => { if (!visible) { setReplyTo(null); setInputFocused(false); } }, [visible]);
-  // ⚠️ blur 로 칩 줄을 **즉시** 끄면 안 된다 — 칩을 누르는 순간 blur 가 press 보다 먼저 오는
-  //    경우가 있어(안드로이드) 칩이 사라지고 그 탭이 빈 곳에 떨어진다. 한 박자 늦춰 끄고,
-  //    다시 포커스가 잡히면 예약을 취소한다. 언마운트할 때도 예약을 함께 지운다.
-  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (blurTimerRef.current) clearTimeout(blurTimerRef.current); }, []);
-  const onInputFocus = () => {
-    if (blurTimerRef.current) { clearTimeout(blurTimerRef.current); blurTimerRef.current = null; }
-    setInputFocused(true);
-  };
-  const onInputBlur = () => {
-    if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
-    blurTimerRef.current = setTimeout(() => { blurTimerRef.current = null; setInputFocused(false); }, 200);
-  };
-
-  // ── 답글 ──
-  // 답글의 답글도 부모(=눌린 답글) id 를 그대로 넘긴다 — 스토어가 최상위로 승격해 2단을 유지한다
-  const handleReply = (id: string, name: string) => {
-    setReplyTo({ id, name });
-    // 답글 대상 아이디를 본문 앞에 미리 채운다 — 이미 그 사람으로 시작하면 중복 삽입하지 않는다
-    const next = ensureReplyPrefix(commentText, name);
-    setCommentText(next);
-    // ⚠️ 커서도 **같은 만큼 밀어야 한다.** 접두사를 앞에 끼우면 기존 글자가 전부 오른쪽으로
-    //    밀리는데 커서 상태를 그대로 두면 findActiveMention 이 방금 넣은 접두사의 앞부분을
-    //    "입력 중인 토큰"으로 잡는다(본문 `좋아요`·커서 3 + 대상 `jusang` → `{start:0,end:3,
-    //    query:'ju'}`). 그 상태에서 칩을 누르면 본문이 `@justin sang 좋아요` 로 깨지고
-    //    replyTo 는 여전히 jusang 이라 보이는 태그와 실제 답글 부모가 달라진다.
-    //    onSelectionChange 에 기대면 안 된다 — 안드로이드 ReactEditText.maybeSetText 는 텍스트를
-    //    바꾼 뒤 직전 selection 인덱스를 복원해, 값이 같으면 이벤트가 아예 발화하지 않는다.
-    //    접두사를 안 붙인 경우(이미 그 사람으로 시작)엔 delta 0 이라 그대로다.
-    const delta = next.length - commentText.length;
-    setCursor((c) => Math.min(c + delta, next.length));
-    inputRef.current?.focus();
-  };
-  // 답글을 취소해도 본문은 건드리지 않는다(설계 2026-09-09: 접두사 강제 삭제 안 함).
-  // 사용자가 이미 문장을 고쳐 썼을 수 있어, 지우면 쓰던 글이 사라진 것처럼 보인다.
-  const cancelReply = () => setReplyTo(null);
-
-  const send = () => {
-    if (sendingRef.current) return;
-    const body = commentText.trim();
-    if (!body) return;
-    sendingRef.current = true;
-    setTimeout(() => { sendingRef.current = false; }, 800);
-    onSend(body, replyTo?.id);
-    setReplyTo(null);
-  };
-
-  // ── @자동완성 ──
-  // 후보는 전부 로컬 데이터다(설계 2026-09-09) — 메이트 + 글 작성자 + 이 글의 댓글·답글 작성자.
-  // 중복 제거·접두 일치·상한(8)·**아이디 형식 검사**는 filterMentionCandidates 가 하므로
-  // 여기선 **순서**와 차단 제외만 정한다.
-  // useMemo 를 쓰지 않는 이유: comments 는 매 렌더 새 배열로 내려와 어차피 매번 다시 만들어진다.
-  // ⚠️ `visible` 가드는 성능상 필수다 — 이 시트는 피드 카드마다 하나씩 (닫힌 채로) 렌더된다.
-  //    가드가 없으면 피드를 스크롤할 때마다 안 보이는 시트 수십 개가 후보 목록을 다시 만든다.
-  const mentionCandidates: MentionCandidate[] = [];
-  if (visible) {
-    // 차단한 사람은 후보에서 뺀다. 이 시트의 comments 에는 상세 화면(PostDetailScreen:952)과 달리
-    // 차단 필터가 없어, 거르지 않으면 차단한 사람의 아이디가 칩으로 노출된다.
-    // name·handle 둘 다 넘기는 이유: isBlocked 는 차단 기록에 handle 이 있으면 handle 로,
-    // 없으면 name 으로 비교한다(recordStore:1449).
-    const pushCand = (handle?: string, photo?: string, emoji?: string) => {
-      if (!handle || isBlocked({ name: handle, handle })) return;
-      mentionCandidates.push({ handle, photo, emoji });
-    };
-    for (const n of neighbors) pushCand(n.username, n.photo, n.emoji);
-    pushCand(postAuthor?.handle, postAuthor?.photo);
-    for (const c of comments) {
-      pushCand(c.name, c.photo);
-      for (const r of (c.replies ?? [])) pushCand(r.name, r.photo);
-    }
-  }
-  const activeMention = visible ? findActiveMention(commentText, cursor) : null;
-
-  const pickMention = (handle: string) => {
-    if (!activeMention) return;
-    const next = applyMention(commentText, activeMention, handle);
-    setCommentText(next.text);
-    // ⚠️ TextInput 의 `selection` 을 prop 으로 **제어하지 않는다.** 안드로이드에서 제어된 selection 은
-    //    조합 중인 한글을 끊고 커서가 문장 끝으로 튀는 고질적인 함정이다. 텍스트만 갱신하고
-    //    커서 상태는 여기서 직접 맞춘다(뒤따르는 onSelectionChange 가 실제 위치로 덮어써도 무해).
-    //    삽입 뒤 본문 끝에는 공백이 붙으므로 findActiveMention 이 다시 잡지 않아 안전하다.
-    setCursor(next.cursor);
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent statusBarTranslucent navigationBarTranslucent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
-        <KeyboardAvoidingView
-          style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-          {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
-          <View style={[cs.sheet, { paddingBottom: Platform.OS === 'ios' ? 20 : kbVisible ? 12 : insets.bottom + 12 }]}>
-            {/* 핸들 바 */}
-            <View style={cs.handle} />
-
-            {/* 헤더 */}
-            <View style={cs.sheetHeader}>
-              <Text style={cs.sheetTitle}>{t('social.comments')}</Text>
-              <TouchableOpacity onPress={onClose}>
-                <Text style={cs.closeBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* 댓글 목록 */}
-            <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* 첫 조회 중이고 보여줄 게 아직 없을 때만 스피너 — 이미 목록이 있으면
-                  그대로 두고 조용히 갱신한다(다시 열 때마다 깜빡이지 않게) */}
-              {loading && comments.length === 0 ? (
-                <View style={{ paddingVertical: 28, alignItems: 'center' }}>
-                  <ActivityIndicator color="#BF85FC" />
-                </View>
-              ) : null}
-              {comments.map((c, idx) => (
-                <View key={c.id}>
-                  <View style={cs.commentRow}>
-                    <View style={cs.commentAvatar}>
-                      <AuthorAvatar photo={c.photo} size={36} />
-                    </View>
-                    <View style={cs.commentContent}>
-                      <Text style={cs.commentName}>{c.name}</Text>
-                      {/* @언급은 보라 네온 + 탭하면 그 사람 프로필로 (MentionText가 처리) */}
-                      <MentionText text={c.text} style={cs.commentBody} />
-                      <View style={cs.commentMetaRow}>
-                        <Text style={cs.commentTime}>{sheetCommentTime(c)}</Text>
-                        <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
-                          <Text style={cs.commentReplyBtn} {...andFitText}>{t('postDetail.reply')}</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                  {/* 답글 — 상세 화면과 같은 규칙(들여쓰기 42, 아바타 32).
-                      예전엔 시트가 최상위 댓글만 그려, 답글이 달린 글은 상세와 숫자·내용이 달랐다 */}
-                  {(c.replies ?? []).map((r) => (
-                    <View key={r.id} style={cs.replyRow}>
-                      <View style={cs.replyAvatar}>
-                        <AuthorAvatar photo={r.photo} size={32} />
-                      </View>
-                      <View style={cs.commentContent}>
-                        <Text style={cs.commentName}>{r.name}</Text>
-                        <MentionText text={r.text} style={cs.commentBody} />
-                        <View style={cs.commentMetaRow}>
-                          <Text style={cs.commentTime}>{sheetCommentTime(r)}</Text>
-                          {/* 답글의 답글도 부모(=이 답글) id 를 넘긴다 — 스토어가 최상위로 승격 */}
-                          <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
-                            <Text style={cs.commentReplyBtn} {...andFitText}>{t('postDetail.reply')}</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-                  {idx < comments.length - 1 && <View style={cs.divider} />}
-                </View>
-              ))}
-            </ScrollView>
-
-            {/* 답글 대상 바 — 상세 화면 s.replyBar 를 시트 토큰(카드 #2E2E3B / 구분선 #1A1A26)으로 재현 */}
-            {replyTo && (
-              <View style={cs.replyBar}>
-                <Text style={cs.replyBarText} numberOfLines={1} {...andFitText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
-                <TouchableOpacity onPress={cancelReply} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={cs.replyBarCancel}>✕</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* @자동완성 — 후보가 0이면 MentionSuggestBar 가 null 을 돌려주므로 여기선 '편집 중인가'만 본다.
-                입력창 바로 위에 둔다(목록 ScrollView 밖) — 시트 ScrollView 는 keyboardShouldPersistTaps="handled",
-                칩 줄은 "always" 라 탭이 키보드 내리기에 먹히지 않는다. */}
-            {inputFocused && activeMention && (
-              <MentionSuggestBar
-                candidates={mentionCandidates}
-                query={activeMention.query}
-                exclude={myHandle}
-                onPick={pickMention}
-              />
-            )}
-
-            {/* 입력창 */}
-            <View style={cs.inputRow}>
-              <View style={cs.myAvatar}>
-                <Text style={cs.myAvatarText}>{t('social.me')}</Text>
-              </View>
-              <View style={cs.inputWrap}>
-                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                  ref={inputRef}
-                  style={cs.input}
-                  placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('social.commentPlaceholder')}
-                  placeholderTextColor="#4A4A59"
-                  value={commentText}
-                  onChangeText={setCommentText}
-                  // 커서 추적 — @자동완성이 "지금 어느 토큰을 쓰는 중인가"를 알아야 한다
-                  onSelectionChange={(e) => setCursor(e.nativeEvent.selection.end)}
-                  // 포커스 추적 — 키보드만 내렸을 때 칩 줄이 남지 않게 한다(위 onInputBlur 주석)
-                  onFocus={onInputFocus}
-                  onBlur={onInputBlur}
-                  multiline
-                  maxLength={500}
-                />
-                {/* 공백만 입력하면 onSend가 조용히 무시해 '고장'으로 보였다 — 비활성으로 드러낸다 */}
-                <TouchableOpacity style={cs.sendBtn} onPress={send} disabled={!commentText.trim()}>
-                  <Text style={[cs.sendIcon, !commentText.trim() && { opacity: 0.4 }]}>↑</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
-    </Modal>
-  );
-}
-
-const CommentIcon = ({ active, color }: { active: boolean; color?: string }) => {
-  const iconColor = color || (active ? C.accent : C.dim);
-  return <CommentSvgIcon size={22} color={iconColor} />;
-};
-
-const ShareIcon = ({ active }: { active: boolean }) => (
-  <ShareSvgIcon size={22} color={active ? C.accent : C.dim} />
-);
-
-// 게시물 작성자 아이디 폰트(프리미엄) — 내 글은 내 설정값(구독 중일 때만),
-// 타인 글은 서버(profiles.handle_font)에서 온 item.user.font 로 렌더한다.
-function usePostNameFont(item: any) {
-  const { handle, handleFont, isPremium } = useSettings();
-  const isMine = item?.isMyPost || item?.user?.handle === handle;
-  return handleFontStyle(isMine ? (isPremium ? handleFont : null) : item?.user?.font);
-}
-
-// ─────────────────────────────────────────────
-// 피드 카드 (아이콘 active 상태 개별 관리)
-// ─────────────────────────────────────────────
-function FeedCard({
-  item,
-  toggleLike,
-  onBlock,
-  onArchive,
-  onDelete,
-  navigation,
-  activeMenuId,
-  onOpenMenu,
-}: {
-  item: any;
-  toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
-  onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
-  navigation: any;
-  activeMenuId: string | null;
-  onOpenMenu: (id: string | null) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const { showCounts } = useSettings();
-  const nameFontStyle = usePostNameFont(item);
-  const menuBtnRef = useRef<View>(null);
-  const [dropdownTop, setDropdownTop] = useState(0);
-  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
-  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
-  const stageGutter = useStageGutter();
-
-  const [commentActive, setCommentActive] = useState(false);
-  const [shareActive, setShareActive] = useState(false);
-  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records } = useRecordData();
-  const { commentsByPost } = useComments();
-  const { addComment, refreshComments } = useRecordActions();
-  const comments = commentsByPost[item.id] ?? [];
-  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
-  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
-  // 시트를 열 때마다 서버 댓글 재조회
-  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
-  const [commentText, setCommentText] = useState('');
-  const [shareSheetVisible, setShareSheetVisible] = useState(false);
-  const [shareToast, setShareToast] = useState(false);
-  const shareToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [reportVisible, setReportVisible] = useState(false);
-  const [menuToastMsg, setMenuToastMsg] = useState('');
-  const [menuToastVisible, setMenuToastVisible] = useState(false);
-  const menuToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const showShareToast = () => {
-    if (shareToastTimer.current) clearTimeout(shareToastTimer.current);
-    setShareToast(true);
-    shareToastTimer.current = setTimeout(() => setShareToast(false), 2500);
-  };
-
-  const showMenuToast = (msg: string) => {
-    if (menuToastTimer.current) clearTimeout(menuToastTimer.current);
-    setMenuToastMsg(msg);
-    setMenuToastVisible(true);
-    menuToastTimer.current = setTimeout(() => setMenuToastVisible(false), 2000);
-  };
-
-  const isMyPost = item.isMyPost ?? false;
-  const menuOpen = activeMenuId === item.id;
-
-  const handleArchive = () => {
-    onOpenMenu(null);
-    onArchive(item.id);
-  };
-
-  const handleEdit = () => {
-    onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
-  };
-
-  const handleDeletePress = () => {
-    onOpenMenu(null);
-    warn(); // 되돌릴 수 없는 동작을 묻는 중
-    Alert.alert(
-      t('social.deleteConfirmTitle'),
-      t('social.deleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
-      ]
-    );
-  };
-
-  return (
-    <View style={s.feedCard}>
-      {/* 카드 헤더 */}
-      <View style={s.cardHeader}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
-          activeOpacity={0.7}
-        >
-          <View style={s.feedAvatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} isExample={item.isExample} />
-          </View>
-        </TouchableOpacity>
-        <View style={s.userInfo}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
-            activeOpacity={0.7}
-          >
-            <Text style={[s.userName, nameFontStyle]}>{item.user.handle}</Text>
-          </TouchableOpacity>
-          <View style={s.metaRow}>
-            {item.countries && item.countries.length > 0
-              ? item.countries.length <= 3
-                ? item.countries.map((c: { flag: string; name: string }, idx: number) => (
-                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
-                  ))
-                : <>
-                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
-                    <Text style={s.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
-                  </>
-              : <Text style={s.countryTag} {...andFitText}>{countryTagLabel(item.country, i18n.language)}</Text>
-            }
-            {!item.isExample && <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>}
-          </View>
-        </View>
-
-        {isMyPost ? (
-          /* 내 게시물 ⋯ → Modal 드롭다운 */
-          <View ref={menuBtnRef}>
-            <TouchableOpacity
-              onPress={() => {
-                if (menuOpen) {
-                  onOpenMenu(null);
-                } else {
-                  menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                    setDropdownTop(py + h + 4);
-                  });
-                  onOpenMenu(item.id);
-                }
-              }}
-            >
-              <Text style={s.moreIcon}>···</Text>
-            </TouchableOpacity>
-            <Modal
-              visible={menuOpen}
-              transparent
-              animationType="none"
-              statusBarTranslucent navigationBarTranslucent
-              onRequestClose={() => onOpenMenu(null)}
-            >
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                activeOpacity={1}
-                onPress={() => onOpenMenu(null)}
-              />
-              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                <TouchableOpacity
-                  style={s.myMenuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    setShareSheetVisible(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <ShareSvgIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.share')}</Text>
-                </TouchableOpacity>
-                <View style={s.myMenuDivider} />
-                <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.archive')}</Text>
-                </TouchableOpacity>
-                <View style={s.myMenuDivider} />
-                <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                  <PencilIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.edit')}</Text>
-                </TouchableOpacity>
-                <View style={s.myMenuDivider} />
-                <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
-                  <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
-                </TouchableOpacity>
-              </View>
-            </Modal>
-          </View>
-        ) : (
-          /* 다른 사람 게시물 ⋯ → Modal 드롭다운 */
-          <View ref={menuBtnRef}>
-            <TouchableOpacity
-              onPress={() => {
-                if (menuOpen) {
-                  onOpenMenu(null);
-                } else {
-                  menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                    setDropdownTop(py + h + 4);
-                  });
-                  onOpenMenu(item.id);
-                }
-              }}
-            >
-              <Text style={s.moreIcon}>···</Text>
-            </TouchableOpacity>
-            <Modal
-              visible={menuOpen}
-              transparent
-              animationType="none"
-              statusBarTranslucent navigationBarTranslucent
-              onRequestClose={() => onOpenMenu(null)}
-            >
-              <TouchableOpacity
-                style={{ flex: 1 }}
-                activeOpacity={1}
-                onPress={() => onOpenMenu(null)}
-              />
-              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                <TouchableOpacity
-                  style={s.menuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    setShareSheetVisible(true);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <ShareSvgIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.share')}</Text>
-                </TouchableOpacity>
-                <View style={s.menuDivider} />
-                <TouchableOpacity
-                  style={s.menuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    confirmBlock(item.user.name, () => {
-                      onBlock({ ...item.user, id: item.authorId });
-                      showMenuToast(t('social.blockedToast'));
-                    }, t);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <BlockIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.block')}</Text>
-                </TouchableOpacity>
-                <View style={s.menuDivider} />
-                <TouchableOpacity
-                  style={s.menuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    openReport(setReportVisible);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <WarningIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.report')}</Text>
-                </TouchableOpacity>
-              </View>
-            </Modal>
-          </View>
-        )}
-      </View>
-
-      {/* 사진 영역 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
-        <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photoPlaceholder}>
-          <Text style={{ fontSize: 48, opacity: 0.4 }}>🌄</Text>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      {/* 본문 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
-        <View style={s.cardBody}>
-          <Text style={s.content}>{item.content}</Text>
-        </View>
-      </TouchableOpacity>
-      <View style={[s.cardBody, { paddingTop: 0 }]}>
-        <View style={s.actions}>
-          <TouchableOpacity style={s.actionBtn} onPress={() => { tap(); toggleLike(item.id); }}>
-            <Text style={[s.actionIcon, item.liked && { color: '#FF6B9D' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-            {showCounts && <Text style={s.actionCount}>{item.likes}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={s.actionBtn} onPress={() => setCommentSheetVisible(true)}>
-            <CommentIcon active={commentActive} />
-            {showCounts && <Text style={s.actionCount}>{commentCount}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={s.actionBtn} onPress={() => setShareSheetVisible(true)}>
-            <ShareIcon active={shareActive} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <ShareBottomSheet
-        visible={shareSheetVisible}
-        onClose={() => setShareSheetVisible(false)}
-        onLinkCopied={showShareToast}
-        postId={item.id}
-        navigation={navigation}
-      />
-      {shareToast && (
-        <View style={s.toast} pointerEvents="none">
-          <Text style={s.toastText}>{t('social.linkCopiedToast')}</Text>
-        </View>
-      )}
-      <ReportModal
-        visible={reportVisible}
-        onClose={() => setReportVisible(false)}
-        onSubmit={(reason) => {
-          setReportVisible(false);
-          showMenuToast(t('social.reportReceivedToast'));
-        }}
-      />
-
-      <Toast visible={menuToastVisible} message={menuToastMsg} />
-
-      <CommentBottomSheet
-        visible={commentSheetVisible}
-        onClose={() => setCommentSheetVisible(false)}
-        comments={comments}
-        loading={commentsLoading}
-        commentText={commentText}
-        setCommentText={setCommentText}
-        onSend={(text, parentId) => {
-          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
-          addComment(item.id, text, parentId, item.remoteId ?? undefined);
-          setCommentText('');
-        }}
-        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
-      />
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────
-// 블로그 카드
-// ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
-// 스냅 카드 (BeReal 스타일)
-// ─────────────────────────────────────────────
-function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id: string) => void; navigation: any }) {
-  const { i18n } = useTranslation();
-  const { showCounts } = useSettings();
-  const [shareSheetVisible, setShareSheetVisible] = useState(false);
-  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost } = useComments();
-  const { addComment, refreshComments } = useRecordActions();
-  const comments = commentsByPost[item.id] ?? [];
-  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
-  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
-  // 시트를 열 때마다 서버 댓글 재조회
-  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
-  const [commentText, setCommentText] = useState('');
-  const nameFontStyle = usePostNameFont(item);
-
-  // 촬영 지연
-  const lateText = (() => {
-    if (!item.snapLateSeconds || item.snapLateSeconds <= 0) return null;
-    const s = item.snapLateSeconds;
-    if (s < 60) return `${s}초 후 촬영`;
-    return `${Math.floor(s / 60)}분 ${s % 60}초 후 촬영`;
-  })();
-
-  return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
-      <View style={sc.card}>
-        {/* 헤더 */}
-        <View style={sc.header}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} activeOpacity={0.7}
-          >
-            <View style={sc.avatar}>
-              <Text style={{ fontSize: 14 }}>⚡</Text>
-            </View>
-            <View>
-              <Text style={[sc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              {!item.isExample && <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>}
-            </View>
-          </TouchableOpacity>
-          <View style={sc.snapBadge}>
-            <Text style={sc.snapBadgeText}>⚡ SNAP</Text>
-          </View>
-        </View>
-
-        {/* 사진 영역 */}
-        <View style={sc.photoArea}>
-          {/* 후면 사진 (메인) — 더미는 그라데이션 */}
-          <View style={sc.backPhoto}>
-            {item.snapBackUri ? (
-              <FeedPhoto uri={item.snapBackUri} thumbs={item.thumbs} style={sc.backImg} />
-            ) : (
-              <View style={sc.placeholderBg}>
-                <Text style={sc.placeholderEmoji}>📸</Text>
-              </View>
-            )}
-          </View>
-
-          {/* 전면 사진 (PIP) */}
-          {item.snapFrontUri ? (
-            <View style={sc.pipWrap}>
-              <FeedPhoto uri={item.snapFrontUri} thumbs={item.thumbs} style={sc.pipImg} />
-            </View>
-          ) : (
-            <View style={sc.pipWrap}>
-              <View style={sc.pipPlaceholder}>
-                <Text style={{ fontSize: 20 }}>🤳</Text>
-              </View>
-            </View>
-          )}
-
-          {/* 국가 뱃지 */}
-          {item.countryFlag && (
-            <View style={sc.countryBadge}>
-              <Text style={sc.countryBadgeText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
-            </View>
-          )}
-
-          {/* 촬영 지연 뱃지 */}
-          {lateText && (
-            <View style={sc.lateBadge}>
-              <Text style={sc.lateBadgeText}>⏱ {lateText}</Text>
-            </View>
-          )}
-
-        </View>
-
-        {/* 캡션 */}
-        {item.snapCaption ? (
-          <Text style={sc.caption}>{item.snapCaption}</Text>
-        ) : null}
-
-        {/* 하단 */}
-        <View style={sc.footer}>
-          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={sc.actionBtn}>
-            <Text style={[sc.actionIcon, item.liked && { color: '#FF6B9D' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-            {showCounts && <Text style={sc.actionCount}>{item.likes}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={sc.actionBtn} onPress={() => setCommentSheetVisible(true)}>
-            <CommentIcon active={false} color="#A1A1B0" />
-            {showCounts && <Text style={sc.actionCount}>{commentCount}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={sc.actionBtn} onPress={() => setShareSheetVisible(true)}>
-            <ShareIcon active={false} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }} />
-        </View>
-      </View>
-      <ShareBottomSheet
-        visible={shareSheetVisible}
-        onClose={() => setShareSheetVisible(false)}
-        onLinkCopied={() => {}}
-        postId={item.id}
-        navigation={navigation}
-      />
-      <CommentBottomSheet
-        visible={commentSheetVisible}
-        onClose={() => setCommentSheetVisible(false)}
-        comments={comments}
-        loading={commentsLoading}
-        commentText={commentText}
-        setCommentText={setCommentText}
-        onSend={(text, parentId) => {
-          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
-          addComment(item.id, text, parentId, item.remoteId ?? undefined);
-          setCommentText('');
-        }}
-        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
-      />
-    </TouchableOpacity>
-  );
-}
-
-const sc = StyleSheet.create({
-  card: {
-    backgroundColor: '#0D0D16', borderRadius: 20, marginBottom: 16,
-    borderWidth: 1, borderColor: 'rgba(255,214,10,0.15)', overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingTop: 14, paddingBottom: 10,
-  },
-  avatar: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: 'rgba(255,214,10,0.15)', alignItems: 'center', justifyContent: 'center',
-  },
-  userName: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  date: { color: '#A1A1B0', fontSize: 11 },
-  snapBadge: {
-    backgroundColor: 'rgba(255,214,10,0.15)', borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  snapBadgeText: { color: '#FFD60A', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  photoArea: {
-    marginHorizontal: 10, borderRadius: 16, overflow: 'hidden',
-    aspectRatio: 3 / 4, backgroundColor: '#111',
-  },
-  photoAreaExpired: { opacity: 0.4 },
-  backPhoto: { flex: 1 },
-  backImg: { width: '100%', height: '100%' },
-  placeholderBg: {
-    flex: 1, backgroundColor: '#1A1A2E',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  placeholderEmoji: { fontSize: 48, opacity: 0.3 },
-  pipWrap: {
-    position: 'absolute', top: 12, left: 12,
-    width: 80, height: 106, borderRadius: 14,
-    overflow: 'hidden', borderWidth: 3, borderColor: '#FFD60A',
-  },
-  pipImg: { width: '100%', height: '100%' },
-  pipPlaceholder: {
-    flex: 1, backgroundColor: '#2A2A3A',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  countryBadge: {
-    position: 'absolute', bottom: 12, left: 12,
-    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  countryBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  lateBadge: {
-    position: 'absolute', bottom: 12, right: 12,
-    backgroundColor: 'rgba(255,214,10,0.2)', borderRadius: 10,
-    paddingHorizontal: 10, paddingVertical: 5,
-  },
-  lateBadgeText: { color: '#FFD60A', fontSize: 11, fontWeight: '700' },
-  caption: {
-    color: '#fff', fontSize: 15, lineHeight: 22,
-    paddingHorizontal: 16, paddingTop: 12,
-  },
-  footer: {
-    flexDirection: 'row', alignItems: 'center', gap: 16,
-    padding: 14, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.04)',
-    marginTop: 8,
-  },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionIcon: { fontSize: 20, color: '#A1A1B0' },
-  actionCount: { fontSize: 12, color: '#A1A1B0', fontWeight: '500' },
-  timeLeft: { color: '#FFD60A', fontSize: 11, fontWeight: '600' },
-});
-
-
-function BlogCard({
-  item,
-  toggleLike,
-  onBlock,
-  onArchive,
-  onDelete,
-  navigation,
-  activeMenuId,
-  onOpenMenu,
-}: {
-  item: any;
-  toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
-  onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
-  navigation: any;
-  activeMenuId: string | null;
-  onOpenMenu: (id: string | null) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const { showCounts } = useSettings();
-  const nameFontStyle = usePostNameFont(item);
-  const [shareSheetVisible, setShareSheetVisible] = useState(false);
-  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records } = useRecordData();
-  const { commentsByPost } = useComments();
-  const { addComment, refreshComments } = useRecordActions();
-  const comments = commentsByPost[item.id] ?? [];
-  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
-  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
-  // 시트를 열 때마다 서버 댓글 재조회
-  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
-  const [commentText, setCommentText] = useState('');
-  const [reportVisible, setReportVisible] = useState(false);
-  const [menuToastMsg, setMenuToastMsg] = useState('');
-  const [menuToastVisible, setMenuToastVisible] = useState(false);
-  const menuToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const menuBtnRef = useRef<View>(null);
-  const [dropdownTop, setDropdownTop] = useState(0);
-  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
-  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
-  const stageGutter = useStageGutter();
-
-  const isMyPost = item.isMyPost ?? false;
-  const menuOpen = activeMenuId === item.id;
-
-  const showMenuToast = (msg: string) => {
-    if (menuToastTimer.current) clearTimeout(menuToastTimer.current);
-    setMenuToastMsg(msg);
-    setMenuToastVisible(true);
-    menuToastTimer.current = setTimeout(() => setMenuToastVisible(false), 2000);
-  };
-
-  const handleArchive = () => {
-    onOpenMenu(null);
-    onArchive(item.id);
-  };
-
-  const handleEdit = () => {
-    onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
-  };
-
-  const handleDeletePress = () => {
-    onOpenMenu(null);
-    warn(); // 되돌릴 수 없는 동작을 묻는 중
-    Alert.alert(
-      t('social.deleteConfirmTitle'),
-      t('social.deleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
-      ]
-    );
-  };
-
-  return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
-      <View style={bc.card}>
-        {/* 블로그 헤더 */}
-        <View style={bc.header}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
-          >
-            <View style={bc.avatar}>
-              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} isExample={item.isExample} />
-            </View>
-            <View>
-              <Text style={[bc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              {!item.isExample && <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>}
-            </View>
-          </TouchableOpacity>
-
-          {isMyPost ? (
-            <View ref={menuBtnRef}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (menuOpen) {
-                    onOpenMenu(null);
-                  } else {
-                    menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                      setDropdownTop(py + h + 4);
-                    });
-                    onOpenMenu(item.id);
-                  }
-                }}
-              >
-                <Text style={bc.moreIcon}>···</Text>
-              </TouchableOpacity>
-              <Modal
-                visible={menuOpen}
-                transparent
-                animationType="none"
-                statusBarTranslucent navigationBarTranslucent
-                onRequestClose={() => onOpenMenu(null)}
-              >
-                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-                <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                  <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                    <ArchiveIcon size={16} color="#FFFFFF" />
-                    <Text style={s.menuItemText}>{t('social.archive')}</Text>
-                  </TouchableOpacity>
-                  <View style={s.myMenuDivider} />
-                  <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                    <PencilIcon size={16} color="#FFFFFF" />
-                    <Text style={s.menuItemText}>{t('social.modify')}</Text>
-                  </TouchableOpacity>
-                  <View style={s.myMenuDivider} />
-                  <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
-                    <TrashIcon size={16} color="#FF3B30" />
-                    <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </Modal>
-            </View>
-          ) : (
-            <View ref={menuBtnRef}>
-              <TouchableOpacity
-                onPress={() => {
-                  if (menuOpen) {
-                    onOpenMenu(null);
-                  } else {
-                    menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                      setDropdownTop(py + h + 4);
-                    });
-                    onOpenMenu(item.id);
-                  }
-                }}
-              >
-                <Text style={bc.moreIcon}>···</Text>
-              </TouchableOpacity>
-              <Modal
-                visible={menuOpen}
-                transparent
-                animationType="none"
-                statusBarTranslucent navigationBarTranslucent
-                onRequestClose={() => onOpenMenu(null)}
-              >
-                <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-                <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                  <TouchableOpacity
-                    style={s.menuItem}
-                    onPress={() => {
-                      onOpenMenu(null);
-                      confirmBlock(item.user.name, () => {
-                        onBlock({ ...item.user, id: item.authorId });
-                        showMenuToast(t('social.blockedToast'));
-                      }, t);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <BlockIcon size={16} color="#FF3B30" />
-                    <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
-                  </TouchableOpacity>
-                  <View style={s.menuDivider} />
-                  <TouchableOpacity
-                    style={s.menuItem}
-                    onPress={() => {
-                      onOpenMenu(null);
-                      openReport(setReportVisible);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <WarningIcon size={16} color="#FF3B30" />
-                    <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </Modal>
-            </View>
-          )}
-        </View>
-
-        {/* 국가 태그 */}
-        <View style={bc.countryRow}>
-          {item.countries ? (
-            item.countries.slice(0, 3).map((c: any, i: number) => (
-              <View key={i} style={bc.countryTag}>
-                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
-              </View>
-            ))
-          ) : (
-            <View style={bc.countryTag}>
-              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
-            </View>
-          )}
-          {item.countries && item.countries.length > 3 && (
-            <View style={bc.countryTag}>
-              <Text style={bc.countryTagText} {...andFitText}>+{item.countries.length - 3}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* 블로그 본문 미리보기 */}
-        <Text style={bc.content} numberOfLines={4}>{item.content}</Text>
-
-        {/* 메모 */}
-        {item.memo && (
-          <Text style={bc.memo} numberOfLines={2}>{item.memo}</Text>
-        )}
-
-        {/* 키워드 태그 */}
-        {item.keywords && item.keywords.length > 0 && (
-          <View style={bc.keywordRow}>
-            {item.keywords.slice(0, 4).map((kw: string, i: number) => (
-              <View key={i} style={bc.keyword}>
-                <Text style={bc.keywordText}>#{kw}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* 하단 액션 */}
-        <View style={bc.footer}>
-          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={bc.actionBtn}>
-            <Text style={[bc.actionIcon, item.liked && { color: '#FF6B9D' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-            {showCounts && <Text style={bc.actionCount}>{item.likes}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={bc.actionBtn} onPress={() => setCommentSheetVisible(true)}>
-            <CommentIcon active={false} color="#A1A1B0" />
-            {showCounts && <Text style={bc.actionCount}>{commentCount}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={bc.actionBtn} onPress={() => setShareSheetVisible(true)}>
-            <ShareIcon active={false} />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <ShareBottomSheet
-        visible={shareSheetVisible}
-        onClose={() => setShareSheetVisible(false)}
-        onLinkCopied={() => {}}
-        postId={item.id}
-        navigation={navigation}
-      />
-      <CommentBottomSheet
-        visible={commentSheetVisible}
-        onClose={() => setCommentSheetVisible(false)}
-        comments={comments}
-        loading={commentsLoading}
-        commentText={commentText}
-        setCommentText={setCommentText}
-        onSend={(text, parentId) => {
-          // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
-          addComment(item.id, text, parentId, item.remoteId ?? undefined);
-          setCommentText('');
-        }}
-        postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
-      />
-      <ReportModal
-        visible={reportVisible}
-        onClose={() => setReportVisible(false)}
-        onSubmit={() => {
-          setReportVisible(false);
-          showMenuToast(t('social.reportReceivedToast'));
-        }}
-      />
-      <Toast visible={menuToastVisible} message={menuToastMsg} />
-    </TouchableOpacity>
-  );
-}
-
-const bc = StyleSheet.create({
-  card: { backgroundColor: '#13102A', borderRadius: 16, marginBottom: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(191,133,252,0.12)' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  avatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(191,133,252,0.15)', alignItems: 'center', justifyContent: 'center' },
-  userName: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  date: { color: '#A1A1B0', fontSize: 11 },
-  moreIcon: { fontSize: 18, color: '#A1A1B0', fontWeight: '700', paddingHorizontal: 4 },
-  countryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  countryTag: { backgroundColor: 'rgba(191,133,252,0.1)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  countryTagText: { color: '#BF85FC', fontSize: 11, fontWeight: '500' },
-  content: { color: '#fff', fontSize: 14, lineHeight: 22, marginBottom: 8 },
-  memo: { color: '#A1A1B0', fontSize: 13, lineHeight: 19, marginBottom: 8, fontStyle: 'italic' },
-  keywordRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
-  keyword: { backgroundColor: 'rgba(107,33,168,0.2)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  keywordText: { color: '#A78BFA', fontSize: 11 },
-  footer: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionIcon: { fontSize: 20, color: '#A1A1B0' },
-  actionCount: { fontSize: 12, color: '#A1A1B0', fontWeight: '500' },
-});
-
-
-// ─────────────────────────────────────────────
-// 앨범 카드 (미니 갤러리 그리드)
-// ─────────────────────────────────────────────
-function AlbumCard({
-  item,
-  toggleLike,
-  onBlock,
-  onArchive,
-  onDelete,
-  navigation,
-  activeMenuId,
-  onOpenMenu,
-}: {
-  item: any;
-  toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
-  onArchive: (id: string) => void;
-  onDelete: (id: string) => void;
-  navigation: any;
-  activeMenuId: string | null;
-  onOpenMenu: (id: string | null) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const { showCounts } = useSettings();
-  const nameFontStyle = usePostNameFont(item);
-  const [shareSheetVisible, setShareSheetVisible] = useState(false);
-  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { records } = useRecordData();
-  const { commentsByPost } = useComments();
-  const { addComment, refreshComments } = useRecordActions();
-  const comments = commentsByPost[item.id] ?? [];
-  // 카드에 그릴 댓글 수 — 서버 카운트 기준(feedCommentCount 주석 참조)
-  const commentCount = feedCommentCount(item, commentsByPost[item.id]);
-  // 시트를 열 때마다 서버 댓글 재조회
-  const commentsLoading = useSheetCommentRefresh(item, commentSheetVisible, refreshComments);
-  const [commentText, setCommentText] = useState('');
-  const [reportVisible, setReportVisible] = useState(false);
-  const [menuToastMsg, setMenuToastMsg] = useState('');
-  const [menuToastVisible, setMenuToastVisible] = useState(false);
-  const menuToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const menuBtnRef = useRef<View>(null);
-  const [dropdownTop, setDropdownTop] = useState(0);
-  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
-  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
-  const stageGutter = useStageGutter();
-  const medias: string[] = item.medias || [];
-  const extraCount = medias.length - 4;
-
-  const isMyPost = item.isMyPost ?? false;
-  const menuOpen = activeMenuId === item.id;
-
-  const showMenuToast = (msg: string) => {
-    if (menuToastTimer.current) clearTimeout(menuToastTimer.current);
-    setMenuToastMsg(msg);
-    setMenuToastVisible(true);
-    menuToastTimer.current = setTimeout(() => setMenuToastVisible(false), 2000);
-  };
-
-  const handleArchive = () => {
-    onOpenMenu(null);
-    onArchive(item.id);
-  };
-
-  const handleEdit = () => {
-    onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
-  };
-
-  const handleDeletePress = () => {
-    onOpenMenu(null);
-    warn(); // 되돌릴 수 없는 동작을 묻는 중
-    Alert.alert(
-      t('social.deleteConfirmTitle'),
-      t('social.deleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
-      ]
-    );
-  };
-
-  return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
-    <View style={ab.card}>
-      {/* 헤더 */}
-      <View style={ab.header}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
-          style={ab.userRow} activeOpacity={0.7}
-        >
-          <View style={ab.avatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} isExample={item.isExample} />
-          </View>
-          <View>
-            <Text style={[ab.userName, nameFontStyle]}>{item.user.handle}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
-              {item.countries && (
-                item.countries.length <= 3
-                  ? item.countries.map((c: any, i: number) => (
-                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
-                    ))
-                  : <>
-                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
-                      <Text style={ab.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
-                    </>
-              )}
-              {!item.isExample && <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>}
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        {isMyPost ? (
-          <View ref={menuBtnRef}>
-            <TouchableOpacity
-              onPress={() => {
-                if (menuOpen) {
-                  onOpenMenu(null);
-                } else {
-                  menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                    setDropdownTop(py + h + 4);
-                  });
-                  onOpenMenu(item.id);
-                }
-              }}
-            >
-              <Text style={ab.moreIcon}>···</Text>
-            </TouchableOpacity>
-            <Modal
-              visible={menuOpen}
-              transparent
-              animationType="none"
-              statusBarTranslucent navigationBarTranslucent
-              onRequestClose={() => onOpenMenu(null)}
-            >
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.archive')}</Text>
-                </TouchableOpacity>
-                <View style={s.myMenuDivider} />
-                <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                  <PencilIcon size={16} color="#FFFFFF" />
-                  <Text style={s.menuItemText}>{t('social.modify')}</Text>
-                </TouchableOpacity>
-                <View style={s.myMenuDivider} />
-                <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
-                  <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
-                </TouchableOpacity>
-              </View>
-            </Modal>
-          </View>
-        ) : (
-          <View ref={menuBtnRef}>
-            <TouchableOpacity
-              onPress={() => {
-                if (menuOpen) {
-                  onOpenMenu(null);
-                } else {
-                  menuBtnRef.current?.measure((_x, _y, _w, h, _px, py) => {
-                    setDropdownTop(py + h + 4);
-                  });
-                  onOpenMenu(item.id);
-                }
-              }}
-            >
-              <Text style={ab.moreIcon}>···</Text>
-            </TouchableOpacity>
-            <Modal
-              visible={menuOpen}
-              transparent
-              animationType="none"
-              statusBarTranslucent navigationBarTranslucent
-              onRequestClose={() => onOpenMenu(null)}
-            >
-              <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
-                <TouchableOpacity
-                  style={s.menuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    confirmBlock(item.user.name, () => {
-                      onBlock({ ...item.user, id: item.authorId });
-                      showMenuToast(t('social.blockedToast'));
-                    }, t);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <BlockIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
-                </TouchableOpacity>
-                <View style={s.menuDivider} />
-                <TouchableOpacity
-                  style={s.menuItem}
-                  onPress={() => {
-                    onOpenMenu(null);
-                    openReport(setReportVisible);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <WarningIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
-                </TouchableOpacity>
-              </View>
-            </Modal>
-          </View>
-        )}
-      </View>
-
-      {/* 앨범 제목 */}
-      <View style={ab.titleRow}>
-        <GalleryIcon size={16} color="#A1A1B0" />
-        <Text style={ab.albumTitle}>{item.content}</Text>
-      </View>
-
-      {/* 사진 그리드 */}
-      {medias.length > 0 ? (
-        <View style={ab.grid}>
-          {medias.length === 1 && (
-            <Image source={{ uri: medias[0] }} style={ab.gridSingle} resizeMode="cover" />
-          )}
-          {medias.length === 2 && (
-            <View style={ab.gridRow}>
-              <Image source={{ uri: medias[0] }} style={ab.gridHalf} resizeMode="cover" />
-              <Image source={{ uri: medias[1] }} style={ab.gridHalf} resizeMode="cover" />
-            </View>
-          )}
-          {medias.length === 3 && (
-            <View style={ab.gridRow}>
-              <Image source={{ uri: medias[0] }} style={ab.gridTwoThird} resizeMode="cover" />
-              <View style={ab.gridCol}>
-                <Image source={{ uri: medias[1] }} style={ab.gridSmall} resizeMode="cover" />
-                <Image source={{ uri: medias[2] }} style={ab.gridSmall} resizeMode="cover" />
-              </View>
-            </View>
-          )}
-          {medias.length >= 4 && (
-            <View style={ab.grid4}>
-              <View style={ab.gridRow}>
-                <Image source={{ uri: medias[0] }} style={ab.grid4Cell} resizeMode="cover" />
-                <Image source={{ uri: medias[1] }} style={ab.grid4Cell} resizeMode="cover" />
-              </View>
-              <View style={ab.gridRow}>
-                <Image source={{ uri: medias[2] }} style={ab.grid4Cell} resizeMode="cover" />
-                <View style={ab.grid4Cell}>
-                  <Image source={{ uri: medias[3] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                  {extraCount > 0 && (
-                    <View style={ab.moreOverlay}>
-                      <Text style={ab.moreText}>+{extraCount}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          )}
-        </View>
-      ) : (
-        <LinearGradient colors={['#1A0A2E', '#2A1052']} style={ab.noMedia}>
-          <GalleryIcon size={40} color="#A1A1B0" />
-          <Text style={ab.noMediaText}>{t('social.album')}</Text>
-        </LinearGradient>
-      )}
-
-      {/* 하단 액션 */}
-      <View style={ab.bottom}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <TouchableOpacity onPress={() => { tap(); toggleLike(item.id); }} style={ab.likeBtn}>
-            <Text style={[ab.actionIcon, item.liked && { color: '#FF6B9D' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-            {showCounts && <Text style={ab.actionCount}>{item.likes}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={ab.likeBtn} onPress={() => setCommentSheetVisible(true)}>
-            <CommentIcon active={false} />
-            {showCounts && <Text style={ab.actionCount}>{commentCount}</Text>}
-          </TouchableOpacity>
-          <TouchableOpacity style={ab.likeBtn} onPress={() => setShareSheetVisible(true)}>
-            <ShareIcon active={false} />
-          </TouchableOpacity>
-        </View>
-        {medias.length > 0 && (
-          <Text style={ab.photoCount}>{medias.length}장</Text>
-        )}
-      </View>
-    </View>
-    <ShareBottomSheet
-      visible={shareSheetVisible}
-      onClose={() => setShareSheetVisible(false)}
-      onLinkCopied={() => {}}
-      postId={item.id}
-      navigation={navigation}
-    />
-    <CommentBottomSheet
-      visible={commentSheetVisible}
-      onClose={() => setCommentSheetVisible(false)}
-      comments={comments}
-      loading={commentsLoading}
-      commentText={commentText}
-      setCommentText={setCommentText}
-      onSend={(text, parentId) => {
-        // remoteId 오버라이드 — 스토어에 없는 폴백 글도 댓글이 서버에 저장되게(상세 화면과 같은 이유)
-        addComment(item.id, text, parentId, item.remoteId ?? undefined);
-        setCommentText('');
-      }}
-      postAuthor={item.user?.handle ? { handle: item.user.handle, photo: item.user.photo } : undefined}
-    />
-    <ReportModal
-      visible={reportVisible}
-      onClose={() => setReportVisible(false)}
-      onSubmit={() => {
-        setReportVisible(false);
-        showMenuToast(t('social.reportReceivedToast'));
-      }}
-    />
-    <Toast visible={menuToastVisible} message={menuToastMsg} />
-    </TouchableOpacity>
-  );
-}
-
-const GRID_GAP = 3;
-const GRID_W = SCREEN_W - 32 - 2; // 패딩 + 보더
-const ab = StyleSheet.create({
-  card: { backgroundColor: '#1A0A2E', borderRadius: 16, marginBottom: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(191,133,252,0.2)' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, paddingBottom: 8 },
-  userRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(191,133,252,0.12)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(191,133,252,0.2)' },
-  userName: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  countryTag: { color: '#BF85FC', fontSize: 11, fontWeight: '600' },
-  date: { color: '#A1A1B0', fontSize: 11, marginLeft: 2 },
-  moreIcon: { fontSize: 18, color: '#A1A1B0', fontWeight: '700', paddingHorizontal: 4 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 10 },
-  albumIcon: { fontSize: 16 },
-  albumTitle: { color: '#fff', fontSize: 15, fontWeight: '600', flex: 1 },
-  // 그리드 레이아웃
-  grid: { marginHorizontal: 1, overflow: 'hidden' },
-  gridSingle: { width: GRID_W, height: GRID_W * 0.65, borderRadius: 4 },
-  gridRow: { flexDirection: 'row', gap: GRID_GAP },
-  gridHalf: { width: (GRID_W - GRID_GAP) / 2, height: (GRID_W - GRID_GAP) / 2 * 0.75, borderRadius: 4 },
-  gridTwoThird: { width: (GRID_W - GRID_GAP) * 0.6, height: (GRID_W - GRID_GAP) * 0.45, borderRadius: 4 },
-  gridCol: { flex: 1, gap: GRID_GAP },
-  gridSmall: { flex: 1, borderRadius: 4, minHeight: 10 },
-  grid4: { gap: GRID_GAP },
-  grid4Cell: { width: (GRID_W - GRID_GAP) / 2, height: (GRID_W - GRID_GAP) / 2 * 0.5, borderRadius: 4, overflow: 'hidden' },
-  moreOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
-  moreText: { color: '#fff', fontSize: 22, fontWeight: '700' },
-  noMedia: { height: 140, alignItems: 'center', justifyContent: 'center', gap: 6 },
-  noMediaText: { color: 'rgba(255,255,255,0.35)', fontSize: 13, fontWeight: '500' },
-  bottom: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, gap: 12 },
-  actionBtn: { paddingRight: 4 },
-  likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
-  actionIcon: { fontSize: 22, color: '#A1A1B0', lineHeight: Platform.OS === 'ios' ? 22 : 27 },
-  actionCount: { fontSize: 12, color: '#A1A1B0', fontWeight: '500' },
-  photoCount: { color: '#A1A1B0', fontSize: 12, marginLeft: 'auto' },
-});
-
-// ─────────────────────────────────────────────
 // 메이트 피드
 // ─────────────────────────────────────────────
 // ── 몰입형 스크롤링: 카드 등장 애니메이션 래퍼 ──
@@ -1940,13 +216,14 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { t, i18n } = useTranslation();
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
     ? globalHandle
     : (item.user.name ? item.user.name : item.user.handle);
   // 아이디 표시 폰트(프리미엄) — 내 글은 현재 설정값(구독 중일 때만), 타인 글은 프로필 조인 값
-  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
+  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font, lateFonts);
 
   return (
     <View style={d.meta}>
@@ -1989,14 +266,14 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 // 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
 // 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
 function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
-  // React Compiler 제외: timeAgo()는 전역 i18n·Date.now()를 읽어 컴파일 시 item.timestamp에만 메모돼 새로고침·언어 변경에도 "n분 전"이 굳는다(2026-10-02 산출물 확인).
-  'use no memo';
+  // (예전 'use no memo'는 timeAgo() 고착 때문이었다 — 시간 표기를 TimeAgoText로 옮겨 그 지시어도 그쪽으로 갔다)
   const { t, i18n } = useTranslation();
-  const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   const skinAccent = useSkinAccent();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayHandle = isMyPost ? (globalHandle || item.user.handle) : item.user.handle;
-  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
+  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font, lateFonts);
   // 방문국가 — 블로그 기록 카드와 동일한 라벨(영문 국가명) + 폰트(jourCountry: Montserrat-Black)
   const placeLabel = jourPlaceLabel(item);
   return (
@@ -2004,7 +281,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
       {/* 프레임과 아이디 사이: 방문국가(좌) + 올린시간(우, 보라) — 시안처럼 같은 행 */}
       <View style={d.cutMetaTopRow}>
         <Text style={d.cutMetaCountry} numberOfLines={1}>{placeLabel}</Text>
-        {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
+        {!item.isExample && <TimeAgoText ts={item.timestamp} style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1} />}
       </View>
       <View style={d.cutMetaRow}>
         <TouchableOpacity
@@ -2235,7 +512,9 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { records } = useRecordData();
-  const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
+  const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useProfileSettings();
+  // 피드는 앱 시작 직후 마운트돼 서체 등록보다 먼저 그려질 수 있다 — 등록 전엔 기본 폰트로(constants/lateFonts.ts)
+  const lateFonts = useLateFontsLoaded();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined });
@@ -2245,7 +524,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const isMy = item.isMyPost ?? false;
   // 게시자 아이디 + 프리미엄 폰트 (내 글=내 설정값, 타인=프로필 조인 값)
   const postHandle = isMy ? (globalHandle || item.user.handle) : item.user.handle;
-  const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font);
+  const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font, lateFonts);
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   // 메뉴 바텀시트 애니메이션 — 배경 딤은 '제자리 페이드', 시트만 슬라이드업.
@@ -2446,7 +725,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
         <View style={d.jourFooter}>
           {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
-          {!item.isExample && <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
+          {!item.isExample && <TimeAgoText ts={item.timestamp} style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1} />}
           <View style={d.jourFooterRow}>
             <TouchableOpacity
               style={d.jourHandleBtn}
@@ -2497,7 +776,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
-          {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
+          {!item.isExample && <TimeAgoText ts={item.timestamp} style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1} />}
         </View>
         {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
         {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
@@ -2874,6 +1153,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 예전 리터럴 110은 3버튼 내비에서 25dp 모자랐다.
   const tabBarClearance = useTabBarClearance();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
+  const lateFonts = useLateFontsLoaded(); // 링 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
   const { records, archivedIds, tripGroups } = useRecordData();
@@ -2941,7 +1221,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
       // 스토어 액션은 안정 useCallback이라 deps에 넣어도 매 포커스 재생성되지 않는다
     }, [refreshing, feedInitialLoading, refreshFeed, refreshMyPostCounts, refreshNeighbors])
   );
-  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useProfileSettings();
+  const { diaryCardMode, showCounts } = usePrefSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
@@ -2950,7 +1231,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return postUser.name ? postUser.name : postUser.handle;
   };
   
-  const { sendRecord, conversations } = useDM();
+  const { conversations } = useDMData();
+  const { sendRecord } = useDMActions();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   // 무한 스크롤 — 바닥 근처에 닿으면 다음 페이지를 이어받는다.
   // (FlatList가 아니라 ScrollView라 onEndReached가 없어 스크롤 좌표로 직접 판정한다)
@@ -3003,7 +1285,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
   //
   // SNS_SHARE_ENABLED 게이트를 타지 않는다(2026-08-07 결정). 그 플래그는 '인스타그램'
   // '틱톡'처럼 특정 SNS 를 내건 버튼을 베타에서 가리려는 것이고, 이 버튼은 대상 앱을
-  // 고르지 않는 일반 공유라 베타에서도 열어 둔다. 점 3개 > 공유 쪽 제한은 그대로다.
+  // 고르지 않는 일반 공유라 베타에서도 열어 둔다. 카드 점 3개 > 공유(DiaryCard의 handleShare)도
+  // 같은 OS 공유 시트라 게이트가 없다 — 플래그로 막히던 자체 공유 시트(ShareBottomSheet)는 죽은
+  // 카드 컴포넌트에서만 쓰여 2026-10-03 함께 삭제됐고, 지금 이 플래그를 읽는 곳은 없다.
   //
   // ⚠️ 시트가 닫히는 중에 OS 시트를 띄우면 iOS 에서 표시되지 않는다. '기타' 시트를 먼저
   //    닫고, 퇴장 애니메이션이 끝난 뒤 SheetShell 이 불러주는 onClosed 에서 호출한다.
@@ -3265,7 +1549,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 링은 대표(rep)만 들고 있으므로 멤버는 groupSnapRings와 **같은 입력**으로 snapRingKeys를 다시 구해
   // _ringKey가 같은 것만 모은다(PostDetailScreen 스냅 뷰어와 같은 방식 — 입력이 다르면 폴백 7일 버킷이 어긋난다).
   // 팝업 마크업·스타일 값은 PostDetail SnapStoryViewer ⋯ 메뉴 복제(rm 스타일시트). 위치만 우상단 고정 대신
-  // 누른 링 아래(measureInWindow) — 이 파일 FeedCard ⋯ 드롭다운도 버튼 실측 좌표 아래에 띄운다.
+  // 누른 링 아래(measureInWindow) — 버튼 실측 좌표 아래에 띄운다(예전 FeedCard ⋯ 드롭다운과 같은 방식).
   const [ringMenu, setRingMenu] = useState<{ ids: string[]; top: number; left?: number; right?: number } | null>(null);
   const ringRefs = useRef<Record<string, any>>({});
   const openRingMenu = (ring: any) => {
@@ -3465,7 +1749,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                         s.storyName,
                         mine && snap._isDaily && s.storyNameWithIcon,
                         // 아이디 폰트(프리미엄)는 아이디를 그리는 타인 링에만(서버 handle_font)
-                        !mine && handleFontStyle(snap.user.font),
+                        !mine && handleFontStyle(snap.user.font, lateFonts),
                       ]}
                       numberOfLines={1}
                     >
@@ -3861,95 +2145,6 @@ const s = StyleSheet.create({
     paddingHorizontal: Spacing[4],
     paddingTop: Spacing[4],
   },
-  feedCard: {
-    backgroundColor: 'rgba(26,10,46,0.5)',
-    borderRadius: BorderRadius['2xl'],
-    marginBottom: Spacing[4],
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.15)',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: Spacing[4],
-    gap: Spacing[3],
-  },
-  feedAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(191,133,252,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
-  },
-  userInfo: { flex: 1 },
-  userName: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: C.white,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: Spacing[2],
-    marginTop: 2,
-  },
-  countryTag: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
-    color: C.accent,
-    backgroundColor: C.accentDim,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  dateMeta: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: C.dim,
-  },
-  moreIcon: {
-    color: C.dim,
-    fontSize: 18,
-    letterSpacing: 2,
-  },
-  dropdownMenu: {
-    backgroundColor: '#2E2E3B',
-    borderRadius: 12,
-    width: 180,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 12,
-    overflow: 'hidden',
-  },
-  myDropdownMenu: {
-    backgroundColor: '#2E2E3B',
-    borderRadius: 12,
-    width: 160,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    elevation: 14,
-    overflow: 'hidden',
-  },
-  myMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  myMenuDivider: {
-    height: 1,
-    backgroundColor: '#3A3A4A',
-  },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3972,57 +2167,6 @@ const s = StyleSheet.create({
   menuDivider: {
     height: 1,
     backgroundColor: '#3A3A4A',
-  },
-  photoPlaceholder: {
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardBody: {
-    padding: Spacing[4],
-  },
-  content: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.regular,
-    color: C.white,
-    lineHeight: 20,
-    marginBottom: Spacing[4],
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: Spacing[5],
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  actionIcon: {
-    fontSize: 22,
-    color: C.dim,
-  },
-  actionCount: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.medium,
-    color: C.dim,
-  },
-
-  // 토스트
-  toast: {
-    position: 'absolute',
-    bottom: 110,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(30,30,46,0.96)',
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-  },
-  toastText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
   },
 
   // 빈 상태
@@ -4148,180 +2292,6 @@ const s = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────
-// 댓글 바텀시트 스타일
-// ─────────────────────────────────────────────
-const cs = StyleSheet.create({
-  sheet: {
-    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경은 전체 폭 유지)
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    alignSelf: 'center',
-    backgroundColor: '#1E1E2E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 20,
-    maxHeight: '90%',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#4A4A59',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  closeBtn: {
-    color: '#A1A1B0',
-    fontSize: 18,
-  },
-  commentList: {
-    paddingHorizontal: 16,
-    maxHeight: 300,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    gap: 12,
-  },
-  commentAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // 답글 — 상세 화면(PostDetailScreen)과 같은 들여쓰기 42 / 아바타 32 규칙
-  replyRow: {
-    flexDirection: 'row',
-    paddingVertical: 10,
-    marginLeft: 42,
-    gap: 10,
-  },
-  replyAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  commentContent: {
-    flex: 1,
-    gap: 2,
-  },
-  commentName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  commentBody: {
-    fontSize: 14,
-    color: '#A1A1B0',
-  },
-  commentTime: {
-    fontSize: 11,
-    color: '#4A4A59',
-    marginTop: 2,
-  },
-  // 시간 + 답글 버튼을 한 줄로 — 상세 화면(s.commentActions)과 같은 배치 규칙
-  commentMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  // 상세 화면 s.commentActionText 와 같은 톤(흐림색 12/600)
-  commentReplyBtn: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  // 상세 화면 s.replyBar 재현 — 시트 토큰(카드 #2E2E3B / 구분선 #1A1A26)에 맞춤
-  replyBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: '#2E2E3B',
-    borderTopWidth: 1,
-    borderTopColor: '#1A1A26',
-  },
-  replyBarText: { flex: 1, fontSize: 12, color: '#BF85FC', fontWeight: '600' },
-  replyBarCancel: { fontSize: 16, color: '#A1A1B0', paddingHorizontal: 4 },
-  divider: {
-    height: 1,
-    backgroundColor: '#2E2E3B',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#2E2E3B',
-  },
-  myAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  myAvatarText: {
-    color: '#BF85FC',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  inputWrap: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2E2E3B',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 14,
-    maxHeight: 80,
-  },
-  sendBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#BF85FC',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendIcon: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
-
-// ─────────────────────────────────────────────
 // 공유 바텀시트 스타일
 // ─────────────────────────────────────────────
 const ss = StyleSheet.create({
@@ -4353,34 +2323,6 @@ const ss = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 12,
   },
-  optionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  optionItem: {
-    alignItems: 'center',
-    gap: 8,
-    minWidth: 64,
-  },
-  optionIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#2E2E3B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  optionIcon: {
-    fontSize: 24,
-  },
-  optionLabel: {
-    fontSize: 11,
-    color: '#A1A1B0',
-    textAlign: 'center',
-    lineHeight: 15,
-  },
   cancelCard: {
     marginHorizontal: 16,
     backgroundColor: '#2E2E3B',
@@ -4393,95 +2335,6 @@ const ss = StyleSheet.create({
     fontWeight: '500',
     color: '#A1A1B0',
   },
-  // 서비스 준비 중 모달
-  prepareOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  prepareCard: {
-    backgroundColor: 'rgba(20,20,35,0.7)',
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  prepareEmoji: {
-    fontSize: 40,
-    marginBottom: 12,
-  },
-  prepareTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  prepareDesc: {
-    fontSize: 14,
-    color: '#A1A1B0',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  prepareBtn: {
-    backgroundColor: '#6B21A8',
-    borderRadius: 12,
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    width: '100%',
-    alignItems: 'center',
-  },
-  prepareBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-
-  // 메이트 선택 모달
-  friendPickerCard: {
-    backgroundColor: 'rgba(20,20,32,0.7)',
-    borderRadius: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
-    // 85%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
-    width: '85%',
-    maxWidth: STAGE_MAX_W,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  friendPickerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  friendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  friendAvatarWrap: {
-    position: 'relative',
-    marginRight: 12,
-  },
-  friendAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#2E2E3B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -4493,41 +2346,6 @@ const ss = StyleSheet.create({
   otherSectionLabel: {
     color: '#A1A1B0', fontSize: 12, fontWeight: '600',
     paddingHorizontal: 16, marginTop: 16, marginBottom: 6,
-  },
-  friendOnline: {
-    position: 'absolute',
-    bottom: 1,
-    right: 1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#34C759',
-    borderWidth: 2,
-    borderColor: '#1A1A26',
-  },
-  friendName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  friendHandle: {
-    fontSize: 11,
-    color: '#A1A1B0',
-    marginTop: 1,
-  },
-  friendSendIcon: {
-    fontSize: 18,
-    color: '#BF85FC',
-    fontWeight: '700',
-  },
-  friendCancelBtn: {
-    marginTop: 12,
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  friendCancelText: {
-    fontSize: 14,
-    color: '#A1A1B0',
   },
 });
 

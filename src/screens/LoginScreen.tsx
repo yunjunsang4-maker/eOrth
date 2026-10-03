@@ -23,9 +23,9 @@ import * as WebBrowser from 'expo-web-browser';
 import { EorthLogo } from '../components/EorthLogo';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
-import { useSettings } from '../store/settingsStore';
+import { useSettingsActions } from '../store/settingsStore';
 import { useRecordActions } from '../store/recordStore';
-import { useDM } from '../store/dmStore';
+import { useDMActions } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
 import {
   getPendingDeletion,
@@ -52,9 +52,9 @@ export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   // i18n.language는 약관·방침의 한/영 게시본을 고르는 데 쓴다(legalLinks).
   const { t, i18n } = useTranslation();
-  const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettingsActions();
   const { resetRecords } = useRecordActions();
-  const { resetConversations } = useDM();
+  const { resetConversations } = useDMActions();
   const runAccountBoundary = useAccountBoundary();
 
   // Social login modals state

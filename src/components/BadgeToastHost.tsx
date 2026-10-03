@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useBadgeSettings, useSettingsActions } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { BADGES } from '../constants/badges';
 import { badgeName } from '../utils/badgeText';
@@ -15,7 +15,8 @@ import { navigationRef } from '../navigation/navigationRef';
 // 지금은 visual { icon: 'badge' } 로 같은 배너 시스템을 탄다(별 아이콘, Toast.tsx).
 export default function BadgeToastHost() {
   const { t } = useTranslation();
-  const { pendingBadgeToasts, dismissBadgeToast } = useSettings();
+  const { pendingBadgeToasts } = useBadgeSettings();
+  const { dismissBadgeToast } = useSettingsActions();
   const { pushToast } = useToast();
 
   useEffect(() => {

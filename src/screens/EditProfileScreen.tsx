@@ -20,7 +20,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
 import RequirementList from '../components/RequirementList';
 
@@ -73,17 +73,8 @@ const COLORS = {
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent();
-  const {
-    handle: globalHandle,
-    setHandle: setGlobalHandle,
-    bio: globalBio,
-    setBio: setGlobalBio,
-    profilePhoto: globalProfilePhoto,
-    setProfilePhoto: setGlobalProfilePhoto,
-    handleLastChanged,
-    setHandleLastChanged,
-    setHandleChosen,
-  } = useSettings();
+  const { handle: globalHandle, bio: globalBio, profilePhoto: globalProfilePhoto, handleLastChanged } = useProfileSettings();
+  const { setHandle: setGlobalHandle, setBio: setGlobalBio, setProfilePhoto: setGlobalProfilePhoto, setHandleLastChanged, setHandleChosen } = useSettingsActions();
 
   const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
   const timeSinceLastChange = handleLastChanged ? Date.now() - handleLastChanged : null;

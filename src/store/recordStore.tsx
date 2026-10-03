@@ -3,7 +3,7 @@ import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import { findWronglyImportedKpRecords } from '../utils/kpImportCleanup';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
-import { useSettings } from './settingsStore';
+import { useProfileSettings, useHomeSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
@@ -536,7 +536,8 @@ export interface TripSession {
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { handle, profilePhoto, handleFont, isPremium, homeCountryCode, currentVisitedCountryCode } = useSettings();
+  const { handle, profilePhoto, handleFont, isPremium } = useProfileSettings();
+  const { homeCountryCode, currentVisitedCountryCode } = useHomeSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [regionKeySchema, setRegionKeySchema] = useState(0);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
@@ -3927,19 +3928,4 @@ export const useComments = () => useSlice(CommentsContext, 'useComments');
 export const useSocialGraph = () => useSlice(SocialGraphContext, 'useSocialGraph');
 /** 앱 상태 통합 백업 내보내기 — AppStateSync 전용 */
 export const useLocalStateBackup = () => useSlice(LocalStateBackupContext, 'useLocalStateBackup');
-
-/**
- * 하위 호환 — 모든 슬라이스를 합쳐 예전과 같은 shape로 돌려준다. **모든 슬라이스를 구독**하므로
- * 어느 상태가 바뀌어도 리렌더된다(예전과 동일). 새 코드는 위 슬라이스 훅을 쓸 것.
- */
-export function useRecords(): RecordContextType {
-  return {
-    ...useRecordData(),
-    ...useActiveStay(),
-    ...useFeed(),
-    ...useComments(),
-    ...useSocialGraph(),
-    ...useLocalStateBackup(),
-    ...useRecordActions(),
-  };
-}
+// (예전 전체 합성 훅 useRecords()는 호출부가 0이 되어 2026-10-03 삭제 — 슬라이스 훅만 쓴다)

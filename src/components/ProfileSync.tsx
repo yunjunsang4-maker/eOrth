@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useSettings, genHandle } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useSettingsActions, genHandle } from '../store/settingsStore';
 import { useActiveStay } from '../store/recordStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -14,7 +14,9 @@ import i18n from '../i18n';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { handle, handleChosen, bio, onboardedAt, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
+  const { handle, handleChosen, bio, onboardedAt, profilePhoto, handleFont, isPremium } = useProfileSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { setProfilePhoto, setHandle } = useSettingsActions();
   const { activeStayGroup } = useActiveStay();
 
   // 진행 중(active) 체류만 push — paused(잠깐 귀국)·종료는 null

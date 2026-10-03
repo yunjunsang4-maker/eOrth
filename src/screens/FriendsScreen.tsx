@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
-import { useDM } from '../store/dmStore';
+import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
 import { getProfileByHandle } from '../services/profile';
 import { tap } from '../utils/haptics';
@@ -81,7 +81,8 @@ export default function FriendsScreen({ navigation }: Props) {
   const skinAccent = useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { neighbors, isBlocked, isMuted } = useSocialGraph();
   const { blockUser, toggleMute, refreshNeighbors } = useRecordActions();
-  const { conversations, unreadCount, markRead, registerPeer } = useDM();
+  const { conversations, unreadCount } = useDMData();
+  const { markRead, registerPeer } = useDMActions();
 
   // 당겨서 새로고침 — 메이트 목록(메이트)을 서버 기준으로 재동기화
   const [refreshing, setRefreshing] = useState(false);

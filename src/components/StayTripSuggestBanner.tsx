@@ -7,8 +7,9 @@
  * [나중에] = 24시간 숨김. [×] = 거절(재스캔에도 안 뜸).
  * 스타일은 MateRecoConsentBanner를 따른다.
  *
- * 참고: `importTrips`(useImportTripsIntoCards의 반환)는 recordStore의 함수들을 의존성으로
- * 삼아 렌더마다 참조가 바뀔 수 있다. 그래서 create()의 useCallback도 매 렌더 새로 만들어지지만,
+ * 참고: `importTrips`(useImportTripsIntoCards의 반환)는 recordStore 액션(참조 영구 고정 —
+ * stableActions.ts)과 homeCountryCode를 의존성으로 삼으므로 거주국이 바뀔 때만 새로 만들어진다.
+ * create()의 useCallback은 그 밖에 busy·visible·tripText 등이 바뀔 때도 새로 만들어지지만,
  * create는 onPress로만 쓰이고 **어떤 useEffect의 의존성에도 들어가지 않는다** — 아래 effect의
  * deps는 []뿐이라 재구독·재실행 루프가 생기지 않는다.
  */

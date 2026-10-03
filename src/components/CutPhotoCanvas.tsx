@@ -4,6 +4,7 @@ import { Text } from '../ui/Text';
 import { CUT_LAYOUTS, getCutFrame, CutFrame, CutLayout } from '../constants/cutFrames';
 import { AdjustedCoverImage, type CutTransform } from './CutPhotoAdjustModal';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 
 /** 하단 여백 스탬프 — 날짜(무료)·문구+폰트(프리미엄). 생성 시점 값이 cutPhoto.stamp로 박제된다 */
 export interface CutStamp {
@@ -113,6 +114,8 @@ function renderFilmHoles(dir: 'v' | 'h', width: number, height: number, holeColo
  */
 const CutPhotoCanvas = forwardRef<View, Props>(
   ({ frameId, photos, width, onSlotPress, capture, bgOverride, bgImageOverride, transforms, showLogo, stamp }, ref) => {
+    // 조기 반환보다 앞 — 훅은 매 렌더 같은 순서로 불려야 한다. 스탬프 문구 폰트의 등록 신호(constants/lateFonts.ts)
+    const lateFonts = useLateFontsLoaded();
     const frame: CutFrame | undefined = getCutFrame(frameId);
     if (!frame) return null;
 
@@ -231,7 +234,7 @@ const CutPhotoCanvas = forwardRef<View, Props>(
                 numberOfLines={1}
                 style={[
                   { fontSize: captionSize, color: capColor, maxWidth: width * 0.9, textAlign: 'center' },
-                  handleFontStyle(stamp.fontId),
+                  handleFontStyle(stamp.fontId, lateFonts),
                 ]}
               >
                 {stamp.text}

@@ -1,10 +1,11 @@
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { AppState, View } from 'react-native';
 import type { TravelRecord } from './recordStore';
 import type { Friend, Message, MsgType, SharedRecord, ReplyInfo } from './dmTypes';
 import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic';
-import { useSettings } from './settingsStore';
+import { useSettingsActions } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
+import { makeStableActions } from './stableActions';
 import { isSupabaseConfigured, supabase } from '../services/supabase';
 import { onReconnect } from '../utils/connectivity';
 import { remapDocUri } from '../utils/remapDocumentUris';
@@ -96,10 +97,22 @@ interface DMContextType {
   loadHistory: (handle: string, userId?: string) => Promise<void>;
 }
 
-const DMContext = createContext<DMContextType | null>(null);
+// ── Context 슬라이스 ── (recordStore·settingsStore와 같은 방식 — stableActions.ts 참조)
+// 예전에는 전부 한 Context라, 메시지 한 건이 오면 계정 경계 훅(useAccountBoundary — 로그인·스플래시
+// 화면 포함)처럼 resetConversations 하나만 쓰는 곳까지 리렌더됐다.
+//   · 대화 데이터 + 읽는 함수(topFriends·unreadCount — conversations·readMarks를 deps로 한 useCallback이라
+//     근거 상태가 바뀌면 참조도 바뀐다)는 한 슬라이스. 소비자가 전부 conversations를 함께 보므로 더 쪼갤
+//     이득이 없다(안읽음 배지는 대화 목록 화면 안에서만 계산된다).
+//   · 쓰는 함수는 DMActions 하나에 모아 참조를 영구 고정한다.
+type DMDataSlice = Pick<DMContextType, 'conversations' | 'friends' | 'topFriends' | 'unreadCount'>;
+// 나머지 전부가 액션 — 데이터 슬라이스에 넣지 않은 필드는 자동으로 여기 온다.
+export type DMActions = Omit<DMContextType, keyof DMDataSlice>;
+
+const DMDataContext = createContext<DMDataSlice | null>(null);
+const DMActionsContext = createContext<DMActions | null>(null);
 
 export function DMProvider({ children }: { children: React.ReactNode }) {
-  const { incrementShareSent } = useSettings();
+  const { incrementShareSent } = useSettingsActions();
   const [conversations, setConversations] = useState<Record<string, Message[]>>(INITIAL_CONVERSATIONS);
   const [friends] = useState<Friend[]>(INITIAL_FRIENDS);
   // 대화별 읽음 워터마크(마지막으로 읽은 시점의 createdAt ms). 이 시각 이후의 '받은' 메시지가
@@ -615,20 +628,44 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     return () => { offReconnect(); sub.remove(); };
   }, [hydrated, catchUpInbox]);
 
+  // ── 슬라이스별 Context 값 ── (아래 훅들은 hydrated 조기 반환보다 앞에 있어야 한다 — 훅 순서 고정)
+  // 액션: 매 렌더 최신 클로저를 ref에 넣고, 마운트 시 1회 만든 래퍼를 준다. conversations를 deps로 한
+  // useCallback이던 retrySend·deleteMessage·clearConversation·markRead도 이제 참조가 영구 고정되고,
+  // 호출 시점에는 가장 최근 렌더의 클로저(최신 conversations)가 실행된다.
+  // 렌더 중 ref 대입: 이 Provider는 React Compiler 대상이 아니다(try/finally 등으로 이미 건너뜀).
+  const latestActionsRef = useRef<DMActions>(null!);
+  latestActionsRef.current = {
+    addMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead,
+    resetConversations, registerPeer, loadHistory,
+  };
+  const [dmActions] = useState(() => makeStableActions(latestActionsRef));
+  const dmData = useMemo<DMDataSlice>(
+    () => ({ conversations, friends, topFriends, unreadCount }),
+    [conversations, friends, topFriends, unreadCount],
+  );
+
   // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: '#0A0A0F' }} />;
   }
 
   return (
-    <DMContext.Provider value={{ conversations, friends, addMessage, retrySend, sendRecord, deleteMessage, clearConversation, topFriends, unreadCount, markRead, resetConversations, registerPeer, loadHistory }}>
-      {children}
-    </DMContext.Provider>
+    <DMActionsContext.Provider value={dmActions}>
+      <DMDataContext.Provider value={dmData}>
+        {children}
+      </DMDataContext.Provider>
+    </DMActionsContext.Provider>
   );
 }
 
-export function useDM() {
-  const ctx = useContext(DMContext);
-  if (!ctx) throw new Error('useDM must be used within DMProvider');
-  return ctx;
+function useSlice<T>(ctx: React.Context<T | null>, hookName: string): T {
+  const v = useContext(ctx);
+  if (!v) throw new Error(`${hookName} must be used within DMProvider`);
+  return v;
 }
+
+/** 대화·메이트 목록 + 읽는 함수(topFriends·unreadCount) */
+export const useDMData = () => useSlice(DMDataContext, 'useDMData');
+/** 쓰는 함수 전부. 참조가 영구 고정이라 deps에 넣어도 effect가 다시 돌지 않는다. */
+export const useDMActions = () => useSlice(DMActionsContext, 'useDMActions');
+// (예전 전체 훅 useDM()은 호출부가 0이 되어 2026-10-03 삭제 — 슬라이스 훅만 쓴다)

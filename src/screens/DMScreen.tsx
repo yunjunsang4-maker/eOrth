@@ -24,7 +24,7 @@ import * as Clipboard from 'expo-clipboard';
 import { tap, warn } from '../utils/haptics';
 import { useRecordData, useFeed, useRecordActions, TravelRecord } from '../store/recordStore';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useDM } from '../store/dmStore';
+import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon } from '../components/icons';
 import ReportModal from '../components/ReportModal';
@@ -317,7 +317,8 @@ export default function DMScreen({ navigation, route }: Props) {
   const { blockUser, reportPost } = useRecordActions();
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
-  const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
+  const { conversations } = useDMData();
+  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDMActions();
   const messages = conversations[friend.handle] ?? [];
 
   // 대화 진입 시 상대(profile uuid) 등록 + 서버 히스토리 로드 (백엔드 설정 시)
@@ -551,10 +552,14 @@ export default function DMScreen({ navigation, route }: Props) {
     }, 100);
   }, [messages.length]);
 
-  // 대화 진입 및 메시지 변동 시 읽음 처리
+  // 대화 진입 및 새 메시지 도착 시 읽음 처리.
+  // deps는 길이가 아니라 markRead가 워터마크로 쓰는 값과 같은 "목록의 최대 createdAt"이다 —
+  // 길이로 보면 삭제 1건+수신 1건이 한 배치에 묶일 때 길이가 그대로라 읽음 처리가 빠진다.
+  // 최신이 아닌 메시지 삭제처럼 워터마크가 안 바뀌는 변동에는 돌지 않아 헛 저장도 늘지 않는다.
+  const latestAt = messages.reduce((mx, m) => Math.max(mx, m.createdAt ?? 0), 0);
   useEffect(() => {
     markRead(friend.handle);
-  }, [friend.handle, messages.length, markRead]);
+  }, [friend.handle, latestAt, markRead]);
 
   // 하이라이트 타이머 정리
   useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);

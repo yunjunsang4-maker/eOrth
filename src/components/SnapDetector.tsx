@@ -11,7 +11,7 @@
 import { useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useNotifSettings } from '../store/settingsStore';
 import { useActiveStay } from '../store/recordStore';
 import { DETECTOR_KEYS } from '../store/persist';
 import { COUNTRIES } from '../constants/countries';
@@ -56,7 +56,8 @@ let checking = false;
 let generation = 0;
 
 export default function SnapDetector() {
-  const { homeCountryCode, snapEnabled, arrivalDetect, notifPrefs } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { snapEnabled, arrivalDetect, notifPrefs } = useNotifSettings();
   const { activeStayGroup } = useActiveStay();
 
   // 진행 중(active) 체류국 ISO2 코드 — 체류국은 해외로 치지 않는다

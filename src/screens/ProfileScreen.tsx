@@ -48,9 +48,10 @@ import { useTravelDna } from '../store/travelDnaStore';
 import { emitToast } from '../store/toastStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { badgeName, badgeDesc, badgeCategoryName } from '../utils/badgeText';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useNotifSettings, useBadgeSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { andFitText } from '../utils/fitText';
@@ -1399,8 +1400,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
   // ── 프로필 튜토리얼(코치마크) — 계정당 프로필 탭 첫 진입 시 1회 ──
   // 표시 여부는 설정 스토어가 계정별로 들고 있고(서버 백업 포함) 계정 전환 시 초기화되므로,
-  // 재로그인해도 다시 뜨지 않는다. (아래 useSettings 구조분해보다 먼저 필요해 따로 읽는다)
-  const { tutorialsSeen, markTutorialSeen } = useSettings();
+  // 재로그인해도 다시 뜨지 않는다. (아래 설정 슬라이스 훅 구조분해 — useProfileSettings 등 — 보다 먼저 필요해 따로 읽는다)
+  const { tutorialsSeen } = usePrefSettings();
+  const { markTutorialSeen } = useSettingsActions();
   const avatarRef = useRef<any>(null);
   const badgeRef = useRef<any>(null);
   const archiveRef = useRef<any>(null);
@@ -1616,27 +1618,17 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     }
   };
 
-  const {
-    handle,
-    bio,
-    profilePhoto,
-    setProfilePhoto,
-    homeCountryCode,
-    arrivalDetect,
-    currentVisitedCountryCode,
-    setCurrentVisitedCountryCode,
-    representativeBadgeIds: selectedBadgeIds,
-    setRepresentativeBadgeIds: setSelectedBadgeIds,
-    badgeEarnedAt,
-    handleFont,
-    isPremium,
-    notifPrefs,
-    stayNudgeDismissedFor,
-    setStayNudgeDismissedFor,
-  } = useSettings();
+  const { handle, bio, profilePhoto, handleFont, isPremium } = useProfileSettings();
+  const { homeCountryCode, currentVisitedCountryCode } = useHomeSettings();
+  const { arrivalDetect, notifPrefs } = useNotifSettings();
+  const { representativeBadgeIds: selectedBadgeIds, badgeEarnedAt } = useBadgeSettings();
+  const { stayNudgeDismissedFor } = usePrefSettings();
+  const { setProfilePhoto, setCurrentVisitedCountryCode, setRepresentativeBadgeIds: setSelectedBadgeIds, setStayNudgeDismissedFor } = useSettingsActions();
   const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
-  // 아이디 표시 폰트(프리미엄) — 해지 시 기본 폰트로(잠금), 선택값은 보존돼 재구독 시 복원
-  const nameFontStyle = handleFontStyle(isPremium ? handleFont : null);
+  // 아이디 표시 폰트(프리미엄) — 해지 시 기본 폰트로(잠금), 선택값은 보존돼 재구독 시 복원.
+  // 프로필 탭은 앱 시작 직후 마운트돼 서체 등록보다 먼저 그려질 수 있다 — 등록 전엔 기본 폰트로(constants/lateFonts.ts)
+  const lateFonts = useLateFontsLoaded();
+  const nameFontStyle = handleFontStyle(isPremium ? handleFont : null, lateFonts);
 
   // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
   // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 도착 감지를 꺼진 것으로 표시하므로

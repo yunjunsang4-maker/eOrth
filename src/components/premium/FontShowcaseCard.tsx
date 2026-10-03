@@ -4,8 +4,9 @@ import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import ShowcaseCard from './ShowcaseCard';
 import { HANDLE_FONTS, handleFontStyle } from '../../constants/handleFonts';
+import { useLateFontsLoaded } from '../../constants/lateFonts';
 import { useSkinAccent } from '../../constants/skinTheme';
-import { useSettings } from '../../store/settingsStore';
+import { useProfileSettings } from '../../store/settingsStore';
 
 // 아이디 폰트 혜택 쇼케이스 — 내 실제 아이디를 16종 서체로 그 자리에서 갈아끼운다.
 // 여기서 고른 값은 미리보기 전용이라 설정(handleFont)에 저장하지 않는다.
@@ -17,7 +18,8 @@ interface FontShowcaseCardProps {
 export default function FontShowcaseCard({ delay }: FontShowcaseCardProps) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
-  const { handle, handleFont } = useSettings();
+  const { handle, handleFont } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
 
   // 시작값은 내가 지금 쓰는 폰트 — "내 것"에서 출발해 둘러보게 한다
   const [fontId, setFontId] = useState<string>(handleFont ?? 'default');
@@ -31,7 +33,7 @@ export default function FontShowcaseCard({ delay }: FontShowcaseCardProps) {
     >
       {/* 큰 미리보기 — 내 아이디 */}
       <View style={st.stage}>
-        <Text style={[st.handle, handleFontStyle(fontId)]} numberOfLines={1} adjustsFontSizeToFit>
+        <Text style={[st.handle, handleFontStyle(fontId, lateFonts)]} numberOfLines={1} adjustsFontSizeToFit>
           @{handle}
         </Text>
       </View>
@@ -59,7 +61,7 @@ export default function FontShowcaseCard({ delay }: FontShowcaseCardProps) {
               accessibilityState={{ selected: on }}
               accessibilityLabel={t(f.labelKey)}
             >
-              <Text style={[st.chipTxt, handleFontStyle(f.id), on && { color: '#FFFFFF' }]}>Aa</Text>
+              <Text style={[st.chipTxt, handleFontStyle(f.id, lateFonts), on && { color: '#FFFFFF' }]}>Aa</Text>
             </TouchableOpacity>
           );
         })}

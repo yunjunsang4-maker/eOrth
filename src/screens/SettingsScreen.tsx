@@ -18,7 +18,7 @@ import {
 import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useSkinSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { LANGUAGE_LABELS } from '../i18n';
 import { useRecordData, useActiveStay, useRecordActions } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
@@ -57,6 +57,7 @@ import {
 import HomeRegionSheet from '../components/HomeRegionSheet';
 import LanguageSheet from '../components/LanguageSheet';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded } from '../constants/lateFonts';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -156,21 +157,11 @@ const SettingGroup = ({
 
 export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
   const { t, i18n } = useTranslation();
-  const {
-    showCounts, setShowCounts,
-    hapticsEnabled, setHapticsEnabled,
-    homeCountryCode, setHomeCountryCode,
-    homeRegion,
-    diaryCardMode, setDiaryCardMode,
-    language, setLanguage,
-    isPremium, setIsPremium,
-    handleFont, setHandleFont,
-    stripLogoRemoval, setStripLogoRemoval,
-    handle,
-    globeSkin, setGlobeSkin,
-    resetTutorialsSeen,
-    lastSeenNoticeAt,
-  } = useSettings();
+  const { isPremium, handleFont, stripLogoRemoval, handle } = useProfileSettings();
+  const { homeCountryCode, homeRegion } = useHomeSettings();
+  const { globeSkin } = useSkinSettings();
+  const { showCounts, hapticsEnabled, diaryCardMode, language, lastSeenNoticeAt } = usePrefSettings();
+  const { setShowCounts, setHapticsEnabled, setHomeCountryCode, setDiaryCardMode, setLanguage, setIsPremium, setHandleFont, setStripLogoRemoval, setGlobeSkin, resetTutorialsSeen } = useSettingsActions();
   // 미읽음 공지 배지. 실패하면 배지를 띄우지 않을 뿐 화면은 그대로다.
   // lastSeenNoticeAt이 의존성이라, 공지 화면에서 읽고 돌아오면 다시 계산돼 배지가 꺼진다.
   const [noticeUnread, setNoticeUnread] = useState(false);
@@ -212,6 +203,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
   const [fontModalVisible, setFontModalVisible] = useState(false);
+  const lateFonts = useLateFontsLoaded(); // 미리보기 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   const openFontPicker = () => {
     if (!isPremium) {
       navigation.navigate('Premium'); // 잠금 → 페이월로 유도
@@ -636,7 +628,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                 >
                   <View style={st.fontRowInfo}>
                     <Text style={st.fontRowLabel}>{t(f.labelKey)}</Text>
-                    <Text style={[st.fontRowPreview, handleFontStyle(f.id)]} numberOfLines={1}>
+                    <Text style={[st.fontRowPreview, handleFontStyle(f.id, lateFonts)]} numberOfLines={1}>
                       {handle ? `@${handle}` : '@eorth'}
                     </Text>
                   </View>

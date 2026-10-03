@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import type { NativeAd } from 'react-native-google-mobile-ads';
 import { getGoogleMobileAds, ensureAdsInitialized } from '../lib/googleMobileAds';
 import { requestTrackingPermission } from '../lib/tracking';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings } from '../store/settingsStore';
 import { useRecordData } from '../store/recordStore';
 import { fetchAdCampaigns } from '../services/adCampaigns';
 import { pickCampaign, resolveTargetCountry, type AdCampaign } from '../utils/adCampaignSelect';
@@ -53,7 +53,7 @@ export function useFeedAdSource(slot: number): FeedAdSource {
   // React Compiler 제외: 아래 nowMs(Date.now())가 컴파일 시 campaigns·records 등에만 메모돼, 소셜 탭 체류 중 캠페인 startsAt/endsAt 경계가 지나도 피드가 갱신될 때까지 판정이 굳는다(2026-10-02). 렌더마다 현재 시각으로 판정하던 컴파일러 이전 동작으로 되돌린다.
   'use no memo';
   const { i18n } = useTranslation();
-  const { currentVisitedCountryCode, homeCountryCode } = useSettings();
+  const { currentVisitedCountryCode, homeCountryCode } = useHomeSettings();
   const { records } = useRecordData();
   const [campaigns, setCampaigns] = useState<AdCampaign[] | null>(null);
   const [nativeAd, setNativeAd] = useState<NativeAd | null>(null);

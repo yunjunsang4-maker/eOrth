@@ -33,7 +33,7 @@ import { useRecordActions } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import { useSettings, type AppLanguage } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, usePrefSettings, useSettingsActions, type AppLanguage } from '../store/settingsStore';
 import { isHandleAvailable, markOnboarded, saveMateRecoOptin } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -114,19 +114,10 @@ type Props = RootStackScreenProps<'BasicInfo'>;
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const {
-    setProfilePhoto,
-    profilePhoto,
-    homeCountryCode,
-    setHomeCountryCode,
-    homeRegion,
-    language: storeLanguage,
-    setLanguage: setStoreLanguage,
-    handle: storeHandle,
-    setHandle: setStoreHandle,
-    setHandleChosen,
-    setOnboardedAt,
-  } = useSettings();
+  const { profilePhoto, handle: storeHandle } = useProfileSettings();
+  const { homeCountryCode, homeRegion } = useHomeSettings();
+  const { language: storeLanguage } = usePrefSettings();
+  const { setProfilePhoto, setHomeCountryCode, setLanguage: setStoreLanguage, setHandle: setStoreHandle, setHandleChosen, setOnboardedAt } = useSettingsActions();
   const { startStay } = useRecordActions();
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
   // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능

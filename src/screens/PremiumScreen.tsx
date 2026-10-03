@@ -5,7 +5,7 @@ import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { useRecordData, useRecordActions } from '../store/recordStore';
 import { StarIcon } from '../components/icons';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -35,7 +35,8 @@ const COLORS = {
 export default function PremiumScreen({ navigation }: RootStackScreenProps<'Premium'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 강조·테두리를 지구본 스킨색으로
-  const { isPremium, setIsPremium } = useSettings();
+  const { isPremium } = useProfileSettings();
+  const { setIsPremium } = useSettingsActions();
   const { records } = useRecordData();
   const { rebackupAlbumOriginals } = useRecordActions();
 

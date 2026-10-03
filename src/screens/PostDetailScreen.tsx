@@ -40,8 +40,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
 import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
-import { useDM } from '../store/dmStore';
+import { useDMData, useDMActions } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useLateFontsLoaded, lateFontFamily } from '../constants/lateFonts';
 import { useSkinAccent } from '../constants/skinTheme';
 import WeatherIcon, { normalizeWeather } from '../components/WeatherIcon';
 import ReportModal from '../components/ReportModal';
@@ -57,9 +58,10 @@ import MentionSuggestBar, { type MentionCandidate } from '../components/MentionS
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { tap, warn } from '../utils/haptics';
+import TimeAgoText from '../components/TimeAgoText';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
 import { isFramed, frameHeight, frameFillColor, normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
@@ -107,7 +109,8 @@ const C = {
 };
 
 // 댓글은 recordStore의 commentsByPost에 게시물별로 저장된다 (화면을 나가도 유지)
-const commentTime = (c: { time?: string; createdAt: number }) => c.time ?? timeAgo(c.createdAt);
+// 상대 시간은 TimeAgoText(분마다 스스로 다시 그림) — 호출부의 <Text> 안에 중첩돼 그 스타일을 물려받는다
+const commentTime = (c: { time?: string; createdAt: number }) => c.time ?? <TimeAgoText ts={c.createdAt} />;
 
 const currencySymbol = (code: string): string => {
   const map: Record<string, string> = {
@@ -470,12 +473,14 @@ const BlogBlockRenderer = ({
 }) => {
   const { blogS } = useSheets();
   const skinAccent = useSkinAccent(); // 인용구 등 강조를 스킨색으로
+  const lateFonts = useLateFontsLoaded(); // 블로그 글꼴 등록 전엔 시스템 폰트로 — constants/lateFonts.ts
   switch (block.type) {
     case 'text': {
       const fs = (block.fontSize || 15) * fontScale;
       // 커스텀 한글 서체(단일 굵기)에 fontWeight를 얹으면 안드로이드는 시스템 폰트로
       // 통째로 폴백한다 → 안드로이드는 서체 유지를 우선한다 (작성 화면과 동일 규칙)
-      const customFam = block.fontFamily && block.fontFamily !== 'System' ? block.fontFamily : undefined;
+      // 등록 전엔 customFam이 없어 시스템 폰트·원래 굵기로 그린다(등록되면 폭·줄바꿈이 한 번 바뀐다 — 허용)
+      const customFam = lateFontFamily(block.fontFamily && block.fontFamily !== 'System' ? block.fontFamily : undefined, lateFonts);
       return (
         <Text
           style={[
@@ -753,7 +758,8 @@ function SnapStoryViewer({
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
-  const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   // 스토리 = 소셜 탭 스냅 링 1개(2026-09-29). 예전엔 `작성자::나라`로 따로 묶어, 링(여행 카드·거주지 일상·
   // 폴백 버킷)과 어긋났다 — 링 A를 눌러도 같은 나라의 다른 여행·일상 스냅이 섞여 재생됐다.
   // 이제 키는 utils/snapStrip.snapRingKeys, 순서는 groupSnapRings+orderSnapStrip — 링 줄과 같은 함수·같은 입력.
@@ -830,7 +836,8 @@ function SnapStoryViewer({
   // 신고할 스냅 댓글 id — 남의 댓글을 꾹 누르면 ReportModal을 연다(App Store 1.2, 게시물 상세와 같은 경로)
   const [snapCommentReportId, setSnapCommentReportId] = useState<string | null>(null);
   // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
-  const { sendRecord, conversations } = useDM();
+  const { conversations } = useDMData();
+  const { sendRecord } = useDMActions();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
   // 대화량 많은 메이트 순 — 소셜 피드 빠른공유와 동일 기준
   const shareFriends = useMemo(
@@ -1216,10 +1223,10 @@ function SnapStoryViewer({
                   {s.isExample ? (
                     <Text style={storyS.officialBadge}>{t('socialEmpty.official')}</Text>
                   ) : (
-                    <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                    <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font, lateFonts)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
                   )}
                 </View>
-                {!s.isExample && <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>}
+                {!s.isExample && <TimeAgoText ts={s.timestamp} style={storyS.timeText} />}
               </View>
             </TouchableOpacity>
             {!s.isExample && (
@@ -1603,7 +1610,8 @@ export default function PostDetailScreen() {
   const { toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, addComment: addCommentToStore, toggleCommentLike, deleteComment, refreshComments, refreshPostCounts, reportPost, blockUser, reportComment } = useRecordActions();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
+  const lateFonts = useLateFontsLoaded(); // 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
   // 내 글은 미리보기 뷰어(currentViewer), 타인 글은 '나'(내 핸들)를 뷰어로 —
   // 서버 data에 전체 사진이 내려오므로 안 거르면 작성자가 나에게 숨긴 사진이 보인다.
   const viewerFor = (r: TravelRecord) =>
@@ -1906,7 +1914,7 @@ export default function PostDetailScreen() {
   const postDisplayName = authorIsMe
     ? globalHandle
     : (record.user.name ? record.user.name : record.user.handle);
-  const authorFontStyle = handleFontStyle(authorIsMe ? (myPremium ? myHandleFont : null) : record.user.font);
+  const authorFontStyle = handleFontStyle(authorIsMe ? (myPremium ? myHandleFont : null) : record.user.font, lateFonts);
   // 게시 시간의 **오른쪽 끝** = 아이디의 오른쪽 끝(2026-09-20 사용자 지시). 아이디·국가·시간 폭을 실측해
   // 시간의 marginLeft로 밀어 넣는다: 시간 x = 아이디 끝 − 시간 폭. 국가 뒤 6보다 왼쪽이면(아이디가 짧으면) 국가 뒤 6에서 시작.
   const hasCountryLine = !!(record.countries?.length || record.country);
@@ -2362,7 +2370,7 @@ export default function PostDetailScreen() {
                         </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
-                          {!record.isExample && <Text style={[s.userTimeText, { marginLeft: timeMarginLeft }]} onLayout={(e) => setTimeW(e.nativeEvent.layout.width)}>{timeAgo(record.timestamp)}</Text>}
+                          {!record.isExample && <TimeAgoText ts={record.timestamp} style={[s.userTimeText, { marginLeft: timeMarginLeft }]} onLayout={(e) => setTimeW(e.nativeEvent.layout.width)} />}
                         </View>
                       </View>
                     </TouchableOpacity>

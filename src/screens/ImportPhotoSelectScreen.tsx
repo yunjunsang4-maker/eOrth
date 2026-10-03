@@ -24,7 +24,7 @@ import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { getMaxAlbumPhotos } from '../constants/limits';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useSettingsActions } from '../store/settingsStore';
 import { classifyImportTarget } from '../utils/importRouting';
 import { COUNTRIES } from '../constants/countries';
 import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
@@ -143,7 +143,9 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const { activeStayGroup } = useActiveStay();
   const { addImportedAlbum, addTripGroup, absorbIntoStay } = useRecordActions();
   const insets = useSafeAreaInsets();
-  const { isPremium, homeCountryCode, setLastImportAt } = useSettings();
+  const { isPremium } = useProfileSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { setLastImportAt } = useSettingsActions();
   // 사진첩(앨범) 상한을 쓴다 — 이 화면이 만드는 건 피드 기록이 아니라 앨범이기 때문이다
   // (save()가 addImportedAlbum을 부르고, 그 레코드는 viewType: 'album'이다).
   // 예전엔 getMaxRecordPhotos(20장)를 써서 AlbumCreateScreen·TripRecordScreen(100장)과 어긋났다.

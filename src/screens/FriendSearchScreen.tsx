@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon, BackChevronIcon } from '../components/icons';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings } from '../store/settingsStore';
 import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
@@ -326,7 +326,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 검색 결과·버튼을 스킨 강조색으로
   const insets = useSafeAreaInsets();
-  const { handle } = useSettings();
+  const { handle } = useProfileSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
 
   // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움

@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRecordData, useFeed, useSocialGraph } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useSettingsActions } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
 import { fetchAppNotifications, markNotificationsRead, markAllNotificationsRead, type AppNotificationType } from '../services/social';
 import { fetchPostById } from '../services/posts';
@@ -202,7 +202,7 @@ export default function NotificationScreen({ navigation }: Props) {
   const { records } = useRecordData();
   const { feedPosts } = useFeed();
   const { isMuted, isBlocked } = useSocialGraph();
-  const { markBadgesEarned } = useSettings();
+  const { markBadgesEarned } = useSettingsActions();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
   // 읽은 추억 알림 id — 로컬 계산 알림이라 서버 read가 없어 기기에 저장한다

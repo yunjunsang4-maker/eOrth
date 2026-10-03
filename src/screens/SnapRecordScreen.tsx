@@ -20,7 +20,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { PinIcon } from '../components/icons';
 import { useRecordActions } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useSettingsActions } from '../store/settingsStore';
 import {
   detectCurrentCountry,
   formatLateSeconds,
@@ -160,7 +160,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const st = useMemo(() => makeStyles(a), [a]);
   const { t, i18n } = useTranslation();
   const { addRecord } = useRecordActions();
-  const { homeCountryCode, homeRegion, homeRegionPromptShown, setHomeRegionPromptShown } = useSettings();
+  const { homeCountryCode, homeRegion, homeRegionPromptShown } = useHomeSettings();
+  const { setHomeRegionPromptShown } = useSettingsActions();
   const insets = useSafeAreaInsets();
 
   // ─── 카메라 상태 ───

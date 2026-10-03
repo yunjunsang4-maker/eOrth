@@ -13,7 +13,7 @@ import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useNotifSettings, useSettingsActions } from '../store/settingsStore';
 import { useRecordData } from '../store/recordStore';
 import { NUDGE_KEYS } from '../store/persist';
 import { COUNTRIES } from '../constants/countries';
@@ -32,7 +32,9 @@ function codeOf(name?: string | null): string | null {
 
 export default function ReturnDetectNudge() {
   const { t } = useTranslation();
-  const { homeCountryCode, notifPrefs, setNotifPref } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { notifPrefs } = useNotifSettings();
+  const { setNotifPref } = useSettingsActions();
   const { records } = useRecordData();
   const triedRef = useRef(false);
 

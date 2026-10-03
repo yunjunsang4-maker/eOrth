@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { Text, TextInput } from '../ui/Text';
 import { COUNTRIES, countriesHomeFirst, type Country } from '../constants/countries';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings } from '../store/settingsStore';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { STAGE_MAX_W } from '../utils/stage';
 import { select } from '../utils/haptics';
@@ -43,7 +43,7 @@ export default function CountryPickerModal({
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
   const [search, setSearch] = useState('');
 
   const data = useMemo(() => {

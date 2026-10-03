@@ -11,7 +11,7 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { usePrefSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
 import { ArchiveIcon, BackChevronIcon } from '../components/icons';
@@ -40,7 +40,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { records, archivedIds } = useRecordData();
   const { unarchiveRecord, deleteRecord, toggleLike } = useRecordActions();
-  const { diaryCardMode, showCounts } = useSettings();
+  const { diaryCardMode, showCounts } = usePrefSettings();
   const { pushToast } = useToast(); // 공용 토스트(자체 구현 대체)
   // DiaryCard의 빠른공유 팬 제스처가 요구하는 드래그 좌표 — 이 화면에선 no-op이라 더미 값이면 충분
   const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;

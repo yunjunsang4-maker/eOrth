@@ -36,6 +36,7 @@ import ReturnDetector from './src/components/ReturnDetector';
 import ReturnDetectNudge from './src/components/ReturnDetectNudge';
 import StayTripSuggester from './src/components/StayTripSuggester';
 import ArrivalNotifier from './src/components/ArrivalNotifier';
+import { markLateFontsLoaded, type LateFontName } from './src/constants/lateFonts';
 
 // 네이티브 스플래시를 JS 가 직접 내린다.
 // 기본 동작은 RN 첫 렌더와 동시에 사라지는 것이라, 기기가 빠르면 로고가 스쳐 지나간다.
@@ -93,13 +94,21 @@ export default function App() {
 
   // 나머지 19종(블로그 글꼴 types/blogBlocks.ts, 프리미엄 아이디 폰트 constants/handleFonts.ts)은
   // 핵심 글꼴이 끝난 뒤 백그라운드로 올린다 — 같이 시작하면 디스크 읽기를 다퉈 핵심 6종이 늦어진다.
-  // ⚠️ 키(글꼴 이름)는 기록·서버(user.font 등)에 저장된 값이라 절대 바꾸지 말 것.
-  // ponytail: 로드가 끝나기 전에 그려진 해당 글꼴 텍스트는 시스템 폰트로 보일 수 있고 다시 그려지기 전까지 유지될 수 있다(실기기 미검증) — 문제 되면 그 화면에서 로드 완료를 기다리게 할 것.
-  // 실패해도 앱은 계속 간다(해당 글꼴만 시스템 폰트) — 아래 '폰트 실패에도 시스템 폰트로 진행' 원칙과 같다.
+  // ⚠️ 키(글꼴 이름)는 기록·서버(user.font 등)에 저장된 값이라 절대 바꾸지 말 것. 목록은
+  // constants/lateFonts.ts의 LATE_FONT_NAMES와 같아야 한다(Record<LateFontName, …>라 어긋나면 tsc가 잡는다).
+  // 등록이 끝나면 markLateFontsLoaded로 알린다 — 그 전에는 화면들이 이 글꼴 이름을 스타일에 넣지 않는다.
+  // 등록 전에 이름을 넣고 그리면 iOS Fabric 텍스트 캐시가 시스템 폰트 결과를 세션 내내 재사용하기 때문이다
+  // (constants/lateFonts.ts 머리 주석).
+  // 이름별로 따로 loadAsync 하는 이유: 맵을 한 번에 넘기면 expo-font가 Promise.all로 묶어, 하나만 실패해도
+  // 나머지는 등록됐는데 어느 것이 됐는지 알 수 없다. 이름별로 받으면 성공한 것만 정확히 mark한다
+  // (병렬성은 같다 — expo-font도 내부에서 이름별로 동시에 올린다).
+  // 실패한 글꼴은 mark하지 않는다 — 그 글꼴은 계속 시스템 폰트로 보이고(넣어도 폴백이라 모양은 같다), 앱은 계속 간다.
+  // ponytail: 실패 글꼴 재시도 없음(예전과 같다). 필요해지면 재시도 성공 시 그 이름만 markLateFontsLoaded 하면 된다.
+  // ponytail: 19종이 다 끝난 뒤 한 번만 알린다(구독 화면 리렌더 1회) — 작은 영문 폰트가 큰 나눔 폰트를 기다린다. 체감되면 이름별로 mark.
   const coreFontsSettled = fontsLoaded || !!fontError;
   useEffect(() => {
     if (!coreFontsSettled) return;
-    loadFontsAsync({
+    const lateFonts: Record<LateFontName, number> = {
       NanumGothic_400Regular: require('./assets/fonts/NanumGothic_400Regular.ttf'),
       NanumMyeongjo_400Regular: require('./assets/fonts/NanumMyeongjo_400Regular.ttf'),
       NanumBrushScript_400Regular: require('./assets/fonts/NanumBrushScript_400Regular.ttf'),
@@ -120,7 +129,15 @@ export default function App() {
       PlayfairDisplay: require('./assets/fonts/PlayfairDisplay-VariableFont_wght.ttf'),
       Orbitron: require('./assets/fonts/Orbitron-VariableFont_wght.ttf'),
       Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
-    }).catch((e) => { if (__DEV__) console.warn('[Font] 백그라운드 글꼴 로드 실패 — 해당 글꼴은 시스템 폰트로 진행', e); });
+    };
+    Promise.all(
+      (Object.keys(lateFonts) as LateFontName[]).map((name) =>
+        loadFontsAsync(name, lateFonts[name]).then(
+          () => name,
+          (e) => { if (__DEV__) console.warn(`[Font] 백그라운드 글꼴 로드 실패(${name}) — 해당 글꼴은 시스템 폰트로 진행`, e); return null; },
+        ),
+      ),
+    ).then((done) => markLateFontsLoaded(done.filter((n): n is LateFontName => n !== null)));
   }, [coreFontsSettled]);
 
   // 폰트 로드 실패(에셋 손상·번들 누락)에도 앱은 시스템 폰트로 진행한다 —

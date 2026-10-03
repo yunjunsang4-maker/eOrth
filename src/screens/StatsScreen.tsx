@@ -39,7 +39,7 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useSkinSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { PersonIcon, ChartIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
@@ -288,7 +288,11 @@ export default function StatsScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const { records, tripGroups } = useRecordData();
-  const { profilePhoto, globeSkin, homeCountryCode, tutorialsSeen, markTutorialSeen } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트) + 튜토리얼 게이트
+  const { profilePhoto } = useProfileSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트) + 튜토리얼 게이트
+  const { homeCountryCode } = useHomeSettings();
+  const { globeSkin } = useSkinSettings();
+  const { tutorialsSeen } = usePrefSettings();
+  const { markTutorialSeen } = useSettingsActions();
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
   const neonRing = (skinAccent.ringGradient ?? ['#00D7F3', '#FD07E0']) as [string, string];

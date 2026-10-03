@@ -11,7 +11,7 @@ import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { Path, G } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useBadgeSettings } from '../store/settingsStore';
 import { useRecordData } from '../store/recordStore';
 import { getMyJoinedAt } from '../services/profile';
 import { KO_TO_EN } from './MainScreen';
@@ -94,7 +94,8 @@ const NOTCH_W = TICKET_W * 0.33; // 하단 중앙 노치 폭(시안: 티켓 폭�
 export default function ProfileTicketScreen({ navigation, route }: RootStackScreenProps<'ProfileTicket'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { handle, installedAt } = useSettings();
+  const { handle } = useProfileSettings();
+  const { installedAt } = useBadgeSettings();
   const { records, tripGroups } = useRecordData();
   const { tripCount, neighborCount } = route.params;
   const ticketRef = useRef<View>(null);

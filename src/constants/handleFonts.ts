@@ -1,5 +1,10 @@
+import { lateFontFamily } from './lateFonts';
+
 // 아이디(핸들) 표시 폰트 — 프리미엄 기능.
-// 폰트 자산은 App.tsx의 useFonts로 이미 로드되는 것만 사용한다(추가 설치 불필요).
+// 폰트 자산은 App.tsx가 이미 로드하는 것만 사용한다(추가 설치 불필요). 'impact'(Montserrat-Black)만
+// 시작 시 기다리는 핵심 useFonts이고, 나머지는 핵심 글꼴 뒤 백그라운드 loadAsync로 올라온다 —
+// 등록 전에는 handleFontStyle이 null을 돌려줘 기본 폰트로 그리고, 등록되면 그때 fontFamily가 들어간다
+// (등록 전에 이름을 넣으면 iOS가 시스템 폰트 결과를 세션 내내 재사용한다 — constants/lateFonts.ts).
 // 선택값(id)은 profiles.handle_font로 서버에 저장돼 타인 화면(프로필·피드)에서도 렌더된다.
 export interface HandleFont {
   id: string;
@@ -30,8 +35,14 @@ export const HANDLE_FONTS: HandleFont[] = [
 /** 폰트 id → Text에 얹을 스타일 (기본/미지정이면 null)
  *  fontWeight를 'normal'로 함께 강제하는 이유: 기존 스타일의 fontWeight('600' 등)가 남아 있으면
  *  안드로이드는 해당 굵기 변형을 찾다가 실패해 서체 전체를 시스템 폰트로 폴백시킨다
- *  (여기 폰트는 전부 단일 굵기 파일이라 iOS 외형은 변하지 않는다). */
-export const handleFontStyle = (id?: string | null): { fontFamily: string; fontWeight: 'normal' } | null => {
-  const fam = HANDLE_FONTS.find((f) => f.id === id)?.fontFamily;
+ *  (여기 폰트는 전부 단일 굵기 파일이라 iOS 외형은 변하지 않는다).
+ *  loadedFonts는 렌더에서 useLateFontsLoaded()로 받은 값 — 늦은 글꼴이 아직 등록 전이면 fontWeight까지
+ *  통째로 빼고 null을 돌려준다. 'normal'만 남기면 기본 폰트 사용자와 다른 가는 시스템 폰트가 잠깐
+ *  보이므로, 등록 전에는 '기본 폰트를 고른 사용자'와 똑같이 그린다. */
+export const handleFontStyle = (
+  id: string | null | undefined,
+  loadedFonts: ReadonlySet<string>,
+): { fontFamily: string; fontWeight: 'normal' } | null => {
+  const fam = lateFontFamily(HANDLE_FONTS.find((f) => f.id === id)?.fontFamily, loadedFonts);
   return fam ? { fontFamily: fam, fontWeight: 'normal' } : null;
 };

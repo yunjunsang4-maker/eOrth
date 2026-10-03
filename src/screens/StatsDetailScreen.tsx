@@ -28,7 +28,7 @@ import Svg, {
 import { Colors, Typography } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecordData } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { DETAIL_PARTICLES } from '../data/statsDetailGlobe';
 import { stageWidthNow } from '../utils/stage';
@@ -145,7 +145,7 @@ export default function StatsDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
   const { records, tripGroups } = useRecordData();
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
 
   // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
   const homeNames = useMemo(() => {

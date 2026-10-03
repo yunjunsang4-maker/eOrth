@@ -1,6 +1,6 @@
 import { useMemo, useEffect } from 'react';
 import { useRecordData, useSocialGraph } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useBadgeSettings, useSettingsActions } from '../store/settingsStore';
 import { computeEarnedBadgeIds, BadgeCatalogEntry } from '../utils/badgeRules';
 import { COUNTRIES } from '../constants/countries';
 
@@ -10,7 +10,9 @@ import { COUNTRIES } from '../constants/countries';
 export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = true): void {
   const { records } = useRecordData();
   const { neighbors } = useSocialGraph();
-  const { badgeEarnedAt, markBadgesEarned, loginStreak, installedAt, homeCountryCode } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { badgeEarnedAt, loginStreak, installedAt } = useBadgeSettings();
+  const { markBadgesEarned } = useSettingsActions();
 
   // 거주국 코드 → 한글 이름 변환 (방문국 집계 제외용)
   const homeCountryName = useMemo(

@@ -45,7 +45,7 @@ import { getMaxRecordPhotos } from '../constants/limits';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -334,7 +334,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   );
 
   // 거주국가(국내) 여부 — 국내 기록은 지역(시/도) 선택으로 여행 카드를 구분한다
-  const { homeCountryCode, isPremium, lastPhotoFrame, setLastPhotoFrame } = useSettings();
+  const { isPremium } = useProfileSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { lastPhotoFrame } = usePrefSettings();
+  const { setLastPhotoFrame } = useSettingsActions();
   // 기록당 사진 상한 — 현재는 프리미엄도 동일한 기본값(20장)이다.
   // (2026-07 수익구조 변경으로 사진 상한 상향이 프리미엄 혜택에서 빠졌다 — constants/limits.ts 참조.
   //  getMaxRecordPhotos는 호출부 시그니처 유지를 위해 isPremium을 받기만 하고 쓰지 않는다)

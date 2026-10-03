@@ -22,7 +22,7 @@ import type { TFunction } from 'i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { GlassButton } from '../components/ui';
 import { useRecordData, useRecordActions } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useProfileSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
@@ -106,7 +106,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { tripGroups, records } = useRecordData();
   const { addImportedAlbum, addTripGroup, updateTripGroup, updateRecord } = useRecordActions();
   // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
-  const { isPremium } = useSettings();
+  const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
 
   // 기간 (기본: 최근 7일)

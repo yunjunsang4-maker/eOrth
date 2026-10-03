@@ -14,7 +14,7 @@ import { select, grab } from '../../utils/haptics';
 import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
-import { useSettings } from '../../store/settingsStore';
+import { useSkinSettings } from '../../store/settingsStore';
 import { layoutBandRuns, type RecordedRange } from '../../utils/recordedDates';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
@@ -174,7 +174,7 @@ export function CalendarBottomSheet({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
-  const { globeSkin } = useSettings();
+  const { globeSkin } = useSkinSettings();
   const chipPalette = CHIP_PALETTES[globeSkin] ?? CHIP_PALETTES.aurora;
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   // 셀 폭은 훅으로 실시간 — 모듈 최상위 stageWidthNow()로 박제하면 접힌 채(360dp) 시작해

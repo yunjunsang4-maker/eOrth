@@ -16,7 +16,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LockClosedIcon } from '../components/icons';
-import { useSettings } from '../store/settingsStore';
+import { usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { andFitText } from '../utils/fitText';
 import {
   isNaverBlogUrl,
@@ -51,7 +51,8 @@ type Step = 'input' | 'verify' | 'verifying' | 'loading' | 'preview';
 
 export default function NaverBlogImportScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  const { verifiedNaverBlogIds, addVerifiedNaverBlogId } = useSettings();
+  const { verifiedNaverBlogIds } = usePrefSettings();
+  const { addVerifiedNaverBlogId } = useSettingsActions();
   const [url, setUrl] = useState('');
   const [step, setStep] = useState<Step>('input');
   const [blogData, setBlogData] = useState<BlogData | null>(null);

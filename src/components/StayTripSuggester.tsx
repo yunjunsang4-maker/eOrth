@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import i18n from '../i18n';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings, useNotifSettings } from '../store/settingsStore';
 import { useRecordData, useActiveStay } from '../store/recordStore';
 import { detectCurrentCountry, requestNotificationPermission } from '../services/snapService';
 import { countryNameToCode } from '../utils/momentMatch';
@@ -51,7 +51,8 @@ const STAY_TRIP_SUGGEST_NOTIF_ID = 'stay-trip-suggest';
 let checking = false;
 
 export default function StayTripSuggester() {
-  const { homeCountryCode, notifPrefs } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { notifPrefs } = useNotifSettings();
   const { records, tripGroups } = useRecordData();
   const { activeStayGroup } = useActiveStay();
   // 기록·카드 목록은 매 기록마다 바뀐다 — deps에 넣으면 effect가 난사된다. 스캔 시점의

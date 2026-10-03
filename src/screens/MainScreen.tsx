@@ -73,7 +73,7 @@ import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage
 import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
+import { useProfileSettings, useHomeSettings, useGlobeSettings, useSkinSettings, usePrefSettings, useSettingsActions, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions, ISO2_TO_GEO } from '../constants/homeRegions';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
 import type { RegionGlobalMode } from '../utils/regionModeMigration';
@@ -730,28 +730,12 @@ export default function MainScreen({ navigation, route }: Props) {
   const [regionRecordsTitle, setRegionRecordsTitle] = useState('');
 
   // 지구본/대륙 표시 설정 — settingsStore에서 영속 관리
-  const {
-    globeVariant, setGlobeVariant,
-    globeSkin, setGlobeSkin,
-    isPremium,
-    globeDisplayMode, setGlobeDisplayMode,
-    regionGlobalMode, setRegionGlobalMode,
-    globeColor, setGlobeColor,
-    countryColors, setCountryColors,
-    countryDisplayModes, setCountryDisplayModes,
-    regionDisplayModes, setRegionDisplayModes,
-    regionColors, setRegionColors,
-    puzzleImages, setPuzzleImages,
-    puzzleSources, setPuzzleSources,
-    regionPhotos, setRegionPhotos,
-    taggedRegions, setTaggedRegions,
-    dismissedRegionTagChips, setDismissedRegionTagChips,
-    regionFavoriteCodes, toggleRegionFavorite,
-    skinColorStore, setSkinColorStore,
-    tutorialsSeen, markTutorialSeen,
-    handle,
-    homeCountryCode,
-  } = useSettings();
+  const { isPremium, handle } = useProfileSettings();
+  const { homeCountryCode } = useHomeSettings();
+  const { globeVariant, globeDisplayMode, regionGlobalMode, globeColor, countryColors, countryDisplayModes, regionDisplayModes, regionColors, puzzleImages, puzzleSources, regionPhotos, taggedRegions, dismissedRegionTagChips, regionFavoriteCodes, skinColorStore } = useGlobeSettings();
+  const { globeSkin } = useSkinSettings();
+  const { tutorialsSeen } = usePrefSettings();
+  const { setGlobeVariant, setGlobeSkin, setGlobeDisplayMode, setRegionGlobalMode, setGlobeColor, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setPuzzleImages, setPuzzleSources, setRegionPhotos, setTaggedRegions, setDismissedRegionTagChips, toggleRegionFavorite, setSkinColorStore, markTutorialSeen } = useSettingsActions();
 
   // 트리거 2 — 계정당 1회: 메인 탭에 처음 들어왔을 때 자동 시작.
   // (기록 완성 화면에서 파라미터로 들어온 경우는 트리거 1이 처리하므로 여기선 비켜준다)
@@ -905,7 +889,7 @@ export default function MainScreen({ navigation, route }: Props) {
     }
   };
 
-  // (국가/지역별 개별 표시 설정도 settingsStore에서 영속 관리 — 위 useSettings 참조)
+  // (국가/지역별 개별 표시 설정도 settingsStore에서 영속 관리 — 위 useGlobeSettings 참조)
 
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');

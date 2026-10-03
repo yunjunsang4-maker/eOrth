@@ -35,7 +35,7 @@ import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import { OTHER_CURRENCIES, currencyName, defaultCurrencyForCountry } from '../constants/currencies';
-import { useSettings } from '../store/settingsStore';
+import { useHomeSettings } from '../store/settingsStore';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
 import AutoTocModal from '../components/AutoTocModal';
@@ -90,6 +90,7 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
+import { useLateFontsLoaded, lateFontFamily } from '../constants/lateFonts';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { isValidRect } from '../utils/coachRect';
 import { andFitText } from '../utils/fitText';
@@ -383,6 +384,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
+  // 블로그 글꼴 등록 신호 — 등록 전엔 글꼴 이름을 스타일에 넣지 않는다(constants/lateFonts.ts: 넣으면 iOS가 시스템 폰트 결과를 굳힌다)
+  const lateFonts = useLateFontsLoaded();
   // 국가·날짜 칩 색 — Figma 시안 값(rgba(117,26,173,0.2) / #E0C9FF)은 aurora(보라) 전용이라
   // 그대로 박으면 cyan·mint 스킨에서 보라가 남는다. StatsDetailScreen과 같은 ringGradient 유무로
   // 커스텀 스킨을 판정해 갈라 쓴다 (aurora만 ringGradient가 null).
@@ -396,7 +399,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft } = useRecordActions();
   // 아무것도 안 고른 상태의 출발 통화는 거주국 기준 — 'KRW' 고정은 해외 거주자에게 틀린 값이었다.
   // (여행국이 정해지면 아래 자동 추천 useEffect가 덮는다)
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode } = useHomeSettings();
   const homeCurrency = defaultCurrencyForCountry(homeCountryCode);
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
@@ -1817,7 +1820,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {FONT_OPTIONS.map(opt => (
           <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && !!lateFontFamily(opt.value, lateFonts) && { fontFamily: opt.value }, atb?.fontFamily === opt.value && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
             {atb?.fontFamily === opt.value && <Text style={[st.checkMark, { color: skinAccent.accent }]}>✓</Text>}
           </TouchableOpacity>
         ))}
@@ -2403,7 +2406,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         // 커스텀 한글 서체(단일 굵기 파일)에 fontWeight를 얹으면 안드로이드는 해당 굵기
         // 변형을 찾다 실패해 시스템 폰트로 통째로 폴백한다 → 안드로이드는 서체 유지 우선.
         // 고정 lineHeight 26은 '제목급'(26px)에서 한글 상하가 잘려 글자 크기에 비례시킨다.
-        const customFam = tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined;
+        // 글꼴 등록 전엔 customFam이 없어 시스템 폰트·원래 굵기로 그린다(등록되면 폭·줄바꿈이 한 번 바뀐다 — 허용)
+        const customFam = lateFontFamily(tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined, lateFonts);
         return (
           <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" key={block.id}
             ref={ref => { blockRefs.current[block.id] = ref; }}

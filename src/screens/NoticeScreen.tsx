@@ -11,7 +11,7 @@ import {
 import { Text } from '../ui/Text';
 import { BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
-import { useSettings } from '../store/settingsStore';
+import { usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
 import { visibleNotices, latestPublishedAt, type Notice } from '../utils/noticeFeed';
 import { isKoreanLang, isJapaneseLang, isTraditionalChineseLang, spanishVariant, isFrenchLang } from '../utils/langKind';
@@ -35,7 +35,8 @@ export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notic
   const a = useSkinAccent();
   const st = useMemo(() => makeStyles(a), [a]);
   const { t, i18n } = useTranslation();
-  const { lastSeenNoticeAt, setLastSeenNoticeAt } = useSettings();
+  const { lastSeenNoticeAt } = usePrefSettings();
+  const { setLastSeenNoticeAt } = useSettingsActions();
   const [list, setList] = useState<Notice[] | null>(null); // null = 불러오는 중
 
   useEffect(() => {
