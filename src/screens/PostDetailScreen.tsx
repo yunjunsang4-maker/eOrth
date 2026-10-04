@@ -17,7 +17,6 @@ import {
   Linking,
   Animated,
   Easing,
-  PanResponder,
   ActivityIndicator,
   LayoutAnimation,
 } from 'react-native';
@@ -36,7 +35,7 @@ import Reanimated, {
   runOnUI, cancelAnimation, Easing as REasing, ReduceMotion,
 } from 'react-native-reanimated';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
-import { useNavigation, useRoute, useFocusEffect, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, useIsFocused, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
@@ -739,6 +738,10 @@ function SnapViewerModal({
   );
 }
 
+// 댓글 시트 열기·복귀 스프링 — 옛 Animated.spring(tension 60, friction 12)을 RN 환산식
+// (stiffness = (t−30)·3.62+194, damping = (f−8)·3+25, 질량 1)으로 바꾼 값
+const COMMENT_SHEET_SPRING = { stiffness: 302.6, damping: 37, mass: 1 };
+
 function SnapStoryViewer({
   initialPostId, records, navigation, toggleLike, deleteRecord, archiveRecord, markSnapViewed,
 }: {
@@ -876,27 +879,32 @@ function SnapStoryViewer({
   const commentInputRef = useRef<TextInput>(null);
   const sendingCommentRef = useRef(false);
 
-  const commentSheetAnim = useRef(new Animated.Value(SCREEN_H * 0.6)).current;
+  // 시트 위치는 공유값 — 핸들 드래그 추종(commentSheetPan)·열기·닫기가 UI 스레드에서 같은 값을 움직인다.
+  // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.
+  const commentSheetY = useSharedValue(SCREEN_H * 0.6);
   const commentOverlayAnim = useRef(new Animated.Value(0)).current;
   // 댓글 시트는 화면 하단 고정(absolute)이라 내부 KeyboardAvoidingView만으로는 입력창이 키보드에
   // 가린다. 키보드 높이만큼 시트 전체를 위로 들어올려 입력창이 항상 키보드 위에 보이게 한다.
-  const keyboardLift = useRef(new Animated.Value(0)).current;
+  // 시트 위치(commentSheetY)와 한 transform으로 합쳐지므로 같이 공유값이다(옛 Animated.subtract).
+  // timing easing은 RN 기본(inOut(ease))을 명시 — Reanimated 기본은 inOut(quad)
+  const keyboardLift = useSharedValue(0);
+  const commentSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: commentSheetY.value - keyboardLift.value }],
+  }));
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
     const onShow = (e: any) => {
-      Animated.timing(keyboardLift, {
-        toValue: e.endCoordinates?.height ?? 0,
+      keyboardLift.value = withTiming(e.endCoordinates?.height ?? 0, {
         duration: e.duration || 220,
-        useNativeDriver: true,
-      }).start();
+        easing: REasing.inOut(REasing.ease),
+      });
     };
     const onHide = (e: any) => {
-      Animated.timing(keyboardLift, {
-        toValue: 0,
+      keyboardLift.value = withTiming(0, {
         duration: e?.duration || 200,
-        useNativeDriver: true,
-      }).start();
+        easing: REasing.inOut(REasing.ease),
+      });
     };
     const s1 = Keyboard.addListener(showEvt, onShow);
     const s2 = Keyboard.addListener(hideEvt, onHide);
@@ -927,20 +935,6 @@ function SnapStoryViewer({
     }
   }, []);
 
-  // 댓글 시트 드래그 닫기 PanResponder — Hook이므로 early return 위에서 생성한다.
-  // (콜백은 렌더 시점이 아닌 제스처 시점에 실행되므로 아래의 closeCommentSheet 전방 참조는 안전)
-  const commentSheetPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) commentSheetAnim.setValue(g.dy); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) closeCommentSheet();
-        else Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
-      },
-    })
-  ).current;
-
   // 표시할 스냅이 없으면 닫기 — 렌더 중 부수효과 금지, useEffect에서 처리
   useEffect(() => {
     if (!currentSnap || stories.length === 0) navigation.goBack();
@@ -963,9 +957,13 @@ function SnapStoryViewer({
   }, [paused, uiOpacity]);
   const advanceRef = useRef<(dir: 'next' | 'prev') => void>(() => {});
 
-  // 어떤 오버레이도 안 떠 있고 일시정지/드래그 아니면 재생
+  // 이 화면 위에 다른 화면(작성자 프로필 등)이 올라가 있으면 멈춘다. 예전엔 FriendProfile을 push해도
+  // 뒤에서 타이머가 돌아 스냅이 넘어가고, 마지막 스토리 끝의 goBack()이 프로필을 보던 사용자를 끌어냈다.
+  // 정지·재개는 아래 재생 effect가 그대로 처리한다 — 멈출 때 cancelAnimation, 돌아오면 현재 값에서 남은 시간만.
+  const isFocused = useIsFocused();
+  // 어떤 오버레이도 안 떠 있고 일시정지/드래그 아니고 화면이 앞에 있으면 재생
   const storyPlaying =
-    !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen && !shareSheetOpen;
+    isFocused && !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen && !shareSheetOpen;
 
   // 스냅이 바뀌면 진행도 리셋
   useEffect(() => { progress.value = 0; }, [storyIdx, localIdx, progress]); // progress(공유값)는 렌더 간 고정
@@ -1326,17 +1324,38 @@ function SnapStoryViewer({
   // 댓글 시트
   const openCommentSheet = () => {
     setCommentSheetOpen(true);
-    Animated.parallel([
-      Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }),
-      Animated.timing(commentOverlayAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-    ]).start();
+    commentSheetY.value = withSpring(0, COMMENT_SHEET_SPRING);
+    Animated.timing(commentOverlayAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
   };
   const closeCommentSheet = () => {
-    Animated.parallel([
-      Animated.timing(commentSheetAnim, { toValue: SCREEN_H * 0.6, duration: 280, useNativeDriver: true }),
-      Animated.timing(commentOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-    ]).start(() => setCommentSheetOpen(false));
+    Animated.timing(commentOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+    // 완료 처리는 finished와 무관하게 — 옛 Animated.parallel(...).start(콜백)도 finished를 보지 않았다.
+    // 시트(280ms)가 오버레이(200ms)보다 늦게 끝나므로 옛 parallel 완료 시점과 같다.
+    commentSheetY.value = withTiming(
+      SCREEN_H * 0.6,
+      { duration: 280, easing: REasing.inOut(REasing.ease) },
+      () => { runOnJS(setCommentSheetOpen)(false); },
+    );
   };
+
+  // 핸들을 끌어 닫기 — 옛 PanResponder를 RNGH로 옮겨 추종이 UI 스레드에서 돈다(MainScreen sheetHandlePan과 같은 규칙).
+  // - 획득: 옛 onStartShouldSet=true(핸들 터치 즉시)에 맞춰 minDistance(0) — 첫 이동에서 바로 잡는다.
+  //   RNGH는 활성화 순간 translation을 0으로 리셋하므로 첫 이동 1회분(수 px)만큼 옛것보다 덜 따라온다.
+  //   핸들 안에는 누를 것도 스크롤도 없다(댓글 ScrollView는 핸들 밖 형제). 스토리 닫기 제스처(dismissGesture)는
+  //   형제 뷰에 붙어 있어 핸들 터치에 끼어들지 않는다.
+  // - 놓을 때: 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 스프링 복귀.
+  //   RNGH 속도는 평활값이라 옛 순간속도와 판정이 갈릴 수 있다(사용자 승인 2026-10-03).
+  // - 잡힌 뒤 시스템이 제스처를 뺏으면(ok=false) 끌던 위치에 남지 않고 복귀한다.
+  // 옛 코드는 PanResponder를 early return 위의 useRef에 박제해 첫 렌더의 closeCommentSheet(그때의 SCREEN_H)를
+  // 붙잡았다. dismissGesture처럼 매 렌더 만들어 항상 최신 함수를 부른다(훅이 아니라 early return 아래에 둘 수 있다).
+  const commentSheetPan = Gesture.Pan()
+    .minDistance(0)
+    .onUpdate((e) => { 'worklet'; if (e.translationY > 0) commentSheetY.value = e.translationY; })
+    .onEnd((e, ok) => {
+      'worklet';
+      if (ok && (e.translationY > 80 || e.velocityY > 500)) runOnJS(closeCommentSheet)();
+      else commentSheetY.value = withSpring(0, COMMENT_SHEET_SPRING);
+    });
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(postLink(currentSnap.remoteId ?? currentSnap.id)); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
@@ -1449,10 +1468,12 @@ function SnapStoryViewer({
       )}
 
       {/* 댓글 바텀시트 — 키보드 높이만큼 시트 전체를 위로 들어올린다(입력창이 키보드에 안 가리게) */}
-      <Animated.View style={[storyS.commentSheet, { transform: [{ translateY: Animated.subtract(commentSheetAnim, keyboardLift) }] }]} pointerEvents={commentSheetOpen ? 'auto' : 'none'}>
-        <View style={storyS.csHandleArea} {...commentSheetPan.panHandlers}>
-          <View style={storyS.csHandle} />
-        </View>
+      <Reanimated.View style={[storyS.commentSheet, commentSheetStyle]} pointerEvents={commentSheetOpen ? 'auto' : 'none'}>
+        <GestureDetector gesture={commentSheetPan}>
+          <View style={storyS.csHandleArea}>
+            <View style={storyS.csHandle} />
+          </View>
+        </GestureDetector>
         <View style={storyS.csTitleRow}>
           <Text style={storyS.csTitle}>{t('social.comments')}</Text>
           <Text style={storyS.csCount}>{totalComments}</Text>
@@ -1506,7 +1527,7 @@ function SnapStoryViewer({
             </TouchableOpacity>
           </View>
         </View>
-      </Animated.View>
+      </Reanimated.View>
 
       {/* 메뉴 모달 */}
       <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>

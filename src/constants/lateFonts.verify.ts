@@ -1,5 +1,5 @@
 // src/constants/lateFonts.verify.ts — 늦은 글꼴 등록 신호 저장소 + handleFontStyle 게이트
-import { LATE_FONT_NAMES, markLateFontsLoaded, getLoadedLateFonts, subscribeLateFonts, lateFontFamily } from './lateFonts';
+import { LATE_FONT_NAMES, LATE_BLOG_FONT_NAMES, LATE_HANDLE_FONT_NAMES, markLateFontsLoaded, getLoadedLateFonts, subscribeLateFonts, lateFontFamily } from './lateFonts';
 import { handleFontStyle } from './handleFonts';
 
 let failed = 0;
@@ -64,6 +64,31 @@ unsub();
 markLateFontsLoaded(['Yuyu']);
 eq(calls, 1, '구독 해제 후 mark: 알림 없음');
 eq(getLoadedLateFonts().has('Yuyu'), true, '구독 해제와 무관하게 값은 바뀜');
+
+// ── 두 그룹 분할(App.tsx가 아이디 그룹 → 블로그 그룹 순으로 따로 mark) ──
+// 겹치거나 빠진 이름이 있으면 그 글꼴은 두 번 올리거나 영영 mark되지 않는다
+eq([...LATE_BLOG_FONT_NAMES, ...LATE_HANDLE_FONT_NAMES].sort(), [...LATE_FONT_NAMES].sort(), '두 그룹을 합치면 19종 전체');
+eq(LATE_BLOG_FONT_NAMES.filter((n) => (LATE_HANDLE_FONT_NAMES as readonly string[]).includes(n)), [], '두 그룹은 겹치지 않는다');
+eq([LATE_BLOG_FONT_NAMES.length, LATE_HANDLE_FONT_NAMES.length], [9, 10], '블로그 9종·아이디 10종');
+
+// 누적 — 두 번째 그룹 mark가 첫 그룹 이름을 지우면 아이디 폰트가 블로그 글꼴 등록 순간 시스템 폰트로 되돌아간다
+{
+  let groupCalls = 0;
+  const off = subscribeLateFonts(() => { groupCalls++; });
+  markLateFontsLoaded(LATE_HANDLE_FONT_NAMES.filter((n) => n !== 'Orbitron')); // 아이디 그룹(Orbitron만 실패)
+  const sHandle = getLoadedLateFonts();
+  eq(groupCalls, 1, '아이디 그룹 mark: 알림 1회(이미 등록된 Pacifico 등이 섞여도 새 이름이 있으면 알림)');
+  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '아이디 그룹 뒤: 아이디 폰트 적용');
+  eq(lateFontFamily('NanumBarunpen', sHandle), undefined, '아이디 그룹 뒤: 블로그 글꼴은 아직 시스템 폰트');
+  markLateFontsLoaded(LATE_BLOG_FONT_NAMES); // 블로그 그룹
+  const sBoth = getLoadedLateFonts();
+  eq(groupCalls, 2, '블로그 그룹 mark: 알림 1회 더(총 2회)');
+  eq(sBoth.has('BebasNeue') && sBoth.has('NanumBarunpen'), true, '블로그 그룹 뒤: 두 그룹 이름이 누적');
+  eq(sBoth.has('Orbitron'), false, '실패한 Orbitron은 블로그 그룹 mark 뒤에도 빠져 있다');
+  eq(sBoth.size, 18, '19종 중 실패 1종 제외 18종');
+  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '옛 스냅샷(아이디 그룹 시점)은 그대로');
+  off();
+}
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

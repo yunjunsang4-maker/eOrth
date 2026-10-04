@@ -10,7 +10,6 @@ import {
   Animated,
   Easing,
   Modal,
-  PanResponder,
   Platform,
   Image,
   KeyboardAvoidingView,
@@ -19,7 +18,8 @@ import {
 import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, Easing as REasing } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, Easing as REasing, type SharedValue } from 'react-native-reanimated';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
@@ -133,6 +133,33 @@ const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
 const SHEET_HEIGHT = height * 0.6;
 // 국가 시트는 내용만큼만 올라오고 이 값까지만 커진다(예전엔 기록이 하나여도 항상 65%였다)
 const COUNTRY_SHEET_MAX_H = height * 0.65;
+// 시트 열기·복귀 스프링 — 옛 Animated.spring(tension 60, friction 12)을 RN 환산식
+// (stiffness = (t−30)·3.62+194, damping = (f−8)·3+25, 질량 1)으로 바꾼 값
+const SHEET_SPRING = { stiffness: 302.6, damping: 37, mass: 1 };
+// 시트 닫기 300ms — RN timing 기본 easing(inOut(ease))을 명시(Reanimated 기본은 inOut(quad))
+const SHEET_CLOSE_TIMING = { duration: 300, easing: REasing.inOut(REasing.ease) };
+
+// 시트 핸들을 끌어 닫기 — 여행 시트·국가 시트 공용. 옛 PanResponder를 RNGH로 옮겨 추종이 UI 스레드에서 돈다.
+// - 획득: 옛 onStartShouldSet=true(핸들 터치 즉시)에 맞춰 minDistance(0) — 첫 이동에서 바로 잡는다.
+//   RNGH는 활성화 순간 translation을 0으로 리셋하므로 첫 이동 1회분(수 px)만큼 옛것보다 덜 따라온다.
+//   핸들 안에는 누를 것도 스크롤도 없어 양보할 대상이 없다(목록 ScrollView는 핸들 밖 형제).
+// - 추종: 아래로만(dy>0일 때만 갱신 — 위로 넘기면 마지막 양수 위치에 머무는 것까지 옛것과 같다).
+// - 놓을 때: 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 스프링 복귀.
+//   RNGH 속도는 평활값이라 옛 순간속도와 판정이 갈릴 수 있다(사용자 승인 2026-10-03).
+// - 잡힌 뒤 시스템이 제스처를 뺏으면(ok=false) 끌던 위치에 남지 않고 복귀한다(옛것은 terminate 처리가 없어 멈춰 있었다).
+function sheetHandlePan(y: SharedValue<number>, close: () => void) {
+  return Gesture.Pan()
+    .minDistance(0)
+    .onUpdate((e) => {
+      'worklet';
+      if (e.translationY > 0) y.value = e.translationY;
+    })
+    .onEnd((e, ok) => {
+      'worklet';
+      if (ok && (e.translationY > 80 || e.velocityY > 500)) runOnJS(close)();
+      else y.value = withSpring(0, SHEET_SPRING);
+    });
+}
 
 // 스냅 버튼(탭 바 오버레이 RecordFab)의 절대 제약 — 이 화면은 버튼을 직접 그리지 않지만,
 // 튜토리얼 앵커와 하단 오버레이가 같은 값을 알아야 겹치지 않는다.
@@ -1381,9 +1408,13 @@ export default function MainScreen({ navigation, route }: Props) {
     });
   }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setPuzzleImages, setPuzzleSources, setRegionPhotos]);
 
-  const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  // 시트 위치는 공유값 — 핸들 드래그 추종(sheetHandlePan)·열기·닫기가 모두 UI 스레드에서 같은 값을 움직인다.
+  // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.
+  const sheetY = useSharedValue(SHEET_HEIGHT);
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.value }] }));
   const overlayAnim = useRef(new Animated.Value(0)).current;
-  const countrySheetAnim = useRef(new Animated.Value(COUNTRY_SHEET_MAX_H)).current;
+  const countrySheetY = useSharedValue(COUNTRY_SHEET_MAX_H);
+  const countrySheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: countrySheetY.value }] }));
   // 시트 실측 높이 — 콘텐츠 양에 따라 달라지므로 닫기 애니메이션 거리로 쓴다
   const countrySheetHRef = useRef(COUNTRY_SHEET_MAX_H);
   // 시트가 완전히 닫힌 뒤 실행할 작업 — 다음 Modal을 여는 작업은 반드시 이 경로로
@@ -1394,95 +1425,48 @@ export default function MainScreen({ navigation, route }: Props) {
 
   const openSheet = () => {
     setSheetOpen(true);
-    Animated.parallel([
-      Animated.spring(sheetAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 60,
-        friction: 12,
-      }),
-      Animated.timing(overlayAnim, {
-        toValue: 1,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    sheetY.value = withSpring(0, SHEET_SPRING);
+    Animated.timing(overlayAnim, {
+      toValue: 1,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const closeSheet = () => {
-    Animated.parallel([
-      Animated.timing(sheetAnim, {
-        toValue: SHEET_HEIGHT,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(overlayAnim, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setSheetOpen(false);
+  // 닫기 함수는 핸들 제스처(useMemo)가 붙잡으므로 참조를 고정한다 — 읽는 것은 공유값·ref·setter뿐
+  const closeSheet = useCallback(() => {
+    Animated.timing(overlayAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+    // 완료 처리는 finished와 무관하게 — 옛 Animated.parallel(...).start(콜백)도 finished를 보지 않았다.
+    // 시트(300ms)가 오버레이(220ms)보다 늦게 끝나므로 옛 parallel 완료 시점과 같다.
+    sheetY.value = withTiming(SHEET_HEIGHT, SHEET_CLOSE_TIMING, () => {
+      runOnJS(setSheetOpen)(false);
     });
-  };
+  }, [sheetY, overlayAnim]);
 
-  const sheetPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
-      onPanResponderMove: (_, g) => {
-        if (g.dy > 0) sheetAnim.setValue(g.dy);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) {
-          closeSheet();
-        } else {
-          Animated.spring(sheetAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 60,
-            friction: 12,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const sheetPan = useMemo(() => sheetHandlePan(sheetY, closeSheet), [sheetY, closeSheet]);
 
   const openCountrySheet = (countryName: string) => {
     setSelectedCountry(countryName);
     setCountrySheetOpen(true);
     // 시트 높이가 나라마다 달라, 직전에 닫힌 높이에서 시작하면 새 시트가 살짝 보인 채로 뜬다.
-    // 항상 상한만큼 내린 지점(= 화면 밖)에서 출발시킨다.
-    countrySheetAnim.setValue(COUNTRY_SHEET_MAX_H);
-    Animated.parallel([
-      Animated.spring(countrySheetAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 60,
-        friction: 12,
-      }),
-      Animated.timing(countryOverlayAnim, {
-        toValue: 1,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // 항상 상한만큼 내린 지점(= 화면 밖)에서 출발시킨다. 두 쓰기는 같은 UI 큐에 순서대로 쌓인다.
+    countrySheetY.value = COUNTRY_SHEET_MAX_H;
+    countrySheetY.value = withSpring(0, SHEET_SPRING);
+    Animated.timing(countryOverlayAnim, {
+      toValue: 1,
+      duration: 280,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const closeCountrySheet = () => {
-    Animated.parallel([
-      Animated.timing(countrySheetAnim, {
-        // 내용에 따라 시트 높이가 달라지므로 실측값만큼 내려야 화면 밖으로 완전히 사라진다
-        toValue: countrySheetHRef.current,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(countryOverlayAnim, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
+  // 옛 코드는 PanResponder가 useRef로 첫 렌더에 박제돼 이 함수를 콜백 ref(countryPanCb)로 우회했다.
+  // 이제 제스처를 useMemo로 이 함수에 묶고 함수 참조를 고정해(읽는 것은 공유값·ref·setter뿐) 우회가 필요 없다.
+  const closeCountrySheet = useCallback(() => {
+    const finish = () => {
       setCountrySheetOpen(false);
       setSelectedCountry(null);
       // 시트 Modal이 완전히 내려간 뒤 예약된 후속 작업(기록형식 모달 열기 등)을 실행.
@@ -1491,36 +1475,21 @@ export default function MainScreen({ navigation, route }: Props) {
       const after = afterCountrySheetCloseRef.current;
       afterCountrySheetCloseRef.current = null;
       if (after) setTimeout(after, 80);
+    };
+    Animated.timing(countryOverlayAnim, {
+      toValue: 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+    // 내용에 따라 시트 높이가 달라지므로 실측값만큼 내려야 화면 밖으로 완전히 사라진다.
+    // 완료 처리는 finished와 무관하게 — 옛 parallel 콜백과 같다(closeSheet 주석 참고).
+    countrySheetY.value = withTiming(countrySheetHRef.current, SHEET_CLOSE_TIMING, () => {
+      runOnJS(finish)();
     });
-  };
+  }, [countrySheetY, countryOverlayAnim]);
 
   // 드래그로 닫기 — 여행 시트(sheetPan)와 같은 제스처를 국가 시트에도 준다.
-  // PanResponder는 useRef로 첫 렌더에 박제되므로, 매 렌더 새로 만들어지는 닫기 함수는
-  // 콜백 ref를 거쳐 호출한다(직접 캡처하면 옛 클로저에 묶인다).
-  const countryPanCb = useRef<{ close: () => void }>({ close: () => {} });
-  countryPanCb.current.close = closeCountrySheet;
-
-  const countrySheetPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
-      onPanResponderMove: (_, g) => {
-        if (g.dy > 0) countrySheetAnim.setValue(g.dy);
-      },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) {
-          countryPanCb.current.close();
-        } else {
-          Animated.spring(countrySheetAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 60,
-            friction: 12,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const countrySheetPan = useMemo(() => sheetHandlePan(countrySheetY, closeCountrySheet), [countrySheetY, closeCountrySheet]);
 
   // 국가 시트 목록 — 발행된 내 기록만, 여행 날짜 내림차순, 여행 카드 단위로 한 줄.
   // 시트가 떠 있는 동안 매 렌더마다 전체 기록을 다시 훑지 않도록 메모한다.
@@ -2227,18 +2196,17 @@ export default function MainScreen({ navigation, route }: Props) {
 
       {/* ── 바텀시트 (Liquid Glass) ── */}
       {SHOW_VISITED_SHEET && (
-        <Animated.View
-          style={[
-            styles.bottomSheet,
-            { transform: [{ translateY: sheetAnim }] },
-          ]}
+        <Reanimated.View
+          style={[styles.bottomSheet, sheetStyle]}
           pointerEvents={sheetOpen ? 'auto' : 'none'}
         >
           <SheetBackdrop />
-          {/* 시트 핸들 */}
-          <View style={styles.sheetHandleArea} {...sheetPan.panHandlers}>
-            <View style={styles.sheetHandle} />
-          </View>
+          {/* 시트 핸들 — 끌어서 닫기(sheetHandlePan) */}
+          <GestureDetector gesture={sheetPan}>
+            <View style={styles.sheetHandleArea}>
+              <View style={styles.sheetHandle} />
+            </View>
+          </GestureDetector>
 
           {/* 타이틀 */}
           <View style={styles.sheetTitleRow}>
@@ -2271,7 +2239,7 @@ export default function MainScreen({ navigation, route }: Props) {
             ))}
             <View style={{ height: 24 }} />
           </ScrollView>
-        </Animated.View>
+        </Reanimated.View>
       )}
 
       {/* ── 국가 기록 오버레이 + 바텀시트 (탭바·FAB 위에 표시되도록 Modal로 렌더) ── */}
@@ -2282,6 +2250,10 @@ export default function MainScreen({ navigation, route }: Props) {
         statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeCountrySheet}
       >
+        {/* RN Modal은 별도 네이티브 뷰 계층이라 App.tsx 루트의 GestureHandlerRootView가 닿지 않는다 —
+            핸들 제스처(countrySheetPan)가 인식되려면 Modal 안에 자체 루트가 필요하다(MomentListSheet와 같은 이유).
+            flex:1이라 오버레이(absoluteFill)·시트(absolute bottom, alignSelf center)의 기준 영역은 예전 Modal 루트와 같다 */}
+        <GestureHandlerRootView style={{ flex: 1 }}>
         {/* 오버레이 */}
         <Animated.View
           style={[styles.overlay, { opacity: countryOverlayAnim }]}
@@ -2291,11 +2263,8 @@ export default function MainScreen({ navigation, route }: Props) {
         </Animated.View>
 
         {/* 바텀시트 (Liquid Glass) */}
-        <Animated.View
-          style={[
-            styles.countrySheet,
-            { transform: [{ translateY: countrySheetAnim }] },
-          ]}
+        <Reanimated.View
+          style={[styles.countrySheet, countrySheetStyle]}
           pointerEvents="auto"
           accessibilityViewIsModal
           onLayout={(e: LayoutChangeEvent) => {
@@ -2305,9 +2274,11 @@ export default function MainScreen({ navigation, route }: Props) {
         >
           <SheetBackdrop />
         {/* 핸들 — 아래로 끌어서 닫기(여행 시트와 동일 제스처) */}
-        <View style={styles.sheetHandleArea} {...countrySheetPan.panHandlers}>
-          <View style={styles.sheetHandle} />
-        </View>
+        <GestureDetector gesture={countrySheetPan}>
+          <View style={styles.sheetHandleArea}>
+            <View style={styles.sheetHandle} />
+          </View>
+        </GestureDetector>
 
         {/* 헤더 */}
         <View style={styles.countrySheetHeader}>
@@ -2412,7 +2383,8 @@ export default function MainScreen({ navigation, route }: Props) {
             <Text style={styles.countryAddBtnText}>+ {t('comp2.addNewRecord')}</Text>
           </TouchableOpacity>
         </View>
-        </Animated.View>
+        </Reanimated.View>
+        </GestureHandlerRootView>
       </Modal>
 
       {/* ── 기록형식 선택 모달 ── */}

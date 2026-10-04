@@ -751,11 +751,11 @@ function PhotoViewerModal({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        if (evt.nativeEvent.touches.length === 2) {
-          lastDistance.current = getDistance([...evt.nativeEvent.touches]);
-        }
-      },
+      // 손가락 수가 바뀌는 순간(터치 추가·떼기) 기준 거리를 버린다 — 다음 두 손가락 이동이 새 기준을 잡는다.
+      // 버리지 않으면 하나를 뗐다 다시 댈 때 직전 거리 대비 비율이 한 번에 곱해져 배율이 튀었다.
+      // (grant에서 기준을 잡던 코드는 지웠다 — RN이 grant 직후 같은 터치로 start를 보내 곧바로 0으로 덮였다)
+      onPanResponderStart: () => { lastDistance.current = 0; },
+      onPanResponderEnd: () => { lastDistance.current = 0; },
       onPanResponderMove: (evt) => {
         if (evt.nativeEvent.touches.length === 2) {
           const dist = getDistance([...evt.nativeEvent.touches]);
@@ -768,13 +768,10 @@ function PhotoViewerModal({
           lastDistance.current = dist;
         }
       },
-      onPanResponderRelease: (evt, gestureState) => {
-        lastDistance.current = 0;
-        if (currentScale.current < 1) {
-          currentScale.current = 1;
-          Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-        }
-      },
+      // 배율은 이동 중에 이미 [1,4]로 묶이므로 놓을 때 1 미만 복원 분기는 필요 없다(도달 불가라 삭제)
+      onPanResponderRelease: () => { lastDistance.current = 0; },
+      // 다른 응답자에게 뺏겨도 기준 거리를 비운다 — 남으면 다음 제스처 첫 이동에서 배율이 튄다
+      onPanResponderTerminate: () => { lastDistance.current = 0; },
     })
   ).current;
 

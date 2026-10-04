@@ -36,7 +36,7 @@ import ReturnDetector from './src/components/ReturnDetector';
 import ReturnDetectNudge from './src/components/ReturnDetectNudge';
 import StayTripSuggester from './src/components/StayTripSuggester';
 import ArrivalNotifier from './src/components/ArrivalNotifier';
-import { markLateFontsLoaded, type LateFontName } from './src/constants/lateFonts';
+import { markLateFontsLoaded, LATE_HANDLE_FONT_NAMES, LATE_BLOG_FONT_NAMES, type LateFontName } from './src/constants/lateFonts';
 
 // 네이티브 스플래시를 JS 가 직접 내린다.
 // 기본 동작은 RN 첫 렌더와 동시에 사라지는 것이라, 기기가 빠르면 로고가 스쳐 지나간다.
@@ -104,7 +104,16 @@ export default function App() {
   // (병렬성은 같다 — expo-font도 내부에서 이름별로 동시에 올린다).
   // 실패한 글꼴은 mark하지 않는다 — 그 글꼴은 계속 시스템 폰트로 보이고(넣어도 폴백이라 모양은 같다), 앱은 계속 간다.
   // ponytail: 실패 글꼴 재시도 없음(예전과 같다). 필요해지면 재시도 성공 시 그 이름만 markLateFontsLoaded 하면 된다.
-  // ponytail: 19종이 다 끝난 뒤 한 번만 알린다(구독 화면 리렌더 1회) — 작은 영문 폰트가 큰 나눔 폰트를 기다린다. 체감되면 이름별로 mark.
+  // 두 그룹으로 나눠 알린다(constants/lateFonts.ts) — 아이디 폰트 10종(영문, 합 ~1.5MB) 먼저, 끝나면 블로그 글꼴 9종(합 ~31MB).
+  // 예전엔 19종이 다 끝나야 1회 알려서 작은 영문 폰트가 10MB짜리 NanumBarunpen을 기다렸다.
+  // 그룹을 '동시'가 아니라 '차례로' 시작하는 이유: expo-font 14 loadAsync는 JS에선 이름별 병렬(Font.js
+  // loadFontInNamespaceAsync)이지만, 실제 등록인 네이티브 ExpoFontLoader.loadAsync는 AsyncFunction이라
+  // 직렬 큐 하나에서 돈다 — iOS DispatchQueue(label: "expo.modules.AsyncFunctionQueue")(직렬 기본값),
+  // Android HandlerThread("expo.modules.AsyncFunctionQueue")(expo-modules-core). 동시에 시작하면 블로그
+  // 글꼴 등록이 큐 앞을 차지해 아이디 그룹이 그 뒤로 밀릴 수 있다. 등록은 어차피 하나씩이라 차례로 해도
+  // 전체 완료 시각은 거의 같다(잃는 것은 블로그 그룹 asset.downloadAsync와의 겹침 정도).
+  // 구독 화면(useLateFontsLoaded)은 그룹마다 1회, 최대 2회 다시 렌더된다(예전 1회).
+  // ponytail: 그룹 단위 알림 — 이름별 mark로 쪼개면 리렌더가 19회라 그룹 2개로 멈췄다.
   const coreFontsSettled = fontsLoaded || !!fontError;
   useEffect(() => {
     if (!coreFontsSettled) return;
@@ -130,14 +139,18 @@ export default function App() {
       Orbitron: require('./assets/fonts/Orbitron-VariableFont_wght.ttf'),
       Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
     };
-    Promise.all(
-      (Object.keys(lateFonts) as LateFontName[]).map((name) =>
-        loadFontsAsync(name, lateFonts[name]).then(
-          () => name,
-          (e) => { if (__DEV__) console.warn(`[Font] 백그라운드 글꼴 로드 실패(${name}) — 해당 글꼴은 시스템 폰트로 진행`, e); return null; },
+    // 그룹 하나를 올리고 성공한 이름만 알린다. 이름별 catch라 Promise.all은 reject하지 않는다 — 그래서
+    // 아이디 그룹이 일부 실패해도 블로그 그룹은 이어서 시작된다.
+    const loadGroup = (names: readonly LateFontName[]) =>
+      Promise.all(
+        names.map((name) =>
+          loadFontsAsync(name, lateFonts[name]).then(
+            () => name,
+            (e) => { if (__DEV__) console.warn(`[Font] 백그라운드 글꼴 로드 실패(${name}) — 해당 글꼴은 시스템 폰트로 진행`, e); return null; },
+          ),
         ),
-      ),
-    ).then((done) => markLateFontsLoaded(done.filter((n): n is LateFontName => n !== null)));
+      ).then((done) => markLateFontsLoaded(done.filter((n): n is LateFontName => n !== null)));
+    loadGroup(LATE_HANDLE_FONT_NAMES).then(() => loadGroup(LATE_BLOG_FONT_NAMES));
   }, [coreFontsSettled]);
 
   // 폰트 로드 실패(에셋 손상·번들 누락)에도 앱은 시스템 폰트로 진행한다 —

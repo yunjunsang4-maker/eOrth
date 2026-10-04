@@ -1,5 +1,7 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Image, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import { Image, Platform, Pressable, StyleSheet, View } from 'react-native';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, Easing as REasing } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthorAvatar from './AuthorAvatar';
@@ -19,31 +21,49 @@ interface ToastProps {
 
 const VISUAL_ICON = { like: HeartIcon, comment: CommentIcon, follow: FriendIcon, record: PinIcon, badge: StarIcon };
 const AVA = 32;
+// 옛 RN Animated 값의 환산 — timing은 RN 기본 easing(inOut(ease))을 명시해야 같다(Reanimated 기본은 inOut(quad)).
+// 스프링은 speed 20·bounciness 6을 RN SpringConfig.fromBouncinessAndSpeed로 바꾼 값(질량 1).
+const SHOW_TIMING = { duration: 180, easing: REasing.inOut(REasing.ease) };
+const DRAG_BACK_SPRING = { stiffness: 512.0276470588235, damping: 33.46844780073433, mass: 1 };
 
 export default function Toast({ visible, message, position = 'bottom', onPress, visual, onDismiss }: ToastProps) {
   const insets = useSafeAreaInsets();
   const skinAccent = useSkinAccent();
   const isTop = position === 'top';
   const hiddenOffset = isTop ? -16 : 16; // 상단이면 위에서, 하단이면 아래에서 슬라이드
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(hiddenOffset)).current;
+  const opacity = useSharedValue(0);
+  const translateY = useSharedValue(hiddenOffset);
 
-  // 밀어서 닫기 — PanResponder는 첫 렌더에 박제되므로 콜백은 ref를 거친다
-  const dismissRef = useRef(onDismiss);
-  dismissRef.current = onDismiss;
-  const drag = useRef(new Animated.Value(0)).current;
-  const pan = useRef(
-    PanResponder.create({
-      // 배너가 나온 방향(위/아래)으로만 반응 — 반대로 끌면 아무 일도 없다
-      onMoveShouldSetPanResponder: (_, g) => (isTop ? g.dy < -4 : g.dy > 4),
-      onPanResponderMove: (_, g) => drag.setValue(isTop ? Math.min(0, g.dy) : Math.max(0, g.dy)),
-      onPanResponderRelease: (_, g) => {
-        const passed = isTop ? g.dy < -30 || g.vy < -0.5 : g.dy > 30 || g.vy > 0.5;
-        if (passed) dismissRef.current?.();
-        else Animated.spring(drag, { toValue: 0, useNativeDriver: true, speed: 20, bounciness: 6 }).start();
-      },
-    })
-  ).current;
+  // 밀어서 닫기 — 끌림 추종을 UI 스레드에서(RNGH + Reanimated). 옛 PanResponder와 같은 규칙:
+  // - 배너가 나온 방향(위/아래)으로 4px 넘게 움직여야 잡는다. 반대로 끌면 아무 일도 없다.
+  //   가로 조건은 원래 없었다(activeOffsetY만, failOffsetX 없음).
+  // - 잡힌 순간부터 잰 거리로 추종한다. PanResponder도 grant에서 dy를 0으로 리셋했고,
+  //   RNGH도 활성화 순간 translation을 0으로 리셋한다(Android resetProgress, iOS setTranslation 0).
+  // - 놓을 때 거리 30 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값). 단 RNGH 속도는 VelocityTracker /
+  //   velocityInView의 평활값이라 옛 "마지막 두 이벤트 사이 순간속도"와 판정이 갈릴 수 있다(사용자 승인 2026-10-03).
+  // - 잡힌 뒤 시스템이 제스처를 뺏으면(ok=false) 닫지 않고 제자리로 돌린다.
+  // 옛 코드는 PanResponder가 첫 렌더에 박제돼 onDismiss를 ref로 우회했다. 이제 onDismiss가 바뀌면
+  // 제스처를 다시 만들므로 우회가 필요 없다.
+  const drag = useSharedValue(0);
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!!onDismiss)
+        .activeOffsetY(isTop ? -4 : 4)
+        .onUpdate((e) => {
+          'worklet';
+          drag.value = isTop ? Math.min(0, e.translationY) : Math.max(0, e.translationY);
+        })
+        .onEnd((e, ok) => {
+          'worklet';
+          const passed = isTop
+            ? e.translationY < -30 || e.velocityY < -500
+            : e.translationY > 30 || e.velocityY > 500;
+          if (ok && passed && onDismiss) runOnJS(onDismiss)();
+          else drag.value = withSpring(0, DRAG_BACK_SPRING);
+        }),
+    [isTop, onDismiss, drag],
+  );
 
   useEffect(() => {
     if (visible) {
@@ -51,20 +71,21 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
       // 발생 지점(BadgeToastHost)이 아니라 실제로 배너가 뜨는 여기서 울려야 맞다.
       // 좋아요·댓글 같은 알림 배너는 제외 — 자주 떠서 진동이 소음이 된다.
       if (visual?.icon === 'badge') success();
-      drag.setValue(0); // 이전 배너에서 끌던 위치가 남지 않게
-      Animated.parallel([
-        Animated.timing(opacity,     { toValue: 1, duration: 180, useNativeDriver: true }),
-        Animated.timing(translateY,  { toValue: 0, duration: 180, useNativeDriver: true }),
-      ]).start();
+      drag.value = 0; // 이전 배너에서 끌던 위치가 남지 않게
+      opacity.value = withTiming(1, SHOW_TIMING);
+      translateY.value = withTiming(0, SHOW_TIMING);
     } else {
-      Animated.parallel([
-        Animated.timing(opacity,     { toValue: 0, duration: 180, useNativeDriver: true }),
-        Animated.timing(translateY,  { toValue: hiddenOffset, duration: 180, useNativeDriver: true }),
-      ]).start();
+      opacity.value = withTiming(0, SHOW_TIMING);
+      translateY.value = withTiming(hiddenOffset, SHOW_TIMING);
     }
-    // Animated.Value·상수(hiddenOffset)는 렌더 간 고정이라 의존성에 넣을 필요가 없다
+    // 공유값·상수(hiddenOffset)는 렌더 간 고정이라 의존성에 넣을 필요가 없다
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const toastStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateY: translateY.value }, { translateY: drag.value }],
+  }));
 
   const Icon = visual?.icon ? VISUAL_ICON[visual.icon] : null;
   const rich = !!visual; // 알림 배너(아바타 포함) / 일반 토스트(텍스트만) 두 모드
@@ -93,25 +114,29 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
   );
 
   return (
-    <Animated.View
+    <Reanimated.View
       style={[
         s.toast,
         rich && s.toastRich,
         // 하단 토스트 — 안드로이드 3버튼 내비바(48dp)와 겹치지 않게 인셋 기반 보정 (iOS는 기존 48 유지)
         isTop ? { top: insets.top + 12 } : { bottom: Platform.OS === 'ios' ? 48 : insets.bottom + 24 },
-        { opacity, transform: [{ translateY }, { translateY: drag }] },
+        toastStyle,
       ]}
       pointerEvents={onPress || onDismiss ? 'box-none' : 'none'}
-      {...(onDismiss ? pan.panHandlers : {})}
     >
-      {onPress ? (
-        <Pressable onPress={onPress} style={[s.pressable, rich && s.pressableRich]}>
-          {body}
-        </Pressable>
-      ) : (
-        <View style={rich ? s.row : undefined}>{body}</View>
-      )}
-    </Animated.View>
+      {/* 제스처는 box-none 루트가 아니라 내용(Pressable/View)에 직접 붙인다 — 안드로이드 RNGH는 box-none 뷰의
+          핸들러를 "자식이 터치 대상일 때"만 기록하는데 배경 없는 Pressable은 대상이 못 돼, 패딩·간격에서 밀면
+          스와이프가 안 잡혔다(옛 PanResponder는 Pressable 전 영역에서 됐다). 시작 영역이 옛것과 같아지고 루트는 box-none 그대로다 */}
+      <GestureDetector gesture={pan}>
+        {onPress ? (
+          <Pressable onPress={onPress} style={[s.pressable, rich && s.pressableRich]}>
+            {body}
+          </Pressable>
+        ) : (
+          <View style={rich ? s.row : undefined}>{body}</View>
+        )}
+      </GestureDetector>
+    </Reanimated.View>
   );
 }
 

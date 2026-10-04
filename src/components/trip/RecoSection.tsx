@@ -141,8 +141,10 @@ export default function RecoSection({ tripGroupId, albumRecord, pastRecords }: P
   // 쓰는 쪽은 recoEngine.runFormatReco뿐이고 같은 JS 런타임이다(백그라운드 태스크는 추천 상태를 안 쓴다 —
   // store/recoStateSignal.ts). 그래서 포그라운드 복귀 재읽기도 필요 없다: 백그라운드 동안 멈춘 분석은
   // 복귀 후 같은 런타임에서 이어 저장하며 알린다.
-  // pending일 때만 듣는 이유(폴링과 같은 조건): 그 밖의 저장은 카드 닫기(dismissRecoCard)뿐인데, 연타 시
-  // 저장소 쪽 읽고-쓰기가 겹쳐 앞선 닫음이 저장에서 빠질 수 있다 — 그걸 다시 읽어 오면 화면에서 닫은 카드가 되살아난다.
+  // pending일 때만 듣는 이유(폴링과 같은 조건): 그 밖의 저장은 카드 닫기(dismissRecoCard)뿐이고, 닫기는 화면이
+  // 낙관적으로 먼저 반영하므로 다시 읽을 필요가 없다. (예전의 또 다른 이유 — 연타 시 읽고-쓰기가 겹쳐 앞선 닫음이
+  // 저장에서 빠지고, 그걸 다시 읽으면 닫은 카드가 되살아남 — 는 dismissRecoCard가 여행별로 줄을 세워 사라졌다.
+  // 그래서 이 측면에서는 상시 구독으로 넓혀도 된다. 섹션이 지금 렌더되지 않아 조건은 그대로 뒀다.)
   useEffect(() => {
     if (state?.status !== 'pending') return;
     const reread = (gid: string) => {

@@ -2,7 +2,9 @@
 //
 // 우선순위: 제휴 캠페인 → AdMob 네이티브 광고 → 하우스 광고
 // 훅이므로 리스트 map 안에서 직접 부를 수 없다 — FeedAdSlot 컴포넌트가 감싼다.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { NativeAd } from 'react-native-google-mobile-ads';
 import { getGoogleMobileAds, ensureAdsInitialized } from '../lib/googleMobileAds';
@@ -13,6 +15,7 @@ import { fetchAdCampaigns } from '../services/adCampaigns';
 import { pickCampaign, resolveTargetCountry, type AdCampaign } from '../utils/adCampaignSelect';
 import { AFFILIATE_ADS_ENABLED, ADMOB_ENABLED } from '../constants/featureFlags';
 import { NATIVE_AD_UNIT_ID } from '../constants/adUnits';
+import { createAdRetirement, inAdRetryCooldown, isAdExpired } from '../utils/feedAdLifetime';
 
 export type FeedAdSource =
   | { kind: 'affiliate'; campaign: AdCampaign }
@@ -35,14 +38,57 @@ function loadCampaignsOnce(): Promise<AdCampaign[]> {
 // 가상화 뒤에는 광고 칸이 화면에서 멀어지면 언마운트되고 돌아오면 다시 마운트된다 — 광고를 훅 state에만
 // 두면 그때마다 destroy·재요청이 일어나 요청 수가 늘고(match rate 하락), 스크롤을 오갈 때마다 광고가 바뀐다.
 // 그래서 요청 Promise를 슬롯 번호로 보관해 재마운트는 같은 광고를 다시 쓴다. 실패(미필·오프라인)는
-// 보관하지 않아 다음 마운트 때 다시 요청한다(아래 effect의 catch).
-// 미해결(QA L2'): AdMob 네이티브 광고는 1시간이면 만료되는데 여기선 갈지 않는다(예전에도 탭이 마운트돼
-// 있는 동안 같은 광고였다 — 기존 부채의 연장).
-// ponytail: 앱 수명 동안 보관·해제 안 함 — 최대 MAX_ADMOB_SLOTS(3)개라 메모리는 무시할 수준. 예전엔 소셜 탭이
-//           다시 마운트(계정 전환 등)되면 새로 요청했지만 이제는 앱 재시작까지 같은 광고다. 오래된 광고를
-//           갈아야 하면 여기서 시각을 같이 저장해 만료 시 destroy 후 delete할 것.
+// 보관하지 않아 다음 마운트 때(쿨다운 뒤) 다시 요청한다(아래 effect의 catch).
+// 만료(QA L2'): 받은 시각을 같이 저장하고, 1시간(AD_TTL_MS — Google: 네이티브 광고는 1시간 뒤 만료) 지난 광고는
+// 요청 effect가 돌 때(셀 마운트·포그라운드 복귀·소셜 탭 focus — foregroundTick 주석) 보관소에서 빼고 다시 요청한다.
+// 그 사이(포그라운드에서 탭을 계속 보고 있는 동안)는 1시간을 넘겨도 다음 신호까지 그 광고 그대로다.
+// 뺀 광고는 adRetirement가 그 광고를 그리는 셀이 0이 될 때 destroy한다(utils/feedAdLifetime.ts 주석 —
+// 그리는 중에 destroy하면 NativeAdView가 해제된 광고를 그린다).
+// 쿨다운(QA R2): 실패 시각을 슬롯별로 남겨 AD_RETRY_COOLDOWN_MS(30초) 안의 재마운트는 요청하지 않는다(하우스).
+// ponytail: 쿨다운이 끝나도 타이머로 재시도하지는 않는다 — 다음 재마운트·포그라운드 복귀·탭 focus 때 재요청한다.
+//           오프라인 복귀 즉시 재시도(utils/connectivity onReconnect로 slotAdFailedAt을 비우기)도 넣지 않았다 —
+//           쿨다운이 30초라 이득이 작고, 모듈 import만으로 상시 네트워크 리스너가 붙는다. 필률 지표가 나쁘면 그때.
 const slotAdRequests = new Map<number, Promise<NativeAd | null>>();
-const slotAdLoaded = new Map<number, NativeAd | null>();
+const slotAdLoaded = new Map<number, { ad: NativeAd; loadedAt: number }>();
+const slotAdFailedAt = new Map<number, number>();
+const adRetirement = createAdRetirement<NativeAd>((ad) => {
+  if (__DEV__) console.log('[AdMob] 만료 광고 destroy:', ad.headline);
+  ad.destroy();
+});
+
+// 다시 판정 신호(QA F1) — 만료·쿨다운 판정은 아래 요청 effect가 돌 때만 일어나는데, 피드 상단 광고 칸(slot 0~2)은
+// 탭이 lazy:false라 세션 내내 마운트된 채로 남아 그 effect가 다시 돌 일이 없다(몇 시간째 같은 광고).
+// 그래서 앱이 포그라운드로 돌아올 때(AppState 'active') 이 값을 올려 요청 effect를 다시 돌린다. 소셜 탭 focus는 훅 안의
+// useIsFocused가 맡는다(FeedAdSlot은 SocialScreen 셀에서만 그려진다 — 네비게이터 화면 안이라 쓸 수 있다).
+// 리스너는 훅 인스턴스마다가 아니라 모듈에 1개 — 첫 구독 때 붙이고 마지막 구독이 빠지면 뗀다(store/minuteTick.ts와 같은 방식).
+// 다시 돌아도 안전하다: 만료 안 된 슬롯은 보관된 요청을 그대로 다시 기다릴 뿐(재요청 없음, 같은 광고라 setState no-op)이고,
+// 만료된 광고는 retire → 새 광고 수신 → 셀 교체 → release에서 destroy 경로를 탄다. 쿨다운이 끝난 실패 슬롯은 이때 재요청된다.
+// iOS는 inactive→active(제어 센터 등)에도 오른다 — 재판정은 Map 조회 몇 번이라 걸러내지 않았다.
+let foregroundTick = 0;
+const foregroundListeners = new Set<() => void>();
+let offAppState: (() => void) | null = null;
+function subscribeForegroundTick(l: () => void) {
+  foregroundListeners.add(l);
+  if (!offAppState) {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st !== 'active') return;
+      foregroundTick++;
+      foregroundListeners.forEach((fn) => fn());
+    });
+    offAppState = () => sub.remove();
+  }
+  return () => {
+    foregroundListeners.delete(l);
+    if (foregroundListeners.size === 0) { offAppState?.(); offAppState = null; }
+  };
+}
+const getForegroundTick = () => foregroundTick;
+
+// 초기 state·effect에서만 부른다(렌더 본문에서 보관소를 읽지 않는다 — 이 훅은 'use no memo'지만 같은 규약을 지킨다)
+function freshSlotAd(slot: number): NativeAd | null {
+  const e = slotAdLoaded.get(slot);
+  return e && !isAdExpired(e.loadedAt, Date.now()) ? e.ad : null;
+}
 
 // AdMob 요청은 상위 슬롯 3개까지만. 피드가 길면 슬롯이 계속 생기는데 전부 요청하면
 // 요청 대비 노출 비율(match rate)이 떨어져 필률이 깎인다.
@@ -73,7 +119,20 @@ export function useFeedAdSource(slot: number): FeedAdSource {
   const { records } = useRecordData();
   // 초기값을 모듈 보관분에서 — 재마운트(가상화)된 슬롯이 하우스 → 실광고로 한 번 더 바뀌지 않게
   const [campaigns, setCampaigns] = useState<AdCampaign[] | null>(() => (AFFILIATE_ADS_ENABLED ? campaignsLoaded : []));
-  const [nativeAd, setNativeAd] = useState<NativeAd | null>(() => slotAdLoaded.get(slot) ?? null);
+  // 만료된 보관분은 초기값으로 쓰지 않는다 — 아래 effect가 빼고 새로 요청한다
+  const [nativeAd, setNativeAd] = useState<NativeAd | null>(() => freshSlotAd(slot));
+  // 요청 effect를 다시 돌리는 신호 두 가지(위 foregroundTick 주석) — 값은 effect deps로만 쓴다
+  const foregroundTickValue = useSyncExternalStore(subscribeForegroundTick, getForegroundTick, getForegroundTick);
+  const isFocused = useIsFocused();
+
+  // 이 셀이 그리는 광고를 adRetirement에 알린다 — 만료로 보관소에서 빠진 광고를 그리는 중에 destroy하지 않게.
+  // 아래 요청 effect보다 먼저 선언해야 한다: 같은 커밋에서 retain이 retire보다 먼저 돌아야 '그리는 중'으로 잡힌다.
+  // 다른 광고로 바뀌면 cleanup(release)은 새 광고가 커밋된 뒤에 돈다 — NativeAdView는 이미 새 광고로 넘어갔다.
+  useEffect(() => {
+    if (!nativeAd) return;
+    adRetirement.retain(nativeAd);
+    return () => adRetirement.release(nativeAd);
+  }, [nativeAd]);
 
   useEffect(() => {
     if (!AFFILIATE_ADS_ENABLED) { setCampaigns([]); return; }
@@ -116,10 +175,23 @@ export function useFeedAdSource(slot: number): FeedAdSource {
     // AdMob 네이티브 모듈이 없는 바이너리(구 dev client 등)면 하우스로 떨어진다.
     const ads = getGoogleMobileAds();
     if (!ads) return;
-    let alive = true;
+
+    // 만료 판정 — 이 effect가 돌 때만: 셀 마운트·제휴 판정 완료·포그라운드 복귀·소셜 탭 focus 변화.
+    // 렌더 중에는 판정하지 않는다(렌더 본문에서 Date.now()·보관소를 읽지 않는다).
+    // 만료면 보관소에서 빼고 adRetirement에 넘긴다: 그리는 셀이 없으면 바로, 있으면 마지막 셀이 놓을 때 destroy.
+    const now = Date.now();
+    const stored = slotAdLoaded.get(slot);
+    if (stored && isAdExpired(stored.loadedAt, now)) {
+      slotAdLoaded.delete(slot);
+      slotAdRequests.delete(slot);
+      adRetirement.retire(stored.ad);
+    }
 
     // 슬롯당 요청은 1회 — 이미 보냈거나 받은 슬롯이면 그 결과를 기다리기만 한다(slotAdRequests 주석).
     let request = slotAdRequests.get(slot);
+    // 최근에 실패한 슬롯은 쿨다운 동안 요청하지 않는다(하우스 유지) — slotAdFailedAt 주석
+    if (!request && inAdRetryCooldown(slotAdFailedAt.get(slot), now)) return;
+    let alive = true;
     if (!request) {
       // 초기화가 끝나기 전의 요청은 Google이 지원하지 않는다 — 앱 시작 직후 소셜 탭으로
       // 바로 들어온 경우를 대비해 공유 초기화 Promise를 먼저 기다린다(이미 끝났으면 즉시 통과).
@@ -143,19 +215,27 @@ export function useFeedAdSource(slot: number): FeedAdSource {
           // 실패는 보관하지 않는다 — 앱 시작 직후 오프라인이었다고 앱 재시작까지 하우스로 굳지 않게,
           // 이 슬롯이 다음에 마운트될 때(화면 근처로 다시 올 때) 다시 요청한다(QA L2).
           // 요청 중 중복 방지는 그대로다: 이 catch가 돌기 전까지는 Promise가 보관소에 남아 있다.
-          // ponytail: 쿨다운 없음 — 미필이 계속되면 슬롯이 다시 마운트될 때마다 1회씩 재요청한다.
+          // 실패 시각을 남겨 AD_RETRY_COOLDOWN_MS 안의 재마운트는 요청하지 않는다(QA R2).
           slotAdRequests.delete(slot);
+          slotAdFailedAt.set(slot, Date.now());
           return null;
         })
-        .then((ad) => { if (ad) slotAdLoaded.set(slot, ad); return ad; });
+        .then((ad) => {
+          // 받은 시각 = 수신 시각(요청~수신 사이 수 초는 1시간에 비해 무시한다)
+          if (ad) { slotAdLoaded.set(slot, { ad, loadedAt: Date.now() }); slotAdFailedAt.delete(slot); }
+          return ad;
+        });
       slotAdRequests.set(slot, request);
     }
     request.then((ad) => { if (alive && ad) setNativeAd(ad); });
 
     // 언마운트해도 destroy하지 않는다 — 광고 객체 소유자는 이 컴포넌트가 아니라 모듈 보관소다.
     // (예전엔 여기서 destroy했다. 지금 destroy하면 재마운트 때 해제된 광고를 다시 그리게 된다)
+    // destroy는 만료로 보관소에서 빠진 광고만, 그리는 셀이 0일 때 adRetirement가 한다.
     return () => { alive = false; };
-  }, [slot, campaignsReady, affiliateFills]);
+    // foregroundTickValue·isFocused는 본문에서 읽지 않는다 — 바뀌면 이 effect를 다시 돌려 만료·쿨다운을 재판정하는 신호다.
+    // focus가 빠질 때(blur)도 한 번 더 도는데, 그때 갈린 광고는 다음에 볼 때 새것이라 해가 없다.
+  }, [slot, campaignsReady, affiliateFills, foregroundTickValue, isFocused]);
 
   // 로딩 중에는 하우스를 먼저 그린다 — 폴라로이드 크기가 같아 레이아웃이 흔들리지 않는다.
   if (!campaignsReady) return { kind: 'house' };

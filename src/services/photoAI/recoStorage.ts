@@ -131,11 +131,35 @@ export async function sweepRecoStates(aliveTripGroupIds: string[]): Promise<void
   } catch { /* 무시 */ }
 }
 
-/** 카드 닫기 — dismissedIds에 추가 (재노출 방지) */
-export async function dismissRecoCard(tripGroupId: string, cardId: string): Promise<void> {
-  const state = await getRecoState(tripGroupId);
-  if (!state || state.dismissedIds.includes(cardId)) return;
-  await saveRecoState({ ...state, dismissedIds: [...state.dismissedIds, cardId] });
+/**
+ * 같은 key의 비동기 작업을 들어온 순서대로 하나씩 돌린다(다른 key끼리는 서로 기다리지 않는다).
+ * 앞 작업이 실패해도 뒤 작업은 돈다 — 실패는 그 작업의 호출자에게만 간다.
+ * 줄이 비면 Map에서 지운다(여행 수만큼 Promise가 쌓이지 않게).
+ */
+const serialQueues = new Map<string, Promise<void>>();
+export function runSerialByKey(key: string, task: () => Promise<void>): Promise<void> {
+  const run = (serialQueues.get(key) ?? Promise.resolve()).then(task);
+  const tail = run.catch(() => {});
+  serialQueues.set(key, tail);
+  tail.then(() => { if (serialQueues.get(key) === tail) serialQueues.delete(key); });
+  return run;
+}
+
+/**
+ * 카드 닫기 — dismissedIds에 추가 (재노출 방지)
+ *
+ * 같은 여행의 읽기-수정-쓰기를 runSerialByKey로 줄 세운다. 예전엔 연타하면 두 호출이 같은 옛 상태를 읽고
+ * 각자 [...옛것, 자기 id]를 써서 앞선 닫음이 저장에서 빠졌다(뒤 쓰기가 덮음) — 다시 읽으면 닫은 카드가 되살아났다.
+ * ponytail: 줄 세우는 것은 닫기끼리뿐이다. recoEngine.runFormatReco는 시작 때 읽은 dismissedIds를 끝까지 들고
+ *           쓰므로, 재분석 도중의 닫기는 엔진 쓰기에 덮일 수 있다(재분석 중엔 화면 cards가 비어 닫을 카드가 없어
+ *           "ready 카드를 닫는 순간 재분석이 시작되는" 좁은 틈뿐이다). 엔진까지 막으려면 saveRecoState 자체를 같은 줄에 태우고 dismissedIds를 병합할 것.
+ */
+export function dismissRecoCard(tripGroupId: string, cardId: string): Promise<void> {
+  return runSerialByKey(tripGroupId, async () => {
+    const state = await getRecoState(tripGroupId);
+    if (!state || state.dismissedIds.includes(cardId)) return;
+    await saveRecoState({ ...state, dismissedIds: [...state.dismissedIds, cardId] });
+  });
 }
 
 /** 사용 로그 — v1은 수집만, 소비하지 않음 (설계 §8) */
