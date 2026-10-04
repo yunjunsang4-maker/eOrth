@@ -32,7 +32,7 @@ import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ShareIcon as ShareSvgIcon, TrashIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon, HomeIcon } from '../components/icons';
+import { ShareIcon as ShareSvgIcon, TrashIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon } from '../components/icons';
 import { Typography, Spacing } from '../constants';
 import { useRecordData, useFeed, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
@@ -1852,8 +1852,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       </View>
                     </View>
                   </LinearGradient>
-                  {/* 링 라벨(사용자 결정 2026-09-12) — 내 링은 '어디'(거주지명(집 아이콘, 2026-09-28 '일상'→거주지명)/지역명/나라명),
-                      다른 사람 링은 국기 + 아이디. 내 링은 장소 텍스트라 아이디 폰트(프리미엄)를 걸지 않는다. */}
+                  {/* 링 라벨(사용자 결정 2026-09-12) — 내 링은 '어디'(국기 + 지역명/나라명), 다른 사람 링은 국기 + 아이디.
+                      내 일상 링도 국기+거주지명(2026-10-04 사용자 결정, 집 아이콘 폐지) — 옆 여행 링과 같은 모양이 되는 것은
+                      사용자가 수용했다. 내 링은 장소 텍스트라 아이디 폰트(프리미엄)를 걸지 않는다. */}
                   {(() => {
                     const mine = snap.isMyPost || snap.user.handle === globalHandle;
                     // 저장값은 한글 원문이라 표시할 때 현지화한다(지역: 코드→지오 영문명, 나라: countryLabel)
@@ -1862,26 +1863,19 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       : locCountry(snap.countryName || snap.snapDetectedCountry, i18n.language);
                     const flag = snap.countryFlag ? `${snap.countryFlag} ` : '';
                     const label = mine
-                      ? (snap._isDaily ? (place || t('snap.dailyRing')) :`${flag}${place || getPostDisplayName(snap.user, true)}`)
+                      ? `${flag}${place || (snap._isDaily ? t('snap.dailyRing') : getPostDisplayName(snap.user, true))}`
                       : `${flag}${getPostDisplayName(snap.user, false)}`;
                     return (
-                  <View style={s.storyNameRow}>
-                    {mine && snap._isDaily && (
-                      // RNSVG 터치삼킴 방어 — 부모가 터치 대상이라 pointerEvents none View로 감싼다
-                      <View pointerEvents="none"><HomeIcon size={10} color="#A1A1B0" /></View>
-                    )}
-                    <Text
-                      style={[
-                        s.storyName,
-                        mine && snap._isDaily && s.storyNameWithIcon,
-                        // 아이디 폰트(프리미엄)는 아이디를 그리는 타인 링에만(서버 handle_font)
-                        !mine && handleFontStyle(snap.user.font, lateFonts),
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {label}
-                    </Text>
-                  </View>
+                  <Text
+                    style={[
+                      s.storyName,
+                      // 아이디 폰트(프리미엄)는 아이디를 그리는 타인 링에만(서버 handle_font)
+                      !mine && handleFontStyle(snap.user.font, lateFonts),
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {label}
+                  </Text>
                     );
                   })()}
                 </TouchableOpacity>
@@ -2176,19 +2170,6 @@ const s = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
     width: 68,
-  },
-  // 일상 링의 집 아이콘 + 라벨을 한 줄로. 아이콘이 없을 때는 예전과 똑같이 보이도록
-  // 행 자체는 폭 68 고정이고 storyName의 width도 그대로 둔다.
-  storyNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 68,
-  },
-  // 아이콘이 붙는 경우에만 폭을 줄여 아이콘 자리를 만든다(아이콘 10 + 간격 3)
-  storyNameWithIcon: {
-    width: 55,
-    marginLeft: 3,
   },
   storyLiveDot: {
     position: 'absolute',
