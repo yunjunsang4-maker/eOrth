@@ -1,7 +1,8 @@
 /**
  * snapStrip 검증 — node node_modules/tsx/dist/cli.mjs src/utils/snapStrip.verify.ts
  */
-import { putMineFirst, groupSnapRings, isSnapTripOngoing, snapRingKeys, orderSnapStrip } from './snapStrip';
+import { putMineFirst, groupSnapRings, isSnapTripOngoing, snapRingKeys, orderSnapStrip, pickRetroDailySnapIds,
+  shouldRunRetroDaily, pickStrayDailySnapIds, pickCardsEmptiedByDetach, restoreRetroDailyDone, planRetroDetach } from './snapStrip';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -259,6 +260,136 @@ eq(ids(orderSnapStrip(rings([
   snap({ id: 'p-old', timestamp: 3, tripGroupId: 'old' }),
 ]), isMe, liveCards, liveRecs, NOW2)), ['p-other', 'p-old'], 'orderSnapStrip: 끝난 내 여행 링 → 순서 그대로');
 eq(orderSnapStrip<Snap>([], isMe, liveCards, liveRecs, NOW2), [], 'orderSnapStrip: 빈 배열 → 빈 배열');
+
+// ─────────────────────────────────────────────────────────────
+// pickRetroDailySnapIds — 거주 지역이 정해진 뒤 이미 저장된 거주지 스냅을 소급해 일상으로
+// ─────────────────────────────────────────────────────────────
+// 정규화 스텁: 실제 normalizeHomeRegion 대신 '수원시 → 경기'만 아는 표(지오 데이터 없이 돈다)
+const norm = (raw: string) => (raw === '수원시' ? '경기' : null);
+const KR = '대한민국';
+const rd = (o: { id: string; viewType?: string; isMyPost?: boolean; snapDaily?: boolean; countryName?: string; regionName?: string }) =>
+  ({ viewType: 'snap', countryName: KR, ...o });
+// 정상 — 서울 거주자의 서울 스냅(일상 표시 없음)이 잡힌다. 이번 버그의 그 첫 스냅이다
+eq(pickRetroDailySnapIds([rd({ id: 'a', regionName: '서울' })], KR, '서울', norm), ['a'], '소급: 거주국·거주 지역 스냅 → 대상');
+// 다른 나라 — 도쿄 여행 스냅은 일상이 아니다
+eq(pickRetroDailySnapIds([rd({ id: 'b', countryName: '일본', regionName: '서울' })], KR, '서울', norm), [], '소급: 다른 나라 → 제외');
+// 같은 나라 다른 지역 — 제주 여행은 여행 링에 남아야 한다
+eq(pickRetroDailySnapIds([rd({ id: 'c', regionName: '제주' })], KR, '서울', norm), [], '소급: 거주국 안 다른 지역 → 제외');
+// 이미 일상 — 다시 고르면 매번 서버 갱신이 나간다(멱등성의 근거)
+eq(pickRetroDailySnapIds([rd({ id: 'd', regionName: '서울', snapDaily: true })], KR, '서울', norm), [], '소급: 이미 snapDaily → 제외');
+// 스냅이 아닌 기록 — 피드·블로그는 링과 무관하고 카드에서 빼면 안 된다
+eq(pickRetroDailySnapIds([rd({ id: 'e', viewType: 'feed', regionName: '서울' })], KR, '서울', norm), [], '소급: 스냅 아님 → 제외');
+eq(pickRetroDailySnapIds([rd({ id: 'e2', viewType: undefined, regionName: '서울' })], KR, '서울', norm), [], '소급: viewType 없음(=feed) → 제외');
+// 남의 글 방어 — records는 내 글 목록이지만 isMyPost=false가 섞여도 서버 갱신을 쏘면 안 된다
+eq(pickRetroDailySnapIds([rd({ id: 'f', regionName: '서울', isMyPost: false })], KR, '서울', norm), [], '소급: isMyPost=false → 제외');
+// 널 계열 — 거주 지역 미설정(null/undefined/'')이면 아무것도 고르지 않는다
+eq(pickRetroDailySnapIds([rd({ id: 'g', regionName: '서울' })], KR, null, norm), [], '소급: homeRegion null → 빈 배열');
+eq(pickRetroDailySnapIds([rd({ id: 'g', regionName: '서울' })], KR, undefined, norm), [], '소급: homeRegion undefined → 빈 배열');
+eq(pickRetroDailySnapIds([rd({ id: 'g', regionName: '서울' })], KR, '', norm), [], '소급: homeRegion 빈 문자열 → 빈 배열');
+eq(pickRetroDailySnapIds([rd({ id: 'g', regionName: '서울' })], null, '서울', norm), [], '소급: 거주국 미설정 → 빈 배열');
+// 지역 없는 스냅 — 위치 실패로 거주국 폴백된 스냅은 어디서 찍었는지 모른다
+eq(pickRetroDailySnapIds([rd({ id: 'h' }), rd({ id: 'h2', regionName: '' })], KR, '서울', norm), [], '소급: regionName 없음/빈 문자열 → 제외');
+// 정규화 폴백 — 저장 시 원문(수원시)이 남은 스냅도 프리셋(경기) 거주자면 일상
+eq(pickRetroDailySnapIds([rd({ id: 'i', regionName: '수원시' })], KR, '경기', norm), ['i'], '소급: 정규화 폴백 수원시 → 경기 일치');
+eq(pickRetroDailySnapIds([rd({ id: 'i', regionName: '수원시' })], KR, '경기'), [], '소급: 정규화 함수 없으면 원문 비교만');
+// 정규화 실패 국가 — 프리셋 없는 나라는 도시 원문끼리 같으면 일치(시트·스냅 저장이 같은 규칙)
+eq(pickRetroDailySnapIds([rd({ id: 'j', countryName: '몽골', regionName: 'Ulaanbaatar' })], '몽골', 'Ulaanbaatar', () => null), ['j'], '소급: 정규화 실패 → 원문 일치');
+// 섞인 목록 — 대상만, 입력 순서대로
+eq(pickRetroDailySnapIds([
+  rd({ id: 'k1', regionName: '서울' }),
+  rd({ id: 'k2', regionName: '제주' }),
+  rd({ id: 'k3', regionName: '서울', snapDaily: true }),
+  rd({ id: 'k4', regionName: '서울' }),
+], KR, '서울', norm), ['k1', 'k4'], '소급: 섞인 목록 → 대상만 입력 순서대로');
+eq(pickRetroDailySnapIds([], KR, '서울', norm), [], '소급: 빈 목록 → 빈 배열');
+
+
+// ─────────────────────────────────────────────────────────────
+// shouldRunRetroDaily — 소급은 거주국마다 1회(QA F1: 지역 오탭 한 번에 옛 여행 스냅이 일상이 되던 문제)
+// ─────────────────────────────────────────────────────────────
+const mine = [{ id: 'm1', isMyPost: true }];
+// 기존 사용자(거주 지역은 있는데 소급이 한 번도 안 돈 상태) — 한 번은 돌아야 6일 전 서울 스냅이 합쳐진다
+eq(shouldRunRetroDaily('KR', '서울', undefined, mine), true, '1회: 플래그 없음(undefined) + 거주 지역 있음 → 돈다');
+eq(shouldRunRetroDaily('KR', '서울', null, mine), true, '1회: 플래그 null → 돈다');
+eq(shouldRunRetroDaily('KR', '서울', [], mine), true, '1회: 플래그 빈 집합(계정 리셋 직후) → 돈다');
+// 같은 나라 안에서 지역만 바꾼 경우 — 서울→부산 오탭이 부산 여행 스냅을 건드리면 안 된다
+eq(shouldRunRetroDaily('KR', '부산', ['KR'], mine), false, '1회: 같은 거주국으로 이미 돎 → 지역을 바꿔도 안 돈다');
+// 거주국이 바뀌면 새 나라로 한 번 더
+eq(shouldRunRetroDaily('JP', '도쿄', ['KR'], mine), true, '1회: 거주국 변경 KR→JP → 한 번 더 돈다');
+// QA R2 — KR→JP→KR 왕복. 코드 하나만 담던 시절엔 'KR' !== 'JP'라 KR이 또 돌았다
+eq(shouldRunRetroDaily('KR', '부산', ['KR', 'JP'], mine), false, '1회: KR→JP→KR 왕복 → KR은 다시 안 돈다(R2)');
+// 대소문자 흔들림 — 설정값이 소문자로 들어와도 같은 나라로 본다(플래그는 대문자로 저장)
+eq(shouldRunRetroDaily('kr', '서울', ['KR'], mine), false, '1회: 코드 소문자 kr ↔ 플래그 KR → 같은 나라');
+// 거주 지역 없음 — 이때 돌아서 플래그를 세우면 정작 지역을 처음 정하는 회차가 막힌다
+eq(shouldRunRetroDaily('KR', null, undefined, mine), false, '1회: 거주 지역 null → 안 돈다');
+eq(shouldRunRetroDaily('KR', '', undefined, mine), false, '1회: 거주 지역 빈 문자열 → 안 돈다');
+eq(shouldRunRetroDaily(null, '서울', undefined, mine), false, '1회: 거주국 null → 안 돈다');
+eq(shouldRunRetroDaily('', '서울', undefined, mine), false, '1회: 거주국 빈 문자열 → 안 돈다');
+// QA R3 — 계정 전환 중 "빈 기록 + 이전 계정 거주 지역" 회차, 새 기기 hydrate 직후 빈 목록.
+// 여기서 돌면 0건으로 플래그만 서서 뒤이어 내려오는 기록이 영영 소급되지 않는다
+eq(shouldRunRetroDaily('KR', '서울', undefined, []), false, '1회: 기록 0건 → 안 돈다(플래그도 안 섬, R3)');
+// 남의 글만 있는 목록도 "내 기록 0건"이다
+eq(shouldRunRetroDaily('KR', '서울', undefined, [{ id: 'o1', isMyPost: false }]), false, '1회: 남의 글만 있음 → 안 돈다(R3)');
+// isMyPost가 빠진 기록은 내 것으로 본다 — pickRetroDailySnapIds의 `isMyPost !== false`와 같은 규칙
+eq(shouldRunRetroDaily('KR', '서울', undefined, [{ id: 'u1' }]), true, '1회: isMyPost 미지정 기록 → 내 기록으로 보고 돈다');
+
+// ─────────────────────────────────────────────────────────────
+// restoreRetroDailyDone — 영속본 복원 + 옛 형식(코드 하나) 마이그레이션(QA R2)
+// ─────────────────────────────────────────────────────────────
+// 옛 형식 — 이 키를 처음 만든 작업본이 남긴 값
+eq(restoreRetroDailyDone('KR'), ['KR'], '복원: 옛 형식 문자열 KR → [KR]');
+eq(restoreRetroDailyDone('kr'), ['KR'], '복원: 옛 형식 소문자 kr → [KR]');
+eq(restoreRetroDailyDone(['KR', 'JP']), ['KR', 'JP'], '복원: 새 형식 배열 → 그대로');
+eq(restoreRetroDailyDone(['kr', 'KR', ' jp ']), ['KR', 'JP'], '복원: 대소문자·공백 흔들림 → 대문자로 정리, 중복 제거');
+// 과거 저장본(키 없음)·리셋 값 — 아직 안 돎
+eq(restoreRetroDailyDone(undefined), [], '복원: undefined(과거 저장본) → 빈 집합');
+eq(restoreRetroDailyDone(null), [], '복원: null → 빈 집합');
+eq(restoreRetroDailyDone(''), [], '복원: 빈 문자열 → 빈 집합');
+// 깨진 값 — 모르는 값은 "안 돎"으로 떨어진다(최악이어도 한 번 더 도는 것)
+eq(restoreRetroDailyDone(['KR', 3, null, '']), ['KR'], '복원: 배열 안 비문자열·빈 문자열 → 버린다');
+eq(restoreRetroDailyDone(42), [], '복원: 숫자 → 빈 집합');
+eq(restoreRetroDailyDone({ KR: true }), [], '복원: 객체 → 빈 집합');
+
+// ─────────────────────────────────────────────────────────────
+// planRetroDetach — 떼어내기를 바로 / tombstone 뒤 / 미룸 중 무엇으로 할지(QA F2·R1)
+// ─────────────────────────────────────────────────────────────
+// 비는 카드가 없으면 서버에 걸 것이 없다 — pull 전이어도 바로 뗀다
+eq(planRetroDetach(0, true, false, false), 'detach', '떼기: 비는 카드 0장 → pull 전이어도 바로');
+// Supabase 미설정 빌드 — tombstone이 늘 false라 기다리면 영영 못 뗀다
+eq(planRetroDetach(2, false, false, false), 'detach', '떼기: Supabase 미설정 → 바로');
+// QA R1 — 이번 세션 카드 pull 전에는 로컬 멤버 판정이 낡았을 수 있다
+eq(planRetroDetach(1, true, false, false), 'defer', '떼기: 카드 pull 전 → 미룸(R1)');
+eq(planRetroDetach(1, true, true, false), 'tombstone', '떼기: 카드 pull 뒤 → tombstone 먼저');
+// 앞 회차 tombstone이 아직 응답 대기 — 겹쳐 보내지 않는다
+eq(planRetroDetach(1, true, true, true), 'defer', '떼기: tombstone 진행 중 → 미룸');
+
+// ─────────────────────────────────────────────────────────────
+// pickStrayDailySnapIds — 이미 일상인데 카드에 남은 스냅(다른 기기가 표시한 것)
+// ─────────────────────────────────────────────────────────────
+const sg = [{ records: ['s1', 'f1'] }, { records: ['s3'] }];
+eq(pickStrayDailySnapIds([
+  { id: 's1', viewType: 'snap', snapDaily: true },   // 일상 + 카드 안 → 대상
+  { id: 's2', viewType: 'snap', snapDaily: true },   // 일상이지만 카드 밖 → 제외
+  { id: 's3', viewType: 'snap' },                    // 카드 안이지만 일상 아님(여행 스냅) → 제외
+  { id: 'f1', viewType: 'feed', snapDaily: true },   // 스냅 아님 → 피드는 카드에서 떼면 안 된다
+], sg), ['s1'], 'stray: 일상 스냅이면서 카드에 있는 것만');
+eq(pickStrayDailySnapIds([{ id: 's1', viewType: 'snap', snapDaily: true }], []), [], 'stray: 카드 0장 → 빈 배열');
+eq(pickStrayDailySnapIds([], sg), [], 'stray: 기록 0건 → 빈 배열');
+
+// ─────────────────────────────────────────────────────────────
+// pickCardsEmptiedByDetach — 떼어내면 비는 카드 = tombstone을 먼저 걸어야 할 카드(QA F2)
+// ─────────────────────────────────────────────────────────────
+// 이번 버그의 그 카드 — 첫 서울 스냅 하나로 만들어진 '서울 여행' 카드
+eq(pickCardsEmptiedByDetach([{ id: 'seoul', records: ['a'] }], ['a']), ['seoul'], '빈 카드: 유일한 멤버를 떼면 → 대상');
+// 피드가 섞인 카드는 남는다 — tombstone하면 안 된다
+eq(pickCardsEmptiedByDetach([{ id: 'busan', records: ['a', 'feed1'] }], ['a']), [], '빈 카드: 다른 멤버가 남음 → 제외');
+// 원래 비어 있던 카드(진행 중 체류 등)는 이번 정리가 비운 게 아니다
+eq(pickCardsEmptiedByDetach([{ id: 'empty', records: [] }], ['a']), [], '빈 카드: 원래 빈 카드 → 제외');
+// 체류 카드 — KP 정리와 같은 방어(체류 메타 유실 방지)
+eq(pickCardsEmptiedByDetach([{ id: 'stay', records: ['a'], stay: { country: 'X' } }], ['a']), [], '빈 카드: 체류 카드 → 제외');
+eq(pickCardsEmptiedByDetach([{ id: 'c1', records: ['a', 'b'] }, { id: 'c2', records: ['b'] }, { id: 'c3', records: ['z'] }], ['a', 'b']),
+  ['c1', 'c2'], '빈 카드: 여러 장 중 전부 떼이는 카드만, 입력 순서대로');
+eq(pickCardsEmptiedByDetach([{ id: 'c1', records: ['a'] }], []), [], '빈 카드: 떼어낼 id 없음 → 빈 배열');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

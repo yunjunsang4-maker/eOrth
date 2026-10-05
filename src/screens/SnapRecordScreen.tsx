@@ -183,7 +183,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [sendSize, setSendSize] = useState({ w: 0, h: 0 }); // 공유 버튼 그라데이션 테두리 SVG 크기
   const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
   const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
-  const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 저장 직후 거주 지역 제안(1회)
+  const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 저장 직전 거주 지역 제안(1회)
+  // 시트가 열린 채 저장이 보류 중인가 — 시트 onClose가 두 번 와도(배경 탭+'나중에' 연타) 한 번만 저장
+  const regionCommitPendingRef = useRef(false);
+  // 시트에서 방금 고른 거주 지역. 스토어의 homeRegion은 setHomeRegion 직후 같은 틱의 onClose에서
+  // 아직 옛 값(null)이라 그걸로 판정하면 이 스냅이 또 일상 표시 없이 저장된다 — 시트가 직접 넘긴다.
+  const pickedRegionRef = useRef<{ name: string } | null>(null);
 
   // ─── 메타 ───
   const [caption, setCaption] = useState('');
@@ -386,19 +391,20 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const locName = detectedCountry || locCountryObj?.name || '';
 
   // ─── 저장 ───
-  const handleSave = () => {
-    // 더블탭 가드 — 없으면 addRecord가 두 번 호출돼 동일 스냅이 중복 게시되고
-    // goBack()도 두 번 실행돼 스냅 화면 아래의 화면까지 pop된다.
-    if (savedRef.current) return;
+  // 저장에 쓸 국가 — 선택 > GPS 감지 > 거주국 폴백. handleSave(시트를 띄울지)와 commitSave(실제 저장)가
+  // 같은 값을 봐야 해서 렌더 스코프에 둔다.
+  const resolvedCountry = selectedCountry
+    || (detectedCountry
+      ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
+      : null);
+  const finalCountry = resolvedCountry || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
+  const isHomeCountry = !!homeCountry && (finalCountry?.name ?? '') === homeCountry.name;
+
+  /** 실제 저장(addRecord). region = 이 스냅의 '일상' 판정에 쓸 거주 지역 */
+  const commitSave = (region: { name: string } | null) => {
     const lateSeconds = notifTimestamp
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;
-
-    const resolvedCountry = selectedCountry
-      || (detectedCountry
-        ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
-        : null);
-    const finalCountry = resolvedCountry || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
     // 폴백으로 채운 국가는 추정값 — 여행 세션 종료(귀국) 신호로 쓰이지 않게 store에 알린다
     const countryGuessed = !resolvedCountry;
 
@@ -410,7 +416,6 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     // 지금까지 detectedCity는 상단 표시에만 쓰고 저장하지 않아, 국내 스냅은 지역이 통째로 비어
     // 서울 출근길과 제주 여행이 같은 여행 카드·같은 링이 됐다.
     // 사용자가 국가 시트에서 직접 고른 지역이 있으면 그 값이 우선(기존 동작).
-    const isHomeCountry = !!homeCountry && (finalCountry?.name ?? '') === homeCountry.name;
     const normalizedRegion = isHomeCountry ? normalizeHomeRegion(homeCountryCode, detectedCity) : null;
     const regionName =
       selectedCountry?.region
@@ -420,7 +425,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       || (isHomeCountry ? (normalizedRegion?.nameEn ?? detectedCity ?? undefined) : undefined);
     // 거주지에서 찍은 스냅 = 여행이 아니라 '일상'. 저장 시점에 박제한다 —
     // 남의 화면에서는 그 사람의 거주지를 알 수 없어 이 값이 유일한 근거다.
-    const snapDaily = isHomeCountry && !!homeRegion && !!regionName && regionName === homeRegion.name;
+    // 비교는 recordStore 소급(pickRetroDailySnapIds)과 같은 규칙 — 원문 일치 또는 정규화 값 일치.
+    // 지도·여행 상세에서 넘어온 selectedCountry.region이 프리셋 표기와 다르면('서울특별시') 원문 비교만으론
+    // false가 됐다(QA N3). 저장하는 regionName 자체는 바꾸지 않는다(regionNameEn과 짝이 어긋나지 않게).
+    const snapDaily = isHomeCountry && !!region && !!regionName &&
+      (regionName === region.name || normalizeHomeRegion(homeCountryCode, regionName)?.name === region.name);
 
     addRecord({
       user: { name: '', emoji: '⚡', handle: '' }, // addRecord가 로그인 사용자로 채움
@@ -443,16 +452,28 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
       snapDaily: snapDaily || undefined, // false는 싣지 않는다(발행 payload를 부풀리지 않음)
     }, { countryGuessed });
+  };
 
+  const handleSave = () => {
+    // 더블탭 가드 — 없으면 addRecord가 두 번 호출돼 동일 스냅이 중복 게시되고
+    // goBack()도 두 번 실행돼 스냅 화면 아래의 화면까지 pop된다.
+    // 시트를 띄우는 갈래도 여기서 막는다 — 시트가 열린 동안 다시 눌려도 저장이 두 벌 생기지 않게.
+    // (beforeRemove의 '나가기 확인'도 이 값으로 건너뛴다)
+    if (savedRef.current) return;
     savedRef.current = true;
     // 거주 지역 미설정 사용자에게 1회만 제안 — 거주국에서 찍었을 때가 가장 맥락이 맞는 순간이다.
+    // ⚠️ 시트를 **저장 전에** 띄운다. 예전엔 저장 뒤에 띄워, 첫 거주지 스냅이 homeRegion=null로
+    //    일상 표시 없이 국내 여행 카드에 들어가 링이 `🇰🇷 서울`과 일상 둘로 갈렸다(2026-10-04).
+    //    지역을 고르든 '나중에'든 시트가 닫힐 때(onClose) 저장하고 나간다.
     // ⚠️ goBack()을 먼저 부르면 이 화면과 함께 시트도 언마운트돼 아무것도 안 보인다.
-    //    시트를 닫는 시점에 나간다(onClose).
     if (isHomeCountry && !homeRegion && !homeRegionPromptShown) {
       setHomeRegionPromptShown(true); // 닫아도 다시 뜨지 않는다
+      regionCommitPendingRef.current = true;
+      pickedRegionRef.current = null;
       setRegionSheetVisible(true);
       return;
     }
+    commitSave(homeRegion);
     navigation.goBack();
   };
 
@@ -750,12 +771,20 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       <Text style={st.expireNote}>{t('snap.expireNote')}</Text>
       </KeyboardAvoidingView>
 
-      {/* 저장 직후 거주 지역 제안(1회). 닫으면 그때 화면을 빠져나간다 */}
+      {/* 저장 직전 거주 지역 제안(1회). 닫히면 그때 저장하고 화면을 빠져나간다 */}
       <HomeRegionSheet
         visible={regionSheetVisible}
-        // Modal 해제와 화면 pop을 같은 틱에 하면 iOS에서 터치가 죽는 조합(메모리: Modal 직후 네이티브
-        // 전환 금지). 해제 애니메이션이 끝난 뒤 빠져나간다.
-        onClose={() => { setRegionSheetVisible(false); setTimeout(() => navigation.goBack(), 350); }}
+        onSaved={(r) => { pickedRegionRef.current = r; }}
+        onClose={() => {
+          if (!regionCommitPendingRef.current) return; // 이미 처리한 닫힘(연타)
+          regionCommitPendingRef.current = false;
+          setRegionSheetVisible(false);
+          // '나중에'·배경 탭·안드로이드 뒤로가기면 null → 일상 표시 없이 저장(기존 동작과 같다)
+          commitSave(pickedRegionRef.current);
+          // Modal 해제와 화면 pop을 같은 틱에 하면 iOS에서 터치가 죽는 조합(메모리: Modal 직후 네이티브
+          // 전환 금지). 해제 애니메이션이 끝난 뒤 빠져나간다.
+          setTimeout(() => navigation.goBack(), 350);
+        }}
       />
     </SafeAreaView>
   );

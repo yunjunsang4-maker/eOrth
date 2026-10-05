@@ -29,10 +29,17 @@ import { COUNTRIES } from '../constants/countries';
 export default function HomeRegionSheet({
   visible,
   onClose,
+  onSaved,
   countryCode,
 }: {
   visible: boolean;
   onClose: () => void;
+  /**
+   * 지역을 저장했을 때 그 값을 onClose **직전에** 넘긴다(선택). '나중에'·배경 탭으로 닫히면 부르지 않는다.
+   * 스토어의 `homeRegion`은 setHomeRegion 직후 같은 틱에선 아직 옛 값이라, 닫히자마자 그 값으로
+   * 판정해야 하는 호출부(SnapRecordScreen — 시트 뒤에 스냅을 저장)가 쓴다. 설정·온보딩은 안 넘긴다.
+   */
+  onSaved?: (region: { name: string; nameEn: string }) => void;
   /**
    * 기준 거주국(ISO2). 주지 않으면 지금처럼 스토어의 `homeCountryCode`를 쓴다.
    *
@@ -80,6 +87,7 @@ export default function HomeRegionSheet({
 
   const save = (name: string, nameEn: string) => {
     setHomeRegion({ name, nameEn });
+    onSaved?.({ name, nameEn });
     onClose();
   };
 

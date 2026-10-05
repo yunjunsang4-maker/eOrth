@@ -221,3 +221,132 @@ export function orderSnapStrip<T extends SnapRingItem>(
   const live = moved.length > 0 && isMine(moved[0]) && isSnapTripOngoing(moved[0], tripGroups, records, now);
   return live ? [...moved, ...rings.filter((s) => s._isDaily)] : rings;
 }
+
+// ─────────────────────────────────────────────────────────────
+// 거주 지역 소급 '일상' 표시 — 이미 저장된 내 스냅 고르기(2026-10-04)
+// ─────────────────────────────────────────────────────────────
+// snapDaily는 저장 시점에 박제되는데, 거주 지역 시트는 그동안 거주국 스냅을 **저장한 뒤에야** 떴다.
+// 그래서 첫 스냅은 homeRegion=null로 저장돼 일상 표시 없이 국내 여행 카드(서울+7일)에 들어가
+// 링이 `🇰🇷 서울`(여행)과 일상 두 개로 갈렸다. 거주 지역이 정해진 뒤 그런 스냅을 골라낸다.
+// 지역 비교는 저장 시점과 같은 규칙 — 그대로 같거나, 정규화(수원시→경기 등)한 값이 같으면 일치.
+
+/** pickRetroDailySnapIds가 읽는 필드만 추린 기록 모양 (recordStore.TravelRecord가 그대로 들어온다) */
+export interface RetroDailyItem {
+  id: string;
+  viewType?: string;
+  isMyPost?: boolean;
+  snapDaily?: boolean;
+  countryName?: string;
+  regionName?: string;
+}
+
+/**
+ * 거주 지역에서 찍었는데 아직 일상 표시가 없는 **내 스냅**의 id 목록.
+ * @param homeCountryName 거주국의 기록용 국가명(예: '대한민국'). 없으면 빈 배열.
+ * @param homeRegionName  거주 지역 이름(예: '서울'). 없으면 빈 배열.
+ * @param normalizeRegion 거주국 지역 프리셋 정규화(recordStore가 normalizeHomeRegion을 감싸 넘긴다).
+ *                        이 파일이 지오 데이터를 끌어오지 않게 주입받는다.
+ */
+export function pickRetroDailySnapIds(
+  records: RetroDailyItem[],
+  homeCountryName: string | null | undefined,
+  homeRegionName: string | null | undefined,
+  normalizeRegion?: (raw: string) => string | null | undefined,
+): string[] {
+  if (!homeCountryName || !homeRegionName) return [];
+  return records
+    .filter((r) =>
+      r.viewType === 'snap' &&
+      r.isMyPost !== false &&
+      !r.snapDaily &&
+      r.countryName === homeCountryName &&
+      !!r.regionName &&
+      (r.regionName === homeRegionName || normalizeRegion?.(r.regionName) === homeRegionName))
+    .map((r) => r.id);
+}
+
+/**
+ * 소급 표시를 지금 돌릴지 — **거주국마다 1회**(2026-10-04 사용자 결정, QA F1).
+ * 거주 지역을 바꿀 때마다 돌면 서울→부산 오탭 한 번에 작년 부산 여행 스냅이 되돌릴 수 없이 일상이 된다.
+ * 그래서 "이 거주국으로 이미 돌았는가"(`done` = 돌았던 거주국 코드 **집합**, 영속)를 보고 한 번만 돈다.
+ * 거주국이 바뀌면(거주 지역 리셋 → 다시 설정) 새 나라로 한 번 더 돈다. 거주 지역이 없으면 돌지 않는다 —
+ * 그때 플래그를 세우면 정작 거주 지역을 처음 정하는 회차가 막힌다.
+ *
+ * ⚠️ 코드 하나가 아니라 집합인 이유(QA R2): 하나만 담으면 KR→JP→KR 왕복 뒤 `'KR' !== 'JP'`로 KR이
+ *    한 번 더 돌아 F1이 재현된다.
+ * ⚠️ **내 기록이 0건이면 돌지 않는다**(QA R3). 돌아 봐야 대상이 0건인데 플래그만 서서, 그 뒤 서버에서
+ *    내려오는 기록(계정 전환·새 기기의 hydrateMyRecords)이 영영 소급되지 않는다. 계정 전환에서
+ *    resetRecords와 resetSettings가 다른 커밋에 들어가 "빈 기록 + 이전 계정 거주 지역" 회차가 생겨도
+ *    여기서 막힌다. 기록이 생긴 뒤에 처음 돌므로 빈 목록으로 닫히는 경로가 없다.
+ */
+export function shouldRunRetroDaily(
+  homeCountryCode: string | null | undefined,
+  homeRegionName: string | null | undefined,
+  done: string[] | null | undefined,
+  records: RetroDailyItem[],
+): boolean {
+  const cc = (homeCountryCode || '').toUpperCase();
+  return !!cc && !!homeRegionName && !(done ?? []).includes(cc) && records.some((r) => r.isMyPost !== false);
+}
+
+/**
+ * 영속본의 "소급을 마친 거주국" 값을 코드 집합으로 복원한다(QA R2 마이그레이션).
+ * 옛 형식은 코드 하나(문자열)였다 → `[대문자 코드]`. 배열은 문자열만 대문자로 남기고 중복을 뺀다.
+ * 그 밖(undefined·null·숫자·객체)은 빈 배열 = 아직 안 돎.
+ */
+export function restoreRetroDailyDone(raw: unknown): string[] {
+  const list = typeof raw === 'string' ? [raw] : Array.isArray(raw) ? raw : [];
+  const codes = list.filter((c): c is string => typeof c === 'string' && c.trim() !== '').map((c) => c.trim().toUpperCase());
+  return Array.from(new Set(codes));
+}
+
+/**
+ * 소급·stray 떼어내기를 이번 회차에 어떻게 처리할지.
+ * - `'detach'`   : 비는 카드가 없거나(서버에 걸 것 없음) Supabase 미설정 빌드(tombstone이 늘 false) → 바로 뗀다.
+ * - `'tombstone'`: 비는 카드에 tombstone을 먼저 걸고, 성공한 뒤에 뗀다(QA F2).
+ * - `'defer'`    : 이번 회차는 아무것도 안 뗀다. 표시는 이미 붙어 있어 다음 회차에 stray로 다시 잡힌다.
+ *
+ * ⚠️ `cardsPulled`(이번 세션의 카드 pull이 성공으로 끝났는가)가 false면 미룬다(QA R1). "비게 될 카드"는
+ *    **로컬** 멤버로 판정하는데, pull 전의 로컬은 다른 기기가 그 카드에 더한 멤버를 아직 모른다 —
+ *    그대로 tombstone하면 상대 기기에서 멀쩡한 카드가 지워진다.
+ * ⚠️ `inFlight`면 미룬다 — 같은 카드에 tombstone이 겹쳐 나가지 않게.
+ */
+export function planRetroDetach(
+  doomedCount: number,
+  supabaseConfigured: boolean,
+  cardsPulled: boolean,
+  inFlight: boolean,
+): 'detach' | 'tombstone' | 'defer' {
+  if (doomedCount === 0 || !supabaseConfigured) return 'detach';
+  if (!cardsPulled || inFlight) return 'defer';
+  return 'tombstone';
+}
+
+/**
+ * 이미 일상인데 아직 어떤 여행 카드에 들어 있는 내 스냅 id. 다른 기기가 표시한 스냅은 snapDaily만
+ * 넘어오고 이 기기의 카드 소속은 남는다 — 떼어내야 카드 합집합 병합으로 재감염되지 않는다.
+ * 일상 스냅만 고르므로 소급 1회 제한과 무관하게 매번 돌려도 안전하다.
+ */
+export function pickStrayDailySnapIds(
+  records: RetroDailyItem[],
+  groups: { records: string[] }[],
+): string[] {
+  const inCard = new Set(groups.flatMap((g) => g.records));
+  return records.filter((r) => r.viewType === 'snap' && !!r.snapDaily && inCard.has(r.id)).map((r) => r.id);
+}
+
+/**
+ * `ids`를 떼어내면 멤버가 0이 되는 카드 id = detachRecordsFromTripGroups가 로컬에서 폐기할 카드.
+ * 이 카드들은 서버에 tombstone을 **먼저** 걸어야 한다(안 그러면 push의 빈 상태 가드에 막혀
+ * 서버·다른 기기에 유령 카드로 남는다 — QA F2). KP 정리 effect와 같은 규칙:
+ * 원래 비어 있던 카드와 체류 카드는 대상이 아니다.
+ */
+export function pickCardsEmptiedByDetach(
+  groups: { id: string; records: string[]; stay?: unknown }[],
+  ids: string[],
+): string[] {
+  const gone = new Set(ids);
+  return groups
+    .filter((g) => !g.stay && g.records.length > 0 && g.records.every((rid) => gone.has(rid)))
+    .map((g) => g.id);
+}

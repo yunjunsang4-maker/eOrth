@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import { findWronglyImportedKpRecords } from '../utils/kpImportCleanup';
+import { pickRetroDailySnapIds, shouldRunRetroDaily, pickStrayDailySnapIds, pickCardsEmptiedByDetach, restoreRetroDailyDone, planRetroDetach } from '../utils/snapStrip';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useProfileSettings, useHomeSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persist';
@@ -526,6 +527,13 @@ interface RecordPersistPayload {
   countryCovers?: Record<string, CountryCover>;
   // 지역 저장 키 스키마 (GADM 표기 → NE 코드). settingsStore와 독립적으로 관리한다.
   regionKeySchema?: number;
+  // 거주 지역 스냅 소급 '일상' 표시를 마친 거주국 코드 **집합**(대문자). 거주국마다 1회만 돈다
+  // (2026-10-04 QA F1, 집합화는 QA R2 — KR→JP→KR 왕복에서 KR이 다시 돌지 않게).
+  // 과거 저장본엔 없다 → undefined면 아직 안 돈 것(기존 사용자도 한 번은 돈다).
+  retroDailyCountries?: string[];
+  // ⚠️ 읽기 전용 옛 형식 — 코드 하나(문자열)를 담던 작업본의 키. 복원 때만 읽어 집합으로 옮기고
+  //    (restoreRetroDailyDone) 다음 저장부터는 쓰지 않는다.
+  retroDailyCountry?: string | null;
 }
 
 // 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
@@ -537,9 +545,19 @@ export interface TripSession {
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { handle, profilePhoto, handleFont, isPremium } = useProfileSettings();
-  const { homeCountryCode, currentVisitedCountryCode } = useHomeSettings();
+  const { homeCountryCode, currentVisitedCountryCode, homeRegion } = useHomeSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [regionKeySchema, setRegionKeySchema] = useState(0);
+  // 소급 '일상' 표시를 마친 거주국 코드 — 아래 소급 effect 주석 참조. records와 같은 키에 영속해
+  // `hydrated` 하나로 기록·플래그 복원이 함께 보장된다(따로 두면 플래그만 늦게 와서 두 번 돌 수 있다).
+  const [retroDailyDone, setRetroDailyDone] = useState<string[]>([]);
+  // 이번 세션(계정)에서 카드 pull(`syncTripCards`)이 **성공으로** 한 번이라도 끝났는가(QA R1).
+  // 소급 effect의 tombstone 갈래가 이 값이 설 때까지 닫혀 있다 — "비게 될 카드" 판정이 로컬 멤버
+  // 기준이라, pull 전에는 다른 기기가 더한 멤버를 몰라 멀쩡한 카드를 tombstone할 수 있다.
+  // ref가 아니라 state인 이유: pull이 아무 카드도 안 바꾸고 끝나면 tripGroups가 그대로라 effect가
+  // 다시 돌 계기가 없다 — 이 값이 바뀌는 것 자체가 미뤄 둔 떼어내기를 깨운다.
+  // ⚠️ `tripBackupReadyRef`로 대신할 수 없다 — 기존 사용자 갈래는 sync **전에** 그 ref를 세운다.
+  const [tripCardsPulled, setTripCardsPulled] = useState(false);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
@@ -643,6 +661,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
       setRecords(nextRecords);
       setRegionKeySchema(nextRegionSchema);
+      // 새 키가 있으면 그것을, 없으면 옛 문자열 키를 집합으로 옮긴다(QA R2 마이그레이션)
+      setRetroDailyDone(restoreRetroDailyDone(p.retroDailyCountries ?? p.retroDailyCountry));
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
@@ -679,8 +699,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers, regionKeySchema }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSession, countryCovers, regionKeySchema],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers, regionKeySchema, retroDailyCountries: retroDailyDone }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSession, countryCovers, regionKeySchema, retroDailyDone],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -2088,6 +2108,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 계정 경계 잔존물 정리 — 이전 계정의 세션·열람 이력·요청이 새 계정 저장본/서버 행으로 이월되지 않게
     setTripSession(null);
     setViewedSnapIds([]);
+    setRetroDailyDone([]); // 소급 1회 플래그도 계정 단위 — 이전 계정의 '이미 돎'이 새 계정을 막지 않게
+    setTripCardsPulled(false); // 이전 계정의 pull 완료가 새 계정의 tombstone 갈래를 열면 안 된다(R1)
     setOutgoingNeighborRequests([]);
     // 세션 한정 ref들도 초기화 — 이전 계정의 좋아요/발행 상태가 새 계정으로 이월되지 않게
     likeStateRef.current = {};
@@ -2444,12 +2466,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // 한 벌만 있어야 두 곳이 어긋나지 않는다.
         const known = new Set(probe.map((p) => p.cardId));
         if (tripGroupsRef.current.some((g) => !known.has(g.id))) setTripPushNudge((n) => n + 1);
+        setTripCardsPulled(true); // 서버 카드 상태를 이 세션에서 확인했다 — 소급 tombstone 갈래를 연다(R1)
         return 'ok';
       }
 
       const rows = await withTimeout(fetchTripCards(need), 20000);
       if (epoch !== tripRestoreEpochRef.current) return 'skipped';
-      if (rows.length === 0) return 'ok';
+      if (rows.length === 0) {
+        // fetchTripCards는 실패(세션 없음·청크 오류·예외)도 `[]`로 삼킨다. 받아야 할 stale 카드가 있었는데
+        // 0행이면 본문 조회 실패다 — 병합 안 된 로컬로 소급 tombstone이 열리지 않게 pulled를 세우지 않는다(QA Q1).
+        if (stale.length === 0) setTripCardsPulled(true);
+        return 'ok';
+      }
 
       // 서버 배열은 remoteId(posts.id) 기준이다 — 이 기기의 로컬 기록 id로 바꾼다.
       // 못 찾으면 **그대로 둔다**(버리지 않는다): 그 글이 아직 동기화 전일 수 있고, 다음
@@ -2510,6 +2538,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       //    stale(병합)은 심지 않는다 — 병합 결과는 서버 사본과 다를 수 있고(로컬 전용 멤버·
       //    로컬 coverUri), 그 차이는 **서버로 올라가야 한다.**
       for (const s of addSeeds) lastPushedRef.current.set(s.cardId, s.json);
+      setTripCardsPulled(true); // 병합과 같은 틱이라 한 커밋 — 소급 effect는 병합된 멤버로 판정한다
       return 'ok';
     } catch {
       return 'failed'; // 조용히 무시 — 다음 트리거에서 재시도(토스트 없음)
@@ -3252,6 +3281,97 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, records, tripGroups]);
 
+  // ─── 거주 지역 스냅 소급 '일상' 표시 (2026-10-04) ───
+  // snapDaily는 저장 시점(SnapRecordScreen)에 박제되는데, 거주 지역이 아직 없을 때 찍은 거주지 스냅은
+  // 표시 없이 국내 여행 카드(서울+7일)에 들어가 소셜 탭 링이 `🇰🇷 서울`(여행)과 일상 두 개로 갈렸다.
+  // 거주 지역이 정해지면(시트·설정·온보딩·새 기기 서버 복원 — 경로 불문) 그런 내 스냅을 골라
+  // ① snapDaily 표시 + tripGroupId 제거를 **updateRecord로** 건다 — 서버 반영(updatePost)·
+  //    발행 중 수정 예약(pendingEditRef)·기준선 심기(stampServerUpdatedAt) 규칙을 그대로 탄다.
+  // ② 여행 카드에서 떼어낸다(detachRecordsFromTripGroups — 손댄 카드만 비면 폐기, ref도 함께 민다).
+  //
+  // ⚠️ **①은 거주국마다 1회만 돈다**(2026-10-04 사용자 결정, QA F1). 거주 지역을 바꿀 때마다 돌면
+  //    서울→부산 오탭 한 번에 작년 부산 여행 스냅이 일상이 되고 카드에서 빠진다 — 되돌리는 경로가 없다.
+  //    그래서 돌았던 거주국 코드 **집합**을 `retroDailyDone`으로 영속하고(records와 같은 키 → `hydrated`
+  //    하나로 기록·플래그 복원이 함께 보장), 같은 거주국이면 지역을 바꿔도 다시 돌지 않는다.
+  //    - 거주 지역은 있는데 한 번도 안 돈 기존 사용자(플래그 undefined)도 이번 번들에서 한 번 돈다.
+  //    - 거주국이 바뀌면(거주 지역 리셋 → 다시 설정) 새 나라로 한 번 더 돈다. 집합이라 KR→JP→KR로
+  //      돌아와도 KR은 다시 돌지 않는다(QA R2).
+  //    - 대상이 0건이어도 플래그를 세운다(다시 안 돌게). 거주 지역이 없으면 돌지도, 세우지도 않는다.
+  //    - **내 기록이 0건이면 돌지도, 세우지도 않는다**(QA R3). 새 기기·재설치·계정 전환에서 hydrate
+  //      직후의 빈 목록, 그리고 계정 전환 중 resetRecords와 resetSettings가 다른 커밋에 들어가 생기는
+  //      "빈 기록 + 이전 계정 거주 지역" 회차가 플래그를 0건으로 닫던 경로다. 서버 기록
+  //      (hydrateMyRecords·syncMyRecords)이 들어온 뒤 그 목록으로 처음 돈다.
+  //    ⚠️ 플래그는 이 기기 로컬이다(서버 백업 없음).
+  //       표시는 더하기만 하고 빼지 않는다 — 이미 일상인 스냅은 거주 지역을 바꿔도 그대로 둔다.
+  //
+  // ③ 이미 일상인데 아직 카드에 들어 있는 스냅은 **매번** 떼어낸다(1회 제한과 무관 — 일상 스냅만
+  //    건드리므로 안전하다). 다른 기기가 표시한 스냅은 mergeServerUpdate로 snapDaily만 넘어오고
+  //    이 기기의 카드 소속(·로컬 tripGroupId)은 그대로다. 카드 병합(mergeServerCard)은 멤버 **합집합**이라,
+  //    여기서 안 떼면 이 기기가 그 카드를 push할 때 표시한 기기의 카드에 스냅이 도로 들어간다(재감염).
+  //    일상 스냅은 linkByDate·linkRecordToTrip이 애초에 카드에 넣지 않고, 사용자가 스냅을 카드에
+  //    손으로 넣는 경로도 없어 떼어도 잃는 것이 없다.
+  //
+  // ⚠️ **떼어내서 비는 카드는 tombstone이 먼저다**(QA F2, 위 KP 정리와 같은 패턴). 첫 서울 스냅 하나로
+  //    만들어진 '서울 여행' 카드가 유일한 카드인 사용자는, 떼어낸 뒤 tripGroups가 0장이 되어 push effect의
+  //    빈 상태 가드(`tripGroups.length === 0 && !tripSession`)에 막힌다 → tombstone이 안 나가 서버에 카드가
+  //    남고, syncTripCards가 `missing`으로 되받아 지문까지 심고, ③이 다시 떼고… 를 동기화마다 반복한다.
+  //    그래서 비게 될 카드를 미리 골라 `tombstoneTripCards` 성공 뒤에만 떼어낸다(실패·비로그인이면 아무것도
+  //    안 떼고 미룬다 → 표시는 이미 붙었으므로 다음 회차에 ③이 같은 대상을 다시 잡아 재시도).
+  //    in-flight 가드: ①의 updateRecord가 records를 바꿔 effect가 곧바로 다시 돌므로, 같은 카드에
+  //    tombstone이 겹쳐 나가지 않게 한다.
+  //    ⚠️ **tombstone 갈래는 이번 세션의 카드 pull(`syncTripCards`)이 성공한 뒤에만 열린다**(QA R1,
+  //    `tripCardsPulled`). "비게 될 카드"는 로컬 멤버로 판정하는데, pull 전의 로컬은 다른 기기가 그 카드에
+  //    더한 멤버(예: 같은 7일 안의 서울 피드 글)를 모른다 — 그대로 tombstone하면 상대 기기에서 그 카드가
+  //    통째로 지워진다. pull이 실패하면 닫힌 채로 둔다(안전 쪽 — 다음 포그라운드 복귀의 syncMyRecords가 연다).
+  //    ①(표시)은 pull 전에도 진행한다. 떼어내기는 비게 될 카드가 **하나도 없을 때만** pull 전에 하고,
+  //    하나라도 있으면 이번 회차 대상 전체를 미룬다(planRetroDetach 'defer'). 미룬 몫은 결과가 같다:
+  //    표시가 이미 붙어 다음 회차(= pull 완료로 `tripCardsPulled`가 바뀌는 회차)에 ③ stray가 같은 스냅을
+  //    다시 잡고, 그때 **병합된** 카드로 비는지를 다시 판정한다 — 다른 기기 멤버가 들어와 있으면 tombstone
+  //    없이 떼기만 하고, 정말 비면 tombstone 뒤에 뗀다.
+  //    남는 한계: legacy `user_trip_state`(옛 번들 복원 경로)는 빈 상태 가드 때문에 여전히 안 갱신된다.
+  const retroTombInFlightRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated) return; // 영속 복원(기록·카드·1회 플래그) 전에는 판정하지 않는다
+    let mark: string[] = [];
+    if (shouldRunRetroDaily(homeCountryCode, homeRegion?.name, retroDailyDone, records)) {
+      mark = pickRetroDailySnapIds(
+        records,
+        homeCountryName,
+        homeRegion?.name,
+        (raw) => normalizeHomeRegion(homeCountryCode, raw)?.name,
+      );
+      // 대상 확인 뒤 — 0건이어도 세운다(내 기록이 0건이면 shouldRunRetroDaily가 애초에 막는다, R3)
+      const cc = (homeCountryCode || '').toUpperCase();
+      setRetroDailyDone((prev) => (prev.includes(cc) ? prev : [...prev, cc]));
+      for (const id of mark) updateRecord(id, { snapDaily: true, tripGroupId: undefined });
+    }
+    const ids = [...mark, ...pickStrayDailySnapIds(records, tripGroups)];
+    if (ids.length === 0) return; // 정상 상태 — 카드 쪽 setState 0회
+    const doomed = pickCardsEmptiedByDetach(tripGroups, ids);
+    // 비는 카드가 없으면 서버에 걸 것도 없고, Supabase 미설정 빌드는 tombstone이 늘 false라 기다리면
+    // 영영 못 뗀다 → 바로 뗀다(KP 정리와 같은 판단). 카드 pull 전(R1)·tombstone 진행 중이면 미룬다.
+    const plan = planRetroDetach(doomed.length, isSupabaseConfigured, tripCardsPulled, retroTombInFlightRef.current);
+    if (plan === 'detach') { detachRecordsFromTripGroups(ids); return; }
+    if (plan === 'defer') return;
+    retroTombInFlightRef.current = true;
+    // ⚠️ withTimeout 필수(QA R4) — 요청이 settle되지 않으면 in-flight가 세션 내내 잠겨 비는 카드의
+    //    떼어내기가 영영 미뤄진다. 타임아웃은 실패로 친다(아래 catch → 미룸). 늦게 도착한 원 요청이
+    //    서버에 tombstone을 찍었더라도, 다음 회차의 tombstone은 `.is('deleted_at', null)`로 0행 성공이라
+    //    그때 떼어낸다(멱등). 카드 pull(probe)과 같은 12초를 쓴다.
+    withTimeout(tombstoneTripCards(doomed), 12000)
+      .then((ok) => {
+        if (!ok) return; // 실패·비로그인 — 아무것도 안 뗀다 → 다음 회차 재시도
+        // 지문에서 먼저 뺀다 — 안 빼면 다른 카드가 남아 있을 때 push diff가 '사라진 카드'로 보고
+        // 이미 지운 카드에 tombstone을 다시 쏜다.
+        for (const id of doomed) lastPushedRef.current.delete(id);
+        // 함수형 갱신이라 그 사이 syncTripCards가 카드를 되살렸어도 같은 멤버째 다시 비워 폐기된다.
+        detachRecordsFromTripGroups(ids);
+      })
+      .catch(() => {})
+      .finally(() => { retroTombInFlightRef.current = false; });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, homeCountryCode, homeRegion?.name, retroDailyDone, records, tripGroups, tripCardsPulled]);
+
   // ─── 여행 카드 서버 백업 + 행 단위 push (기기 간 동기화) ───
   // 로컬이 원본. 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다(실패는 조용히 — 다음 변경 때 재시도).
   //
@@ -3436,6 +3556,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           await syncTripCards(cardRefs);
           return;
         }
+        // 프로브는 성공했는데 신규 표에 살아 있는 카드가 0장 — 받아 올 카드가 없다 = pull 완료와 같다.
+        // 여기서 안 세우면 이 갈래(legacy 시드)에서는 syncTripCards가 안 불려, 소급 tombstone 갈래가
+        // 다음 포그라운드 복귀까지 닫혀 있다(R1). 프로브 실패(null)면 세우지 않는다 — 모르는 것이다.
+        if (cardRefs) setTripCardsPulled(true);
 
         const backup = await fetchTripState();
         if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 이전 계정 백업 미적용
