@@ -3015,7 +3015,7 @@ export default function MainScreen({ navigation, route }: Props) {
               {/* 카드 테두리와 같은 링(대각 흰색·120px·불투명도 0.5). 폭은 카드 폭 - 좌우 18(시안 비율)로 고정 계산 */}
               {viewMode === 'globe' && (
                 <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
-                  <PillRing width={Math.round(DS_CARD_W * (289 / 325))} height={52} radius={26} diagonal cornerPx={120} />
+                  <PillRing width={Math.round(DS_CARD_W * (289 / 325))} height={52} radius={12} diagonal cornerPx={120} />
                 </View>
               )}
               <Text style={dsm.confirmText} {...andFitText}>{t('common.confirm')}</Text>
@@ -3114,9 +3114,9 @@ const dsm = StyleSheet.create({
   chipText: { color: '#fff', fontSize: 13, fontWeight: '700', includeFontPadding: false, flexShrink: 1 },
   subPanel: { marginTop: 12 },
   confirmBtn: { height: 49, borderRadius: 15, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
-  // 시안: 좌우 18(카드 패딩 29보다 넓음)·높이 52 알약·어두운 유리
+  // 시안: 좌우 18(카드 패딩 29보다 넓음)·높이 52·r12·어두운 유리
   confirmBtnGlass: {
-    height: 52, borderRadius: 26, marginHorizontal: DS_CARD_W * (18 / 325) - DS_PAD,
+    height: 52, borderRadius: 12, marginHorizontal: DS_CARD_W * (18 / 325) - DS_PAD,
     // 테두리는 PillRing이 그린다 — borderWidth를 두면 링과 이중선이 되고 링 위치가 1px 밀린다
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
