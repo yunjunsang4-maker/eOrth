@@ -18,7 +18,7 @@ import {
 import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, Easing as REasing, type SharedValue } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, cancelAnimation, Easing as REasing, type SharedValue } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
@@ -143,21 +143,40 @@ const SHEET_CLOSE_TIMING = { duration: 300, easing: REasing.inOut(REasing.ease) 
 // - 획득: 옛 onStartShouldSet=true(핸들 터치 즉시)에 맞춰 minDistance(0) — 첫 이동에서 바로 잡는다.
 //   RNGH는 활성화 순간 translation을 0으로 리셋하므로 첫 이동 1회분(수 px)만큼 옛것보다 덜 따라온다.
 //   핸들 안에는 누를 것도 스크롤도 없어 양보할 대상이 없다(목록 ScrollView는 핸들 밖 형제).
-// - 추종: 아래로만(dy>0일 때만 갱신 — 위로 넘기면 마지막 양수 위치에 머무는 것까지 옛것과 같다).
-// - 놓을 때: 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 스프링 복귀.
+// - 잡는 순간: 돌고 있는 열기·닫기 애니메이션을 멈추고 그 자리(start)에서 이어 끈다. 닫히는 중에 잡으면
+//   닫힘이 취소된다(닫힘 콜백은 finished일 때만 후처리) — 이미 내려가던 오버레이를 되돌리고 닫힘 뒤 예약 작업을
+//   버리는 일은 onGrab(JS)이 한다. 열린 채 정지(start=0)면 할 일이 없어 부르지 않는다.
+// - 추종: start+dy가 양수일 때만 갱신 — start=0이면 옛 "아래로만(dy>0), 위로 넘기면 마지막 양수 위치에 머묾"과 같다.
+// - 놓을 때: 끈 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 열린 위치로 스프링 복귀.
+//   거리는 잡은 지점 기준(dy)이라 닫히던 시트를 잡았다 그냥 놓으면 다시 열린다.
 //   RNGH 속도는 평활값이라 옛 순간속도와 판정이 갈릴 수 있다(사용자 승인 2026-10-03).
 // - 잡힌 뒤 시스템이 제스처를 뺏으면(ok=false) 끌던 위치에 남지 않고 복귀한다(옛것은 terminate 처리가 없어 멈춰 있었다).
-function sheetHandlePan(y: SharedValue<number>, close: () => void) {
+// - 복귀할 때도 onGrab을 부른다(10단계 QA L1): 끄는 도중 하드웨어 백·둘째 손가락 오버레이 탭으로 close가 겹치면
+//   오버레이는 →0으로 가고, 이어지는 onUpdate 대입이 닫힘 timing을 취소한다(finished=false라 state는 열린 채).
+//   그대로 열린 위치로 돌아오면 투명한 오버레이만 남으므로 여기서 되돌린다. 정상 복귀(오버레이 이미 1)에서는
+//   1→1 timing이라 매 프레임 값이 1로 같아 깜빡임이 없고, 국가 시트의 예약 작업도 열린 동안엔 원래 null이다.
+function sheetHandlePan(y: SharedValue<number>, start: SharedValue<number>, close: () => void, onGrab: () => void) {
   return Gesture.Pan()
     .minDistance(0)
+    .onStart(() => {
+      'worklet';
+      cancelAnimation(y);
+      start.value = y.value;
+      if (start.value > 0) runOnJS(onGrab)();
+    })
     .onUpdate((e) => {
       'worklet';
-      if (e.translationY > 0) y.value = e.translationY;
+      const next = start.value + e.translationY;
+      if (next > 0) y.value = next;
     })
     .onEnd((e, ok) => {
       'worklet';
-      if (ok && (e.translationY > 80 || e.velocityY > 500)) runOnJS(close)();
-      else y.value = withSpring(0, SHEET_SPRING);
+      if (ok && (e.translationY > 80 || e.velocityY > 500)) {
+        runOnJS(close)();
+      } else {
+        y.value = withSpring(0, SHEET_SPRING);
+        runOnJS(onGrab)();
+      }
     });
 }
 
@@ -1411,9 +1430,11 @@ export default function MainScreen({ navigation, route }: Props) {
   // 시트 위치는 공유값 — 핸들 드래그 추종(sheetHandlePan)·열기·닫기가 모두 UI 스레드에서 같은 값을 움직인다.
   // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.
   const sheetY = useSharedValue(SHEET_HEIGHT);
+  const sheetDragStart = useSharedValue(0);
   const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: sheetY.value }] }));
   const overlayAnim = useRef(new Animated.Value(0)).current;
   const countrySheetY = useSharedValue(COUNTRY_SHEET_MAX_H);
+  const countryDragStart = useSharedValue(0);
   const countrySheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: countrySheetY.value }] }));
   // 시트 실측 높이 — 콘텐츠 양에 따라 달라지므로 닫기 애니메이션 거리로 쓴다
   const countrySheetHRef = useRef(COUNTRY_SHEET_MAX_H);
@@ -1440,16 +1461,29 @@ export default function MainScreen({ navigation, route }: Props) {
       duration: 220,
       useNativeDriver: true,
     }).start();
-    // 완료 처리는 finished와 무관하게 — 옛 Animated.parallel(...).start(콜백)도 finished를 보지 않았다.
+    // 후처리는 끝까지 내려갔을 때만(finished) — 닫히는 중에 핸들을 다시 잡거나(sheetHandlePan onStart)
+    // 열기가 다시 불려 이 애니메이션이 취소되면 시트는 열린 상태로 남아야 한다.
+    // (옛 Animated.parallel 콜백·8단계는 finished를 보지 않아 취소돼도 시트를 닫았다 — 2026-10-05 고침)
     // 시트(300ms)가 오버레이(220ms)보다 늦게 끝나므로 옛 parallel 완료 시점과 같다.
-    sheetY.value = withTiming(SHEET_HEIGHT, SHEET_CLOSE_TIMING, () => {
-      runOnJS(setSheetOpen)(false);
+    sheetY.value = withTiming(SHEET_HEIGHT, SHEET_CLOSE_TIMING, (finished) => {
+      if (finished) runOnJS(setSheetOpen)(false);
     });
   }, [sheetY, overlayAnim]);
 
-  const sheetPan = useMemo(() => sheetHandlePan(sheetY, closeSheet), [sheetY, closeSheet]);
+  // 닫히던 시트를 잡았을 때·열린 위치로 복귀할 때 — 오버레이를 열린 상태로 되돌린다(sheetOpen은 닫힘 완료 때만 false라 그대로 true)
+  const reopenSheetOverlay = useCallback(() => {
+    Animated.timing(overlayAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  }, [overlayAnim]);
+
+  const sheetPan = useMemo(
+    () => sheetHandlePan(sheetY, sheetDragStart, closeSheet, reopenSheetOverlay),
+    [sheetY, sheetDragStart, closeSheet, reopenSheetOverlay],
+  );
 
   const openCountrySheet = (countryName: string) => {
+    // 닫히는 중에 다시 열리면 그 닫힘은 취소된다(완료 콜백이 finished일 때만 후처리) — 닫힘 뒤로 예약됐던
+    // 작업(기록형식 모달 등)도 함께 버린다. 남겨두면 나중에 엉뚱한 닫힘에서 실행된다.
+    afterCountrySheetCloseRef.current = null;
     setSelectedCountry(countryName);
     setCountrySheetOpen(true);
     // 시트 높이가 나라마다 달라, 직전에 닫힌 높이에서 시작하면 새 시트가 살짝 보인 채로 뜬다.
@@ -1482,14 +1516,25 @@ export default function MainScreen({ navigation, route }: Props) {
       useNativeDriver: true,
     }).start();
     // 내용에 따라 시트 높이가 달라지므로 실측값만큼 내려야 화면 밖으로 완전히 사라진다.
-    // 완료 처리는 finished와 무관하게 — 옛 parallel 콜백과 같다(closeSheet 주석 참고).
-    countrySheetY.value = withTiming(countrySheetHRef.current, SHEET_CLOSE_TIMING, () => {
-      runOnJS(finish)();
+    // 후처리(Modal 닫기·예약 작업)는 끝까지 내려갔을 때만 — 취소되면 시트는 열린 채로 남는다(closeSheet 주석 참고).
+    // 연달아 두 번 닫으면(뒤로가기 2연타 등) 첫 애니메이션은 취소돼 아무것도 안 하고 두 번째가 finish를 한 번 부른다.
+    countrySheetY.value = withTiming(countrySheetHRef.current, SHEET_CLOSE_TIMING, (finished) => {
+      if (finished) runOnJS(finish)();
     });
   }, [countrySheetY, countryOverlayAnim]);
 
+  // 닫히던 국가 시트를 잡았을 때·열린 위치로 복귀할 때 — 오버레이를 되돌리고, 닫힘 뒤 예약 작업(기록형식 모달)은 버린다.
+  // 사용자가 닫힘을 붙잡은 것이라, 이후 끌어서 다시 닫더라도 "+ 새 기록" 의도는 이어지지 않는다.
+  const reopenCountrySheetOverlay = useCallback(() => {
+    afterCountrySheetCloseRef.current = null;
+    Animated.timing(countryOverlayAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  }, [countryOverlayAnim]);
+
   // 드래그로 닫기 — 여행 시트(sheetPan)와 같은 제스처를 국가 시트에도 준다.
-  const countrySheetPan = useMemo(() => sheetHandlePan(countrySheetY, closeCountrySheet), [countrySheetY, closeCountrySheet]);
+  const countrySheetPan = useMemo(
+    () => sheetHandlePan(countrySheetY, countryDragStart, closeCountrySheet, reopenCountrySheetOverlay),
+    [countrySheetY, countryDragStart, closeCountrySheet, reopenCountrySheetOverlay],
+  );
 
   // 국가 시트 목록 — 발행된 내 기록만, 여행 날짜 내림차순, 여행 카드 단위로 한 줄.
   // 시트가 떠 있는 동안 매 렌더마다 전체 기록을 다시 훑지 않도록 메모한다.

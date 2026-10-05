@@ -1,6 +1,8 @@
 // src/constants/lateFonts.verify.ts — 늦은 글꼴 등록 신호 저장소 + handleFontStyle 게이트
-import { LATE_FONT_NAMES, LATE_BLOG_FONT_NAMES, LATE_HANDLE_FONT_NAMES, markLateFontsLoaded, getLoadedLateFonts, subscribeLateFonts, lateFontFamily } from './lateFonts';
-import { handleFontStyle } from './handleFonts';
+import { LATE_FONT_NAMES, LATE_SHARED_FONT_NAMES, LATE_BLOG_ONLY_FONT_NAMES, LATE_HANDLE_FONT_NAMES, markLateFontsLoaded, getLoadedLateFonts, subscribeLateFonts, lateFontFamily } from './lateFonts';
+import { handleFontStyle, HANDLE_FONTS } from './handleFonts';
+// 두 테이블 모두 react-native를 import하지 않아 node에서 직접 읽힌다(blogBlocks.ts는 import 0, handleFonts.ts는 lateFonts만)
+import { FONT_OPTIONS } from '../types/blogBlocks';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -65,28 +67,49 @@ markLateFontsLoaded(['Yuyu']);
 eq(calls, 1, '구독 해제 후 mark: 알림 없음');
 eq(getLoadedLateFonts().has('Yuyu'), true, '구독 해제와 무관하게 값은 바뀜');
 
-// ── 두 그룹 분할(App.tsx가 아이디 그룹 → 블로그 그룹 순으로 따로 mark) ──
+// ── 세 그룹 분할(App.tsx가 ①영문 아이디 → ②공용 → ③블로그 전용 순으로 따로 mark) ──
 // 겹치거나 빠진 이름이 있으면 그 글꼴은 두 번 올리거나 영영 mark되지 않는다
-eq([...LATE_BLOG_FONT_NAMES, ...LATE_HANDLE_FONT_NAMES].sort(), [...LATE_FONT_NAMES].sort(), '두 그룹을 합치면 19종 전체');
-eq(LATE_BLOG_FONT_NAMES.filter((n) => (LATE_HANDLE_FONT_NAMES as readonly string[]).includes(n)), [], '두 그룹은 겹치지 않는다');
-eq([LATE_BLOG_FONT_NAMES.length, LATE_HANDLE_FONT_NAMES.length], [9, 10], '블로그 9종·아이디 10종');
+eq([...LATE_HANDLE_FONT_NAMES, ...LATE_SHARED_FONT_NAMES, ...LATE_BLOG_ONLY_FONT_NAMES].sort(), [...LATE_FONT_NAMES].sort(), '세 그룹을 합치면 19종 전체');
+eq(new Set(LATE_FONT_NAMES).size, 19, '세 그룹은 서로 겹치지 않는다(합집합 19 = 개수 합 19)');
+eq([LATE_HANDLE_FONT_NAMES.length, LATE_SHARED_FONT_NAMES.length, LATE_BLOG_ONLY_FONT_NAMES.length], [10, 4, 5], '영문 아이디 10종·공용 4종·블로그 전용 5종');
 
-// 누적 — 두 번째 그룹 mark가 첫 그룹 이름을 지우면 아이디 폰트가 블로그 글꼴 등록 순간 시스템 폰트로 되돌아간다
+// 그룹 구성은 손으로 적은 목록이라 원천 테이블과 대조한다 — 아이디 폰트를 추가·교체하고 그룹을 안 옮기면
+// 그 글꼴이 엉뚱한 그룹(더 늦게)에서 올라오거나 아예 빠진다
+{
+  const CORE = new Set(['Montserrat-Black']); // impact — 시작 시 useFonts가 기다리는 핵심 글꼴이라 늦은 목록 밖
+  const handleFams = HANDLE_FONTS.map((f) => f.fontFamily).filter((f): f is string => !!f && !CORE.has(f));
+  const blogFams = FONT_OPTIONS.map((o) => o.value as string).filter((v) => v !== 'System');
+  const sorted = (a: readonly string[]) => [...a].sort();
+  eq(sorted(LATE_SHARED_FONT_NAMES), sorted(handleFams.filter((f) => blogFams.includes(f))), '②공용 = HANDLE_FONTS ∩ FONT_OPTIONS (정확히 같다)');
+  eq(sorted(LATE_HANDLE_FONT_NAMES), sorted(handleFams.filter((f) => !blogFams.includes(f))), '①영문 아이디 = HANDLE_FONTS − FONT_OPTIONS − 핵심 글꼴');
+  eq(sorted(LATE_BLOG_ONLY_FONT_NAMES), sorted(blogFams.filter((f) => !handleFams.includes(f))), "③블로그 전용 = FONT_OPTIONS − HANDLE_FONTS − 'System'");
+  eq(sorted(HANDLE_FONTS.filter((f) => (LATE_SHARED_FONT_NAMES as readonly string[]).includes(f.fontFamily ?? '')).map((f) => f.id)), ['brush', 'maru', 'pen', 'serif'], '②공용에 해당하는 아이디 폰트 id = pen·brush·serif·maru');
+}
+
+// 누적 — 뒤 그룹 mark가 앞 그룹 이름을 지우면 아이디 폰트가 블로그 글꼴 등록 순간 시스템 폰트로 되돌아간다
 {
   let groupCalls = 0;
   const off = subscribeLateFonts(() => { groupCalls++; });
-  markLateFontsLoaded(LATE_HANDLE_FONT_NAMES.filter((n) => n !== 'Orbitron')); // 아이디 그룹(Orbitron만 실패)
+  markLateFontsLoaded(LATE_HANDLE_FONT_NAMES.filter((n) => n !== 'Orbitron')); // ① (Orbitron만 실패)
   const sHandle = getLoadedLateFonts();
-  eq(groupCalls, 1, '아이디 그룹 mark: 알림 1회(이미 등록된 Pacifico 등이 섞여도 새 이름이 있으면 알림)');
-  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '아이디 그룹 뒤: 아이디 폰트 적용');
-  eq(lateFontFamily('NanumBarunpen', sHandle), undefined, '아이디 그룹 뒤: 블로그 글꼴은 아직 시스템 폰트');
-  markLateFontsLoaded(LATE_BLOG_FONT_NAMES); // 블로그 그룹
-  const sBoth = getLoadedLateFonts();
-  eq(groupCalls, 2, '블로그 그룹 mark: 알림 1회 더(총 2회)');
-  eq(sBoth.has('BebasNeue') && sBoth.has('NanumBarunpen'), true, '블로그 그룹 뒤: 두 그룹 이름이 누적');
-  eq(sBoth.has('Orbitron'), false, '실패한 Orbitron은 블로그 그룹 mark 뒤에도 빠져 있다');
-  eq(sBoth.size, 18, '19종 중 실패 1종 제외 18종');
-  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '옛 스냅샷(아이디 그룹 시점)은 그대로');
+  eq(groupCalls, 1, '①영문 아이디 그룹 mark: 알림 1회(이미 등록된 Pacifico 등이 섞여도 새 이름이 있으면 알림)');
+  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '① 뒤: 영문 아이디 폰트 적용');
+  eq(handleFontStyle('pen', sHandle), null, '① 뒤: 한글 아이디 폰트 pen은 아직 null(기본 폰트)');
+  markLateFontsLoaded(LATE_SHARED_FONT_NAMES); // ②
+  const sShared = getLoadedLateFonts();
+  eq(groupCalls, 2, '②공용 그룹 mark: 알림 1회 더(총 2회)');
+  eq(handleFontStyle('pen', sShared), { fontFamily: 'NanumPenScript_400Regular', fontWeight: 'normal' }, '② 뒤: 한글 아이디 폰트 pen 적용 — 블로그 전용 그룹을 기다리지 않는다');
+  eq(handleFontStyle('maru', sShared), { fontFamily: 'MaruBuri', fontWeight: 'normal' }, '② 뒤: maru 적용');
+  eq(lateFontFamily('NanumBarunpen', sShared), undefined, '② 뒤: 블로그 전용 NanumBarunpen은 아직 시스템 폰트');
+  eq(sShared.has('BebasNeue'), true, '② 뒤: ① 이름이 누적돼 남아 있다');
+  markLateFontsLoaded(LATE_BLOG_ONLY_FONT_NAMES); // ③
+  const sAll = getLoadedLateFonts();
+  eq(groupCalls, 3, '③블로그 전용 그룹 mark: 알림 1회 더(총 3회 — 구독 화면 최대 리렌더 수)');
+  eq(sAll.has('BebasNeue') && sAll.has('MaruBuri') && sAll.has('NanumBarunpen'), true, '③ 뒤: 세 그룹 이름이 누적');
+  eq(sAll.has('Orbitron'), false, '실패한 Orbitron은 뒤 그룹 mark 뒤에도 빠져 있다');
+  eq(sAll.size, 18, '19종 중 실패 1종 제외 18종');
+  eq(lateFontFamily('BebasNeue', sHandle), 'BebasNeue', '옛 스냅샷(① 시점)은 그대로');
+  eq(handleFontStyle('pen', sHandle), null, '옛 스냅샷(① 시점)의 pen은 그대로 null(불변)');
   off();
 }
 

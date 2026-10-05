@@ -882,6 +882,9 @@ function SnapStoryViewer({
   // 시트 위치는 공유값 — 핸들 드래그 추종(commentSheetPan)·열기·닫기가 UI 스레드에서 같은 값을 움직인다.
   // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.
   const commentSheetY = useSharedValue(SCREEN_H * 0.6);
+  // 핸들을 잡은 순간의 시트 위치 — 제스처가 매 렌더 새로 만들어지므로(아래 commentSheetPan) 끄는 도중
+  // 리렌더돼도 값이 이어지게 훅으로 둔다(early return 위여야 해서 여기)
+  const commentDragStart = useSharedValue(0);
   const commentOverlayAnim = useRef(new Animated.Value(0)).current;
   // 댓글 시트는 화면 하단 고정(absolute)이라 내부 KeyboardAvoidingView만으로는 입력창이 키보드에
   // 가린다. 키보드 높이만큼 시트 전체를 위로 들어올려 입력창이 항상 키보드 위에 보이게 한다.
@@ -1329,13 +1332,25 @@ function SnapStoryViewer({
   };
   const closeCommentSheet = () => {
     Animated.timing(commentOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start();
-    // 완료 처리는 finished와 무관하게 — 옛 Animated.parallel(...).start(콜백)도 finished를 보지 않았다.
+    // 후처리는 끝까지 내려갔을 때만(finished) — 닫히는 중에 핸들을 다시 잡거나 열기가 다시 불려 취소되면
+    // 시트는 열린 채 남아야 한다(commentSheetOpen은 닫힘 완료 때만 false라 그대로 true).
+    // (옛 Animated.parallel 콜백·8단계는 finished를 보지 않아 취소돼도 닫았다 — 2026-10-05 고침)
     // 시트(280ms)가 오버레이(200ms)보다 늦게 끝나므로 옛 parallel 완료 시점과 같다.
     commentSheetY.value = withTiming(
       SCREEN_H * 0.6,
       { duration: 280, easing: REasing.inOut(REasing.ease) },
-      () => { runOnJS(setCommentSheetOpen)(false); },
+      (finished) => { if (finished) runOnJS(setCommentSheetOpen)(false); },
     );
+  };
+  // 닫히던 시트를 잡았을 때·열린 위치로 복귀할 때 — 오버레이와 열림 state를 열린 시트에 맞춘다.
+  // setCommentSheetOpen(true)가 필요한 경로(10단계 QA L2): 키보드가 올라온 채 닫으면 시트가 0.6H−키보드 높이에서
+  // 멈춰 핸들이 화면에 남는다. 닫힘 완료 콜백이 runOnJS(setCommentSheetOpen)(false)를 큐에 넣은 직후,
+  // pointerEvents='none'이 커밋되기 전 1~3프레임 안에 핸들을 잡으면 onStart(start>0)가 이 함수를 그 뒤에 큐잉한다.
+  // runOnJS는 순서대로(FIFO) 실행되므로 false → true로 끝나, 다시 올라온 시트가 터치를 받고 오버레이가 다시
+  // 그려지며 스토리 타이머도 멈춘 채다. 이미 true면 같은 값이라 React가 버린다.
+  const reopenCommentOverlay = () => {
+    setCommentSheetOpen(true);
+    Animated.timing(commentOverlayAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
   };
 
   // 핸들을 끌어 닫기 — 옛 PanResponder를 RNGH로 옮겨 추종이 UI 스레드에서 돈다(MainScreen sheetHandlePan과 같은 규칙).
@@ -1343,18 +1358,35 @@ function SnapStoryViewer({
   //   RNGH는 활성화 순간 translation을 0으로 리셋하므로 첫 이동 1회분(수 px)만큼 옛것보다 덜 따라온다.
   //   핸들 안에는 누를 것도 스크롤도 없다(댓글 ScrollView는 핸들 밖 형제). 스토리 닫기 제스처(dismissGesture)는
   //   형제 뷰에 붙어 있어 핸들 터치에 끼어들지 않는다.
-  // - 놓을 때: 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 스프링 복귀.
+  // - 잡는 순간: 돌던 열기·닫기 애니메이션을 멈추고 그 자리에서 이어 끈다(start+dy가 양수일 때만 갱신 —
+  //   start=0이면 옛 "아래로만"과 같다). 닫히던 중이면 닫힘이 취소되므로 오버레이를 되돌린다.
+  // - 놓을 때: 끈 거리 80 또는 속도 500px/s(옛 vy 0.5px/ms와 같은 값)면 닫기, 아니면 열린 위치로 스프링 복귀.
   //   RNGH 속도는 평활값이라 옛 순간속도와 판정이 갈릴 수 있다(사용자 승인 2026-10-03).
   // - 잡힌 뒤 시스템이 제스처를 뺏으면(ok=false) 끌던 위치에 남지 않고 복귀한다.
+  // - 복귀할 때도 reopenCommentOverlay를 부른다(10단계 QA L1, MainScreen sheetHandlePan 주석과 같은 이유).
   // 옛 코드는 PanResponder를 early return 위의 useRef에 박제해 첫 렌더의 closeCommentSheet(그때의 SCREEN_H)를
   // 붙잡았다. dismissGesture처럼 매 렌더 만들어 항상 최신 함수를 부른다(훅이 아니라 early return 아래에 둘 수 있다).
   const commentSheetPan = Gesture.Pan()
     .minDistance(0)
-    .onUpdate((e) => { 'worklet'; if (e.translationY > 0) commentSheetY.value = e.translationY; })
+    .onStart(() => {
+      'worklet';
+      cancelAnimation(commentSheetY);
+      commentDragStart.value = commentSheetY.value;
+      if (commentDragStart.value > 0) runOnJS(reopenCommentOverlay)();
+    })
+    .onUpdate((e) => {
+      'worklet';
+      const next = commentDragStart.value + e.translationY;
+      if (next > 0) commentSheetY.value = next;
+    })
     .onEnd((e, ok) => {
       'worklet';
-      if (ok && (e.translationY > 80 || e.velocityY > 500)) runOnJS(closeCommentSheet)();
-      else commentSheetY.value = withSpring(0, COMMENT_SHEET_SPRING);
+      if (ok && (e.translationY > 80 || e.velocityY > 500)) {
+        runOnJS(closeCommentSheet)();
+      } else {
+        commentSheetY.value = withSpring(0, COMMENT_SHEET_SPRING);
+        runOnJS(reopenCommentOverlay)();
+      }
     });
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가

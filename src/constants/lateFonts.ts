@@ -27,21 +27,27 @@ import { useSyncExternalStore } from 'react';
 
 // ⚠️ App.tsx의 백그라운드 로드 목록과 같은 이름이어야 한다 — App.tsx가 `Record<LateFontName, …>`로
 // 받으므로 한쪽만 고치면 tsc가 잡는다. 이름은 기록·서버(user.font 등)에 저장된 값이라 바꾸지 말 것.
-// 두 그룹으로 나눠 따로 등록·알린다(App.tsx) — 영문 아이디 폰트 10종(합 ~1.5MB)이 10MB짜리
-// NanumBarunpen 등 블로그 글꼴(합 ~31MB)을 기다리지 않게. 순서·근거는 App.tsx 늦은 글꼴 effect 주석.
-// 블로그 글꼴 (FONT_OPTIONS) — 아이디 폰트 pen·brush·serif·maru(handleFonts.ts)도 이 그룹이라 이쪽을 기다린다
-export const LATE_BLOG_FONT_NAMES = [
-  'NanumGothic_400Regular',
-  'NanumMyeongjo_400Regular',
-  'NanumBrushScript_400Regular',
+// 세 그룹으로 나눠 차례로 등록·알린다(App.tsx) — 아이디에 쓰이는 글꼴이 10MB짜리 NanumBarunpen 등
+// 블로그 전용 글꼴을 기다리지 않게. ①영문 아이디 10종(합 ~1.5MB) → ②아이디에도 쓰이는 블로그 글꼴 4종
+// (합 ~13MB) → ③블로그 전용 5종(합 ~18MB). 순서·근거는 App.tsx 늦은 글꼴 effect 주석.
+// 그룹 구성은 handleFonts.ts HANDLE_FONTS·types/blogBlocks.ts FONT_OPTIONS에서 유도되는 사실과 같아야 한다
+// (lateFonts.verify.ts가 두 테이블과 대조한다 — 아이디 폰트를 추가·변경하면 여기 그룹도 옮길 것).
+// ② 아이디 폰트 pen·brush·serif·maru(handleFonts.ts)이면서 블로그 글꼴(FONT_OPTIONS)인 4종
+export const LATE_SHARED_FONT_NAMES = [
   'NanumPenScript_400Regular',
+  'NanumBrushScript_400Regular',
+  'NanumMyeongjo_400Regular',
+  'MaruBuri',
+] as const;
+// ③ 블로그 글꼴(FONT_OPTIONS) 중 아이디에는 안 쓰이는 5종
+export const LATE_BLOG_ONLY_FONT_NAMES = [
+  'NanumGothic_400Regular',
   'NanumSquare',
   'NanumSquareRound',
   'NanumBarunGothic',
   'NanumBarunpen',
-  'MaruBuri',
 ] as const;
-// 아이디 표시 폰트(프리미엄) — 영어 전용, 블로그 그룹과 겹치지 않는 10종
+// ① 아이디 표시 폰트(프리미엄) — 영어 전용, 블로그 글꼴과 겹치지 않는 10종
 export const LATE_HANDLE_FONT_NAMES = [
   'Pacifico',
   'Caveat',
@@ -54,7 +60,7 @@ export const LATE_HANDLE_FONT_NAMES = [
   'Orbitron',
   'Yuyu',
 ] as const;
-export const LATE_FONT_NAMES = [...LATE_BLOG_FONT_NAMES, ...LATE_HANDLE_FONT_NAMES] as const;
+export const LATE_FONT_NAMES = [...LATE_HANDLE_FONT_NAMES, ...LATE_SHARED_FONT_NAMES, ...LATE_BLOG_ONLY_FONT_NAMES] as const;
 
 export type LateFontName = (typeof LATE_FONT_NAMES)[number];
 
@@ -63,9 +69,9 @@ const LATE = new Set<string>(LATE_FONT_NAMES);
 let loaded: ReadonlySet<string> = new Set<string>();
 const listeners = new Set<() => void>();
 
-// 호출부는 App.tsx 백그라운드 loadAsync의 then 둘(아이디 그룹 → 블로그 그룹)뿐이다 — 비동기 완료라 렌더 중에
-// 알릴 일이 없다(렌더 중에 알리면 "다른 컴포넌트 렌더 중 setState" 경고가 난다).
-// 여러 번 불려도 누적된다(앞선 그룹의 이름이 빠지지 않는다) — 구독 화면은 그룹마다 1회씩, 최대 2회 다시 렌더된다.
+// 호출부는 App.tsx 백그라운드 loadAsync의 then 셋(영문 아이디 → 공용 → 블로그 전용 그룹)뿐이다 — 비동기 완료라
+// 렌더 중에 알릴 일이 없다(렌더 중에 알리면 "다른 컴포넌트 렌더 중 setState" 경고가 난다).
+// 여러 번 불려도 누적된다(앞선 그룹의 이름이 빠지지 않는다) — 구독 화면은 그룹마다 1회씩, 최대 3회 다시 렌더된다.
 // 새 이름이 하나도 없으면 알리지 않는다(Fast Refresh로 App의 effect가 다시 돌아 같은 목록을 또 mark하는 경우).
 export function markLateFontsLoaded(names: readonly string[]) {
   const fresh = names.filter((n) => LATE.has(n) && !loaded.has(n));
