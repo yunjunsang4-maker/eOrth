@@ -8,7 +8,13 @@ import {
   Animated,
   PanResponder,
   Platform,
+  AccessibilityInfo,
+  type ScrollView,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { select, grab } from '../../utils/haptics';
 import { Text } from '../../ui/Text';
@@ -18,6 +24,7 @@ import { useSkinSettings } from '../../store/settingsStore';
 import { layoutBandRuns, type RecordedRange } from '../../utils/recordedDates';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 import { andFitText } from '../../utils/fitText';
+import { BackChevronIcon } from '../icons';
 import {
   toDateKey,
   isSameDay,
@@ -35,9 +42,6 @@ import {
  */
 
 const WEEK_DAY_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
-// 연·월 점프 패널의 월 라벨. 템플릿 문자열로 키를 만들면 t()의 키 타입 검사를 빠져나가므로 나열한다
-const MONTH_KEYS = ['calendar.m1', 'calendar.m2', 'calendar.m3', 'calendar.m4', 'calendar.m5', 'calendar.m6',
-  'calendar.m7', 'calendar.m8', 'calendar.m9', 'calendar.m10', 'calendar.m11', 'calendar.m12'] as const;
 
 /** 스와이프로 월을 넘길 최소 이동 거리(dp). 이보다 짧으면 탭·세로 스크롤로 본다 */
 const SWIPE_THRESHOLD = 44;
@@ -47,11 +51,23 @@ const SHEET_PAD_H = 24; // 달력 시안 확정값(CELL_SIZE 파생) — 앱 공
 const HEADER_H = 48;
 /** 확인 버튼 높이(시안 50) */
 const CONFIRM_H = 50;
+const CONFIRM_RADIUS = 12; // 시안 2026-10-06 — 알약(25)에서 둥근 사각으로
 /** 월 다이얼 — 월 제목을 꾹(350ms) 누르면 좌우 드래그로 월이 휠처럼 돈다(통계 탭 원판과 같은 손맛) */
 const DIAL_HOLD_MS = 350;
 const DIAL_SLOT = 72;       // 손가락 72dp = 1개월
 const DIAL_LABEL_W = 140;   // 휠 라벨 한 칸 폭('2026년 12월'·'12/2026'이 들어간다)
-const DIAL_ROT_PER_MONTH = 60; // 역삼각형이 1개월당 도는 각도
+const DIAL_ROT_PER_MONTH = 360; // 제목 옆 캐럿이 1개월당 도는 각도 — 한 바퀴여야 정수 개월에 멈췄을 때 ›가 기울지 않는다
+/** 연·월 휠 팝오버(시안 2026-10-06) — 제목 아래 그리드 위에 떠 있는 유리 카드. 7행이 보이고 가운데가 선택 */
+const WHEEL_ROW_H = 29;
+const POP_W = 134;
+const POP_H = WHEEL_ROW_H * 7; // 203 ≈ 시안 205 — 행 높이의 배수여야 가운데 행이 정확히 중앙에 온다
+const POP_RADIUS = 12;
+const POP_GAP = 4;              // 월 네비 행 아래 끝 → 팝오버 위 끝
+// 가운데에서 -3…+3 행의 투명도·크기(시안 측정: 가운데 bold 22, ±1 약 18·흰 45%, ±2 35%, ±3 12%)
+const WHEEL_OPACITY = [0.12, 0.35, 0.45, 1, 0.45, 0.35, 0.12];
+const WHEEL_SCALE   = [0.76, 0.8, 0.82, 1, 0.82, 0.8, 0.76];
+// 아래로 갈수록 살짝 보라기(시안 하단 ≈#54525A~#5F5A6E)
+const POP_TINT = ['rgba(146,109,255,0)', 'rgba(146,109,255,0.14)'] as const;
 /** 국가 칩 색 — 스킨별 3색 순환(시안 2026-09-14). 오로라만 흰 글씨, 시안·민트는 검정 90% */
 const CHIP_PALETTES: Record<string, { bg: string[]; text: string }> = {
   aurora: { bg: ['#7C3AED', '#926DFF', '#AC6FFF'], text: '#FFFFFF' },
@@ -136,6 +152,96 @@ export function AutoPillRing() {
   );
 }
 
+/** iOS "투명도 줄이기" — 켜져 있으면 팝오버를 블러 없는 매트로(GlassSurface.useReduceTransparency와 같은 패턴,
+ *  그쪽은 export가 아니라 여기 작게 둔다). 안드로이드는 어차피 매트라 구독하지 않는다 */
+function useReduceTransparency() {
+  const [reduce, setReduce] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    let mounted = true;
+    AccessibilityInfo.isReduceTransparencyEnabled().then((r) => mounted && setReduce(!!r)).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduce);
+    return () => { mounted = false; sub.remove(); };
+  }, []);
+  return reduce;
+}
+
+/**
+ * 연·월 팝오버의 한 열 — 세로 스냅 휠. 행의 크기·투명도는 네이티브 스크롤 값(scrollY)으로만 보간해
+ * 스크롤 중 JS 재렌더가 없다. 멈추면 직전 확정 행과의 차이(행 수)를 onStep으로 알린다 —
+ * 값이 아니라 차이를 넘겨야 부모가 아직 재렌더 전(옛 view)이어도 이동량이 틀리지 않는다.
+ */
+function WheelColumn({ values, index, onStep, width, a11yLabel }: {
+  values: number[]; index: number; onStep: (delta: number) => void; width: number; a11yLabel: string;
+}) {
+  // 열린 순간의 목록·위치로 고정 — 확정 때마다 부모가 다시 렌더돼도 목록이 밀리거나 contentOffset이 다시 걸리지 않는다
+  const vals = useRef(values).current;
+  const init = useRef(index).current;
+  const scrollY = useRef(new Animated.Value(init * WHEEL_ROW_H)).current;
+  const hapticIdx = useRef(init);
+  const committed = useRef(init);
+  const idxAt = (y: number) => Math.max(0, Math.min(vals.length - 1, Math.round(y / WHEEL_ROW_H)));
+  const scrollRef = useRef<ScrollView>(null);
+  // 보간 노드·이벤트는 마운트 때 한 번만(useState 지연 초기화) — useRef(식)은 식을 렌더마다 다시 평가해
+  // 확정 때마다 행 수×2개 노드를 새로 만들었다 버린다
+  const [rowStyles] = useState(() => vals.map((_, i) => {
+    const inputRange = [-3, -2, -1, 0, 1, 2, 3].map((k) => (i + k) * WHEEL_ROW_H);
+    return {
+      opacity: scrollY.interpolate({ inputRange, outputRange: WHEEL_OPACITY, extrapolate: 'clamp' }),
+      transform: [{ scale: scrollY.interpolate({ inputRange, outputRange: WHEEL_SCALE, extrapolate: 'clamp' }) }],
+    };
+  }));
+  const [onScroll] = useState(() => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+    useNativeDriver: true,
+    listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const i = idxAt(e.nativeEvent.contentOffset.y);
+      if (i !== hapticIdx.current) { hapticIdx.current = i; select(); } // 가운데 행이 바뀔 때만 틱
+    },
+  }));
+  const settle = (y: number) => {
+    const i = idxAt(y);
+    if (i === committed.current) return; // 드래그 끝·관성 끝이 둘 다 와도 한 번만 이동
+    const d = i - committed.current;
+    committed.current = i;
+    onStep(d);
+  };
+  // 스크린리더: 조절 가능한 컨트롤로 — 위·아래 스와이프로 한 칸씩(예전 패널의 ‹ › 연도 버튼 대체)
+  const stepBy = (k: number) => {
+    const i = Math.max(0, Math.min(vals.length - 1, committed.current + k));
+    scrollRef.current?.scrollTo({ y: i * WHEEL_ROW_H, animated: true });
+    settle(i * WHEEL_ROW_H);
+  };
+  return (
+    <Animated.ScrollView
+      ref={scrollRef}
+      style={{ width, height: POP_H }}
+      contentContainerStyle={{ paddingVertical: WHEEL_ROW_H * 3 }}
+      contentOffset={{ x: 0, y: init * WHEEL_ROW_H }}
+      snapToInterval={WHEEL_ROW_H}
+      decelerationRate="fast"
+      showsVerticalScrollIndicator={false}
+      scrollEventThrottle={16}
+      onScroll={onScroll}
+      onMomentumScrollEnd={(e) => settle(e.nativeEvent.contentOffset.y)}
+      // iOS는 관성 없이 놓으면 onMomentumScrollEnd가 안 올 수 있어 손 뗄 때 확정한다 — 단 놓은 위치가 아니라
+      // 스냅 목표(targetContentOffset)로. 놓은 위치를 반올림하면 속도 방향 올림·내림과 어긋나 한 칸 잘못 갔다 돌아온다.
+      // Android는 snapToInterval이면 관성 끝이 항상 온다.
+      onScrollEndDrag={(e) => { const tgt = e.nativeEvent.targetContentOffset; if (Platform.OS === 'ios' && tgt) settle(tgt.y); }}
+      accessibilityLabel={a11yLabel}
+      accessibilityRole="adjustable"
+      accessibilityValue={{ text: String(vals[committed.current]) }}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      onAccessibilityAction={(e) => stepBy(e.nativeEvent.actionName === 'increment' ? 1 : -1)}
+    >
+      {vals.map((v, i) => (
+        <Animated.View key={v} style={[calS.wheelRow, rowStyles[i]]}>
+          <Text style={calS.wheelTxt}>{v}</Text>
+        </Animated.View>
+      ))}
+    </Animated.ScrollView>
+  );
+}
+
 export function CalendarBottomSheet({
   visible,
   initialStart,
@@ -181,10 +287,9 @@ export function CalendarBottomSheet({
   // 펼쳤을 때(시트는 480dp로 클램프) 7열 그리드가 그대로 360dp 폭에 머물러 시트 안에서
   // 왼쪽으로 쏠린 채 약 100dp가 빈다.
   const CELL_SIZE = Math.floor((useStageWidth() - SHEET_PAD_H * 2) / 7);
-  // 시안 색: 확인 버튼·역삼각형은 진보라. aurora가 아닌 스킨은 스킨 강조색으로 대체(칩 색은 CHIP_PALETTES)
-  const ui = skinAccent.ringGradient
-    ? { btn: skinAccent.accentDeep, caret: skinAccent.accent }
-    : { btn: '#7C3AED', caret: '#926DFF' };
+  // 시안 색: 확인 버튼은 진보라. aurora가 아닌 스킨은 스킨 강조색으로 대체(칩 색은 CHIP_PALETTES).
+  // 월 네비 화살표·캐럿은 2026-10-06 시안부터 흰색 — 스킨과 무관
+  const ui = skinAccent.ringGradient ? { btn: skinAccent.accentDeep } : { btn: '#7C3AED' };
   const startLbl = startLabel ?? t('newRecord.departDate');
   const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
@@ -193,8 +298,9 @@ export function CalendarBottomSheet({
   // 보이는 달은 {year, month} 한 덩어리로 둔다. 스와이프 핸들러가 setView(v => …) 형태로만
   // 갱신하면 PanResponder가 첫 렌더 값을 박제해도(stale closure) 엉뚱한 달로 튀지 않는다.
   const [view, setView] = useState({ year: initialStart.getFullYear(), month: initialStart.getMonth() });
-  const [pickerOpen, setPickerOpen]     = useState(false); // 연·월 점프 패널
-  const [pickerYear, setPickerYear]     = useState(initialStart.getFullYear());
+  const [pickerOpen, setPickerOpen]     = useState(false); // 연·월 휠 팝오버
+  const [navBottom, setNavBottom]       = useState(0);     // 월 네비 행 아래 끝(시트 기준) — 팝오버 top 실측
+  const reduceTransparency = useReduceTransparency();
   const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
   const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
   const [selectingEnd, setSelectingEnd] = useState(false);
@@ -210,7 +316,6 @@ export function CalendarBottomSheet({
       setTempEnd(initialEnd);
       setSelectingEnd(false);
       setView({ year: initialStart.getFullYear(), month: initialStart.getMonth() });
-      setPickerYear(initialStart.getFullYear());
       setPickerOpen(false);
       Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
     } else {
@@ -219,7 +324,7 @@ export function CalendarBottomSheet({
       const d = dial.current;
       if (d.timer) { clearTimeout(d.timer); d.timer = null; }
       if (d.raf != null) { cancelAnimationFrame(d.raf); d.raf = null; }
-      d.active = false; setDialActive(false); dialX.setValue(0);
+      d.active = false; setDialActive(false); dialX.setValue(0); dialRot.setValue(0);
     }
   }, [visible]);
 
@@ -260,16 +365,10 @@ export function CalendarBottomSheet({
   const handlePrevMonth = () => changeMonth(-1);
   const handleNextMonth = () => changeMonth(1);
 
+  /** 팝오버 토글 — 제목 탭과 팝오버 바깥 탭이 같이 쓴다 */
   const openPicker = () => {
-    setPickerYear(view.year);
     setPickerOpen(o => !o);
     select();
-  };
-  const pickMonth = (m: number) => {
-    const delta = (pickerYear * 12 + m) - (view.year * 12 + view.month);
-    setPickerOpen(false);
-    if (delta === 0) { select(); return; }
-    changeMonth(delta);
   };
 
   // ── 월 다이얼 ── 제목을 꾹 누르면 드래그 모드. 슬롯이 바뀔 때만 월을 갱신하고(격자·알약 재계산은
@@ -277,7 +376,7 @@ export function CalendarBottomSheet({
   // PanResponder는 첫 렌더에 박제되므로 최신값은 전부 ref 경유.
   const [dialActive, setDialActive] = useState(false);
   const dialX   = useRef(new Animated.Value(0)).current; // 휠 스트립 translateX (= -(소수부) × 칸 폭)
-  const dialRot = useRef(new Animated.Value(0)).current; // 누적 개월(소수) — 역삼각형 회전용
+  const dialRot = useRef(new Animated.Value(0)).current; // 누적 개월(소수) — 캐럿 회전용
   const dial = useRef({
     active: false, offset: 0, committed: 0, start: 0,
     base: { year: initialStart.getFullYear(), month: initialStart.getMonth() },
@@ -444,9 +543,10 @@ export function CalendarBottomSheet({
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
-  // 연·월 패널은 그리드 자리를 그대로 차지한다 — 높이를 맞춰야 열고 닫을 때 시트가 출렁이지 않는다
-  const GRID_H = CELL_SIZE * 6 + 32;
-  const PICKER_CELL_H = Math.floor((GRID_H - 48) / 4);
+  // 휠 연도 범위 — 오늘 기준 -60…+10년, 보던 해가 밖이면 포함되게 늘린다(열의 목록은 열린 순간 고정)
+  const yearFrom = Math.min(today.getFullYear() - 60, view.year);
+  const yearTo   = Math.max(today.getFullYear() + 10, view.year);
+  const wheelYears = Array.from({ length: yearTo - yearFrom + 1 }, (_, i) => yearFrom + i);
 
   // 시트 본체 — Modal 래핑과 오버레이 모드가 공유
   const body = (
@@ -478,16 +578,13 @@ export function CalendarBottomSheet({
             )}
           </View>
 
-          <View style={calS.monthNav}>
-            <TouchableOpacity
-              onPress={handlePrevMonth}
-              style={calS.navBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t('calendar.a11yPrevMonth')}
-            >
-              <Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text>
-            </TouchableOpacity>
-            {/* 월 타이틀: 탭 → 연·월 점프, 꾹(350ms) → 다이얼 모드(좌우 드래그로 월 휠 회전). 바깥 View가 캡처 */}
+          {/* 월 네비(시안 2026-10-06) — 왼쪽 제목+원형 캐럿, 오른쪽 ‹ › 두 칸. 폭을 그리드(7칸)에 맞춰야
+              화살표 중심이 금·토 열 중심에 온다(시트 콘텐츠 폭은 floor 나머지만큼 그리드보다 넓다) */}
+          <View
+            style={[calS.monthNav, { width: CELL_SIZE * 7 }]}
+            onLayout={(e) => { const { y, height } = e.nativeEvent.layout; setNavBottom(Math.round(y + height)); }}
+          >
+            {/* 월 타이틀: 탭 → 연·월 휠 팝오버, 꾹(350ms) → 다이얼 모드(좌우 드래그로 월 휠 회전). 바깥 View가 캡처 */}
             <View {...dialPan.panHandlers}>
               <TouchableOpacity
                 onPress={openPicker}
@@ -497,81 +594,51 @@ export function CalendarBottomSheet({
                 accessibilityLabel={t('calendar.a11yPickMonth')}
                 accessibilityState={{ expanded: pickerOpen }}
               >
-                <View style={calS.monthWheel}>
-                  <Animated.View style={[calS.monthWheelStrip, { transform: [{ translateX: dialX }] }]}>
+                {/* 평상시엔 글자 폭대로(캐럿이 제목에 붙는다), 다이얼 중에만 DIAL_LABEL_W 창. 전부 왼쪽 정렬이라
+                    다이얼이 시작돼 창이 넓어져도 현재 제목 글자는 제자리다 */}
+                <View style={[calS.monthWheel, dialActive && calS.monthWheelActive]}>
+                  <Animated.View style={[dialActive && calS.monthWheelActive, { transform: [{ translateX: dialX }] }]}>
                     {dialActive && <Text style={[calS.monthTitle, calS.monthWheelSide, { left: -DIAL_LABEL_W }]}>{monthLabel(-1)}</Text>}
-                    <Text style={[calS.monthTitle, calS.monthWheelCur]}>{monthLabel(0)}</Text>
+                    <Text style={[calS.monthTitle, calS.monthWheelCur, dialActive && calS.monthWheelActive]}>{monthLabel(0)}</Text>
                     {dialActive && <Text style={[calS.monthTitle, calS.monthWheelSide, { left: DIAL_LABEL_W }]}>{monthLabel(1)}</Text>}
                   </Animated.View>
                 </View>
-                {/* 역삼각형(시안 8×7). RNSVG 터치 삼킴 방지로 View(pointerEvents none)에 감싼다. 다이얼 중엔 드래그만큼 회전 */}
-                <Animated.View pointerEvents="none" style={[calS.monthCaret, { transform: [{ rotate: pickerOpen ? '180deg' : dialCaretRotate }] }]}>
-                  <Svg width={8} height={7} viewBox="0 0 8 7" fill="none">
-                    <Path d="M4.46368 6C4.07878 6.66667 3.11653 6.66667 2.73163 6L0.133555 1.5C-0.251345 0.833333 0.22978 0 0.99958 0L6.19573 0C6.96553 0 7.44666 0.833333 7.06176 1.5L4.46368 6Z" fill={ui.caret} />
+                {/* 원(14) 안의 작은 ›. 팝오버 열림이면 아래로(90°), 다이얼 중엔 드래그만큼 회전. RNSVG 터치 삼킴 방지로 none */}
+                <Animated.View pointerEvents="none" style={[calS.monthCaret, { transform: [{ rotate: pickerOpen ? '90deg' : dialCaretRotate }] }]}>
+                  <Svg width={6} height={8} viewBox="0 0 6 8" fill="none">
+                    <Path d="M2 1.5L4.5 4L2 6.5" stroke="#FFFFFF" strokeOpacity={0.85} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" />
                   </Svg>
                 </Animated.View>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              onPress={handleNextMonth}
-              style={calS.navBtn}
-              accessibilityRole="button"
-              accessibilityLabel={t('calendar.a11yNextMonth')}
-            >
-              <Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text>
-            </TouchableOpacity>
+            <View style={calS.navArrows}>
+              <TouchableOpacity
+                onPress={handlePrevMonth}
+                style={[calS.navBtn, { width: CELL_SIZE }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('calendar.a11yPrevMonth')}
+              >
+                <BackChevronIcon size={12} color="#FFFFFF" opacity={1} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleNextMonth}
+                style={[calS.navBtn, { width: CELL_SIZE }]}
+                accessibilityRole="button"
+                accessibilityLabel={t('calendar.a11yNextMonth')}
+              >
+                {/* 공용 chevron은 ‹ 하나뿐 — 뒤집어 ›로 쓴다. RNSVG 터치 삼킴 방지로 감싸는 View는 none */}
+                <View pointerEvents="none" style={calS.flipX}>
+                  <BackChevronIcon size={12} color="#FFFFFF" opacity={1} />
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {pickerOpen ? (
-            // ── 연·월 점프 패널 ── 그리드와 같은 높이를 차지한다
-            <View style={{ height: GRID_H }}>
-              <View style={calS.yearNav}>
-                <TouchableOpacity
-                  onPress={() => { setPickerYear(y => y - 1); select(); }}
-                  style={calS.navBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('calendar.a11yPrevYear')}
-                >
-                  <Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text>
-                </TouchableOpacity>
-                <Text style={calS.yearTitle}>{t('calendar.yearLabel', { y: pickerYear })}</Text>
-                <TouchableOpacity
-                  onPress={() => { setPickerYear(y => y + 1); select(); }}
-                  style={calS.navBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('calendar.a11yNextYear')}
-                >
-                  <Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={calS.monthGrid}>
-                {MONTH_KEYS.map((mk, m) => {
-                  const on = pickerYear === view.year && m === view.month;
-                  const isCurrent = pickerYear === today.getFullYear() && m === today.getMonth();
-                  return (
-                    <TouchableOpacity
-                      key={mk}
-                      onPress={() => pickMonth(m)}
-                      activeOpacity={0.8}
-                      style={[calS.monthCell, { height: PICKER_CELL_H },
-                        on && [calS.monthCellOn, { backgroundColor: skinAccent.accent }],
-                        !on && isCurrent && { borderColor: skinAccent.tint(0.5), borderWidth: 1 },
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                    >
-                      <Text style={[calS.monthCellTxt, on && calS.monthCellTxtOn]} {...andFitText}>{t(mk)}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            // ── 날짜 그리드 ── 가로 스와이프로 월 전환
+          {/* ── 날짜 그리드 ── 가로 스와이프로 월 전환 */}
             <Animated.View {...pan.panHandlers} style={{ opacity: fadeIn, transform: [{ translateX: slideX }] }}>
               <View style={calS.weekRow}>
-                {WEEK_DAY_KEYS.map((dk, i) => (
-                  <Text key={dk} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{t(dk)}</Text>
+                {WEEK_DAY_KEYS.map((dk) => (
+                  <Text key={dk} style={[calS.weekDay, { width: CELL_SIZE }]}>{t(dk)}</Text>
                 ))}
               </View>
               <View style={calS.grid}>
@@ -621,7 +688,6 @@ export function CalendarBottomSheet({
                 )}
                 {grid.map((date, idx) => {
                   if (!date) return <View key={`e-${idx}`} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
-                  const dow = date.getDay();
                   const isToday = isSameDay(date, today);
                   const isStart = isRangeStart(date);
                   const isEnd   = isRangeEnd(date);
@@ -644,8 +710,6 @@ export function CalendarBottomSheet({
                       <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                         <Text style={[calS.dayText,
                           isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
-                          dow===0 && !isEdge && calS.sundayText,
-                          dow===6 && !isEdge && calS.saturdayText,
                           isEdge && calS.edgeText,
                         ]}>{date.getDate()}</Text>
                         {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
@@ -655,16 +719,50 @@ export function CalendarBottomSheet({
                 })}
               </View>
             </Animated.View>
-          )}
 
-          {/* 범례는 연·월 패널이 열려도 계속 그린다 — 숨기면 그 높이만큼 시트가 줄었다 늘어난다
-              (패널 자체는 GRID_H로 그리드와 높이를 맞춰 놨는데 여기서 다시 깨진다) */}
+          {/* 범례 — 연·월 팝오버는 그리드 위에 떠 있어 시트 높이를 바꾸지 않는다 */}
           {!!recordedDates && recordedDates.size > 0 && (
             <View style={calS.legendRow}>
               <View style={[calS.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
               <Text style={calS.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
             </View>
           )}
+          {/* ── 연·월 휠 팝오버(시안 2026-10-06) ── 그리드를 대체하지 않고 제목 아래에 겹쳐 뜬다.
+              그리드의 스와이프 PanResponder·slideX 바깥(시트 기준 절대배치)이라 월 전환 연출에 같이 밀리지 않고,
+              가로 스와이프 캡처가 휠의 세로 스크롤을 뺏지 않는다. 뒤의 투명 판이 시트 전체를 덮어
+              바깥 탭은 닫기만 하고 날짜 선택으로 새지 않는다(제목 다시 탭도 이 판이 받아 닫힌다) */}
+          {pickerOpen && (
+            <>
+              <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={openPicker} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+              <View style={[calS.pop, { top: navBottom + POP_GAP }, (Platform.OS !== 'ios' || reduceTransparency) && calS.popMatte]}>
+                {/* iOS만 실제 블러. 안드로이드 BlurView는 experimentalBlurMethod 없이는 no-op이고, dimezis는 형제를
+                    못 거르고 children으로 감싼 것만 흐린다 — RN Modal 안에서 그 구조는 위험해 매트로 둔다 */}
+                {Platform.OS === 'ios' && !reduceTransparency && (
+                  <>
+                    <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+                    <View style={[StyleSheet.absoluteFill, calS.popSheen]} />
+                  </>
+                )}
+                <LinearGradient colors={POP_TINT} style={StyleSheet.absoluteFill} pointerEvents="none" />
+                <WheelColumn
+                  values={wheelYears}
+                  index={view.year - yearFrom}
+                  onStep={(d) => changeMonth(d * 12)}
+                  width={72}
+                  a11yLabel={`${t('calendar.a11yPickMonth')}, ${t('calendar.yearLabel', { y: view.year })}`}
+                />
+                <WheelColumn
+                  values={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+                  index={view.month}
+                  onStep={changeMonth}
+                  width={32}
+                  a11yLabel={`${t('calendar.a11yPickMonth')}, ${t('calendar.yearMonth', { y: view.year, m: view.month + 1 })}`}
+                />
+                <PillRing width={POP_W} height={POP_H} radius={POP_RADIUS} />
+              </View>
+            </>
+          )}
+          {/* 확인 버튼은 팝오버 블록 뒤에 둔다 — 바깥 탭 투명 판보다 위라 휠이 열려 있어도 한 번에 눌린다 */}
           <TouchableOpacity
             onPress={handleConfirm}
             activeOpacity={0.85}
@@ -672,7 +770,7 @@ export function CalendarBottomSheet({
             accessibilityRole="button"
           >
             {/* 헤더 알약과 같은 폭(시트 콘텐츠 폭)이라 실측값을 함께 쓴다 */}
-            <PillRing width={headerW} height={CONFIRM_H} radius={CONFIRM_H / 2} />
+            <PillRing width={headerW} height={CONFIRM_H} radius={CONFIRM_RADIUS} />
             <Text style={calS.confirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -746,51 +844,45 @@ const calS = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
-    paddingHorizontal: 4,
   },
+  navArrows: { flexDirection: 'row' },
   navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
-  monthTitleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 4 },
+  flipX: { transform: [{ scaleX: -1 }] },
+  // paddingLeft 18 = 시안의 그리드 왼쪽 끝 → 제목 글자 거리
+  monthTitleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 18, paddingRight: 12, paddingVertical: 4 },
   monthTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
-  // 월 휠 — 고정 폭 창(overflow hidden) 안에서 스트립이 좌우로 흐른다. 이웃 달은 다이얼 중에만 옅게
-  monthWheel: { width: DIAL_LABEL_W, overflow: 'hidden', alignItems: 'center' },
-  monthWheelStrip: { width: DIAL_LABEL_W, alignItems: 'center' },
-  monthWheelCur: { width: DIAL_LABEL_W, textAlign: 'center' },
-  monthWheelSide: { position: 'absolute', top: 0, width: DIAL_LABEL_W, textAlign: 'center', opacity: 0.35 },
-  monthCaret: { width: 8, height: 7, marginTop: 2, alignItems: 'center', justifyContent: 'center' },
+  // 월 휠 — 다이얼 중에만 고정 폭 창(overflow hidden) 안에서 스트립이 좌우로 흐른다. 이웃 달은 다이얼 중에만 옅게
+  monthWheel: { overflow: 'hidden' },
+  monthWheelActive: { width: DIAL_LABEL_W },
+  monthWheelCur: { textAlign: 'left' },
+  monthWheelSide: { position: 'absolute', top: 0, width: DIAL_LABEL_W, textAlign: 'left', opacity: 0.35 },
+  // 시안: 지름 14 원(흰 10%) 안에 작은 ›
+  monthCaret: { width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' },
 
-  // 연·월 점프 패널
-  yearNav: {
+  // 연·월 휠 팝오버 — 왼쪽 끝 = 그리드 왼쪽 끝(시트 padding 안쪽 x=0). 열 중심 x≈50(연)·≈102(월)이 되게 paddingLeft 14
+  pop: {
+    position: 'absolute',
+    left: SHEET_PAD_H,
+    width: POP_W,
+    height: POP_H,
+    borderRadius: POP_RADIUS,
+    overflow: 'hidden',
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-    height: 40,
+    paddingLeft: 14,
   },
-  yearTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', minWidth: 90, textAlign: 'center' },
-  monthGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  monthCell: {
-    width: '33.33%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  monthCellOn: { backgroundColor: '#BF85FC' },
-  monthCellTxt: { fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.75)' },
-  monthCellTxtOn: { color: '#0A0A0F', fontWeight: '700' },
+  popMatte: { backgroundColor: 'rgba(58,56,66,0.97)' }, // 안드로이드·투명도 줄이기 — 블러 없이 시안 평균색
+  popSheen: { backgroundColor: 'rgba(255,255,255,0.07)' }, // 시트 #333 위 상단 ≈#414245
+  wheelRow: { height: WHEEL_ROW_H, alignItems: 'center', justifyContent: 'center' },
+  wheelTxt: { fontSize: 22, lineHeight: 28, fontWeight: '700', color: '#FFFFFF' },
 
   weekRow: { flexDirection: 'row', marginBottom: 4 },
   weekDay: {
     textAlign: 'center',
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(255,255,255,0.5)', // 시안 2026-10-06: 일·토 포함 전부 흰 50%(일 빨강·토 시안색 폐지)
     paddingVertical: 6,
   },
-  sundayText:  { color: '#FF0138' },
-  saturdayText:{ color: '#00D8F3' },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { alignItems: 'center', justifyContent: 'center' },
@@ -828,7 +920,7 @@ const calS = StyleSheet.create({
 
   confirmBtn: {
     backgroundColor: '#7C3AED',
-    borderRadius: CONFIRM_H / 2,
+    borderRadius: CONFIRM_RADIUS,
     height: CONFIRM_H,
     justifyContent: 'center',
     alignItems: 'center',
