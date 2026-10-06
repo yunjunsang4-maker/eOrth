@@ -11,7 +11,8 @@ import {
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
-import { PersonIcon, BackChevronIcon, CommentIcon } from '../components/icons';
+import { BackChevronIcon, CommentIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import UserActionSheet from '../components/UserActionSheet';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { tap } from '../utils/haptics';
@@ -103,7 +104,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
                 <Image source={{ uri: friend.photo }} style={styles.avatar} />
               ) : (
                 <View style={styles.avatar}>
-                  <PersonIcon size={26} color="#A0A0B0" />
+                  <DefaultAvatar size={48} />
                 </View>
               )}
 

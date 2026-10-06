@@ -26,7 +26,8 @@ import { useRecordData, useFeed, useRecordActions, TravelRecord } from '../store
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon } from '../components/icons';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import ReportModal from '../components/ReportModal';
 import { handleBlock } from '../utils/reportAndBlock';
 import CameraCaptureModal from '../components/CameraCaptureModal';
@@ -634,7 +635,7 @@ export default function DMScreen({ navigation, route }: Props) {
             <Image source={{ uri: friend.photo }} style={st.msgAvatar} />
           ) : (
             <View style={st.msgAvatar}>
-              <PersonIcon size={15} color="#A0A0B0" />
+              <DefaultAvatar size={30} />
             </View>
           )
       )}
@@ -736,7 +737,7 @@ export default function DMScreen({ navigation, route }: Props) {
               <Image source={{ uri: friend.photo }} style={st.headerAvatar} />
             ) : (
               <View style={st.headerAvatar}>
-                <PersonIcon size={18} color="#A0A0B0" />
+                <DefaultAvatar size={36} />
               </View>
             )}
           </View>
@@ -813,7 +814,7 @@ export default function DMScreen({ navigation, route }: Props) {
                 <Image source={{ uri: friend.photo }} style={st.emptyAvatar} />
               ) : (
                 <View style={st.emptyAvatar}>
-                  <PersonIcon size={34} color="#A0A0B0" />
+                  <DefaultAvatar size={72} />
                 </View>
               )}
               <Text style={st.emptyText}>{t('dm.emptyStart', { name: friend.name })}</Text>

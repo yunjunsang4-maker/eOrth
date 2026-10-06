@@ -21,7 +21,8 @@ import {
 } from '../services/social';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { tap, warn } from '../utils/haptics';
-import { PersonIcon, BackChevronIcon, CommentIcon } from '../components/icons';
+import { BackChevronIcon, CommentIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import type { RootStackScreenProps } from '../navigation/types';
 import { andFitText } from '../utils/fitText';
 
@@ -179,7 +180,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                         <Image source={{ uri: req.photo }} style={styles.avatar} />
                       ) : (
                         <View style={styles.avatar}>
-                          <PersonIcon size={26} color="#A0A0B0" />
+                          <DefaultAvatar size={48} />
                         </View>
                       )}
                       <Text style={[styles.username, { color: skinAccent.accent }]}>@{reqName}</Text>
@@ -228,7 +229,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                     <Image source={{ uri: follower.photo }} style={styles.avatar} />
                   ) : (
                     <View style={styles.avatar}>
-                      <PersonIcon size={26} color="#A0A0B0" />
+                      <DefaultAvatar size={48} />
                     </View>
                   )}
 

@@ -11,7 +11,8 @@ import {
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
-import { BlockIcon, PersonIcon, BackChevronIcon } from '../components/icons';
+import { BlockIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -80,7 +81,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
               <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`} style={st.userCard}>
                 {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
                 <View style={st.avatarWrap}>
-                  <PersonIcon size={24} color="#A0A0B0" />
+                  <DefaultAvatar size={42} />
                 </View>
                 {/* 프사 옆에는 차단한 날짜만 표시 */}
                 <View style={st.userInfo}>

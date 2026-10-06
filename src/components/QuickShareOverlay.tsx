@@ -6,7 +6,8 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
-import { FriendIcon, PersonIcon } from './icons';
+import { FriendIcon } from './icons';
+import DefaultAvatar from './DefaultAvatar';
 import { useStageWidth, useStageGutter } from '../utils/stage';
 
 const CIRCLE = 56;
@@ -68,7 +69,7 @@ function TargetCircle({
         ) : tg.icon ? (
           <FriendIcon size={28} color={skinAccent.accent} />
         ) : (
-          <PersonIcon size={30} color="#A0A0B0" />
+          <DefaultAvatar size={CIRCLE - 4} />
         )}
         <Text style={[st.targetLabel, hovered && st.targetLabelHover]} numberOfLines={1}>{tg.label}</Text>
       </Animated.View>

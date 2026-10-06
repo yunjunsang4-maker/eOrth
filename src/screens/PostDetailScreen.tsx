@@ -38,7 +38,8 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, useFocusEffect, useIsFocused, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
-import { CommentIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
+import { CommentIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
 import { useDMData, useDMActions } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -2426,7 +2427,7 @@ export default function PostDetailScreen() {
                         ) : record.user.photo ? (
                           <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : (
-                          <PersonIcon size={24} color="#A0A0B0" />
+                          <DefaultAvatar size={42} />
                         )}
                         {/* 프로필 사진 유무와 무관하게 알약과 같은 유리 링(사진 위에 얹힘) */}
                         <AutoPillRing />

@@ -10,32 +10,33 @@ import {
   Share,
   ActivityIndicator,
   Animated,
-  Platform,
 } from 'react-native';
 import { Text } from '../ui/Text';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
-import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, WarningIcon, GlobeIcon, BackChevronIcon } from '../components/icons';
+import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, WarningIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useProfileSettings, useHomeSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
-import { getProfileById, type ProfileRow } from '../services/profile';
+import { getProfileById, getCountryCounts, type ProfileRow } from '../services/profile';
 import { labelFromKey } from '../utils/travelDnaScore';
 import { fetchUserPosts } from '../services/posts';
 import { fetchNeighborCount, fetchPostCount, fetchOverlapWith, reportPostToServer } from '../services/social';
-import GlobeLockIcon from '../components/GlobeLockIcon';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
 import { badgeName } from '../utils/badgeText';
-import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
-import StarFieldBackground from '../components/StarFieldBackground';
+import { BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
 import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -60,9 +61,13 @@ const COLORS = {
   divider:      '#1A1A26',
   green:        '#34C759',
   red:          '#FF3B30',
-  menuBg:       '#2E2E3B',
-  menuDivider:  '#3A3A4A',
+  // 2026-10 남의 프로필 시안 고정색
+  primaryBtn:   '#7C3AED', // 메이트 신청·DM 주요 버튼(단색)
+  textSoft:     '#E5E5EA', // 겹치는 나라·위치 줄
 };
+
+// 프로필 아바타 지름 (시안 110 — 프로필 탭의 128 링 대신)
+const AVATAR = 110;
 
 
 // 라우트 파라미터 누락 시 username 기본값으로만 사용 (실제 데이터는 백엔드에서 로드)
@@ -96,23 +101,31 @@ export default function FriendProfileScreen({
   const [neighborCount, setNeighborCount] = useState(0);
   // 여행수(기록 수) — 서버 동기화값. 비메이트은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.
   const [postCount, setPostCount] = useState<number | null>(null);
+  // 여행 국가 수 — 서버 집계(profile_country_counts: 비공개·삭제·차단 제외). 비메이트는 RLS로 글이
+  // 안 와 로컬 계산이 불가능하므로 이 값이 있어야 잠금 화면에도 실제 숫자가 나온다.
+  const [countryCount, setCountryCount] = useState<number | null>(null);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
   // 프로필 로딩 완료 여부 — 완료 전엔 콘텐츠를 그리지 않는다(로딩 깜빡임 방지)
   const [profileLoaded, setProfileLoaded] = useState(!isSupabaseConfigured || !userId);
   const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
-    const [p, posts, nc, pc] = await Promise.all([
+    const [p, posts, nc, pc, cc] = await Promise.all([
       getProfileById(userId),
       fetchUserPosts(userId),
       fetchNeighborCount(userId),
       fetchPostCount(userId),
+      getCountryCounts([userId]),
     ]);
     if (!aliveRef.current) return;
     setProfileRow(p);
     setUserPosts(posts);
     if (nc !== null) setNeighborCount(nc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
     if (pc !== null) setPostCount(pc);     // 여행수 서버 동기화값(오류면 로컬 폴백)
+    // 국가 수 — getCountryCounts는 실패와 '집계 행 없음(공개 글 0)'을 둘 다 {}로 준다.
+    // 구분이 안 되므로 숫자가 왔을 때만 갱신(나머지는 이전 값 유지 → 아래 표시부의 로컬 폴백)
+    const ccv = cc[userId];
+    if (typeof ccv === 'number') setCountryCount(ccv);
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
@@ -274,6 +287,45 @@ export default function FriendProfileScreen({
     // myRecords/tripGroups는 진입 시점 스냅샷이면 충분 — 의존성에 넣으면 로컬 기록 갱신마다 RPC 재호출
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSelf, realId]);
+
+  // ── 겹치는 나라 팝오버 (2026-10-05 시안) ──
+  // 행 탭 → chevron 원 바로 아래에 나라 이름 알약. 한 페이지 최대 4개, 더 있으면 끝에 '•••'(탭 = 다음/이전 페이지).
+  // ⚠️ 알약은 ScrollView 안(정보 열)이 아니라 화면 루트(s.container)의 절대 자식으로 그린다 —
+  //    안드로이드는 부모 경계 밖으로 나간 absolute 자식에 터치가 전달되지 않는다(정보 열 폭을 넘고
+  //    통계 줄을 덮어야 하므로 정보 열 안에 두면 '•••'가 안 눌린다). 위치는 열 때 measureInWindow로 잰다.
+  const OVERLAP_PAGE = 4;
+  const [overlapOpen, setOverlapOpen] = useState(false);
+  const [overlapPage, setOverlapPage] = useState(0);
+  const [overlapAnchor, setOverlapAnchor] = useState<{ cx: number; top: number; screenW: number } | null>(null);
+  const [overlapPillW, setOverlapPillW] = useState(0); // 0 = 아직 안 잼(그동안 투명)
+  const containerRef = useRef<View>(null);
+  const overlapChevronRef = useRef<View>(null);
+  const overlapFade = useRef(new Animated.Value(0)).current;
+  const fadeInOverlap = () => {
+    overlapFade.setValue(0);
+    Animated.timing(overlapFade, { toValue: 1, duration: 140, useNativeDriver: true }).start();
+  };
+  const openOverlap = () => {
+    const root = containerRef.current;
+    const chev = overlapChevronRef.current;
+    if (!root || !chev) return;
+    setMenuVisible(false); // ⋯ 메뉴와 동시에 열리지 않게
+    root.measureInWindow((rx, ry, rw) => {
+      chev.measureInWindow((x, y, w, h) => {
+        if (!aliveRef.current) return;
+        // 가로 중심 = chevron 원 중심, 세로 = 원 하단 + 5(시안: 원 하단 ~201 → 알약 상단 ~207)
+        setOverlapAnchor({ cx: x - rx + w / 2, top: y - ry + h + 5, screenW: rw });
+        setOverlapPage(0);
+        setOverlapPillW(0);
+        overlapFade.setValue(0);
+        setOverlapOpen(true);
+      });
+    });
+  };
+  const goOverlapPage = (p: number) => {
+    setOverlapPage(p);
+    fadeInOverlap();
+  };
   const onNeighborPress = () => {
     if (!realId) return;
     if (neighborState === 'none') requestNeighbor(realId);
@@ -285,6 +337,7 @@ export default function FriendProfileScreen({
     ]);
   };
   const [menuVisible, setMenuVisible] = useState(false);
+  const [menuSize, setMenuSize] = useState({ w: 0, h: 0 }); // 메뉴 카드 유리 테두리(PillRing) 크기
   // 음소거는 store(mutedHandles)에 영속 — handle 기준(차단과 동일 신원 키)
   const muteKey = profileRow?.handle ?? route.params?.handle ?? displayUsername;
   const notifMuted = isMuted(muteKey);
@@ -342,18 +395,19 @@ export default function FriendProfileScreen({
     }
   };
 
-  // 메뉴 아이콘 — 기본 이모지 대신 앱 아이콘 세트를 쓴다(게시물 메뉴 PostDetailScreen과 동일 규약:
-  // size 16, 일반 항목은 흰색 / 위험 항목은 빨강)
+  // 메뉴 아이콘 — 앱 아이콘 세트(게시물 메뉴 PostDetailScreen과 같은 규약: size 16, 일반 흰색 / 위험 빨강)
   const MENU_ICON = 16;
+  const MENU_DANGER_RED = '#FF0138'; // 시안 원색 — 위험 라벨(s.menuItemDanger)과 같은 값
   const MENU_NORMAL = [
     { key: 'link',  icon: <LinkIcon size={MENU_ICON} color={COLORS.white} />,  label: t('friends.copyProfileLink'), onPress: handleCopyLink },
     { key: 'share', icon: <ShareIcon size={MENU_ICON} color={COLORS.white} />, label: t('friends.share'),           onPress: handleShare },
     {
       key:   'notif',
       // 음소거 상태면 '알림 켜기'(종) / 아니면 '알림 끄기'(사선 종) — 누르면 될 결과를 보여준다
+      // 사선 틈 색 = 메뉴 카드 그라데이션 중간값
       icon:  notifMuted
         ? <BellIcon size={MENU_ICON} color={COLORS.white} />
-        : <BellOffIcon size={MENU_ICON} color={COLORS.white} slashBg={COLORS.menuBg} />,
+        : <BellOffIcon size={MENU_ICON} color={COLORS.white} slashBg="#222223" />,
       label:   notifMuted ? t('friends.notifOn') : t('friends.notifOff'),
       onPress: handleToggleNotif,
     },
@@ -362,7 +416,7 @@ export default function FriendProfileScreen({
   const MENU_DANGER = [
     {
       key: 'block',
-      icon: <BlockIcon size={MENU_ICON} color={COLORS.red} />,
+      icon: <BlockIcon size={MENU_ICON} color={MENU_DANGER_RED} />,
       label: t('friends.blockAction'),
       onPress: () => {
         setMenuVisible(false);
@@ -374,7 +428,7 @@ export default function FriendProfileScreen({
         }, t);
       },
     },
-    { key: 'report', icon: <WarningIcon size={MENU_ICON} color={COLORS.red} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
+    { key: 'report', icon: <WarningIcon size={MENU_ICON} color={MENU_DANGER_RED} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
   // 내 프로필(내 게시물의 아이디 탭)이면 실제 프로필 탭 컴포넌트를 그대로 렌더한다 —
@@ -382,19 +436,31 @@ export default function FriendProfileScreen({
   // 스택 라우트로 푸시되므로 뒤로가기로 원래 화면(소셜)으로 돌아온다.
   if (isSelf) return <ProfileScreen navigation={navigation as any} route={route as any} pushed onBack={() => navigation.goBack()} />;
 
+  // ⋯ — 지름 32 원 + 흰 점 3개(시안). 메뉴가 열리면 어두운 막 위에 같은 원을 한 번 더 그려 밝게 남긴다
+  const moreCircle = (
+    <View style={s.moreCircle}>
+      {/* 앱 공용 유리 테두리(좌상·우하 흰색 대각 그라데이션) — PostDetail ⋯ 알약과 같은 링 */}
+      <PillRing width={32} height={32} radius={16} />
+      <View style={s.moreDot} />
+      <View style={s.moreDot} />
+      <View style={s.moreDot} />
+    </View>
+  );
+
   return (
-    <View style={s.container}>
-      {/* 별 배경 (Stars.svg) — 프로필 탭과 동일하게 콘텐츠 뒤에 깔린다 */}
-      <StarFieldBackground />
+    <View style={s.container} ref={containerRef}>
 
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
         <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
         </TouchableOpacity>
-        <Text style={s.headerTitle}>@{displayUsername}</Text>
-        <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.more')}>
-          <Text style={s.moreIcon}>···</Text>
+        {/* 제목은 좌우 버튼 폭과 무관하게 화면 정중앙 — 절대 배치(버튼 폭만큼 좌우 패딩으로 겹침 방지) */}
+        <View style={s.headerTitleWrap} pointerEvents="none">
+          <Text style={s.headerTitle} numberOfLines={1}>@{displayUsername}</Text>
+        </View>
+        <TouchableOpacity style={[s.headerBtn, s.moreBtnHit]} onPress={() => { setOverlapOpen(false); setMenuVisible((v) => !v); }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.more')}>
+          {moreCircle}
         </TouchableOpacity>
       </View>
 
@@ -403,12 +469,32 @@ export default function FriendProfileScreen({
         showsVerticalScrollIndicator={false}
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* ── 프로필 헤더 (아바타 + 정보) — 내 프로필과 동일 ── */}
-        <View style={pv.profileRow}>
-          <ProfileAvatar photo={display.photo} />
-          <View style={pv.profileInfo}>
-            {/* 닉네임 폐지 — 아이디(handle)만 표시. 프로필 탭과 동일하게 이름 한 줄 */}
-            <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>
+        {/* ── 프로필 행 (110 아바타 + 정보 열) — 2026-10 시안. 정보 열은 아바타 세로 중앙에 맞춘다 ── */}
+        <View style={s.profileRow}>
+          {display.photo ? (
+            <View style={s.avatar}>
+              <Image source={{ uri: display.photo }} style={s.avatarImg} cachePolicy="memory-disk" transition={120} />
+              {/* 사진 위에도 DefaultAvatar와 같은 회색 그라데이션 림
+                  (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={AVATAR} height={AVATAR} viewBox={`0 0 ${AVATAR} ${AVATAR}`} fill="none">
+                  <Defs>
+                    <SvgLinearGradient id="friendAvatarRim" x1="0" y1="0" x2={AVATAR} y2={AVATAR} gradientUnits="userSpaceOnUse">
+                      <Stop offset="0" stopColor="#323337" />
+                      <Stop offset="0.5" stopColor="#323337" stopOpacity="0" />
+                      <Stop offset="0.85" stopColor="#6F6F72" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx={AVATAR / 2} cy={AVATAR / 2} r={AVATAR / 2 - 0.5} stroke="url(#friendAvatarRim)" strokeWidth={1} />
+                </Svg>
+              </View>
+            </View>
+          ) : (
+            <DefaultAvatar size={AVATAR} />
+          )}
+          <View style={s.profileInfo}>
+            {/* 닉네임 폐지 — 아이디(handle)만 표시. 한 줄(넘치면 …) */}
+            <Text style={[s.userName, nameFontStyle]} numberOfLines={1}>{display.name}</Text>
             {/* 이름 아래 위치 줄 + 여행 DNA 칩 — 내 프로필과 동일한 배치(거주국 오른쪽에 칩).
                 여행 DNA는 상대가 유형을 갖고 있을 때만 그린다(탭 불가 — 본인 결과가 아니다).
                 없으면 아무것도 렌더하지 않는다 — 빈 상태 유도는 본인 프로필에서만 의미가 있다. */}
@@ -416,7 +502,7 @@ export default function FriendProfileScreen({
               <View style={s.identityRow}>
                 {!!friendLocation && (
                   // 국가명이 길면 이쪽이 먼저 줄어들어 오른쪽 칩이 밀려나지 않게 한다
-                  <Text style={[pv.userLocation, s.locationShrink]} numberOfLines={1}>{friendLocation}</Text>
+                  <Text style={[s.userLocation, s.locationShrink]} numberOfLines={1}>{friendLocation}</Text>
                 )}
                 {!!friendDnaLabel && (
                   <View
@@ -436,20 +522,47 @@ export default function FriendProfileScreen({
             )}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
+            {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점).
+                시안: 문구 + 원형 chevron만. 탭하면 나라 이름 팝오버(화면 루트에 그림 — 아래 '겹치는 나라 팝오버').
+                열려 있는 동안은 전체 화면 오버레이가 이 행을 덮으므로 '다시 탭'은 오버레이가 받아 닫는다 */}
             {!isSelf && !!overlap && overlap.sharedCount > 0 && (
-              // 앞 아이콘은 기본 이모지(🌍) 대신 앱 아이콘 — 메이트찾기의 같은 줄과 표현을 맞춘다
-              <View style={s.overlapRow}>
-                <GlobeIcon size={12} color={skinAccent.accent} />
-                <Text style={[s.overlapLine, { color: skinAccent.accent }]} numberOfLines={1}>
-                  {t('friends.overlapReason', { count: overlap.sharedCount })} · {overlap.sampleCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}
+              <TouchableOpacity
+                style={s.overlapRow}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: overlapOpen }}
+                // 서버가 이름을 k-익명 필터로 거르므로 비어 있을 수 있다 → 탭을 막는다(빈 팝오버 방지)
+                disabled={overlap.sampleCountries.length === 0}
+                onPress={() => (overlapOpen ? setOverlapOpen(false) : openOverlap())}
+                // 위치는 열 때 한 번만 잰다 — 뒤늦게 온 위치줄·소개가 행을 밀면 알약이 떨어져 보이므로 닫는다
+                onLayout={() => setOverlapOpen(false)}
+              >
+                <Text style={s.overlapLine} numberOfLines={1}>
+                  {t('friends.overlapReason', { count: overlap.sharedCount })}
                 </Text>
-              </View>
+                {/* ref로 위치를 잰다 — 측정 대상이 Fabric 평탄화로 사라지지 않게 collapsable={false} */}
+                <View style={s.overlapChevron} ref={overlapChevronRef} collapsable={false}>
+                  {/* ⋯ 버튼과 같은 앱 공용 유리 테두리 */}
+                  <PillRing width={14} height={14} radius={7} />
+                  {/* 공용 뒤로가기 chevron — 닫힘 '>'(좌우 반전) / 열림 '˅'(-90° 회전).
+                      RNSVG 터치 삼킴 방지로 View(pointerEvents none)로 감쌈 */}
+                  <View pointerEvents="none" style={{ transform: [overlapOpen ? { rotate: '-90deg' } : { scaleX: -1 }] }}>
+                    <BackChevronIcon size={7} opacity={1} />
+                  </View>
+                </View>
+              </TouchableOpacity>
             )}
-            {/* 통계 — 여행수·메이트 2개. 메이트 탭 → 메이트 목록(조회 전용) */}
-            <View style={pv.statsRow}>
-              <StatCard value={String(tripStatValue)} label={t('profile.tripCount')} />
-              <StatCard
+            {/* 통계 — 게시물·여행 국가·메이트 3칸(좌측 정렬). 메이트 탭 → 메이트 목록(조회 전용) */}
+            <View style={s.statsRow}>
+              <FriendStat value={String(tripStatValue)} label={t('friends.statPosts')} />
+              {/* 서버 집계 우선 → 없으면 로컬(받은 글) 계산. 잠금(비메이트)이고 글도 0건이면 실제 국가 수를 모른다 → 0 대신 '–' */}
+              <FriendStat
+                value={countryCount !== null
+                  ? String(countryCount)
+                  : locked && sourcePosts.length === 0 ? '–' : String(display.visitedCountries)}
+                label={t('friends.statCountries')}
+              />
+              <FriendStat
                 value={String(neighborCount)}
                 label={t('profile.neighbors')}
                 onPress={realId ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'followers' }) : undefined}
@@ -463,7 +576,7 @@ export default function FriendProfileScreen({
           <>
             <View style={s.actionRow}>
               {/* 메이트 상태에 따라 위계가 바뀐다 —
-                  아직 아님·수락 대기: 그라데이션(주요 CTA) / 신청중·메이트: 고스트(더 유도하지 않음) */}
+                  아직 아님·수락 대기: 단색 보라(주요 CTA, 시안 고정색) / 신청중·메이트: 고스트(더 유도하지 않음) */}
               <ProfileActionButton
                 variant={neighborState === 'none' || neighborState === 'incoming' ? 'primary' : 'ghost'}
                 label={neighborState === 'neighbor'
@@ -475,7 +588,6 @@ export default function FriendProfileScreen({
                       : t('friends.neighborRequest')}
                 onPress={onNeighborPress}
                 accent={skinAccent.accent}
-                gradient={skinAccent.btnGradient}
                 tint={skinAccent.tint}
                 style={{ flex: 1 }}
               />
@@ -495,7 +607,6 @@ export default function FriendProfileScreen({
                     },
                   })}
                   accent={skinAccent.accent}
-                  gradient={skinAccent.btnGradient}
                   tint={skinAccent.tint}
                   style={{ minWidth: 110 }}
                   accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
@@ -509,15 +620,13 @@ export default function FriendProfileScreen({
           /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
         ) : locked ? (
-          /* ── 비메이트 잠금 안내 — 카운트만 노출, 아카이브는 지구본+자물쇠 + 문구로 대체 ── */
-          <>
-            <View style={s.divider} />
-            <View style={s.lockedBox}>
-              <GlobeLockIcon size={72} color={skinAccent.accent} />
-              <Text style={s.lockedTitle}>{t('friends.lockedTitle')}</Text>
-              <Text style={s.lockedDesc}>{t('friends.lockedDesc')}</Text>
-            </View>
-          </>
+          /* ── 비메이트 잠금 안내 — 카운트만 노출, 아카이브는 자물쇠 + 문구로 대체(시안: 구분선 없음) ── */
+          <View style={s.lockedBox}>
+            {/* 글리프가 뷰박스(96)의 8~89만 차지 — size 72면 자물쇠 실높이 ≈ 61로 시안(≈62)과 맞는다 */}
+            <LockClosedIcon size={72} color="#D9D9D9" />
+            <Text style={s.lockedTitle}>{t('friends.lockedTitle')}</Text>
+            <Text style={s.lockedDesc}>{t('friends.lockedDesc')}</Text>
+          </View>
         ) : (
           <>
             {/* ── Travel badge — 프로필 탭과 동일한 섹션 헤더 + 구이 서클 배지 ── */}
@@ -575,18 +684,80 @@ export default function FriendProfileScreen({
         <View style={{ height: 48 }} />
       </ScrollView>
 
-      {/* ── 팝업 오버레이 ── */}
-      {menuVisible && (
+      {/* ── 팝업 오버레이 — ⋯ 메뉴·겹치는 나라 팝오버 공용(밖을 탭하면 닫힘) ── */}
+      {(menuVisible || overlapOpen) && (
         <TouchableOpacity
-          style={s.menuOverlay}
+          // ⋯ 메뉴일 때만 화면을 50% 어둡게(시안) — 겹치는 나라 팝오버는 투명 막
+          style={[s.menuOverlay, menuVisible && s.menuDim]}
           activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
+          onPress={() => { setMenuVisible(false); setOverlapOpen(false); }}
         />
       )}
 
-      {/* ── 팝업 메뉴 — 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정(iOS 120 = 인셋(~56)+64) ── */}
+      {/* ── 겹치는 나라 팝오버 — 화면 루트 기준 절대 배치(안드로이드 터치 함정, 위 openOverlap 주석) ── */}
+      {overlapOpen && overlapAnchor && !!overlap && overlap.sampleCountries.length > 0 && (() => {
+        const list = overlap.sampleCountries;
+        const pages = Math.ceil(list.length / OVERLAP_PAGE);
+        const page = Math.min(overlapPage, pages - 1);
+        const items = list.slice(page * OVERLAP_PAGE, page * OVERLAP_PAGE + OVERLAP_PAGE);
+        const maxW = overlapAnchor.screenW - 32;
+        // chevron 중심에 맞추되 화면 좌우 16 여백 안으로 클램프(폭은 onLayout으로 잰 값)
+        const left = Math.max(16, Math.min(overlapAnchor.cx - overlapPillW / 2, overlapAnchor.screenW - 16 - overlapPillW));
+        return (
+          <Animated.View
+            style={[s.overlapPill, { top: overlapAnchor.top, left, maxWidth: maxW, opacity: overlapFade }]}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              if (overlapPillW === 0) fadeInOverlap(); // 첫 측정 전엔 투명 — 엉뚱한 위치가 한 프레임 보이지 않게
+              setOverlapPillW(w);
+            }}
+          >
+            {/* 채움: 세로 그라데이션(시안 #27272B → #36373A) */}
+            <LinearGradient colors={['#27272B', '#36373A']} style={StyleSheet.absoluteFill} pointerEvents="none" />
+            {/* 유리 림 — 테두리를 알약 자체가 아니라 위에 얹은 View로 그린다. 알약에 border를 주면
+                absoluteFill 그라데이션(테두리 안쪽 사각형)이 둥근 모서리에서 테두리를 덮는다 */}
+            <View style={s.overlapRim} pointerEvents="none" />
+            {page > 0 && (
+              <OverlapDots side="left" onPress={() => goOverlapPage(page - 1)} label={t('accountSettings.prev')} />
+            )}
+            {items.map((c, i) => (
+              <React.Fragment key={c}>
+                {i > 0 && <View style={s.overlapDivider} />}
+                <Text style={s.overlapName} numberOfLines={1}>{countryLabel(c, i18n.language)}</Text>
+              </React.Fragment>
+            ))}
+            {page < pages - 1 && (
+              <OverlapDots side="right" onPress={() => goOverlapPage(page + 1)} label={t('accountSettings.next')} />
+            )}
+          </Animated.View>
+        );
+      })()}
+
+      {/* ── ⋯ 메뉴가 열린 동안 어두운 막 위로 올린 ⋯ 원 — 헤더의 원과 같은 자리(헤더 marginTop + (56 − 테두리1 − 32)/2) ── */}
       {menuVisible && (
-        <View style={[s.popupMenu, Platform.OS === 'android' && { top: insets.top + 64 }]}>
+        <TouchableOpacity
+          style={[s.moreRaised, { top: insets.top + 12 + 11.5 }]}
+          onPress={() => setMenuVisible(false)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('friends.more')}
+        >
+          {moreCircle}
+        </TouchableOpacity>
+      )}
+
+      {/* ── 팝업 메뉴 — 헤더 하단 구분선에 걸치게(시안: 헤더 하단 −2). 인셋 기반이라 iOS·안드로이드 공통 ── */}
+      {menuVisible && (
+        <View
+          style={[s.popupMenu, { top: insets.top + 12 + 56 - 2 }]}
+          onLayout={(e) => {
+            const { width: w, height: h } = e.nativeEvent.layout;
+            setMenuSize((p) => (p.w === Math.round(w) && p.h === Math.round(h) ? p : { w: Math.round(w), h: Math.round(h) }));
+          }}
+        >
+          {/* 채움: 세로 그라데이션(시안 #19191A → #2A2A2C) + 앱 공용 유리 테두리 */}
+          <LinearGradient colors={['#19191A', '#2A2A2C']} style={[StyleSheet.absoluteFill, { borderRadius: 10 }]} pointerEvents="none" />
+          <PillRing width={menuSize.w} height={menuSize.h} radius={10} />
           {MENU_NORMAL.map((item, idx) => (
             <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
@@ -596,7 +767,7 @@ export default function FriendProfileScreen({
               {idx < MENU_NORMAL.length - 1 && <View style={s.menuItemDivider} />}
             </View>
           ))}
-          <View style={s.menuSectionDivider} />
+          <View style={s.menuItemDivider} />
           {MENU_DANGER.map((item, idx) => (
             <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
@@ -628,7 +799,7 @@ export default function FriendProfileScreen({
 }
 
 // ─── 프로필 액션 버튼 ───
-// 메이트찾기(FriendSearchScreen.MateButton)와 같은 언어: 완전한 필 + 스킨 그라데이션 + 네온 글로우.
+// 2026-10 시안: 높이 40 · radius 12 사각 버튼, primary는 단색 #7C3AED(스킨 그라데이션·글로우 폐지).
 // 상태로 위계를 준다 — primary(지금 누를 것) / ghost(대기·완료) / soft(보조 액션).
 // 누를 때 0.96 스프링으로 촉감을 준다(리스트 버튼보다 크므로 축소폭은 작게).
 function ProfileActionButton({
@@ -636,7 +807,6 @@ function ProfileActionButton({
   label,
   onPress,
   accent,
-  gradient,
   tint,
   style,
   accessibilityLabel,
@@ -645,7 +815,6 @@ function ProfileActionButton({
   label: string;
   onPress: () => void;
   accent: string;
-  gradient: [string, string];
   tint: (a: number) => string;
   style?: object;
   accessibilityLabel?: string;
@@ -666,21 +835,45 @@ function ProfileActionButton({
         accessibilityLabel={accessibilityLabel ?? label}
         style={[
           s.actionBtn,
-          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
-          variant === 'primary' && Platform.select({
-            ios: { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-            default: {},
-          }),
+          variant === 'primary' && { backgroundColor: COLORS.primaryBtn },
           variant === 'ghost' && { borderWidth: 1, borderColor: tint(0.45), backgroundColor: tint(0.12) },
           variant === 'soft' && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.06)' },
         ]}
       >
-        {variant === 'primary' && (
-          <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-        )}
         <Text style={[s.actionBtnTxt, variant === 'ghost' && { color: accent }]} numberOfLines={1}>{label}</Text>
       </TouchableOpacity>
     </Animated.View>
+  );
+}
+
+// ─── 통계 한 칸 — 시안: 숫자 18 bold 흰색 / 라벨 11 #B2B3B4, 가운데 정렬 ───
+// (공용 StatCard는 22/13 프로필 탭 치수라 이 화면 시안과 달라 쓰지 않는다)
+function FriendStat({ value, label, onPress }: { value: string; label: string; onPress?: () => void }) {
+  return (
+    <TouchableOpacity style={s.statCol} onPress={onPress} disabled={!onPress} activeOpacity={0.7}>
+      <Text style={s.statValue}>{value}</Text>
+      <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// ─── 겹치는 나라 팝오버의 '•••' — 탭하면 이전/다음 페이지 ───
+// 시안: #A78BFA 점 3개(지름 3·간격 3), 이름에 가까운 점이 가장 밝고 바깥으로 흐려진다(1 → 0.5 → 0.3).
+// 터치 영역은 알약 높이 전체(alignSelf stretch) — 안드로이드는 부모(알약) 밖 hitSlop이 안 먹으므로
+// 세로는 hitSlop이 아니라 자기 높이로 확보한다. 바깥쪽 여백은 음수 마진으로 알약 패딩에 겹쳐 시안 간격을 맞춘다.
+function OverlapDots({ side, onPress, label }: { side: 'left' | 'right'; onPress: () => void; label: string }) {
+  const ops = side === 'right' ? [1, 0.5, 0.3] : [0.3, 0.5, 1];
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.6}
+      hitSlop={{ top: 8, bottom: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={[s.overlapDots, side === 'right' ? { marginRight: -6 } : { marginLeft: -6 }]}
+    >
+      {ops.map((o, i) => <View key={i} style={[s.overlapDot, { opacity: o }]} />)}
+    </TouchableOpacity>
   );
 }
 
@@ -695,9 +888,38 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
-  // 나와 겹치는 나라 줄 — 색은 skinAccent.accent 인라인으로 덮음(스킨 관례)
-  overlapRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  overlapLine: { fontSize: 12, color: COLORS.accent, flexShrink: 1 },
+  // ── 프로필 행 (2026-10 시안: 헤더 아래 33 · 아바타 110 · 정보 열 간격 26) ──
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 26, marginTop: 33 },
+  avatar: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2, overflow: 'hidden' },
+  avatarImg: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2 },
+  profileInfo: { flex: 1 },
+  userName: { fontSize: 22, fontWeight: '700', color: COLORS.white, lineHeight: 28 },
+  userLocation: { fontSize: 12, fontWeight: '600', color: COLORS.textSoft },
+  // 나와 겹치는 나라 줄 — 문구 + 원형 chevron(시안 고정색)
+  overlapRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 15, alignSelf: 'flex-start' },
+  overlapLine: { fontSize: 12, color: COLORS.textSoft, flexShrink: 1 },
+  overlapChevron: {
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#28292D', // 테두리는 PillRing — borderWidth 주면 이중 테두리
+    alignItems: 'center', justifyContent: 'center',
+  },
+  // 겹치는 나라 팝오버 알약 — 시안 실측: 높이 25 · 좌우 13(림 1 + 패딩 12) · 이름 11 bold #A78BFA ·
+  // 구분선 1×9 #6B6C6E 좌우 5. top/left/maxWidth는 측정값으로 인라인. 메뉴 오버레이(50) 위.
+  overlapPill: {
+    position: 'absolute', zIndex: 51,
+    height: 25, borderRadius: 999, overflow: 'hidden',
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 13,
+  },
+  overlapRim: { ...StyleSheet.absoluteFillObject, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  overlapName: { fontSize: 11, fontWeight: '700', color: '#A78BFA', lineHeight: 14, flexShrink: 1 },
+  overlapDivider: { width: 1, height: 9, backgroundColor: '#6B6C6E', marginHorizontal: 5 },
+  overlapDots: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', gap: 3, paddingHorizontal: 6 },
+  overlapDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#A78BFA' },
+  // 통계 3칸 — 좌측 정렬, 칸 간격 24
+  statsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 26, marginTop: 27 },
+  statCol: { alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', color: COLORS.white, lineHeight: 22 },
+  statLabel: { fontSize: 12, color: '#B2B3B4', marginTop: 3, lineHeight: 15 },
   // 여행 DNA 칩 — 프로필 탭과 동일한 톤. pv.userBio엔 프로필 탭 같은 음수 marginBottom 보정이
   // 없어(수정 범위 밖) marginTop을 직접 8로 둬 같은 시각적 간격을 낸다. 탭 불가(정보 전용).
   // 위치 줄 + DNA 칩을 한 행에 — 내 프로필의 statusRow와 같은 배치.
@@ -706,6 +928,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    marginTop: 6,
   },
   locationShrink: {
     flexShrink: 1,
@@ -744,8 +967,21 @@ const s = StyleSheet.create({
     width: 40, height: 40,
     alignItems: 'center', justifyContent: 'center',
   },
+  headerTitleWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 16 + 40 + 8, // 좌우 버튼(패딩 16 + 폭 40) + 여유 — 긴 아이디가 버튼 밑으로 파고들지 않게
+  },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white },
-  moreIcon: { fontSize: 18, color: COLORS.dim, letterSpacing: 2 },
+  // ⋯ 버튼 — 터치 영역 40은 유지하고 원은 오른쪽 끝에 붙인다
+  moreBtnHit: { alignItems: 'flex-end' },
+  moreCircle: {
+    width: 32, height: 32, borderRadius: 16,
+    // 테두리는 PillRing이 그린다 — borderWidth를 주면 링이 1px 밀리고 이중 테두리가 된다
+    backgroundColor: '#222327',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+  },
+  moreDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: COLORS.white },
 
   // ── 프로필 ──
 
@@ -755,12 +991,13 @@ const s = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     gap: 8,
+    marginTop: 41, // 시안: 프로필 행 아래 ~41
     marginBottom: 4,
   },
-  // 액션 버튼 — 완전한 필. 그라데이션이 모서리를 넘지 않게 overflow hidden.
+  // 액션 버튼 — 시안: 높이 40 · radius 12 (primary 단색은 ProfileActionButton에서 인라인)
   actionBtn: {
-    height: 46,
-    borderRadius: 999,
+    height: 40,
+    borderRadius: 12,
     paddingHorizontal: 22,
     alignItems: 'center',
     justifyContent: 'center',
@@ -783,10 +1020,10 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 23, fontFamily: 'Inter_800ExtraBold', color: COLORS.white },
   archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
-  // 비메이트 잠금 안내 — 인스타 비공개 계정 스타일(아이콘 1개 + 문구)
-  lockedBox: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 32 },
-  lockedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 16 },
-  lockedDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  // 비메이트 잠금 안내 — 시안: 버튼 하단 → 자물쇠 상단 ≈120(아이콘 박스 위 여백 6 포함해 117)
+  lockedBox: { alignItems: 'center', marginTop: 117, paddingHorizontal: 32 },
+  lockedTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 17, lineHeight: 24 },
+  lockedDesc: { fontSize: 12, color: '#8E8E93', textAlign: 'center', marginTop: 12, lineHeight: 16 },
 
   // ── 여행 썸네일 2열 그리드 ──
 
@@ -795,21 +1032,22 @@ const s = StyleSheet.create({
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     zIndex: 50,
   },
+  menuDim: { backgroundColor: 'rgba(0,0,0,0.5)' },
+  // 어두운 막 위의 ⋯ 원 — 헤더 원과 같은 x(오른쪽 16)
+  moreRaised: { position: 'absolute', right: 16, zIndex: 51 },
 
   // ── 팝업 메뉴 ──
+  // 시안: 폭 148 · radius 10 · 행 33 + 구분선 1. 테두리는 PillRing이 그리므로 overflow hidden·borderWidth 금지(링이 잘림)
   popupMenu: {
-    position: 'absolute', top: 56 + 56 + 8, right: 16, width: 180,
-    backgroundColor: COLORS.menuBg, borderRadius: 12, zIndex: 51,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 12, elevation: 12, overflow: 'hidden',
+    position: 'absolute', right: 16, width: 148,
+    borderRadius: 10, zIndex: 51,
   },
   menuItem: {
     flexDirection: 'row', alignItems: 'center',
-    height: 48, paddingHorizontal: 16, gap: 10,
+    height: 33, paddingLeft: 13, paddingRight: 12, gap: 9, // 라벨 시작 = 13 + 아이콘 칸 18 + 9 = 40(시안)
   },
   menuItemIcon: { width: 18, alignItems: 'center', justifyContent: 'center' }, // 아이콘 폭 고정 → 라벨 시작점 정렬
-  menuItemText: { fontSize: 14, color: COLORS.white, fontWeight: '500' },
-  menuItemDanger: { color: COLORS.red },
-  menuItemDivider: { height: 1, backgroundColor: COLORS.menuDivider },
-  menuSectionDivider: { height: 1, backgroundColor: COLORS.menuDivider },
+  menuItemText: { fontSize: 13, color: COLORS.white, fontWeight: '500' },
+  menuItemDanger: { color: '#FF0138' }, // 시안 원색(디자인 토큰 빨강 #FF3B30 아님)
+  menuItemDivider: { height: 1, backgroundColor: '#4D4D4F' },
 });

@@ -12,7 +12,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { SearchIcon, PersonIcon, BackChevronIcon } from '../components/icons';
+import { SearchIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
@@ -465,7 +466,7 @@ function FriendRow({
             <Image source={{ uri: friend.photo }} style={st.avatar} />
           ) : (
             <View style={st.avatar}>
-              <PersonIcon size={22} color="#A0A0B0" />
+              <DefaultAvatar size={48} />
             </View>
           )}
           {friend.online && <View style={st.onlineDot} />}

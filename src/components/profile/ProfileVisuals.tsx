@@ -14,9 +14,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { LiquidPressable, LiquidCardGlow } from '../LiquidEffects';
-import { PersonIcon, LockClosedIcon } from '../icons';
+import { LockClosedIcon } from '../icons';
+import DefaultAvatar from '../DefaultAvatar';
 import { andFitText } from '../../utils/fitText';
-import { useSkinAccent } from '../../constants/skinTheme';
 import { stageWidthNow } from '../../utils/stage';
 
 const SCREEN_WIDTH = stageWidthNow();
@@ -94,47 +94,32 @@ export const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
   feed: <FeedBadgeIcon />, blog: <BlogBadgeIcon />, album: <AlbumBadgeIcon />, snap: <SnapBadgeIcon />, cut: <CutBadgeIcon />,
 };
 
-// ─── 아바타 — 프로필 탭과 동일 (128 링, PersonIcon 기본 프사, 글래스 틴트, 사진 없을 때만 그라데이션 링) ───
-export const ProfileAvatar = ({ photo }: { photo?: string | null }) => {
-  const skinAccent = useSkinAccent(); // 링 그라데이션을 스킨 강조색으로
-  return (
-    <View style={pv.avatarRing}>
-      {photo ? (
+// ─── 아바타 — 프로필 탭과 동일 (128 박스, 글래스 틴트는 사진 있을 때만) ───
+// 사진 없음: 공용 DefaultAvatar(110)만 — 2026-10 시안에서 컬러 그라데이션 링·보라 틴트 폐지
+export const ProfileAvatar = ({ photo }: { photo?: string | null }) => (
+  <View style={pv.avatarRing}>
+    {photo ? (
+      <>
         <Image source={{ uri: photo }} style={pv.avatarImg} cachePolicy="memory-disk" transition={120} />
-      ) : (
-        <View style={pv.avatar}>
-          <PersonIcon size={50} color="#A0A0B0" />
-        </View>
-      )}
-      {/* 사진 위 글래스 틴트 + 림 — ProfileScreen과 동일 재현
-          (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
-      <View style={pv.avatarInner} pointerEvents="none">
-        <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
-          <Defs>
-            <SvgLinearGradient id="pvAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-              <Stop stopColor="#000000" stopOpacity="0" />
-              <Stop offset="1" stopColor="#FFFFFF" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#pvAvatarInnerGrad)" strokeWidth="0.5" />
-        </Svg>
-      </View>
-      {!photo && (
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+        {/* 사진 위 글래스 틴트 + 림 — ProfileScreen과 동일 재현
+            (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+        <View style={pv.avatarInner} pointerEvents="none">
+          <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
             <Defs>
-              <SvgLinearGradient id="pvAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-                <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+              <SvgLinearGradient id="pvAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                <Stop stopColor="#000000" stopOpacity="0" />
+                <Stop offset="1" stopColor="#FFFFFF" />
               </SvgLinearGradient>
             </Defs>
-            <Circle cx="64" cy="64" r="61" stroke="url(#pvAvatarRingGrad)" strokeWidth="6" fill="none" />
+            <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#pvAvatarInnerGrad)" strokeWidth="0.5" />
           </Svg>
         </View>
-      )}
-    </View>
-  );
-};
+      </>
+    ) : (
+      <DefaultAvatar size={110} />
+    )}
+  </View>
+);
 
 // ─── 통계 — 프로필 탭과 동일 (박스 없는 숫자+라벨) ───
 export const StatCard = ({ value, label, onPress }: {
@@ -240,7 +225,6 @@ export const pv = StyleSheet.create({
   profileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 20, marginBottom: 14, paddingVertical: 12, overflow: 'hidden', position: 'relative' },
   // 프로필 탭과 동일 치수 (링 128 / 아바타 120 / 글래스 오버레이 110)
   avatarRing: { width: 128, height: 128, borderRadius: 64, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#1F1F22', alignItems: 'center', justifyContent: 'center' },
   avatarImg: { width: 120, height: 120, borderRadius: 60 },
   avatarInner: { position: 'absolute', top: 9, left: 9 },
   profileInfo: { flex: 1, justifyContent: 'flex-start', paddingTop: 2 },

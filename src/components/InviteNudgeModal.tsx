@@ -5,7 +5,7 @@ import FeedPhoto from './FeedPhoto';
 import { Modal, View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
-import { PersonIcon } from './icons';
+import DefaultAvatar from './DefaultAvatar';
 import { STAGE_MAX_W } from '../utils/stage';
 
 export interface InviteNudgeTarget {
@@ -34,7 +34,7 @@ export function InviteNudgeModal({ target, onSend, onClose }: {
             {target?.photo && !imgError ? (
               <FeedPhoto uri={target.photo} style={s.avatarImg} onError={() => setImgError(true)} />
             ) : (
-              <PersonIcon size={30} color="#A0A0B0" />
+              <DefaultAvatar size={62} />
             )}
           </View>
           <Text style={s.title}>{t('friends.inviteNudgeTitle')}</Text>

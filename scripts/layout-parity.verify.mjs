@@ -793,7 +793,7 @@ const ALLOW_SVG_PE = new Map([]);
 // 판정 = `<View|Animated.View … pointerEvents="none" …>` 열림 태그 **바로 다음**(주석만
 // 사이에 허용) 자식이 `<Svg`인 형태. 2026-08-21 실측 43건 + 같은 날 FAB·SNAP
 // 안드로이드 글로우 래퍼 2건 = 45건이고, 이 목록은 그 전수다.
-// 건수까지 보는 이유: 파일 단위로만 걸면 한 파일에 둘 있는 곳(ProfileVisuals 3건,
+// 건수까지 보는 이유: 파일 단위로만 걸면 한 파일에 둘 있는 곳(ProfileVisuals 2건,
 // SnapRecordScreen 4건, StatsScreen 5건 등)에서 하나가 조용히 빠져도 통과한다.
 //
 // ── 잔여 갭 ──
@@ -804,21 +804,23 @@ rule('규칙 12 Svg 오버레이 View 래퍼 유지');
 const SVG_WRAP = new Map([
   ['src/components/record/CalendarBottomSheet.tsx', 2],
   ['src/components/CustomTabBar.tsx', 1],
+  ['src/components/DefaultAvatar.tsx', 1],
   ['src/components/GlassSurface.tsx', 1],
   ['src/components/GrainOverlay.tsx', 1],
   ['src/components/ImportCtaButton.tsx', 1],
   ['src/components/NeonFab.tsx', 1],
-  ['src/components/profile/ProfileVisuals.tsx', 3],
+  ['src/components/profile/ProfileVisuals.tsx', 2],
   ['src/components/PuzzlePhotoAdjustOverlay.tsx', 1],
   ['src/components/SegmentedToggle.tsx', 1],
   ['src/components/SnapButton.tsx', 1],
   ['src/components/StarFieldBackground.tsx', 1],
   ['src/screens/AppIntroScreen.tsx', 1],
-  ['src/screens/BasicInfoScreen.tsx', 2],
-  ['src/screens/EditProfileScreen.tsx', 2],
+  ['src/screens/BasicInfoScreen.tsx', 1],
+  ['src/screens/EditProfileScreen.tsx', 1],
+  ['src/screens/FriendProfileScreen.tsx', 1],
   ['src/screens/introVisuals.tsx', 3],
   ['src/screens/MainScreen.tsx', 2],
-  ['src/screens/ProfileScreen.tsx', 3],
+  ['src/screens/ProfileScreen.tsx', 2],
   ['src/screens/ProfileTicketScreen.tsx', 1],
   ['src/screens/SnapRecordScreen.tsx', 3],
   ['src/screens/SocialScreen.tsx', 1],

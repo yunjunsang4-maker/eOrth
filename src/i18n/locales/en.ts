@@ -1529,6 +1529,8 @@ const en = {
     noPublicTrips: 'No public travel records yet',
     lockedTitle: 'Only mates can see travel records',
     lockedDesc: 'Become mates to unlock their records',
+    statPosts: 'Posts',
+    statCountries: 'Countries',
     consentFootnote: 'By continuing, you agree to the notice above.',
     followNameA11y: 'Follow {{name}}',
     unfollowNameA11y: 'Unfollow {{name}}',

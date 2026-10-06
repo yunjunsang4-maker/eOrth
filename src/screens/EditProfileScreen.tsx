@@ -14,9 +14,9 @@ import {
   Linking,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { CameraIcon, PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
+import { CameraIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
-import { useSkinAccent } from '../constants/skinTheme';
+import DefaultAvatar from '../components/DefaultAvatar';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
@@ -72,7 +72,6 @@ const COLORS = {
 
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
   const { t, i18n } = useTranslation();
-  const skinAccent = useSkinAccent();
   const { handle: globalHandle, bio: globalBio, profilePhoto: globalProfilePhoto, handleLastChanged } = useProfileSettings();
   const { setHandle: setGlobalHandle, setBio: setGlobalBio, setProfilePhoto: setGlobalProfilePhoto, setHandleLastChanged, setHandleChosen } = useSettingsActions();
 
@@ -285,41 +284,29 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* 프로필 사진 — 프로필 탭과 동일한 아바타 디자인(글래스 틴트 + 기본 프사 그라데이션 링) */}
+          {/* 프로필 사진 — 프로필 탭과 동일한 아바타 디자인(사진 있으면 글래스 틴트, 없으면 공용 DefaultAvatar) */}
           <View style={s.avatarSection}>
             <TouchableOpacity onPress={pickImage} activeOpacity={0.8} style={s.avatarWrap}>
               <View style={s.avatarRing}>
                 {profilePhoto ? (
-                  <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
+                  <>
+                    <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
+                    {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+                    <View style={s.avatarInner} pointerEvents="none">
+                      <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
+                        <Defs>
+                          <SvgLinearGradient id="editAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                            <Stop stopColor="#000000" stopOpacity="0" />
+                            <Stop offset="1" stopColor="#FFFFFF" />
+                          </SvgLinearGradient>
+                        </Defs>
+                        <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#editAvatarInnerGrad)" strokeWidth="0.5" />
+                      </Svg>
+                    </View>
+                  </>
                 ) : (
-                  <View style={s.avatarDefault}>
-                    <PersonIcon size={50} color="#A0A0B0" />
-                  </View>
-                )}
-                {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
-                <View style={s.avatarInner} pointerEvents="none">
-                  <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
-                    <Defs>
-                      <SvgLinearGradient id="editAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                        <Stop stopColor="#000000" stopOpacity="0" />
-                        <Stop offset="1" stopColor="#FFFFFF" />
-                      </SvgLinearGradient>
-                    </Defs>
-                    <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#editAvatarInnerGrad)" strokeWidth="0.5" />
-                  </Svg>
-                </View>
-                {!profilePhoto && (
-                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                    <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
-                      <Defs>
-                        <SvgLinearGradient id="editAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                          <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-                          <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
-                        </SvgLinearGradient>
-                      </Defs>
-                      <Circle cx="64" cy="64" r="61" stroke="url(#editAvatarRingGrad)" strokeWidth="6" fill="none" />
-                    </Svg>
-                  </View>
+                  // 기본 프사 — 프로필 탭과 동일하게 공용 DefaultAvatar(120, 사진 크기와 동일)만 (컬러 링·보라 틴트 폐지, 2026-10 시안)
+                  <DefaultAvatar size={120} />
                 )}
               </View>
               <View style={s.cameraIcon}>
@@ -486,14 +473,6 @@ const s = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarDefault: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
   },

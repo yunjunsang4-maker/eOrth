@@ -80,7 +80,19 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 0건 (2026-09-29 댓글 신고 SQL 사용자 실행으로 다시 0건)
+## 1. 지금 해야 하는 것 — 0건 (2026-10-06 겹치는 나라 표본 상한 반영)
+
+### ✅ 반영 완료(2026-10-06, 사용자 실행 — 운영·테스트 양쪽) — `overlap_with` 나라 이름 표본 상한 3 → 30 + 이름순 정렬 (2026-10-05 추가)
+
+> `supabase/migration-2026-10-05-overlap-sample-cap.sql` (schema.sql `overlap_with` 본문과 동일 내용). **운영·테스트 양쪽** SQL Editor에서 실행.
+
+- **문제:** 타인 프로필 "나와 겹치는 나라 N곳" 팝오버는 4개씩 '•••'로 넘겨 보는데, 서버가 이름을 `[1:3]`으로 잘라 4개 초과 페이지가 생기지 않는다.
+- **고침:** 마지막 select만 `[1:30]` + `array_agg(... order by sk.country_name)`. k-익명 필터·프로빙 가드·차단/추천거부 게이트는 그대로. 반환 타입 불변이라 `create or replace`만.
+- **앱 배포 순서 제약 없음:** 미반영이면 이름이 ≤3개라 '•••'가 안 뜰 뿐 정상 동작한다.
+- **확인:** `select pg_get_functiondef('public.overlap_with(uuid, text[])'::regprocedure) like '%array_agg(sk.country_name order by sk.country_name)%';` → `true`(`[1:30]`은 extra 상한에도 있어 판별에 못 씀).
+- **롤백:** 파일 헤더 주석 참조(`[1:3]`·정렬 제거로 같은 방식 재실행).
+
+---
 
 ### ✅ 반영 완료(2026-09-29, 사용자 실행) — 댓글 신고 `reports.comment_id` + 중복 방지 인덱스 분리 (2026-09-29 추가)
 

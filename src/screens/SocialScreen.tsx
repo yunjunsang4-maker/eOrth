@@ -32,7 +32,8 @@ import { grab, select, success, tap, warn } from '../utils/haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ShareIcon as ShareSvgIcon, TrashIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon } from '../components/icons';
+import { ShareIcon as ShareSvgIcon, TrashIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, WarningIcon, PlusIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { Typography, Spacing } from '../constants';
 import { useRecordData, useFeed, useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useFocusEffect } from '@react-navigation/native';
@@ -242,7 +243,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
           ) : item.user.photo ? (
             <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : (
-            <PersonIcon size={12} color="#A0A0B0" />
+            <DefaultAvatar size={18} />
           )}
         </View>
         {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
@@ -1131,7 +1132,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
                 {m.profilePhoto ? (
                   <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
                 ) : (
-                  <PersonIcon size={16} color="#A0A0B0" />
+                  <DefaultAvatar size={30} />
                 )}
               </View>
             </View>
@@ -1809,7 +1810,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                             {globalProfilePhoto ? (
                               <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                             ) : (
-                              <PersonIcon size={30} color="#A0A0B0" />
+                              <DefaultAvatar size={52} />
                             )}
                           </View>
                         </View>
@@ -1847,7 +1848,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                         ) : snap.user.photo ? (
                           <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : (
-                          <PersonIcon size={30} color="#A0A0B0" />
+                          <DefaultAvatar size={52} />
                         )}
                       </View>
                     </View>
@@ -1929,7 +1930,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                         <Image source={{ uri: f.profilePhoto }} style={s.suggestAvatarImg} />
                       ) : (
                         <View style={s.suggestAvatar}>
-                          <PersonIcon size={20} color="#A0A0B0" />
+                          <DefaultAvatar size={40} />
                         </View>
                       )}
                       <View style={{ flex: 1 }}>

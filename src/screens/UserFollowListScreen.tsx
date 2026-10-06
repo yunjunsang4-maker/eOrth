@@ -14,7 +14,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { fetchNeighborsOf, type NeighborProfile } from '../services/social';
 import { useSocialGraph } from '../store/recordStore';
-import { PersonIcon, BackChevronIcon } from '../components/icons';
+import { BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -91,7 +92,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
                     <Image source={{ uri: entry.photo }} style={styles.avatar} />
                   ) : (
                     <View style={styles.avatar}>
-                      <PersonIcon size={26} color="#A0A0B0" />
+                      <DefaultAvatar size={48} />
                     </View>
                   )}
                   <Text style={[styles.username, { color: skinAccent.accent }]}>@{name}</Text>

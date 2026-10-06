@@ -40,7 +40,8 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { detectCurrentCountry } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PersonIcon, CameraIcon, BackChevronIcon } from '../components/icons';
+import { CameraIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import RequirementList from '../components/RequirementList';
 import { COUNTRIES, type Country } from '../constants/countries';
 import { minimumSignupAge } from '../constants/minimumAge';
@@ -391,40 +392,28 @@ export default function BasicInfoScreen({ navigation }: Props) {
           </View>
 
           {/* 프로필 사진 — 앱 내(프로필 탭·프로필 편집)와 동일한 아바타 디자인
-              (글래스 틴트 오버레이 + 기본 프사 그라데이션 링 + 카메라 배지) */}
+              (사진 있으면 글래스 틴트 오버레이, 없으면 공용 DefaultAvatar + 카메라 배지) */}
           <TouchableOpacity style={styles.avatarWrap} activeOpacity={0.8} onPress={pickImage}>
             <View style={styles.avatarRing}>
               {photo ? (
-                <Image source={{ uri: photo }} style={styles.avatarImage} />
+                <>
+                  <Image source={{ uri: photo }} style={styles.avatarImage} />
+                  {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+                  <View style={styles.avatarInner} pointerEvents="none">
+                    <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
+                      <SvgDefs>
+                        <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                          <SvgStop stopColor="#000000" stopOpacity="0" />
+                          <SvgStop offset="1" stopColor="#FFFFFF" />
+                        </SvgLinearGradient>
+                      </SvgDefs>
+                      <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
+                    </Svg>
+                  </View>
+                </>
               ) : (
-                <View style={styles.avatarDefault}>
-                  <PersonIcon size={50} color="#A0A0B0" />
-                </View>
-              )}
-              {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
-              <View style={styles.avatarInner} pointerEvents="none">
-                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
-                  <SvgDefs>
-                    <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                      <SvgStop stopColor="#000000" stopOpacity="0" />
-                      <SvgStop offset="1" stopColor="#FFFFFF" />
-                    </SvgLinearGradient>
-                  </SvgDefs>
-                  <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
-                </Svg>
-              </View>
-              {!photo && (
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
-                    <SvgDefs>
-                      <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                        <SvgStop stopColor="#00D8F3" />
-                        <SvgStop offset="1" stopColor="#EC34F7" />
-                      </SvgLinearGradient>
-                    </SvgDefs>
-                    <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
-                  </Svg>
-                </View>
+                // 기본 프사 — 프로필 탭과 동일하게 공용 DefaultAvatar(120, 사진 크기와 동일)만 (컬러 링·보라 틴트 폐지, 2026-10 시안)
+                <DefaultAvatar size={120} />
               )}
             </View>
             <View style={styles.avatarEditBadge}>
@@ -807,14 +796,6 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarDefault: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Image, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { PersonIcon } from './icons';
+import DefaultAvatar from './DefaultAvatar';
 
 // eOrth 공식 예시 아바타 이미지(지구본) — 소셜 예시 기록의 '이어스' 프로필 사진
 const APP_LOGO = require('../../assets/example-avatar.png');
@@ -17,7 +17,7 @@ export default function AuthorAvatar({
   photo,
   emoji: _emoji, // (구) 이모지 폴백 — 위 주석 참조, 미사용. 호출부 호환 위해 유지
   size,
-  emojiSize,
+  emojiSize: _emojiSize, // (구) 실루엣 크기 — DefaultAvatar가 size에 맞춰 그리므로 미사용. 호출부 호환 위해 유지
   isExample,
 }: {
   photo?: string;
@@ -52,5 +52,6 @@ export default function AuthorAvatar({
       />
     );
   }
-  return <PersonIcon size={emojiSize ?? Math.round(size * 0.6)} color="#A0A0B0" />;
+  // 사진 없음·로드 실패 → 앱 공용 기본 아바타(원+림+실루엣). size = 사진과 같은 원 지름
+  return <DefaultAvatar size={size} />;
 }

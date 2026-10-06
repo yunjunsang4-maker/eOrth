@@ -40,7 +40,8 @@ import Svg, {
   Stop as SvgStop,
 } from 'react-native-svg';
 import { useProfileSettings, useHomeSettings, useSkinSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
-import { PersonIcon, ChartIcon } from '../components/icons';
+import { ChartIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
 import { PillRing } from '../components/record/CalendarBottomSheet';
@@ -795,7 +796,7 @@ export default function StatsScreen() {
                   ) : (
                     // 사진 없음 — 프로필 탭과 동일한 기본 아바타(사람 아이콘)
                     <View style={styles.heroAvatarFallback}>
-                      <PersonIcon size={30} color="#A0A0B0" />
+                      <DefaultAvatar size={57} />
                     </View>
                   )}
                 </View>

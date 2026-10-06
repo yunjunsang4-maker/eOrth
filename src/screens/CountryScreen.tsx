@@ -14,7 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { CameraIcon, PersonIcon, BackChevronIcon } from '../components/icons';
+import { CameraIcon, BackChevronIcon } from '../components/icons';
+import DefaultAvatar from '../components/DefaultAvatar';
 import { useRecordData } from '../store/recordStore';
 import { fetchCountryVisitors, type CountryVisitor } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -118,7 +119,7 @@ export default function CountryScreen({ navigation, route }: Props) {
                     {v.profilePhoto ? (
                       <Image source={{ uri: v.profilePhoto }} style={styles.visitorAvatarImg} />
                     ) : (
-                      <PersonIcon size={20} color="#A0A0B0" />
+                      <DefaultAvatar size={48} />
                     )}
                   </View>
                   <Text style={styles.visitorHandle} numberOfLines={1}>{v.handle}</Text>

@@ -1458,9 +1458,13 @@ begin
                and p2.country_name = s.country_name) as visitors
     from shared s
   )
+  -- 이름 표본 상한 30(2026-10-05, 예전 3) — 프로필 팝오버가 4개씩 넘겨 보여 주므로 3개로 자르면
+  -- 두 번째 페이지가 영영 안 생긴다. 이름 공개 기준(k-익명 필터)은 그대로이고, 애초에 '내 나라
+  -- 집합'(my_countries, extra 상한 30)과 겹친 것만 나오므로 30이면 사실상 전부다.
+  -- order by — 호출마다 순서가 바뀌면 페이지를 넘길 때 나라가 섞여 보인다.
   select count(*)::int,
-         coalesce((array_agg(sk.country_name)
-                     filter (where sk.visitors >= public.k_anon_min()))[1:3], '{}'::text[])
+         coalesce((array_agg(sk.country_name order by sk.country_name)
+                     filter (where sk.visitors >= public.k_anon_min()))[1:30], '{}'::text[])
   from shared_k sk;
 end; $$;
 grant execute on function public.overlap_with(uuid, text[]) to authenticated;
