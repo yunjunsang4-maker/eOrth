@@ -169,7 +169,9 @@
   .cta2{margin-top:4px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#fff;font-family:var(--display);font-weight:700;border-radius:14px;padding:12px;text-align:center;font-size:14px} /* 색 빼고 회색 유리 + 흰 글씨(피드백) */
   .lock{display:flex;gap:10px;align-items:flex-start;margin-top:36px;padding:12px 14px;border-radius:14px;background:var(--glass);border:1px solid var(--glass-line);font-size:14px;line-height:1.55;color:var(--ink);max-width:34em}
   @media (min-width:880px){ /* 소제목 = 스캔 박스 상단, 안내 상자 하단 = 스캔 박스 하단(피드백) */
-    .two.imp-row{align-items:stretch}.imp-row .sec-head{display:flex;flex-direction:column}.imp-row .lock{margin:auto 0 0}}
+    .two.imp-row{align-items:stretch}.imp-row .sec-head{display:flex;flex-direction:column}
+    .imp-row .lead{margin:auto 0}.imp-row .lock{margin:0 0 28px}} /* 본문은 제목↔메모 사이 세로 가운데, 메모는 스캔 하단에서 살짝 위 */
+  .ko-br{display:none}:lang(ko) .ko-br{display:inline} /* 한국어만 줄바꿈 — 다른 언어는 번역 어순이 달라 끝 문장부호만 남는다 */
   .lock svg{flex:none;width:18px;height:18px;margin-top:2px;color:var(--neon)}
   .lock b{font-weight:600;color:var(--neon)}
 
@@ -552,7 +554,7 @@
   <div class="wrap two imp-row">
     <div class="sec-head">
       <p class="eyebrow">과거 여행 불러오기</p>
-      <h2>지난 여행을 <em>자동으로</em> 찾아드려요.</h2>
+      <h2>지난 여행을 <em>자동으로</em><br class="ko-br"> 찾아드려요.</h2>
       <p class="lead">거주 국가 밖에서 찍은 사진을 날짜와 위치로 묶어 여행 단위로 정리해요. 몇 년 전 여행도 사진만 남아 있다면 그대로 되살아납니다.</p>
       <p class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span><b>분석은 전부 내 폰 안에서.</b> 갤러리 사진은 기기 밖으로 나가지 않고, 어디에도 업로드되지 않아요. 나라 판정도 기기에 내장된 지도 데이터로 해요. 서버에는 내가 직접 게시하기로 한 기록만 올라갑니다.</span></p>
     </div>
