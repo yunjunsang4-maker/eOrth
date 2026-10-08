@@ -169,8 +169,8 @@
   .cta2{margin-top:4px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:#fff;font-family:var(--display);font-weight:700;border-radius:14px;padding:12px;text-align:center;font-size:14px} /* 색 빼고 회색 유리 + 흰 글씨(피드백) */
   .lock{display:flex;gap:10px;align-items:flex-start;margin-top:36px;padding:12px 14px;border-radius:14px;background:var(--glass);border:1px solid var(--glass-line);font-size:14px;line-height:1.55;color:var(--ink);max-width:34em}
   @media (min-width:880px){ /* 소제목 = 스캔 박스 상단, 안내 상자 하단 = 스캔 박스 하단(피드백) */
-    .two.imp-row{align-items:stretch}.imp-row .sec-head{display:flex;flex-direction:column}
-    .imp-row .lead{margin:auto 0}.imp-row .lock{margin:0 0 28px}} /* 본문은 제목↔메모 사이 세로 가운데, 메모는 스캔 하단에서 살짝 위 */
+    .two.imp-row{align-items:stretch}.imp-row .sec-head{display:flex;flex-direction:column;padding:60px 0}
+    .imp-row .lead{margin:auto 0}.imp-row .lock{margin:0}} /* 본문은 제목↔메모 사이 세로 가운데, 제목·메모는 위아래 같은 만큼 안쪽으로 */
   .ko-br{display:none}:lang(ko) .ko-br{display:inline} /* 한국어만 줄바꿈 — 다른 언어는 번역 어순이 달라 끝 문장부호만 남는다 */
   .lock svg{flex:none;width:18px;height:18px;margin-top:2px;color:var(--neon)}
   .lock b{font-weight:600;color:var(--neon)}
