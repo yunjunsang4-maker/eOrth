@@ -563,6 +563,17 @@ function deletePuzzleFile(uri?: string) {
   } catch { /* 파일 정리 실패는 무시 — 참조는 이미 지웠다 */ }
 }
 
+// 개별 색이 기본색과 같은 국가 항목을 지운다(리뷰 C-1). 지구본은 `color || 기본색`으로 칠하므로 보이는 색은
+// 그대로다. 남겨 두면 그 칩은 ×가 색 알약만 열고(기본색 제외)·'색상 제거'도 숨겨져 지울 수 없고,
+// 기본색을 바꿔도 그 나라만 옛 색에 고착된다. 지울 게 없으면 같은 객체를 돌려줘 재렌더·저장을 막는다.
+function dropDefaultColored(map: Record<string, string>, defaultColor: string): Record<string, string> {
+  const same = Object.keys(map).filter(k => map[k] === defaultColor);
+  if (same.length === 0) return map;
+  const next = { ...map };
+  same.forEach(k => delete next[k]);
+  return next;
+}
+
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   // 스냅 버튼 바닥(안전영역 포함 절대값) — RecordFab이 그리는 좌표와 같은 훅에서 나온다.
@@ -891,7 +902,11 @@ export default function MainScreen({ navigation, route }: Props) {
     skinColorStore: Record<string, SkinColorSet>;
   } | null>(null);
   const openDisplaySettings = () => {
-    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionDisplayModes, regionColors, skinColorStore };
+    // 이미 '개별 색 == 기본색'으로 저장된 옛 데이터(국가 추가 후 색 미선택 확정, 옛 색 remap 등)를 열 때 정리 —
+    // 확인 시 정리만으로는 기본색을 바꾸고 확인하면 그 나라가 옛 색에 남는다. 스냅샷도 정리본이라 취소해도 되살아나지 않는다.
+    const cleanedCountryColors = dropDefaultColored(countryColors, globeColor);
+    if (cleanedCountryColors !== countryColors) setCountryColors(cleanedCountryColors);
+    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors: cleanedCountryColors, countryDisplayModes, regionDisplayModes, regionColors, skinColorStore };
     // 안드로이드 Modal은 닫히는 즉시 자식을 언마운트해 슬라이드가 중간에 멈춘 채 남는다 — 열 때 제자리로
     deckOrder.forEach((id, slot) => deckX[id]?.setValue(deckSlotX(slot)));
     setDisplaySettingsVisible(true);
@@ -918,6 +933,10 @@ export default function MainScreen({ navigation, route }: Props) {
     setDisplaySettingsVisible(false);
   };
   const confirmDisplaySettings = () => {
+    // 확정 시점 정리(리뷰 C-1): '국가 추가 +'로 고르기만 하고 색을 안 골랐거나, 기존 개별 색과 같은 색을
+    // 기본색으로 골랐으면 그 항목은 기본색과 같다 → 지워서 기본색을 따르게 한다. 편집 중에는 칩이 보여야 하므로
+    // (추가 직후 목록에 나타나 색을 고를 수 있어야 함) 후보 선택 시점이 아니라 여기서 지운다.
+    setCountryColors(prev => dropDefaultColored(prev, globeColor));
     dsSnapshot.current = null;
     setEditingCountryColor(null);
     setAddingCountryColor(false);
