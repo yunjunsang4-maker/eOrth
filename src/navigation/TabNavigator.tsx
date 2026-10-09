@@ -14,8 +14,9 @@ import type { TabParamList } from './types';
 /**
  * 하단 탭 — iOS는 네이티브 UITabBar, Android는 기존 JS 플로팅 바(CustomTabBar).
  *
- * iOS 26에서 시스템이 UITabBar에 리퀴드 글래스를 직접 입히고 스크롤 축소(minimize)까지
- * 붙여 준다. JS로 흉내 낸 GlassSurface 폴백보다 정확하고 공짜라 iOS만 갈아탄다.
+ * iOS 26에서 시스템이 UITabBar에 리퀴드 글래스를 직접 입혀 준다. JS로 흉내 낸 GlassSurface
+ * 폴백보다 정확하고 공짜라 iOS만 갈아탄다. 스크롤 축소는 시스템 minimize(왼쪽 작은 알약으로
+ * 모임)를 끄고, modules/tab-scroll-bridge가 바 전체를 제자리에서 작게 줄인다(인스타그램식).
  * Android의 Material 바는 시안(보라 알약·드래그 추종)과 전혀 다른 모양이라 그대로 둔다.
  *
  * ⚠️ 두 네비게이터를 **모듈 레벨에서 한 번** 고른다. 한 컴포넌트 안에서 분기하면
@@ -73,8 +74,9 @@ function IosTabNavigator() {
       tabBarInactiveTintColor={INACTIVE_TINT}
       translucent
       hapticFeedbackEnabled
-      // iOS 26+ 전용. 하위 버전은 이 prop을 무시하므로 분기하지 않는다.
-      minimizeBehavior="onScrollDown"
+      // 시스템 minimize는 끈다 — 바가 왼쪽 작은 알약으로 모여 버린다(2026-10-09 사용자 요청).
+      // 스크롤 축소는 tab-scroll-bridge(Swift)가 tabBar.transform으로 제자리에서 한다.
+      minimizeBehavior="never"
       tabBarHidden={hidden || coachActive}
       // lazy:false — 네 탭을 앱 시작 때 전부 마운트한다(2026-09-20 사용자 요청).
       // 네이티브 탭은 누르는 즉시 컨테이너를 바꾸고 JS는 그제야 그 화면을 처음 그리므로,
