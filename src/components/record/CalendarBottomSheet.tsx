@@ -530,9 +530,10 @@ export function CalendarBottomSheet({
   // 칸마다 그리면 이음새가 깨지고 칩이 옆 칸에 가려진다 — 9/13~14 다섯 번 재발한 원인.
   const bandRuns = recordedRanges ? layoutBandRuns(grid, recordedRanges) : [];
   // 선택 구간(출발~도착)도 같은 행 단위 둥근 띠로 그린다 — 칸마다 사각으로 칠하면 여행 알약 밑에
-  // 모서리 각진 보라 블록이 깔려 시안과 어긋난다(9/21). 양 끝 원은 칸 쪽(edgeCircle)이 그대로 그린다.
-  const selRuns = tempStart && tempEnd
-    ? layoutBandRuns(grid, new Map([['sel', { start: tempStart, end: tempEnd, recordId: 'sel', countryLabel: '' }]]))
+  // 모서리 각진 보라 블록이 깔려 시안과 어긋난다(9/21). 모양은 기록된 여행 알약과 똑같다(흰 10% + PillRing,
+  // 10/09) — 양 끝 보라 원은 없다. 출발만 고른 상태(도착 미정)도 한 칸 알약으로 보이게 end를 출발로 채운다.
+  const selRuns = tempStart
+    ? layoutBandRuns(grid, new Map([['sel', { start: tempStart, end: tempEnd ?? tempStart, recordId: 'sel', countryLabel: '' }]]))
     : [];
   const PILL_INSET = 3;   // 알약 위·아래 여백(시안: 50 행에 44 알약)
   const CHIP_H = 18;
@@ -650,8 +651,10 @@ export function CalendarBottomSheet({
                       return (
                         <View
                           key={`sel-${run.row}`}
-                          style={[calS.pill, { backgroundColor: skinAccent.tint(0.18), left: run.startCol * CELL_SIZE, width: w, top: run.row * CELL_SIZE + PILL_INSET, height: h, borderRadius: h / 2 }]}
-                        />
+                          style={[calS.pill, { left: run.startCol * CELL_SIZE, width: w, top: run.row * CELL_SIZE + PILL_INSET, height: h, borderRadius: h / 2 }]}
+                        >
+                          <PillRing width={w} height={h} radius={h / 2} />
+                        </View>
                       );
                     })}
                     {/* 알약은 시작일 순으로 그려 늦게 시작한 여행이 위에 겹친다(시안: 스페인 위에 포르투갈) */}
@@ -707,11 +710,8 @@ export function CalendarBottomSheet({
                       accessibilityState={{ selected: isEdge || inRange }}
                       style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE }]}
                     >
-                      <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
-                        <Text style={[calS.dayText,
-                          isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
-                          isEdge && calS.edgeText,
-                        ]}>{date.getDate()}</Text>
+                      <View style={calS.dayInner}>
+                        <Text style={[calS.dayText, isToday && [calS.todayText, { color: skinAccent.accent }]]}>{date.getDate()}</Text>
                         {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
                       </View>
                     </TouchableOpacity>
@@ -896,8 +896,6 @@ const calS = StyleSheet.create({
   dayText:     { fontSize: 14, color: '#FFFFFF' },
   todayText:   { color: '#BF85FC', fontWeight: '700' },
 
-  edgeCircle: { backgroundColor: '#BF85FC' },
-  edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
   recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
   // 기존 여행 알약 — 행 안에서 이어지는 구간 하나가 View 하나(좌표는 호출부가 CELL_SIZE로 계산).
