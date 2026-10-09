@@ -125,6 +125,7 @@ export type RootStackParamList = {
     selectedCountry?: SelectedCountryParam;
     tripPrefill?: TripPrefillParam;
     recoPrefill?: RecoPrefillFeedParam;   // AI 추천 프리필 (편집 모드보다 우선순위 낮음)
+    tripGroupId?: string;                 // 여행 상세에서 진입 시 신규 저장 기록을 그 카드에 직접 연결(화면엔 안 보임)
   } | undefined;
   Settings: undefined;
   Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입

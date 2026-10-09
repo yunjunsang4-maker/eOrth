@@ -701,7 +701,12 @@ export default function TripDetailScreen() {
     Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
-  // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
+  // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동.
+  // ⚠️ 같은 국가라고 이 카드에 자동으로 붙지 않는다 — 자동 묶기(recordStore linkRecordToTrip·linkByDate)는
+  //    날짜·세션 기준이다. 그래서 피드·사진첩은 숨은 파라미터 tripGroupId로 이 카드에 직접 붙인다.
+  //    블로그·스트립은 날짜를 반드시 고르게 해, 카드 기간(±7일) 안 날짜면 날짜 규칙으로 대개 이 카드에 붙고
+  //    (기간 밖 날짜를 고르면 다른 카드로 간다 — 사용자 의도로 보고 그대로 둔다),
+  //    스냅은 '지금' 촬영이라 진행 중 여행(세션)으로 가는 게 맞아 tripGroupId를 넘기지 않는다.
   // 미리 채우기(tripPrefill)는 보내지 않는다 — 탭 바 FAB 진입 화면과 똑같이 보이도록 통일.
   const handleAddRecord = (type: string) => {
     setFormatPickerVisible(false);
@@ -720,7 +725,7 @@ export default function TripDetailScreen() {
         nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id });
         break;
       }
-      default:      nav.navigate('NewRecord', { selectedCountry });
+      default:      nav.navigate('NewRecord', { selectedCountry, tripGroupId: trip.id });
     }
   };
 

@@ -50,7 +50,7 @@ import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
-import { matchMoments, countryNameToCode } from '../utils/momentMatch';
+import { matchMoments, countryNameToCode, tripPeriodOf } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { stageWidthNow } from '../utils/stage';
 import { dayRangeMs } from '../utils/dateRangePhotoPick';
@@ -248,7 +248,9 @@ function geoJsonToCountry(name: string, code?: string) {
       return ISO_TO_COUNTRY[converted];
     }
   }
-  const found = COUNTRIES.find(c => c.name === cleanName || c.term.includes(cleanName));
+  // 정확 일치를 먼저 — 한 번에 부분 일치까지 찾으면 목록 앞쪽 나라의 term이 먼저 걸려
+  // 인도→인도네시아, 도미니카→도미니카공화국, 리비아→볼리비아, 기니→적도기니, 말리→소말리아가 됐다(QA F1)
+  const found = COUNTRIES.find(c => c.name === cleanName) ?? COUNTRIES.find(c => c.term.includes(cleanName));
   return found ? { flag: found.flag, name: found.name } : null;
 }
 
@@ -258,10 +260,14 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { records, getCountryPhoto, getCountryPhotoRecord } = useRecordData();
+  const { records, tripGroups, getCountryPhoto, getCountryPhotoRecord } = useRecordData();
   const { activeStayGroup } = useActiveStay();
   const { neighbors } = useSocialGraph();
-  const { addRecord, updateRecord, addTripGroup, setCountryCover } = useRecordActions();
+  const { addRecord, updateRecord, addTripGroup, updateTripGroup, setCountryCover } = useRecordActions();
+  // doSave는 await(toRepHiRes) 뒤에 카드 멤버를 읽는다 — 렌더 클로저의 tripGroups는 그 사이
+  // 동기화로 바뀐 멤버를 못 봐서 덮어쓸 수 있어 최신 렌더 값을 ref로 읽는다(hasInputRef와 같은 패턴).
+  const tripGroupsRef = useRef(tripGroups);
+  tripGroupsRef.current = tripGroups;
   // 동행자 값(혼자/메이트…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -1210,7 +1216,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     await doSave(false);
   };
 
-  const doSave = async (splitByCountry: boolean) => {
+  // cardConfirmed: 아래 '카드 기간 밖' 확인 알림에서 [카드에 넣기]를 눌러 다시 들어온 호출
+  const doSave = async (splitByCountry: boolean, cardConfirmed = false) => {
     if (savingRef.current) return; // 중복 실행 방지 (다이얼로그 이중 탭 등)
     savingRef.current = true;
     setSaving(true);
@@ -1241,6 +1248,52 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           }
         }
       });
+
+      // 여행 상세 카드에서 진입(tripGroupId) — 자동 묶기(linkRecordToTrip)는 국가가 아니라
+      // 날짜·세션 기준이라, 날짜를 '오늘' 그대로 저장하면 보던 카드가 아니라 세션 카드나 새 카드로
+      // 간다(D-1). 그래서 그 카드에 직접 붙인다(AlbumCreate의 tripGroupId 연결과 같은 방식).
+      // 단 편집 모드이거나, 카드가 사라졌거나(삭제·병합), 사용자가 국가를 카드 국가 밖으로 바꿨거나,
+      // 국가별 나누기를 골랐으면 기존 자동 묶기로 둔다 — 다른 나라 기록이 그 카드에 섞이지 않게.
+      // 카드 국가는 진입 effect와 같은 매핑(geoJsonToCountry)으로 맞춰 비교한다. 국가 없는 카드
+      // (사진첩만 있는 카드는 country가 '')는 비교할 기준이 없어 국가 조건 없이 붙인다.
+      const cardId = route.params?.tripGroupId;
+      const cardSel = route.params?.selectedCountry;
+      const cardCountry = cardSel?.name ? geoJsonToCountry(cardSel.name, cardSel.code)?.name : undefined;
+      const cardLinkOk = !isEdit && !!cardId && !splitByCountry &&
+        (!cardCountry || selectedCountries.some((c) => c.name === cardCountry));
+
+      // 기록 날짜가 카드 기간 밖이면 저장 전에 묻는다 — 그대로 붙이면 카드 기간(TripDetail 표시)이
+      // 기록 날짜까지 늘고, 늘어난 기간 ±7일로 이후 회고 기록까지 이 카드에 끌려온다(linkByDate).
+      // 카드 기간은 TripDetail 표시와 같은 규칙(멤버 기록 최소 시작~최대 종료)인 tripPeriodOf로 구한다.
+      // 멤버가 없거나 날짜가 없어 기간을 못 구하면 묻지 않고 붙인다.
+      if (cardLinkOk && !cardConfirmed) {
+        const card = tripGroupsRef.current.find((g) => g.id === cardId);
+        const ids = new Set(card?.records ?? []);
+        const cardPeriod = card ? tripPeriodOf(records.filter((r) => ids.has(r.id))) : null;
+        const recPeriod = tripPeriodOf([{ startDate: firstStart, endDate: firstEnd }]);
+        // 여유 7일 — recordStore linkByDate의 GROUP_GAP_MS(같은 여행으로 보는 간격)와 같은 값.
+        // 그 상수는 Provider 안 지역 상수라 export할 수 없어 값을 맞춰 둔다(snapStrip.ts도 같은 방식).
+        // 엄격 비교면 진행 중 카드(어제까지 기록)에 오늘 기록을 넣을 때마다 헛알림이 뜬다(QA G1).
+        const CARD_GAP_MS = 7 * 24 * 60 * 60 * 1000;
+        if (cardPeriod && recPeriod &&
+          (recPeriod.startMs < cardPeriod.startMs - CARD_GAP_MS || recPeriod.endMs > cardPeriod.endMs + CARD_GAP_MS)) {
+          // 알림이 떠 있는 동안 저장 상태를 풀어 둔다 — [날짜 수정]이면 화면에 머물러 다시 저장할 수 있어야 하고,
+          // [카드에 넣기]는 doSave를 처음부터 다시 부르므로 savingRef가 false여야 통과한다.
+          savingRef.current = false;
+          setSaving(false);
+          const s = formatDate(new Date(cardPeriod.startMs));
+          const e = formatDate(new Date(cardPeriod.endMs));
+          Alert.alert(
+            t('newRecord.cardRangeTitle'),
+            t('newRecord.cardRangeBody', { range: s === e ? s : `${s} ~ ${e}` }),
+            [
+              { text: t('newRecord.cardRangeFix'), style: 'cancel' },
+              { text: t('newRecord.cardRangeAdd'), onPress: () => { doSave(splitByCountry, true); } },
+            ]
+          );
+          return;
+        }
+      }
 
       // 활성화된 나라에서 대표 미지정이면 카드 커버용으로 첫 사진을 대표로 사용
       const effectiveRep = representativePhoto || (countryActivated ? medias[0] : undefined);
@@ -1302,15 +1355,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         // (핀) 활성화된 단일국가면 addRecord 전 현재 대표를 캡처(새 기록이 최신순으로 잡히기 전)
         const preCover = countryActivated && singleCountryName ? getCountryPhotoRecord(singleCountryName) : null;
 
+        // 카드 직접 연결 대상(조건은 위 cardLinkOk 주석) — await 뒤라 최신 멤버를 ref로 다시 읽는다
+        const cardTarget = cardLinkOk ? tripGroupsRef.current.find((g) => g.id === cardId) : undefined;
+
         const recId = addRecord(
           {
             user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
             viewType: 'feed',
             ...payload,
           },
-          // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다
-          { linkTrip: !splitByCountry }
+          // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다.
+          // 카드 직접 연결이면 자동 묶기를 끈다 — 켜 두면 다른 카드에도 중복으로 들어간다.
+          { linkTrip: !splitByCountry && !cardTarget }
         );
+        if (cardTarget && !cardTarget.records.includes(recId)) {
+          updateTripGroup(cardTarget.id, { records: [...cardTarget.records, recId] });
+        }
 
         // 다음 새 글의 기본값 — 원본을 골랐어도 기억한다(원본이 취향이면 계속 원본으로 시작)
         setLastPhotoFrame(photoFrame);
