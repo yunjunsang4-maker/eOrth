@@ -8,7 +8,7 @@ import UIKit
 //      TabNavigator.tsx 는 minimizeBehavior="never" 로 시스템 축소를 끄고 이 모듈이 직접 줄인다.
 //      공개 UIKit API 에 "제자리 축소"가 없어서 tabBar.transform 으로 한다.
 //
-// 구성 (셋 다 앱 시작 시 AppDelegate 구독자가 한 번 설치):
+// 구성 (앱 시작 시 AppDelegate 구독자가 한 번 설치. 1)은 iOS 버전 무관, 2)·3)은 iOS 26 이상에서만 — install() 참고):
 //  1) UIViewController.contentScrollView(for:) 스위즐 — 탭 VC 가 nil 을 돌려줄 때 RN 화면 트리에서
 //     세로 주 스크롤뷰를 찾아 준다. 원래는 시스템 minimize 를 구동하려고 넣은 것인데
 //     (기본 자동 탐색이 RCTScrollView 내부 UIScrollView 를 못 찾음 —
@@ -97,8 +97,14 @@ enum TabScrollSwizzle {
 
   static func install() {
     _ = installOnce
-    _ = installScrollHookOnce
-    _ = installTabBarFrameHookOnce
+    // 축소(2·3번 훅)는 iOS 26 의 떠 있는 캡슐 바 전용이다. iOS 17·18 은 화면 끝까지 닿는 전폭 클래식 UITabBar 라
+    // 0.85배로 줄이면 바 배경째 작아져 좌우에 틈이 생기고 아래가 들려 뒤 콘텐츠가 비친다(리뷰 E-1, 2026-10-09).
+    // 44c056a 이전 minimizeBehavior 도 하위 버전에선 무시돼 아무 일도 없었으므로, 훅을 아예 안 거는 게 원래 동작이다.
+    // TabBarShrinker 는 2번 훅(tsb_didMoveToWindow)에서만 불리므로 여기서 막으면 축소 경로 전체가 꺼진다.
+    if #available(iOS 26, *) {
+      _ = installScrollHookOnce
+      _ = installTabBarFrameHookOnce
+    }
   }
 }
 

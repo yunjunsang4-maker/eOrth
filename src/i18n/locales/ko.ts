@@ -995,6 +995,11 @@ const ko = {
     coverConflictBody: '이 사진을 {{country}} 지구본 대표로 바꿀까요?',
     coverKeep: '유지',
     coverReplace: '바꾸기',
+    // 여행 카드에서 진입한 새 기록의 날짜가 카드 기간 밖일 때 저장 직전 확인 (D-1)
+    cardRangeTitle: '여행 카드 기간 밖의 날짜',
+    cardRangeBody: '기록 날짜가 이 카드 기간({{range}}) 밖이에요. 이대로 넣으면 카드 기간이 기록 날짜까지 늘어나요.',
+    cardRangeFix: '날짜 수정',
+    cardRangeAdd: '카드에 넣기',
     missText: '글',
     missAllCountryRatings: '모든 국가 평점',
     missRating: '평점',

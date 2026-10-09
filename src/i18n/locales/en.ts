@@ -989,6 +989,11 @@ const en = {
     coverConflictBody: 'Use this photo as the globe cover for {{country}}?',
     coverKeep: 'Keep',
     coverReplace: 'Replace',
+    // Save-time check when a new record from a trip card falls outside the card's dates (D-1)
+    cardRangeTitle: 'Date outside this trip',
+    cardRangeBody: 'This trip card covers {{range}}. Adding this record will stretch the card to its date.',
+    cardRangeFix: 'Edit date',
+    cardRangeAdd: 'Add to card',
     missText: 'Text',
     missAllCountryRatings: 'Ratings for all countries',
     missRating: 'Rating',
