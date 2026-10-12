@@ -789,7 +789,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 4,
+    marginTop: 2, // 아이디 ↔ 근거 문구 세로 2
   },
   matchPctTxt: {
     fontSize: 11,
