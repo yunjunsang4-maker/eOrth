@@ -1475,7 +1475,7 @@ const ko = {
     acceptRequestA11y: '{{name}}님의 팔로우 요청 수락',
     declineRequestA11y: '{{name}}님의 팔로우 요청 거절',
     suggestedReason: '여행 취향이 맞을 수 있어요',
-    matchPercent: '{{pct}}% 일치',
+    matchPercent: '일치도 {{pct}}%',
     incomingBannerBody: '수락하면 서로의 기록을 볼 수 있어요',
     viewMyMates: '내 메이트 보기',
     suggestedFriends: '추천 메이트',

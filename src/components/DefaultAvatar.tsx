@@ -3,9 +3,9 @@
  * 시안(2026-10 남의 프로필) 측정값: 110 원 기준 채움 #121316 + 회색 그라데이션 림,
  * 가운데 사람 실루엣 #89898B(폭 = 지름 × 0.29, 뷰박스 32×37).
  *
- * 림은 ProfileVisuals `pvAvatarInnerGrad`(검정0→흰색, 오른쪽 아래)와 같은 계열 —
- * 왼쪽 위(#323337 은은) → 대각 중간(투명, 오른쪽 위·왼쪽 아래 30~60°/210~240°가 거의 안 보임)
- * → 오른쪽 아래(#6F6F72 가장 밝음)로 가는 대각 선형 그라데이션.
+ * 림은 왼쪽 위·오른쪽 아래(#6F6F72) → 대각 중간(투명, 오른쪽 위·왼쪽 아래가 거의 안 보임)으로 가는
+ * 대각 선형 그라데이션 — 앱 기준 링(PillRing)처럼 양 모서리가 같은 밝기다(2026-10-12 사용자 지시,
+ * 예전엔 왼쪽 위가 #323337로 거의 안 보였다).
  */
 import React from 'react';
 import { View } from 'react-native';
@@ -33,8 +33,9 @@ export default function DefaultAvatar({ size }: { size: number }) {
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} fill="none">
         <Defs>
           <LinearGradient id={gradId} x1="0" y1="0" x2={size} y2={size} gradientUnits="userSpaceOnUse">
-            <Stop offset="0" stopColor="#323337" />
-            <Stop offset="0.5" stopColor="#323337" stopOpacity="0" />
+            {/* 원의 왼쪽 위 끝은 대각 진행도 ≈0.15, 오른쪽 아래 끝 ≈0.85 — 두 끝을 같은 밝기로(앱 기준 링처럼 양 모서리) */}
+            <Stop offset="0.15" stopColor="#6F6F72" />
+            <Stop offset="0.5" stopColor="#6F6F72" stopOpacity="0" />
             <Stop offset="0.85" stopColor="#6F6F72" />
           </LinearGradient>
         </Defs>

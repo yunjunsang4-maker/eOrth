@@ -80,7 +80,17 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 0건 (2026-10-06 겹치는 나라 표본 상한 반영)
+## 1. 지금 해야 하는 것 — 0건 (2026-10-12 추천 메이트 나라 표본 상한 반영)
+
+### ✅ 반영 완료(2026-10-12, 사용자 실행) — `mate_suggestions_compute` 나라 이름 표본 상한 3 → 30
+
+> `supabase/migration-2026-10-12-mate-sample-cap.sql` (schema.sql `mate_suggestions_compute` 본문과 동일 내용 + 캐시 비우기). **운영·테스트 양쪽** SQL Editor에서 실행.
+
+- **문제:** 메이트 찾기 추천 행의 겹치는 나라 칩은 가로로 밀어 보고 4번째부터 흐리게 그리는데, 서버가 이름을 `[1:3]`으로 잘라 4번째 칩이 생기지 않는다.
+- **고침:** cshared CTE의 `[1:3] as sample_countries` → `[1:30]`(overlap_with와 같은 값). 희소 나라 우선 정렬·k-익명 필터는 그대로. 반환 타입 불변이라 `create or replace`만 — `drop function` 줄은 일부러 안 넣었다(캐시 래퍼 `mate_suggestions` 소실 방지). 끝에서 `mate_suggestions_cache`를 비워 6시간 TTL 없이 바로 반영.
+- **앱 배포 순서 제약 없음:** 미반영이면 이름이 ≤3개라 흐린 칩이 안 뜰 뿐 정상 동작한다.
+- **확인:** `select pg_get_functiondef('public.mate_suggestions_compute(int, text[])'::regprocedure) like '%[1:30] as sample_countries%';` → `true`. 래퍼 생존: `select proname from pg_proc where proname = 'mate_suggestions';` → 1행.
+- ⚠️ 사용자가 "sql했고"라고 알려 옴 — 운영·테스트 **둘 다** 실행했는지는 확인하지 않았다. 위 확인 쿼리를 양쪽에서 돌려 볼 것.
 
 ### ✅ 반영 완료(2026-10-06, 사용자 실행 — 운영·테스트 양쪽) — `overlap_with` 나라 이름 표본 상한 3 → 30 + 이름순 정렬 (2026-10-05 추가)
 

@@ -1218,7 +1218,7 @@ language sql security definer set search_path = public as $$
            --    shared_count와 shared_weight(점수)는 거르지 않는다 — 순위 정확도는 그대로 두고
            --    화면에 나가는 이름만 무디게 한다. 전부 걸러지면 null → scored에서 '{}'가 된다.
            (array_agg(sp.name order by cw.w desc)
-              filter (where cuc.visitors >= public.k_anon_min()))[1:3] as sample_countries,
+              filter (where cuc.visitors >= public.k_anon_min()))[1:30] as sample_countries,
            sum(cw.w) as shared_weight
     from cshared_pairs sp
     join country_weight cw on cw.name = sp.name

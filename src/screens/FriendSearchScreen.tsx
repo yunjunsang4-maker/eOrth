@@ -9,14 +9,14 @@ import {
   ActivityIndicator,
   Share,
   Platform,
-  Keyboard,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { GlobeIcon, SearchIcon, BackChevronIcon } from '../components/icons';
+import { SearchIcon, BackChevronIcon } from '../components/icons';
 import AuthorAvatar from '../components/AuthorAvatar';
+import { AutoPillRing } from '../components/record/CalendarBottomSheet';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useProfileSettings } from '../store/settingsStore';
 import { useRecordData, useSocialGraph, useRecordActions } from '../store/recordStore';
@@ -32,7 +32,6 @@ import { labelFromKey } from '../utils/travelDnaScore';
 import { tap } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
-import { GlassSurface } from '../components/GlassSurface';
 import { useTravelDna } from '../store/travelDnaStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -48,13 +47,19 @@ const C = {
   white: '#FFFFFF',
   divider: '#1A1A26',
   gray: '#3A3A4A',
+  // 2026-10 추천메이트 시안
+  headerLine: '#25262A', // 헤더 아래 전폭 구분선
+  searchBg: '#18191D',   // 검색창 채움
+  mateFill: '#7C3AED',   // 메이트 신청/수락 단색 필 — 스킨 무관 고정색(skinTheme엔 단색 버튼 토큰이 없다)
+  chipBg: '#1D1E21',     // 겹치는 나라 칩
+  chipBorder: 'rgba(255,255,255,0.12)',
+  chipText: '#C8C8D4',
 };
 
-/** 취소 캡슐의 둥근 정도 — 검색창 높이(패딩 10+10 + 15pt 한 줄 ≈ 40)의 절반.
- *  실측이 아니라 상수인 이유: GlassSurface(iOS)는 borderRadius를 숫자로만 받는데,
- *  이 한 값 때문에 onLayout → setState 를 붙이면 키 입력마다 도는 행에 재렌더가 얹힌다.
- *  높이가 이보다 낮은 기기에서는 네이티브가 알아서 절반으로 깎아 그린다(완전 둥근형 유지). */
-const CANCEL_R = 20;
+// 겹치는 나라 칩은 이 개수까지 선명하게, 그 뒤(4번째부터)는 흐리게(시안).
+// ⚠️ mate_suggestions의 sample_countries는 지금 서버에서 [1:3]으로 잘려 온다(supabase/schema.sql:1220-1221)
+//    — 서버 상한을 올리기 전까지 흐린 칩은 나타나지 않는다.
+const BRIGHT_FLAG_CHIPS = 3;
 
 // 딥링크 생성은 utils/appLinks의 profileLink만 사용한다(핸들 인코딩·스킴 소문자 규칙 포함).
 
@@ -93,25 +98,23 @@ FLAG_BY_KO_NAME['한국'] = FLAG_BY_KO_NAME['대한민국'] ?? '🇰🇷'; // �
 
 // ─────────────────────────────────────────────
 // 메이트 신청 버튼 — 상태 4종을 시각적으로 구분한다.
-//   신청 가능: 스킨 그라데이션 필(네온 글로우) — 지금 누를 것
-//   수락 대기: 그라데이션 필 — 상대가 나에게 신청해 둔 상태. 신청보다 더 확실한 CTA다
+//   신청 가능: 단색 보라 필(C.mateFill) — 지금 누를 것
+//   수락 대기: 같은 단색 필 — 상대가 나에게 신청해 둔 상태. 신청보다 더 확실한 CTA다
 //   신청됨   : 스킨색 아웃라인 고스트 — 되돌릴 수 있는 대기 상태
 //   메이트   : 무채색 고스트 — 완료돼 더 이상 유도하지 않음
-// 누를 때 살짝 눌리는 스프링(0.94)으로 촉감을 준다. 앱의 CTA 언어(둥근 필 + 그라데이션)를 따른다.
+// 누를 때 살짝 눌리는 스프링(0.94)으로 촉감을 준다. 시안(2026-10)대로 그라데이션·글로우 없음.
 // ─────────────────────────────────────────────
 function MateButton({
   state,
   label,
   onPress,
   accent,
-  gradient,
   tint,
 }: {
   state: 'idle' | 'incoming' | 'requested' | 'mate';
   label: string;
   onPress: (e: any) => void;
   accent: string;
-  gradient: [string, string];
   tint: (a: number) => string;
 }) {
   const press = useRef(new Animated.Value(0)).current;
@@ -119,7 +122,7 @@ function MateButton({
   const to = (v: number) =>
     Animated.spring(press, { toValue: v, friction: 7, tension: 220, useNativeDriver: true }).start();
 
-  // 수락 대기도 '지금 누를 버튼'이라 신청 가능과 같은 그라데이션 위계를 준다
+  // 수락 대기도 '지금 누를 버튼'이라 신청 가능과 같은 단색 필 위계를 준다
   const ghost = state !== 'idle' && state !== 'incoming';
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
@@ -132,27 +135,18 @@ function MateButton({
         accessibilityLabel={label}
         style={[
           s.mateBtn,
-          ghost && {
-            borderWidth: 1,
-            borderColor: state === 'requested' ? tint(0.5) : 'rgba(255,255,255,0.16)',
-            backgroundColor: state === 'requested' ? tint(0.12) : 'rgba(255,255,255,0.06)',
-          },
-          // 신청 가능 상태만 네온 글로우 — 눈이 먼저 가야 할 버튼
-          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
-          !ghost && Platform.select({
-            ios: { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
-            default: {},
-          }),
+          ghost
+            ? {
+                borderWidth: 1,
+                borderColor: state === 'requested' ? tint(0.5) : 'rgba(255,255,255,0.16)',
+                backgroundColor: state === 'requested' ? tint(0.12) : 'rgba(255,255,255,0.06)',
+              }
+            : { backgroundColor: C.mateFill },
         ]}
       >
-        {!ghost && (
-          <LinearGradient
-            colors={gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        )}
+        {/* 단색 필에만 앱 기준 링(대각 흰 그라데이션). 고스트는 자체 borderWidth가 있어 겹치지 않게 뺀다.
+            AutoPillRing은 부모를 실측하므로 필에 borderWidth·overflow hidden을 주지 말 것 */}
+        {!ghost && <AutoPillRing />}
         <Text
           style={[
             s.mateBtnTxt,
@@ -187,27 +181,32 @@ function FriendItem({
   onPress?: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
+  const skinAccent = useSkinAccent(); // 일치도 문구·고스트 버튼을 스킨 강조색으로
   const shared = item.sharedCountries ?? [];
+  const overlapCount = item.sharedCount ?? shared.length;
   const pct = matchPercent(item.matchScore);
-  // 겹치는 나라 국기 칩 (최대 3개 + 나머지 개수)
-  const flags = shared.slice(0, 3).map((c) => ({
+  // 겹치는 나라 국기 칩 (한 줄, 넘치면 잘림). BRIGHT_FLAG_CHIPS개 이후(4번째부터)는 흐리게(시안의 '스위스' 칩).
+  const flags = shared.map((c) => ({
     name: countryLabel(c, i18n.language),
     flag: FLAG_BY_KO_NAME[c] ?? '',
   }));
-  const extraFlagCount = Math.max(0, (item.sharedCount ?? shared.length) - flags.length);
 
-  // 추천 이유 한 줄 — 가장 기여도 높은 축을 pickReason이 고른다(도시 > 나라 > 시의성 …).
-  // 근거가 없을 때: 검색 결과는 방문국·메이트 수를, 추천 행은 중립 문구를 쓴다
+  // 추천 이유 한 줄.
+  // 추천 행: 겹친 나라가 1곳 이상이면 항상 '나와 겹치는 나라 N곳'(시안) — 도시 근거(reasonCity)가
+  //   있어도 이쪽이 이긴다. 겹친 나라가 0이면 pickReason(도시 > 시의성 > 설문 성향 > 함께 아는 메이트)
+  //   → 그래도 없으면 중립 문구.
+  // 검색 결과: pickReason 입력이 전부 비어 null → 방문국·메이트 수를 쓴다
   // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
   const reason = pickReason({
     recencyScore: item.recencyScore ?? 0,
     surveyScore: item.surveyScore ?? 0,
     mutualCount: item.mutualCount ?? 0,
     sharedCities: item.sharedCities ?? [],
-    sharedCount: item.sharedCount ?? shared.length,
+    sharedCount: overlapCount,
   });
-  const reasonText = reason
+  const reasonText = item.fromSuggestion && overlapCount > 0
+    ? t('friends.overlapReason', { count: overlapCount })
+    : reason
     ? t(reason.key, reason.params)
     : item.fromSuggestion
       ? t('friends.suggestedReason')
@@ -220,25 +219,19 @@ function FriendItem({
 
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
-      <View style={s.avatar}>
-        {/* 앱 공용 아바타 — 사진 없거나 로드 실패면 사람 실루엣(프로필 탭과 동일).
-            profiles.emoji는 스키마 기본값 '🧳'이 전 계정에 박혀 있어 폴백으로 쓰면 안 된다. */}
-        <AuthorAvatar photo={item.photo ?? undefined} size={46} />
-      </View>
+      {/* 앱 공용 아바타 — 사진 없거나 로드 실패면 DefaultAvatar(원+림+실루엣)를 그린다.
+          배경 컨테이너를 두지 않는다 — 깔면 DefaultAvatar 림이 묻힌다.
+          profiles.emoji는 스키마 기본값 '🧳'이 전 계정에 박혀 있어 폴백으로 쓰면 안 된다. */}
+      <AuthorAvatar photo={item.photo ?? undefined} size={58} />
       <View style={s.friendInfo}>
         {/* 닉네임 폐지 — 아이디 한 줄만 표시(@ 접두 없음) */}
-        <View style={s.nameRow}>
-          <Text style={[s.friendUsername, { color: skinAccent.accent }]} numberOfLines={1}>{item.username}</Text>
-          {/* 여행 DNA 매칭률 — RPC가 주는 종합 점수를 드러낸다(지금까진 버려지고 있었다) */}
+        <Text style={s.friendUsername} numberOfLines={1}>{item.username}</Text>
+        {/* 근거 문구 + 여행 DNA 일치도(RPC 종합 점수). 임계 미만이면 pct가 null → 일치도 생략 */}
+        <View style={s.reasonRow}>
+          <Text style={s.friendCountries} numberOfLines={1} {...andFitText}>{reasonText}</Text>
           {pct != null && (
-            <View style={[s.matchBadge, { borderColor: skinAccent.tint(0.45), backgroundColor: skinAccent.tint(0.14) }]}>
-              <Text style={[s.matchBadgeTxt, { color: skinAccent.accent }]}>{t('friends.matchPercent', { pct })}</Text>
-            </View>
+            <Text style={[s.matchPctTxt, { color: skinAccent.accent }]} numberOfLines={1}>{t('friends.matchPercent', { pct })}</Text>
           )}
-        </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <GlobeIcon size={12} color="#A1A1B0" />
-          <Text style={s.friendCountries} {...andFitText}>{reasonText}</Text>
         </View>
         {/* 여행 DNA 유형 — 축 점수는 비공개, 라벨 문구만(설계 §9·§10) */}
         {!!dnaText && (
@@ -246,20 +239,23 @@ function FriendItem({
             <Text style={s.dnaTypeChipTxt} numberOfLines={1}>{dnaText}</Text>
           </View>
         )}
-        {/* 겹치는 나라를 국기 칩으로 — 한 줄 텍스트로 잘리던 것을 한눈에 */}
+        {/* 겹치는 나라를 국기 칩으로 — 한 줄, 넘치면 가로로 밀어 본다 */}
         {flags.length > 0 && (
-          <View style={s.flagRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={s.flagRow}
+            contentContainerStyle={s.flagRowContent}
+          >
             {flags.map((f, i) => (
-              <View key={`${f.name}-${i}`} style={s.flagChip}>
-                <Text style={s.flagChipTxt}>{f.flag ? `${f.flag} ` : ''}{f.name}</Text>
+              <View
+                key={`${f.name}-${i}`}
+                style={[s.flagChip, i >= BRIGHT_FLAG_CHIPS && { opacity: 0.35 }]}
+              >
+                <Text style={s.flagChipTxt} numberOfLines={1}>{f.flag ? `${f.flag} ` : ''}{f.name}</Text>
               </View>
             ))}
-            {extraFlagCount > 0 && (
-              <View style={s.flagChip}>
-                <Text style={s.flagChipTxt}>+{extraFlagCount}</Text>
-              </View>
-            )}
-          </View>
+          </ScrollView>
         )}
       </View>
       <MateButton
@@ -273,7 +269,6 @@ function FriendItem({
               : t('friends.neighborRequest')}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         accent={skinAccent.accent}
-        gradient={skinAccent.btnGradient}
         tint={skinAccent.tint}
       />
     </TouchableOpacity>
@@ -519,20 +514,18 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
   const visibleSuggestions = suggestions.filter(notBlocked);
 
-  // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거
+  // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거. 시안대로 행 사이 구분선 없음
   const renderRows = (list: ContactFriend[]) =>
-    list.map((item, idx) => (
-      <React.Fragment key={item.id}>
-        <FriendItem
-          item={item}
-          following={isNeighbor(item.id)}
-          requested={isNeighborRequested(item.id)}
-          incoming={isNeighborRequestReceived(item.id)}
-          onToggle={() => onNeighborToggle(item)}
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
-        />
-        {idx < list.length - 1 && <View style={s.divider} />}
-      </React.Fragment>
+    list.map((item) => (
+      <FriendItem
+        key={item.id}
+        item={item}
+        following={isNeighbor(item.id)}
+        requested={isNeighborRequested(item.id)}
+        incoming={isNeighborRequestReceived(item.id)}
+        onToggle={() => onNeighborToggle(item)}
+        onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
+      />
     ));
 
   return (
@@ -545,11 +538,12 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         <Text style={s.headerTitle}>{t('friends.searchTitle')}</Text>
         <View style={s.backBtn} />
       </View>
+      {/* 헤더 아래 전폭 구분선 */}
+      <View style={s.headerLine} />
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
-      {/* ── 검색창 + 취소 캡슐 ── */}
-      <View style={s.searchRow}>
+      {/* ── 검색창 ── */}
       <View style={s.searchWrap}>
         <SearchIcon size={16} color="#A1A1B0" />
         <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
@@ -568,39 +562,6 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             <Text style={s.clearBtn}>✕</Text>
           </TouchableOpacity>
         )}
-      </View>
-
-      {/* 취소 — 입력 중이면 비우기, 이미 비어 있으면 화면을 닫는다(iOS 검색 관례).
-          iOS만 유리 캡슐(GlassSurface가 iOS26 GlassView / 구형 BlurView를 알아서 고른다).
-          Android는 유리 대신 아웃라인 — dimezis 블러가 이 크기에선 비용 대비 얻는 게 없다.
-          ⚠️ 이 버튼 자체에는 borderWidth·overflow를 주지 않는다(iOS 경로) — 유리 표면 위에
-             부모 테두리가 겹치면 둥근 모서리가 이중으로 깎인다. */}
-      <TouchableOpacity
-        style={s.cancelBtn}
-        activeOpacity={0.8}
-        onPress={() => {
-          if (query.length > 0) {
-            setQuery('');
-            Keyboard.dismiss();
-          } else {
-            handleGoBack();
-          }
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.cancel')}
-      >
-        {Platform.OS === 'ios' && (
-          <GlassSurface
-            style={StyleSheet.absoluteFill}
-            borderRadius={CANCEL_R}
-            tintColor="#2E2E3B80"
-            fallbackTint="rgba(46,46,59,0.6)"
-            androidTint="#2E2E3B"
-            edgeHighlight
-          />
-        )}
-        <Text style={s.cancelText}>{t('common.cancel')}</Text>
-      </TouchableOpacity>
       </View>
 
       {/* ── 메이트 리스트 ── */}
@@ -727,42 +688,23 @@ const s = StyleSheet.create({
     color: C.white,
   },
 
-  // 검색창 행 — 검색창(flex:1) + 취소 캡슐.
-  // 바깥 여백은 searchWrap에서 이 행으로 올렸다(검색창 혼자 16을 들고 있으면 캡슐이 그 밖에 선다).
-  // alignItems:'stretch' 라 캡슐 높이가 검색창을 따라간다 — 한쪽에 고정 높이를 박지 않는다.
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    marginHorizontal: 16,
-    marginBottom: 20,
-    gap: 8,
+  // 헤더 아래 전폭 구분선(좌우 여백 없음)
+  headerLine: {
+    height: 1,
+    backgroundColor: C.headerLine,
   },
-  // 검색창
+  // 검색창 — 좌우 16 전폭, 높이 40 고정(시안)
   searchWrap: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: C.card,
+    height: 40,
+    marginHorizontal: 16,
+    marginTop: 22,
+    marginBottom: 18,
+    backgroundColor: C.searchBg,
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
     gap: 8,
-  },
-  // 취소 캡슐 — iOS는 GlassSurface가 배경을 깔고, Android는 아웃라인만.
-  cancelBtn: {
-    paddingHorizontal: 14,
-    borderRadius: CANCEL_R,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Platform.select({
-      android: { borderWidth: 1, borderColor: C.card },
-      default: {},
-    }),
-  },
-  cancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.white,
   },
   searchInput: {
     flex: 1,
@@ -828,66 +770,63 @@ const s = StyleSheet.create({
 
   // 섹션 라벨
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: C.accent,
-    marginBottom: 12,
+    marginBottom: 14,
   },
 
-  // 메이트 아이템
+  // 메이트 아이템 — 위아래 12씩 → 사람과 사람 사이 24
   friendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    gap: 12,
-  },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: '#1F1F22',
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 16, // 프사 ↔ 글(아이디·근거 문구) 사이 16
   },
 
-  // 아이디 + 매칭률 배지 한 줄
-  nameRow: {
+  // 근거 문구 + 일치도 한 줄
+  reasonRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: 4,
   },
-  matchBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  matchBadgeTxt: {
-    fontSize: 10,
-    fontWeight: '800',
+  matchPctTxt: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 
-  // 겹치는 나라 국기 칩
+  // 겹치는 나라 국기 칩 — 한 줄 고정, 넘치면 잘린다
   flagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-    marginTop: 5,
+    marginTop: 6,
+    flexGrow: 0,
   },
+  flagRowContent: {
+    gap: 4,
+  },
+  // 높이는 고정하지 않는다 — 테두리 1×2 + paddingVertical 1×2 + lineHeight 12 = 기본 배율에서 시안 16.
+  // 안드로이드는 lineHeight도 글꼴 배율(상한 1.2)을 따라 커지므로, height:16 고정이면 안쪽 14를 넘겨
+  // 한글·국기 이모지 위아래가 잘린다. minHeight로 두어 배율이 커지면 칩이 같이 자라게 한다.
   flagChip: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    minHeight: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: C.chipBorder,
+    backgroundColor: C.chipBg,
+    justifyContent: 'center',
   },
   flagChipTxt: {
-    fontSize: 10,
-    color: '#C8C8D4',
+    fontSize: 9,
+    // 9pt×1.2(안드로이드 행간 관례)=10.8보다 넉넉한 12 — 국기 이모지가 한글보다 키가 크다
+    lineHeight: 12,
+    includeFontPadding: false, // 안드로이드 기본 상하 여백 제거(iOS 무시) — 작은 칩 안 글리프가 아래로 밀림
+    color: C.chipText,
     fontWeight: '600',
   },
   friendInfo: {
     flex: 1,
-    gap: 2,
   },
 
   // 여행 DNA 유형 칩 — flagChip과 같은 크기감, 보라 네온 톤으로 구분
@@ -905,38 +844,30 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
   friendUsername: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    color: C.accent,
+    color: C.white,
   },
   friendCountries: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 2,
+    flexShrink: 1, // 길면 근거 문구가 줄고 일치도는 남는다
+    fontSize: 11,
+    color: C.dim,
   },
 
-  // 메이트 신청 버튼 — 완전한 필(pill). 그라데이션이 모서리를 넘지 않게 overflow hidden.
+  // 메이트 신청 버튼 — 완전한 필(pill), 높이 30
   mateBtn: {
-    minWidth: 78,
-    height: 34,
-    borderRadius: 999,
-    paddingHorizontal: 14,
+    minWidth: 80,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   mateBtnTxt: {
-    fontSize: 12.5,
+    fontSize: 12,
     fontWeight: '800',
     color: C.white,
     letterSpacing: 0.2,
-  },
-
-  // 구분선
-  divider: {
-    height: 1,
-    backgroundColor: C.divider,
-    marginLeft: 58,
   },
 
   // 빈 상태
