@@ -53,7 +53,10 @@ const C = {
   mateFill: '#7C3AED',   // 메이트 신청/수락 단색 필 — 스킨 무관 고정색(skinTheme엔 단색 버튼 토큰이 없다)
   chipBg: '#1D1E21',     // 겹치는 나라 칩
   chipBorder: 'rgba(255,255,255,0.12)',
-  chipText: '#C8C8D4',
+  chipText: 'rgba(255,255,255,0.7)',
+  // 피그마 2025:2423 글자색 — 섹션 라벨·일치도는 스킨 무관 고정 보라
+  labelPurple: '#AC6FFF',
+  textHalf: 'rgba(255,255,255,0.5)', // 근거 문구·검색 안내 문구
 };
 
 // 겹치는 나라 칩은 이 개수까지 선명하게, 그 뒤(4번째부터)는 흐리게(시안).
@@ -181,7 +184,7 @@ function FriendItem({
   onPress?: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const skinAccent = useSkinAccent(); // 일치도 문구·고스트 버튼을 스킨 강조색으로
+  const skinAccent = useSkinAccent(); // 고스트 버튼(신청됨)을 스킨 강조색으로 — 일치도는 피그마 고정 보라
   const shared = item.sharedCountries ?? [];
   const overlapCount = item.sharedCount ?? shared.length;
   const pct = matchPercent(item.matchScore);
@@ -230,7 +233,7 @@ function FriendItem({
         <View style={s.reasonRow}>
           <Text style={s.friendCountries} numberOfLines={1} {...andFitText}>{reasonText}</Text>
           {pct != null && (
-            <Text style={[s.matchPctTxt, { color: skinAccent.accent }]} numberOfLines={1}>{t('friends.matchPercent', { pct })}</Text>
+            <Text style={s.matchPctTxt} numberOfLines={1}>{t('friends.matchPercent', { pct })}</Text>
           )}
         </View>
         {/* 여행 DNA 유형 — 축 점수는 비공개, 라벨 문구만(설계 §9·§10) */}
@@ -549,7 +552,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={s.searchInput}
           placeholder={t('friends.nameOrIdPlaceholder')}
-          placeholderTextColor={C.dim}
+          placeholderTextColor={C.textHalf}
           value={query}
           onChangeText={setQuery}
           autoCorrect={false}
@@ -573,7 +576,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         {isSearching ? (
           /* 검색 결과 (아이디/핸들) */
           <>
-            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.searchResults')}</Text>
+            <Text style={s.sectionLabel}>{t('friends.searchResults')}</Text>
             {searching ? (
               <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 40 }} />
             ) : searchError ? (
@@ -623,7 +626,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
             {visibleSuggestions.length > 0 && (
               <>
-                <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
+                <Text style={s.sectionLabel}>{t('friends.suggestedFriends')}</Text>
                 {renderRows(visibleSuggestions)}
               </>
             )}
@@ -686,6 +689,7 @@ const s = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: C.white,
+    letterSpacing: 0.72,
   },
 
   // 헤더 아래 전폭 구분선(좌우 여백 없음)
@@ -772,7 +776,7 @@ const s = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: C.accent,
+    color: C.labelPurple,
     marginBottom: 14,
   },
 
@@ -792,6 +796,7 @@ const s = StyleSheet.create({
     marginTop: 2, // 아이디 ↔ 근거 문구 세로 2
   },
   matchPctTxt: {
+    color: C.labelPurple,
     fontSize: 10,
     fontWeight: '600',
   },
@@ -847,11 +852,12 @@ const s = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: C.white,
+    letterSpacing: 0.48,
   },
   friendCountries: {
     flexShrink: 1, // 길면 근거 문구가 줄고 일치도는 남는다
     fontSize: 10,
-    color: C.dim,
+    color: C.textHalf,
   },
 
   // 메이트 신청 버튼 — 완전한 필(pill), 높이 30
@@ -867,7 +873,7 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: C.white,
-    letterSpacing: 0.2,
+    letterSpacing: 0.36,
   },
 
   // 빈 상태
