@@ -708,7 +708,7 @@ const s = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
     color: C.white,
     padding: 0,
   },
@@ -792,7 +792,7 @@ const s = StyleSheet.create({
     marginTop: 2, // 아이디 ↔ 근거 문구 세로 2
   },
   matchPctTxt: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
 
@@ -850,7 +850,7 @@ const s = StyleSheet.create({
   },
   friendCountries: {
     flexShrink: 1, // 길면 근거 문구가 줄고 일치도는 남는다
-    fontSize: 11,
+    fontSize: 10,
     color: C.dim,
   },
 
