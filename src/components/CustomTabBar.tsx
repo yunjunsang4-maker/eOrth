@@ -16,7 +16,7 @@ import { GlassSurface } from './GlassSurface';
 import { useCoachActive } from './coachOverlayState';
 import { useTabBarHidden } from './tabBarVisibility';
 import { useSkinAccent } from '../constants/skinTheme';
-import { andFitText } from '../utils/fitText';
+import { andFitText, andNoFontScale } from '../utils/fitText';
 // 앱 공용 대각 흰색 링 그라데이션(단일 출처). 이 Rect들은 폭이 애니메이션되므로 PillRing 대신 그라데이션만 가져다 쓴다
 import { DiagonalRingGradient } from './record/CalendarBottomSheet';
 import Svg, {
@@ -299,6 +299,7 @@ const TabItem: React.FC<{
               style={styles.label}
               numberOfLines={1}
               {...andFitText}
+              {...andNoFontScale}
               onTextLayout={(e) => { const w = e.nativeEvent.lines[0]?.width ?? 0; if (w > 0) { labelW.value = Math.ceil(w); setLabelWJs(Math.ceil(w)); } }}
             >{label}</Text>
           </Animated.View>

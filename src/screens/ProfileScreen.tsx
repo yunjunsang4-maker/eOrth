@@ -2029,7 +2029,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           {/* 이름 · 위치 · 소개 · 통계 */}
           <View style={styles.profileInfo}>
             <Text style={[styles.userName, nameFontStyle]}>{profileName}</Text>
-            <View style={styles.statusRow}>
+            <View style={[styles.statusRow, Platform.OS === 'android' && styles.statusRowWrap]}>
               {/* 거주국·체류국 — 길어지면 먼저 줄어들어 오른쪽 DNA 칩이 밀려나지 않게 한다 */}
               <TouchableOpacity style={styles.locationTap} disabled={!stayActive} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
                 <Text style={styles.userLocation} numberOfLines={1}>
@@ -2064,6 +2064,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               <TouchableOpacity
                 style={[
                   styles.dnaChip,
+                  Platform.OS === 'android' && styles.dnaChipNoMargin,
                   // 채움은 진한 강조색 25%(8자리 hex #RRGGBBAA, 0x40 ≈ 0.25), 테두리는 밝은 강조색 30%
                   { backgroundColor: `${skinAccent.accentDeep}40`, borderColor: skinAccent.tint(0.3) },
                   !dnaComplete && styles.dnaChipEmpty,
@@ -2511,6 +2512,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // 안드로이드 전용(iOS 무변경) — 글꼴 배율(최대 1.2)·넓은 Noto 글리프 때문에 거주국과 DNA 칩이
+  // 한 줄에서 서로 줄어들며 둘 다 잘렸다('대한..'). 줄바꿈을 허용해 안 들어가면 칩이 다음 줄로 내려간다.
+  // Yoga는 wrap 컨테이너에서 flex-basis(내용 폭)로 먼저 줄을 나눈 뒤 줄 안에서만 축소하므로
+  // flexShrink는 그대로 둬도 된다 — 한 항목이 혼자 줄 폭을 넘을 때만 말줄임된다.
+  // 칩 간격은 marginLeft 대신 columnGap — 다음 줄로 내려간 칩이 8만큼 들여쓰기돼 보이지 않게.
+  statusRowWrap: {
+    flexWrap: 'wrap',
+    columnGap: 8,
+    rowGap: 6,
+  },
   // 거주국 탭 영역 — 같은 행의 DNA 칩과 공간을 나눠 갖는다. 국가명이 길면(체류 중 문구 등)
   // 이쪽이 먼저 줄어들어야 칩이 화면 밖으로 밀리지 않는다.
   locationTap: {
@@ -2565,6 +2576,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     // backgroundColor·borderColor는 스킨 강조색 — 인라인
+  },
+  // 안드로이드 전용 — 간격은 statusRowWrap의 columnGap이 맡는다(줄바꿈 시 들여쓰기 방지)
+  dnaChipNoMargin: {
+    marginLeft: 0,
   },
   // 미완료(빈 상태) — 채움 없이 점선 테두리만. 본인 신원 블록의 빈자리를 드러내 검사를 유도.
   // 인라인 스킨 채움보다 뒤에 와야 transparent가 이긴다.
