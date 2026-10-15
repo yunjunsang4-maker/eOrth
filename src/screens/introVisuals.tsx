@@ -146,7 +146,7 @@ export function IntroVisual1({ active = true }: { active?: boolean }) {
 // 두 값은 반드시 함께 움직인다 — 어긋나면 마퀴 리셋 지점에 이음새가 드러난다.
 // (BAND_LEFT는 손대지 않는다. 두 번째 장의 원점은 (BAND_LEFT - BAND_W) + BAND_W = BAND_LEFT
 //  로 BAND_W와 무관해, 폭을 늘려도 시작 구도가 그대로 유지된다.)
-const INTRO2_BAND = require('../../assets/intro2-band.png');
+const INTRO2_BAND = require('../../assets/intro2-band.webp');
 const BAND_W = 1088;
 const BAND_H = 433;
 const BAND_LEFT = -420; // 시안 크롭 기준 초기 위치(시안 단위)
@@ -195,10 +195,10 @@ export function IntroVisual2() {
 // (absoluteBoundingBox, 402 기준)대로 배치하고, 각기 다른 주기·위상으로 둥둥 떠다니게 한다.
 // 스프라이트 제작: 피그마 3x 렌더에서 추출 — 배지는 밝은 림 볼록껍질 마스크로 배경 제거,
 // 코인·링은 벡터 SVG를 크롬 헤드리스로 투명 래스터화(assets/intro3/*).
-const I3_PLANE = require('../../assets/intro3/badge-plane.png');
-const I3_PASSPORT = require('../../assets/intro3/badge-passport.png');
-const I3_PEOPLE = require('../../assets/intro3/badge-people.png');
-const I3_COIN_LG = require('../../assets/intro3/coin-globe-lg.png');
+const I3_PLANE = require('../../assets/intro3/badge-plane.webp');
+const I3_PASSPORT = require('../../assets/intro3/badge-passport.webp');
+const I3_PEOPLE = require('../../assets/intro3/badge-people.webp');
+const I3_COIN_LG = require('../../assets/intro3/coin-globe-lg.webp');
 const I3_COIN_SM = require('../../assets/intro3/coin-globe-sm.png');
 const I3_RING = require('../../assets/intro3/orbit-ring.png');
 
@@ -288,12 +288,12 @@ export function IntroVisual3() {
 // 행성 동심 링은 시안 좌표가 기존 렌더와 동일해 유지. 아바타 5종·말풍선 3종은
 // 피그마 SVG(사진 임베디드)를 크롬 헤드리스로 3x 투명 래스터화한 스프라이트(assets/intro4/*)를
 // 시안 절대좌표에 배치하고, 각기 다른 주기·위상·진폭으로 불규칙하게 떠다니게 해 입체감을 준다.
-const I4_ORB = require('../../assets/intro4/orb-bg.png');
+const I4_ORB = require('../../assets/intro4/orb-bg.webp');
 const I4_SPOT = require('../../assets/intro4/spot.png');
 const I4_BUBBLE1 = require('../../assets/intro4/bubble1.png');
 const I4_BUBBLE2 = require('../../assets/intro4/bubble2.png');
 const I4_BUBBLE3 = require('../../assets/intro4/bubble3.png');
-const I4_AVA_LG = require('../../assets/intro4/avatar-lg.png');
+const I4_AVA_LG = require('../../assets/intro4/avatar-lg.webp');
 const I4_AVA_R = require('../../assets/intro4/avatar-r.png');
 const I4_AVA_L = require('../../assets/intro4/avatar-l.png');
 const I4_AVA_PR = require('../../assets/intro4/avatar-plain-r.png');

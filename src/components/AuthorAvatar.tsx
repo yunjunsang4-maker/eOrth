@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import DefaultAvatar from './DefaultAvatar';
 
 // eOrth 공식 예시 아바타 이미지(지구본) — 소셜 예시 기록의 '이어스' 프로필 사진
-const APP_LOGO = require('../../assets/example-avatar.png');
+const APP_LOGO = require('../../assets/example-avatar.webp');
 
 // 작성자 아바타 내부 표시: 프로필 사진이 있으면 원형 이미지, 없으면 프로필 탭과 동일한 사람 실루엣.
 // 부모(원형 컨테이너) 안에 들어가는 inner 노드만 렌더한다(컨테이너 배경/테두리는 그대로 링으로 보임).

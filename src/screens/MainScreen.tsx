@@ -107,8 +107,8 @@ const DS_DECK_PEEK = 26;
 // (시안 글자 중심이 오른쪽 끝에서 aurora 18.4·cyan 18.2·mint 16.3 — 띠 중앙 13 기준 보정).
 const SKIN_CARD_ART: Record<string, { src: number; hScale: number; yOff: number; opacity: number; labelTop: number; labelInset: number }> = {
   aurora: { src: require('../../assets/globe-skins/aurora-card.png'), hScale: 1.20396, yOff: -0.10199, opacity: 0.8, labelTop: 11.5, labelInset: 4.6 }, // Group 2085664691 (201×122)
-  cyan: { src: require('../../assets/globe-skins/cyan-card.png'), hScale: 1.13352, yOff: -0.06676, opacity: 0.8, labelTop: 14.5, labelInset: 4.4 }, // Group 2085664692 (402×874)
-  mint: { src: require('../../assets/globe-skins/mint-card.png'), hScale: 1.10518, yOff: -0.05259, opacity: 1, labelTop: 13.8, labelInset: 2.5 }, // Group 2085664693 (402×874, 불투명)
+  cyan: { src: require('../../assets/globe-skins/cyan-card.webp'), hScale: 1.13352, yOff: -0.06676, opacity: 0.8, labelTop: 14.5, labelInset: 4.4 }, // Group 2085664692 (402×874)
+  mint: { src: require('../../assets/globe-skins/mint-card.webp'), hScale: 1.10518, yOff: -0.05259, opacity: 1, labelTop: 13.8, labelInset: 2.5 }, // Group 2085664693 (402×874, 불투명)
 };
 const DS_DECK_ORDER: Record<string, string[]> = {
   aurora: ['aurora', 'cyan', 'mint'],

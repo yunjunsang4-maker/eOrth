@@ -114,6 +114,7 @@
       ],
       "./modules/withGoogleSigninModularHeaders",
       "./modules/withAndroidLintExtraTranslation",
+      "./modules/withR8Optimize",
       [
         "react-native-google-mobile-ads",
         {

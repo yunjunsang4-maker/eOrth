@@ -71,7 +71,7 @@ import { thumbOf } from '../utils/thumbUrl';
 import { stageWidthNow, useStageGutter, useStageWidth, STAGE_MAX_W } from '../utils/stage';
 import { useTabBarClearance } from '../utils/tabBar';
 
-const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
+const APP_LOGO = require('../../assets/example-avatar.webp'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';

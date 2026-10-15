@@ -7,8 +7,8 @@ import { Text } from '../../ui/Text';
 // 슬롯 비율·로고 규칙만 동일하게 맞춘 가벼운 재현본을 쓴다.
 // 로고 제거 / 프레임 커스텀 두 카드가 함께 쓴다.
 
-const PHOTO_A = require('../../../assets/example/feed1.jpg');
-const PHOTO_B = require('../../../assets/example/snap1.jpg');
+const PHOTO_A = require('../../../assets/example/feed1.webp');
+const PHOTO_B = require('../../../assets/example/snap1.webp');
 
 // CutPhotoCanvas와 같은 로고 자산 — 밝은 배경엔 검정, 어두운 배경엔 흰색
 const LOGO_WHITE = require('../../../assets/logo-white.png');

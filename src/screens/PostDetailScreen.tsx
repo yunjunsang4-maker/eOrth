@@ -62,7 +62,7 @@ import { tap, warn } from '../utils/haptics';
 import TimeAgoText from '../components/TimeAgoText';
 import { validSpans, pickStyle, layoutRuns } from '../utils/richText';
 
-const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
+const APP_LOGO = require('../../assets/example-avatar.webp'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useProfileSettings } from '../store/settingsStore';
 import { andFitText } from '../utils/fitText';
 import { isFramed, frameHeight, frameFillColor, normalizePhotoFrame, type PhotoFrame } from '../utils/photoFrame';
