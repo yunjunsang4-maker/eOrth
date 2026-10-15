@@ -19,6 +19,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText, andNoFontScale } from '../utils/fitText';
 // 앱 공용 대각 흰색 링 그라데이션(단일 출처). 이 Rect들은 폭이 애니메이션되므로 PillRing 대신 그라데이션만 가져다 쓴다
 import { DiagonalRingGradient } from './record/CalendarBottomSheet';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -605,18 +606,37 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
           바 자신의 콘텐츠(활성 알약·아이콘)가 섞여 들어가 알약 바깥으로 빛이 번져 나갔다.
           (실측: 알약 왼쪽 바깥 50px 구간에서 파랑 채널이 18→25로 완만히 상승)
           원래 androidBlur를 켠 이유는 "블러 없는 반투명 틴트는 뒤 콘텐츠가 뚫고 비친다"였는데,
-          그건 옛 기본 폴백이 불투명도 0.3이었을 때 얘기다. 바 고유 톤(#0A0A0F)의 고불투명
-          매트를 직접 주면 비침도 없고 번짐도 없다 — StatsScreen 과 같은 처리.
-          탭 바는 스크롤 위에 항상 떠 있어 dimezis 리페인트 부담도 가장 큰 자리다. */}
+          그건 옛 기본 폴백이 불투명도 0.3이었을 때 얘기다. 고불투명 매트를 직접 주면 비침도
+          없고 번짐도 없다 — StatsScreen 과 같은 처리.
+          탭 바는 스크롤 위에 항상 떠 있어 dimezis 리페인트 부담도 가장 큰 자리다.
+          안드로이드 매트색은 바 고유 톤 #0A0A0F 92% → 카드 토큰 #2E2E3B 86%로 바꿨다(2026-10-16).
+          #0A0A0F 매트는 배경과 같은 색이라 시안(밝은 회색 유리 알약)과 달리 거의 검정으로 보였다.
+          활성 알약(rgba(117,26,173,0.3))은 이 위에서 ≈#402559~#492E61(광택 포함)이 된다 — 시안보다 채도가 낮으면 안드로이드 알약만 진하게 조정.
+          ⚠️ androidTint 는 iOS 투명도 줄이기 폴백(GlassSurface reduce 분기)에서도 쓰인다 —
+          iOS 색이 바뀌지 않게 반드시 플랫폼으로 갈라 둘 것. */}
       <GlassSurface
         style={StyleSheet.absoluteFill}
         borderRadius={BAR_R}
         tintColor="#0A0A0F80"
         fallbackTint="rgba(10,10,15,0.38)"
-        androidTint="rgba(10,10,15,0.92)"
+        androidTint={Platform.OS === 'android' ? 'rgba(46,46,59,0.86)' : 'rgba(10,10,15,0.92)'}
         // edgeHighlight 는 끈다(2026-10-15). 9/15에 켰더니 굴절 림(안쪽 1~6px 흰 띠)이 바깥
         // 대각 흰색 링 바로 안쪽에 붙어 테두리가 두 겹으로 보였다 — 초반 탭 바 모습으로 되돌림.
       />
+
+      {/* 안드로이드 전용 광택 — 위쪽이 살짝 밝은 유리 느낌. 탭 행보다 아래에 깐다.
+          ⚠️ SVG Rect width="100%"·animatedProps 로 그리지 말 것: 안드로이드 RNSVG 는 폭이 바뀐 뒤
+          갱신이 안 된다(아래 테두리 Rect 주석 참고). View 기반 LinearGradient 는 컨테이너
+          (androidSize 로 커밋된 폭)를 그대로 따른다. edgeHighlight 는 켜지 않는다(위 주석). */}
+      {Platform.OS === 'android' && (
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.02)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={[StyleSheet.absoluteFill, { borderRadius: BAR_R, overflow: 'hidden' }]}
+        />
+      )}
 
       {/* 탭 콘텐츠 — 유리 위에 형제로 올림.
           iOS: 가로 드래그하면 활성 알약이 손가락을 따라 흐르고 놓은 자리 탭으로 확정.
