@@ -25,7 +25,7 @@ import {
   UIManager,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import type { ImageSourcePropType } from 'react-native';
+import type { ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -115,6 +115,23 @@ const GLASS = {
   innerBottom: 'rgba(255,255,255,0.02)',
   specular:    'rgba(255,255,255,0.55)',
 };
+
+// ─── 여행 카드 하단 정보 바 재질 — iOS는 실블러, Android는 블러 없는 어두운 반투명 매트 ───
+// 안드로이드 dimezisBlurView(실험 기능)가 이 바를 하얗게 띄웠다(2026-10-16 사용자 신고).
+// 카드마다 반복되는 요소라 GlassSurface·SheetBackdrop와 같은 매트 폴백 정책을 따른다.
+// 매트색은 스타일의 틴트(#0E0E11 0.16)를 0.6까지 올린 것 — 블러 없이도 흰 글자가 읽히게.
+const CardInfoBar = ({ intensity, style, children }: {
+  intensity: number;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) =>
+  Platform.OS === 'android' ? (
+    <View style={[style, { backgroundColor: 'rgba(14,14,17,0.6)' }]}>{children}</View>
+  ) : (
+    <BlurView intensity={intensity} tint="dark" experimentalBlurMethod="dimezisBlurView" style={style}>
+      {children}
+    </BlurView>
+  );
 
 // ─── 팔로워 카드 (네온 글래스 칩) ───
 const StatCard = ({
@@ -2226,12 +2243,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
               </View>
             )}
-            <BlurView
-              intensity={48}
-              tint="dark"
-              experimentalBlurMethod="dimezisBlurView"
-              style={thumbSt.mainInfoBar}
-            >
+            <CardInfoBar intensity={48} style={thumbSt.mainInfoBar}>
               <View style={{ flex: 1 }}>
                 {displayTrips[0].stayLabel && (
                   <Text style={thumbSt.stayBadge}>{displayTrips[0].stayLabel}</Text>
@@ -2249,7 +2261,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 ))}
               </View>
               {/* 여행 기억(✨) 진입은 상세 여행 화면(TripDetail) 헤더에서만 — 카드에는 두지 않는다(사용자 결정) */}
-            </BlurView>
+            </CardInfoBar>
             {mergeMode && mergeableIds.has(displayTrips[0].id) && (
               <MergeSelectOverlay
                 order={mergeSelected.indexOf(displayTrips[0].id)}
@@ -2307,12 +2319,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
                   </View>
                 )}
-                <BlurView
-                  intensity={44}
-                  tint="dark"
-                  experimentalBlurMethod="dimezisBlurView"
-                  style={thumbSt.gridInfoBar}
-                >
+                <CardInfoBar intensity={44} style={thumbSt.gridInfoBar}>
                   {trip.stayLabel && (
                     <Text style={thumbSt.stayBadge}>{trip.stayLabel}</Text>
                   )}
@@ -2328,7 +2335,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     ))}
                   </View>
                   {/* 여행 기억(✨) 진입은 상세 여행 화면에서만(사용자 결정) */}
-                </BlurView>
+                </CardInfoBar>
                 {mergeMode && mergeableIds.has(trip.id) && (
                   <MergeSelectOverlay
                     order={mergeSelected.indexOf(trip.id)}
