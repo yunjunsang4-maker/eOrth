@@ -29,10 +29,8 @@ export type HeadingLevel = 1 | 2 | 3;
 
 // ─── 개별 블록 데이터 ───
 
-export interface TextBlock {
-  id: string;
-  type: 'text';
-  value: string;
+// 글자 단위 서식 (네이버 블로그처럼 고른 글자에만 적용) — 로직은 utils/richText.ts
+export interface SpanStyle {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -41,7 +39,30 @@ export interface TextBlock {
   bgColor?: string;
   fontSize?: number;
   fontFamily?: string;
-  align?: TextAlign;
+}
+
+export interface TextSpan extends SpanStyle {
+  text: string;
+}
+
+export interface TextBlock {
+  id: string;
+  type: 'text';
+  value: string;
+  // 블록 단위 서식 — 글자 단위 서식 이전 글과의 호환용. 실효 서식 = { ...블록 서식, ...span 서식 }
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+  bgColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  align?: TextAlign; // 정렬은 문단 속성이라 블록 단위로 남는다
+  // 글자 단위 서식. 불변식: spans의 text를 이어 붙이면 value와 같다.
+  // 어긋나면(구버전 앱이 value만 고친 경우) spans를 무시하고 블록 서식으로 그린다.
+  // value는 언제나 본문 평문 전체 — blocksToPlainText·autoToc·DM 공유 등이 value만 읽는다.
+  spans?: TextSpan[];
 }
 
 export interface HeadingBlock {

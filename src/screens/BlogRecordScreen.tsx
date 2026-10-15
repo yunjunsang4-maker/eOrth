@@ -90,6 +90,8 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
+import type { SpanStyle } from '../types/blogBlocks';
+import { spansOf, pickStyle, applyStyle, applyTextChange, styleAt, compactSpans, layoutRuns } from '../utils/richText';
 import { useLateFontsLoaded, lateFontFamily } from '../constants/lateFonts';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { isValidRect } from '../utils/coachRect';
@@ -644,6 +646,36 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   const scrollRef = useRef<ScrollView>(null);
   const blockRefs = useRef<Record<string, TextInput | null>>({});
+  // 글자 단위 서식 — 블록별 마지막 선택 범위(onSelectionChange). 툴바를 누르면 키보드가
+  // 내려가며 입력칸이 blur되지만 이 값은 지우지 않는다(그 범위에 서식을 줘야 하므로).
+  // 핸들러 전용(ref) — 렌더에서는 읽지 않는다(React Compiler: 렌더 중 ref 읽기는 화면 컴파일을 깨거나 값이 굳는다).
+  const textSelRef = useRef<Record<string, { start: number; end: number }>>({});
+  // 렌더(툴바·피커 활성 표시)용 선택 사본 — 서식 바가 열려 있을 때만 갱신해 커서 이동마다 재렌더하지 않는다.
+  // 서식 바를 여는 순간 textSelRef에서 한 번 맞춘다(아래 'Aa' 버튼).
+  const [fmtSel, setFmtSel] = useState<{ id: string; start: number; end: number } | null>(null);
+  // 커서만 있을 때 고른 서식 = 그 자리에서 다음에 입력할 글자 서식(네이버와 같은 동작).
+  // 커서가 at을 떠나면 무효(입력 시작점이 at일 때만 쓰고, 텍스트가 바뀌면 지운다).
+  const [pendingFmt, setPendingFmt] = useState<{ blockId: string; at: number; style: SpanStyle } | null>(null);
+  // ── iOS 한글 자판 대응 ──
+  // RN iOS(RCTTextInputComponentView _textOf:equals:)는 자판이 ko-KR이거나 글에 이모지가 있으면 글자만
+  // 비교해, 텍스트가 같으면 서식만 바뀐 attributed text를 다시 넣지 않는다 → 한국 사용자에겐 기본 경로.
+  // ① 범위 서식·이탈 시: 블록 TextInput의 key 리비전을 올려 다시 마운트(처음부터 새 서식으로 그림).
+  // ② 커서 서식(pending): TextInput 자체 style을 바꾸면 updateProps → defaultTextAttributes setter →
+  //    typingAttributes가 그 서식이 되어(RCTUITextView setDefaultTextAttributes) 새로 치는 글자가 네이티브에서
+  //    바로 그 서식으로 들어간다. 입력 중 다시 마운트는 조합을 깨므로 이 길만 쓴다.
+  //    setter는 사전이 바뀔 때만 typingAttributes를 덮어서, 같은 서식을 두 번 골라도 먹히게 nonce로
+  //    letterSpacing(0 ↔ 0.01, 눈에 안 보임)을 번갈아 준다. 조각(span)은 letterSpacing·글꼴을 명시해 영향 없음.
+  //    이 style은 blur 때까지 유지한다 — 입력 직후 되돌리면 setter가 조합 중 typingAttributes를 다시 덮는다.
+  const [textRev, setTextRev] = useState<Record<string, number>>({});
+  const [iosTyping, setIosTyping] = useState<{ blockId: string; style: SpanStyle; nonce: number } | null>(null);
+  // 마지막 마운트 이후 텍스트·서식이 바뀌었는지 — blur 때 이게 true일 때만 다시 마운트(마운트가 부른 blur로 무한 반복 방지)
+  const iosDirtyRef = useRef<Record<string, boolean>>({});
+  // 범위 서식으로 다시 마운트한 뒤 되살릴 포커스·선택 — rev 이상인 새 인스턴스의 ref 콜백(커밋 단계)에서 한 번만 쓰고 지운다
+  const restoreFocusRef = useRef<{ blockId: string; rev: number; start: number; end: number } | null>(null);
+  const bumpTextRev = (id: string) => {
+    iosDirtyRef.current[id] = false;
+    setTextRev(m => ({ ...m, [id]: (m[id] ?? 0) + 1 }));
+  };
   const travelScrollRef = useRef<ScrollView>(null);
 
   // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
@@ -924,7 +956,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         setTimeout(() => blockRefs.current[tb.id]?.focus(), 50);
         return;
       }
-      updateBlock(id, { value: '' } as any);
+      // 텍스트 블록이면 글자 서식(spans)도 같이 비운다 — value만 비우면 낡은 spans가 초안·서버까지 실린다
+      updateBlock(id, (only?.type === 'text' ? { value: '', spans: undefined } : { value: '' }) as any);
       return;
     }
     const idx = blocks.findIndex(b => b.id === id);
@@ -937,35 +970,90 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
-  // ─── 서식 적용 (활성 텍스트 블록에) ───
+  // ─── 서식 적용 (활성 텍스트 블록의 선택한 글자에) ───
+  // 선택 범위가 있으면 그 글자들에, 커서만 있으면 다음에 입력할 글자에(pending) 적용한다.
+  // 블록 서식 필드(bold 등)는 옛 글 호환용으로 남겨 두고 건드리지 않는다 — 실효 서식 = 블록 + span.
+  // 핸들러용 — 기록된 선택이 없으면 끝에 커서가 있는 것으로 본다
+  const textSelOf = (tb: TextBlock) => textSelRef.current[tb.id] ?? { start: tb.value.length, end: tb.value.length };
+
+  // 선택 범위·커서의 실효 서식 — 툴바·피커 활성 표시와 토글 판정 기준(순수 계산, ref 안 읽음)
+  const activeFormat = (tb: TextBlock | null, sel: { start: number; end: number }): SpanStyle => {
+    if (!tb) return {};
+    const st0 = styleAt(spansOf(tb), sel.start, sel.end, pickStyle(tb));
+    const p = pendingFmt;
+    return sel.start === sel.end && p && p.blockId === tb.id && p.at === sel.start ? { ...st0, ...p.style } : st0;
+  };
+
+  const applyFormat = (patch: SpanStyle) => {
+    const tb = activeTextBlock();
+    if (!tb) return;
+    const sel = textSelOf(tb);
+    if (sel.start !== sel.end) {
+      updateBlock(tb.id, { spans: compactSpans(applyStyle(spansOf(tb), sel.start, sel.end, patch)) } as any);
+      if (Platform.OS === 'ios') {
+        // 다시 마운트해 새 서식을 그린다(위 ①). 포커스가 있었으면 되살리고 선택 범위를 복원
+        // 복원은 타이머가 아니라 새 인스턴스의 ref 콜백에서 한다(재렌더가 늦으면 타이머가 옛 인스턴스를 잡는다)
+        if (blockRefs.current[tb.id]?.isFocused()) {
+          restoreFocusRef.current = { blockId: tb.id, rev: (textRev[tb.id] ?? 0) + 1, start: sel.start, end: sel.end };
+        }
+        bumpTextRev(tb.id);
+      }
+      return;
+    }
+    const p = pendingFmt;
+    const style = { ...(p && p.blockId === tb.id && p.at === sel.start ? p.style : {}), ...patch };
+    setPendingFmt({ blockId: tb.id, at: sel.start, style });
+    if (Platform.OS === 'ios') {
+      // 새로 칠 글자의 실효 서식(커서 앞 글자 + pending)을 입력칸 자체 style로 → typingAttributes(위 ②)
+      const eff = { ...styleAt(spansOf(tb), sel.start, sel.start, pickStyle(tb)), ...style };
+      setIosTyping(prev => ({ blockId: tb.id, style: eff, nonce: (prev?.nonce ?? 0) + 1 }));
+      iosDirtyRef.current[tb.id] = true;
+    }
+  };
+
+  // 범위 전체가 이미 켜져 있으면 끄고, 아니면 켠다
   const toggleFormat = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
     const tb = activeTextBlock();
     if (!tb) return;
-    updateBlock(tb.id, { [key]: !tb[key] } as any);
+    applyFormat({ [key]: !activeFormat(tb, textSelOf(tb))[key] });
   };
 
   const setBlockColor = (color: string) => {
-    const tb = activeTextBlock();
-    if (tb) updateBlock(tb.id, { color } as any);
+    applyFormat({ color });
     setColorPickerVisible(false);
   };
 
   const setBlockBgColor = (bgColor: string) => {
-    const tb = activeTextBlock();
-    if (tb) updateBlock(tb.id, { bgColor } as any);
+    applyFormat({ bgColor });
     setBgColorPickerVisible(false);
   };
 
   const setBlockFontSize = (fontSize: number) => {
-    const tb = activeTextBlock();
-    if (tb) updateBlock(tb.id, { fontSize } as any);
+    applyFormat({ fontSize });
     setFontSizePickerVisible(false);
   };
 
   const setBlockFontFamily = (fontFamily: string) => {
-    const tb = activeTextBlock();
-    if (tb) updateBlock(tb.id, { fontFamily } as any);
+    applyFormat({ fontFamily });
     setFontPickerVisible(false);
+  };
+
+  // 텍스트 블록 입력 — value와 spans를 함께 갱신. 결과 spans를 이어 붙이면 반드시 v와 같다
+  // (applyTextChange가 구조적으로 보장 + 아래 가드). RN iOS는 네이티브 텍스트와 children 텍스트가
+  // 같으면 attributed text를 다시 넣지 않으므로, 이 불변식이 깨지면 한글 조합이 끊긴다.
+  const onTextBlockChange = (id: string, v: string) => {
+    // 변경 직전 커서 — iOS(multiline)·안드로이드 모두 onChangeText가 선택 변경 이벤트보다 먼저 온다
+    const sel = textSelRef.current[id];
+    const p = pendingFmt;
+    const pending = p && p.blockId === id && sel && sel.start === sel.end && sel.start === p.at ? p.style : null;
+    if (p) setPendingFmt(null); // 한 번 입력하면 이후 글자는 앞 글자 서식을 자연히 이어받는다
+    if (Platform.OS === 'ios') iosDirtyRef.current[id] = true; // 네이티브 표시가 데이터와 어긋났을 수 있음 → blur 때 다시 마운트
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== id || b.type !== 'text') return b;
+      let spans = applyTextChange(spansOf(b), v, pending, sel?.start);
+      if (spans.map(s => s.text).join('') !== v) spans = [{ text: v }]; // 방어 — 불변식 우선(서식 포기)
+      return { ...b, value: v, spans: compactSpans(spans) } as TextBlock;
+    }));
   };
 
   const setBlockAlign = (align: TextAlign) => {
@@ -1445,6 +1533,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 필수 항목 미입력 체크
   const atb = activeTextBlock();
   const showFormatBar = !!atb;
+  // 선택 범위·커서 기준 실효 서식(글자 단위) — 정렬만 블록(atb) 기준. 선택 사본이 없으면 끝 커서로 본다
+  const fmt = activeFormat(atb, atb && fmtSel?.id === atb.id ? fmtSel : { start: atb?.value.length ?? 0, end: atb?.value.length ?? 0 });
 
   // ─── 렌더 ───
   return (
@@ -1616,16 +1706,18 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {/* ── 서브 패널: 글꼴 서식 ── */}
         {fontBarVisible && (
           <View style={st.subPanel}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
+            {/* keyboardShouldPersistTaps — 기본('never')이면 키보드가 떠 있을 때 첫 탭이 키보드만 내리고
+                버튼은 안 눌린다. 글자 단위 서식은 선택 범위를 쥔 채 첫 탭에 적용돼야 한다 */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow} keyboardShouldPersistTaps="handled">
               {showFormatBar && (
                 <>
-                  <FormatBtn label="B" active={!!atb?.bold} onPress={() => toggleFormat('bold')} bold />
-                  <FormatBtn label="I" active={!!atb?.italic} onPress={() => toggleFormat('italic')} italic />
-                  <FormatBtn label="U" active={!!atb?.underline} onPress={() => toggleFormat('underline')} underline />
-                  <FormatBtn label="S" active={!!atb?.strikethrough} onPress={() => toggleFormat('strikethrough')} strike />
+                  <FormatBtn label="B" active={!!fmt.bold} onPress={() => toggleFormat('bold')} bold />
+                  <FormatBtn label="I" active={!!fmt.italic} onPress={() => toggleFormat('italic')} italic />
+                  <FormatBtn label="U" active={!!fmt.underline} onPress={() => toggleFormat('underline')} underline />
+                  <FormatBtn label="S" active={!!fmt.strikethrough} onPress={() => toggleFormat('strikethrough')} strike />
                   <ToolSep />
-                  <FormatBtn label="A" onPress={() => setColorPickerVisible(true)} colorDot={atb?.color || C.white} />
-                  <FormatBtn label="▧" onPress={() => setBgColorPickerVisible(true)} colorDot={atb?.bgColor || 'transparent'} />
+                  <FormatBtn label="A" onPress={() => setColorPickerVisible(true)} colorDot={fmt.color || C.white} />
+                  <FormatBtn label="▧" onPress={() => setBgColorPickerVisible(true)} colorDot={fmt.bgColor || 'transparent'} />
                   <ToolSep />
                 </>
               )}
@@ -1683,7 +1775,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={st.toolbar}>
           <View style={st.mainToolRow}>
             <ToolBtn icon={<CameraIcon size={22} color="#A1A1B0" />} label={t('blog.photo')} onPress={() => { setPhotoMenuVisible(!photoMenuVisible); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
-            <ToolBtn icon="Aa" label={t('blog.font')} onPress={() => { setFontBarVisible(!fontBarVisible); setPhotoMenuVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon="Aa" label={t('blog.font')} onPress={() => {
+              // 서식 바가 닫혀 있는 동안엔 선택 사본(fmtSel)을 갱신하지 않으므로 여는 순간 맞춘다
+              if (!fontBarVisible && activeBlockId) {
+                const s = textSelRef.current[activeBlockId];
+                setFmtSel(s ? { id: activeBlockId, ...s } : null);
+              }
+              setFontBarVisible(!fontBarVisible); setPhotoMenuVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
             <ToolBtn icon="☰" label={t('blog.lineCleanup')} onPress={() => { setHeadingBarVisible(!headingBarVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setMoreMenuVisible(false); }} />
             <TouchableOpacity style={st.toolBtn} onPress={() => { setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); setTravelInfoVisible(true); }} activeOpacity={0.6}>
               <View style={st.toolIcon}>
@@ -1785,7 +1883,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <PickerModal visible={colorPickerVisible} onClose={() => setColorPickerVisible(false)} title={t('blog.textColor')}>
         <View style={st.colorGrid}>
           {TEXT_COLORS.map(c => (
-            <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, atb?.color === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
+            <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, fmt.color === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockColor(c)} />
           ))}
         </View>
@@ -1796,7 +1894,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={st.colorGrid}>
           {BG_COLORS.map((c, i) => (
             <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
-              atb?.bgColor === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
+              fmt.bgColor === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockBgColor(c)}>
               {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }} {...andFitText}>{t('blog.none')}</Text>}
             </TouchableOpacity>
@@ -1807,10 +1905,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 글꼴 크기 */}
       <PickerModal visible={fontSizePickerVisible} onClose={() => setFontSizePickerVisible(false)} title={t('blog.fontSize')}>
         {FONT_SIZE_OPTIONS.map(opt => (
-          <TouchableOpacity key={opt.size} style={[st.pickerOption, atb?.fontSize === opt.size && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
+          <TouchableOpacity key={opt.size} style={[st.pickerOption, fmt.fontSize === opt.size && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
             onPress={() => setBlockFontSize(opt.size)}>
-            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{t((FONT_SIZE_KEY[opt.size] ?? opt.label) as any)}</Text>
-            {atb?.fontSize === opt.size && <Text style={[st.checkMark, { color: skinAccent.accent }]}>✓</Text>}
+            <Text style={[st.pickerOptionText, { fontSize: opt.size }, fmt.fontSize === opt.size && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{t((FONT_SIZE_KEY[opt.size] ?? opt.label) as any)}</Text>
+            {fmt.fontSize === opt.size && <Text style={[st.checkMark, { color: skinAccent.accent }]}>✓</Text>}
           </TouchableOpacity>
         ))}
       </PickerModal>
@@ -1818,10 +1916,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 글꼴 종류 */}
       <PickerModal visible={fontPickerVisible} onClose={() => setFontPickerVisible(false)} title={t('blog.fontFamily')}>
         {FONT_OPTIONS.map(opt => (
-          <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
+          <TouchableOpacity key={opt.value} style={[st.pickerOption, fmt.fontFamily === opt.value && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, opt.value !== 'System' && !!lateFontFamily(opt.value, lateFonts) && { fontFamily: opt.value }, atb?.fontFamily === opt.value && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
-            {atb?.fontFamily === opt.value && <Text style={[st.checkMark, { color: skinAccent.accent }]}>✓</Text>}
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && !!lateFontFamily(opt.value, lateFonts) && { fontFamily: opt.value }, fmt.fontFamily === opt.value && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
+            {fmt.fontFamily === opt.value && <Text style={[st.checkMark, { color: skinAccent.accent }]}>✓</Text>}
           </TouchableOpacity>
         ))}
       </PickerModal>
@@ -2407,24 +2505,83 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         // 변형을 찾다 실패해 시스템 폰트로 통째로 폴백한다 → 안드로이드는 서체 유지 우선.
         // 고정 lineHeight 26은 '제목급'(26px)에서 한글 상하가 잘려 글자 크기에 비례시킨다.
         // 글꼴 등록 전엔 customFam이 없어 시스템 폰트·원래 굵기로 그린다(등록되면 폭·줄바꿈이 한 번 바뀐다 — 허용)
-        const customFam = lateFontFamily(tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined, lateFonts);
+        // 글자 단위 서식: value 대신 children에 span별 중첩 <Text>를 넣는다(RN 제어형 리치 텍스트).
+        // children 텍스트를 이어 붙이면 항상 tb.value와 같다(spansOf·layoutRuns는 텍스트를 바꾸지 않음).
+        // 줄 높이는 문단마다 가장 큰 글자 기준 — iOS는 문단 첫 글자의 줄 높이를 문단 전체에 써서
+        // 글자마다 다르게 주면 작은 글자로 시작한 문단의 큰 글자가 잘린다(utils/richText layoutRuns).
+        // 부모 스타일은 빈 블록의 커서 크기·입력 기본값용. 글꼴은 부모에 두지 않는다 — 두면 '기본'
+        // 글꼴로 바꾼 조각(fontFamily undefined)이 부모 커스텀 글꼴을 물려받는다. 글꼴은 조각에만.
+        const base = pickStyle(tb);
+        const baseSize = tb.fontSize || 15;
+        const fam = (f?: string) => lateFontFamily(f && f !== 'System' ? f : undefined, lateFonts);
+        const isIOS = Platform.OS === 'ios';
+        // iOS: 커서 서식(pending)을 고른 블록이면 입력칸 자체 style = 새로 칠 글자 서식(위 iosTyping ②)
+        const typ = isIOS && iosTyping?.blockId === block.id ? iosTyping : null;
+        const rev = textRev[block.id] ?? 0; // iOS 다시 마운트용 key 리비전(위 ①)
+        const ps: SpanStyle = typ ? typ.style : base;
+        const pSize = ps.fontSize || 15;
         return (
-          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" key={block.id}
-            ref={ref => { blockRefs.current[block.id] = ref; }}
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+            key={isIOS ? `${block.id}:${rev}` : block.id}
+            ref={ref => {
+              blockRefs.current[block.id] = ref;
+              // 범위 서식 뒤 새 인스턴스가 붙는 순간(커밋 단계) 포커스·선택 복원 — 한 번만
+              const rf = restoreFocusRef.current;
+              if (ref && rf && rf.blockId === block.id && rev >= rf.rev) {
+                restoreFocusRef.current = null;
+                ref.focus();
+                ref.setSelection(rf.start, rf.end);
+              }
+            }}
             style={[st.textBlock, {
-              fontSize: tb.fontSize || 15, textAlign: tb.align || 'left',
-              lineHeight: Math.max(26, Math.round((tb.fontSize || 15) * 1.4)),
-              fontWeight: customFam && Platform.OS === 'android' ? 'normal' : (tb.bold ? '700' : '400'),
-              fontStyle: tb.italic ? 'italic' : 'normal',
-              textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
-              color: tb.color || C.white,
-              backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
-              fontFamily: customFam,
+              fontSize: pSize, textAlign: tb.align || 'left',
+              lineHeight: Math.max(26, Math.round(pSize * 1.4)),
+              fontWeight: ps.bold ? '700' : '400',
+              fontStyle: ps.italic ? 'italic' : 'normal',
+              color: ps.color || C.white,
+            }, typ && {
+              // iOS 전용 경로라 안드로이드 굵기·글꼴 규칙은 해당 없음. 배경색은 TextInput style에선 칸 배경이라 넣지 않는다
+              textDecorationLine: ps.underline ? (ps.strikethrough ? 'underline line-through' : 'underline') : (ps.strikethrough ? 'line-through' : 'none'),
+              fontFamily: fam(ps.fontFamily),
+              letterSpacing: typ.nonce % 2 ? 0.01 : 0,
             }]}
             placeholder={index === 0 && blocks.length === 1 ? t('blog.bodyPlaceholder') : ''}
             placeholderTextColor={C.muted}
-            value={tb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
-            onFocus={() => setActiveBlockId(block.id)} multiline textAlignVertical="top" scrollEnabled={false} />
+            onChangeText={v => onTextBlockChange(block.id, v)}
+            onSelectionChange={e => {
+              const { start, end } = e.nativeEvent.selection;
+              textSelRef.current[block.id] = { start, end };
+              if (fontBarVisible) setFmtSel({ id: block.id, start, end });
+            }}
+            onFocus={() => setActiveBlockId(block.id)}
+            onBlur={isIOS ? () => {
+              // 입력칸을 떠날 때 네이티브 표시를 데이터(spans)와 맞춘다 — 한글 자판에선 그 전엔 못 맞춘다(위 ①)
+              if (typ) setIosTyping(null);
+              if (iosDirtyRef.current[block.id] && tb.spans) bumpTextRev(block.id);
+            } : undefined}
+            multiline textAlignVertical="top" scrollEnabled={false}>
+            {layoutRuns(spansOf(tb), baseSize).map((r, i) => {
+              const s = { ...base, ...r.style };
+              const size = s.fontSize || 15;
+              const sFam = fam(s.fontFamily);
+              return (
+                <Text key={i} style={{
+                  fontSize: size,
+                  lineHeight: Math.max(26, Math.round(r.lineSize * 1.4)),
+                  // 커스텀 한글 서체 + fontWeight → 안드로이드 시스템 폰트 폴백(위 주석) — 조각마다 같은 규칙
+                  fontWeight: sFam && Platform.OS === 'android' ? 'normal' : (s.bold ? '700' : '400'),
+                  fontStyle: s.italic ? 'italic' : 'normal',
+                  textDecorationLine: s.underline ? (s.strikethrough ? 'underline line-through' : 'underline') : (s.strikethrough ? 'line-through' : 'none'),
+                  color: s.color || C.white,
+                  backgroundColor: s.bgColor && s.bgColor !== 'transparent' ? s.bgColor : 'transparent',
+                  // iOS는 부모 style에 커서 서식(글꼴·letterSpacing)이 들어갈 수 있어 조각이 모두 명시해야
+                  // 기존 글자가 부모를 물려받지 않는다. 'system-ui' = 시스템 글꼴(RCTFontUtils의 시스템 디자인 경로)
+                  fontFamily: sFam ?? (isIOS ? 'system-ui' : undefined),
+                  ...(isIOS && { letterSpacing: 0 }),
+                }}>{r.text}</Text>
+              );
+            })}
+          </TextInput>
         );
       }
       case 'heading': {
@@ -2969,7 +3126,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   tagSection: { marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.divider },
   tagInputRow: { flexDirection: 'row', alignItems: 'center' },
   hashIcon: { color: a, fontSize: 16, fontWeight: '700', marginRight: 4 },
-  tagInput: { flex: 1, height: 34, color: C.white, fontSize: 14 },
+  tagInput: { flex: 1, minHeight: 34, paddingVertical: 0, color: C.white, fontSize: 14 },
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 4 },
   tagText: { color: a, fontSize: 12, fontWeight: '500' },
@@ -3014,7 +3171,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   colorDotActive: { borderColor: a },
 
   // 링크 입력
-  schedInput: { height: 44, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
+  schedInput: { minHeight: 44, paddingVertical: 0, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
   schedConfirmBtn: { backgroundColor: ad, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   schedConfirmText: { color: C.white, fontSize: 14, fontWeight: '700' },
 
@@ -3055,13 +3212,13 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   currencyChipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
   currencyTxt: { color: C.dim, fontSize: 12, fontWeight: '600' },
   currencyTxtActive: { color: a },
-  budgetInput: { flex: 1, minWidth: 80, height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
+  budgetInput: { flex: 1, minWidth: 80, minHeight: 36, paddingVertical: 0, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
   kwWrap: { gap: 8 },
   kwTagRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 },
   kwTag: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   kwTagText: { color: a, fontSize: 12, fontWeight: '500' },
   kwTagDel: { color: C.muted, fontSize: 9 },
-  kwInput: { height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
+  kwInput: { minHeight: 36, paddingVertical: 0, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
   memoInput: { color: C.white, fontSize: 13, lineHeight: 20, minHeight: 56, backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider },
   panelDoneWrap: { marginTop: 12, borderRadius: 16, overflow: 'hidden' as const },
   panelDoneBtn: { paddingVertical: 15, alignItems: 'center' },
@@ -3148,7 +3305,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
 
   // 통화 모달
   currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
-  currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
+  currModalSearch: { minHeight: 42, paddingVertical: 0, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
   currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   currModalCode: { color: a, fontSize: 14, fontWeight: '700' as const, width: 44 },
   currModalName: { flex: 1, color: '#A1A1B0', fontSize: 14 },

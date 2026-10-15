@@ -6,7 +6,22 @@
  * - parseNaverHtml(): 네이버 블로그 HTML → 앱 블로그 데이터
  */
 
-import type { BlogBlock, TextBlock, HeadingBlock } from '../types/blogBlocks';
+import type { BlogBlock, TextBlock, HeadingBlock, SpanStyle } from '../types/blogBlocks';
+import { validSpans, pickStyle } from './richText';
+
+// 텍스트 서식 → 인라인 CSS. 밑줄+취소선이 둘 다 켜지면 한 text-decoration에 함께 넣는다
+// (예전엔 두 줄로 써서 뒤의 line-through가 underline을 덮어썼다).
+function textCss(s: SpanStyle): string {
+  let style = '';
+  if (s.bold) style += 'font-weight:bold;';
+  if (s.italic) style += 'font-style:italic;';
+  const deco = [s.underline && 'underline', s.strikethrough && 'line-through'].filter(Boolean).join(' ');
+  if (deco) style += `text-decoration:${deco};`;
+  if (s.color) style += `color:${s.color};`;
+  if (s.bgColor && s.bgColor !== 'transparent') style += `background-color:${s.bgColor};`;
+  if (s.fontSize) style += `font-size:${s.fontSize}px;`;
+  return style;
+}
 
 // ─── 순서 보존 콘텐츠 블록 ───
 export interface OrderedBlock {
@@ -76,18 +91,25 @@ export function toNaverHtmlFromBlocks(
       case 'text': {
         const tb = block as TextBlock;
         if (!tb.value.trim()) break;
-        let style = '';
-        if (tb.bold) style += 'font-weight:bold;';
-        if (tb.italic) style += 'font-style:italic;';
-        if (tb.underline) style += 'text-decoration:underline;';
-        if (tb.strikethrough) style += 'text-decoration:line-through;';
-        if (tb.color) style += `color:${tb.color};`;
-        if (tb.bgColor && tb.bgColor !== 'transparent') style += `background-color:${tb.bgColor};`;
-        if (tb.fontSize) style += `font-size:${tb.fontSize}px;`;
         const align = tb.align || 'left';
+        const spans = validSpans(tb);
+        if (spans) {
+          // 글자 단위 서식 — <p>엔 서식을 두지 않고 조각마다 실효 서식(블록+span)을 <span style>로.
+          // CSS text-decoration은 부모에 걸리면 자식이 끌 수 없어서 <p>에 두면 안 된다.
+          const base = pickStyle(tb);
+          const inner = spans.map(s => {
+            const css = textCss({ ...base, ...pickStyle(s) });
+            const escaped = escapeHtml(s.text).replace(/\n/g, '<br/>');
+            return css ? `<span style="${css}">${escaped}</span>` : escaped;
+          }).join('');
+          lines.push(wrapSeText(
+            `<p class="se-text-paragraph se-text-paragraph-align-${align}">${inner}</p>`
+          ));
+          break;
+        }
         const escaped = escapeHtml(tb.value).replace(/\n/g, '<br/>');
         lines.push(wrapSeText(
-          `<p class="se-text-paragraph se-text-paragraph-align-${align}" style="${style}">${escaped}</p>`
+          `<p class="se-text-paragraph se-text-paragraph-align-${align}" style="${textCss(tb)}">${escaped}</p>`
         ));
         break;
       }

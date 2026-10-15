@@ -60,6 +60,7 @@ import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/men
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { tap, warn } from '../utils/haptics';
 import TimeAgoText from '../components/TimeAgoText';
+import { validSpans, pickStyle, layoutRuns } from '../utils/richText';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useProfileSettings } from '../store/settingsStore';
@@ -481,6 +482,33 @@ const BlogBlockRenderer = ({
       // 통째로 폴백한다 → 안드로이드는 서체 유지를 우선한다 (작성 화면과 동일 규칙)
       // 등록 전엔 customFam이 없어 시스템 폰트·원래 굵기로 그린다(등록되면 폭·줄바꿈이 한 번 바뀐다 — 허용)
       const customFam = lateFontFamily(block.fontFamily && block.fontFamily !== 'System' ? block.fontFamily : undefined, lateFonts);
+      // 글자 단위 서식(spans) — 유효할 때만. 없거나 value와 어긋나면 아래 기존 블록 서식 그대로.
+      // 조각 서식 = { ...블록 서식, ...span 서식 }. 줄 높이는 문단마다 가장 큰 글자 기준(utils/richText layoutRuns).
+      const spans = validSpans(block);
+      if (spans) {
+        const base = pickStyle(block);
+        return (
+          <Text style={[blogS.text, { fontSize: fs, lineHeight: fs * 1.7 }, block.align && { textAlign: block.align }]}>
+            {layoutRuns(spans, block.fontSize || 15).map((r, i) => {
+              const s = { ...base, ...r.style };
+              const sfs = (s.fontSize || 15) * fontScale;
+              const sFam = lateFontFamily(s.fontFamily && s.fontFamily !== 'System' ? s.fontFamily : undefined, lateFonts);
+              return (
+                <Text key={i} style={{
+                  fontSize: sfs,
+                  lineHeight: r.lineSize * fontScale * 1.7,
+                  fontWeight: sFam && Platform.OS === 'android' ? 'normal' : (s.bold ? '700' : '400'),
+                  fontStyle: s.italic ? 'italic' : 'normal',
+                  textDecorationLine: s.underline ? (s.strikethrough ? 'underline line-through' : 'underline') : (s.strikethrough ? 'line-through' : 'none'),
+                  color: s.color || '#FFFFFF',
+                  backgroundColor: s.bgColor && s.bgColor !== 'transparent' ? s.bgColor : 'transparent',
+                  fontFamily: sFam,
+                }}>{r.text}</Text>
+              );
+            })}
+          </Text>
+        );
+      }
       return (
         <Text
           style={[
