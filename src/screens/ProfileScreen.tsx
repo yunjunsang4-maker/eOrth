@@ -2214,13 +2214,15 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             onPress={() => (mergeMode ? toggleMergeSelect(displayTrips[0].id) : openTripDetail(displayTrips[0]))}
             style={thumbSt.mainCard}
           >
-            {/* 출렁이는 글로우 배경 */}
-            <LiquidCardGlow
-              width={SCREEN_WIDTH}
-              height={320}
-              color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
-              opacity={0.34}
-            />
+            {/* 출렁이는 글로우 배경 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만 무효화) */}
+            {!(Platform.OS === 'android' && displayTrips[0].coverUri) && (
+              <LiquidCardGlow
+                width={SCREEN_WIDTH}
+                height={320}
+                color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
+                opacity={0.34}
+              />
+            )}
             <LinearGradient
               colors={TRIP_GRADIENT_COLORS[displayTrips[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
               start={{ x: 0.5, y: 0 }}
@@ -2290,13 +2292,15 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 onPress={() => (mergeMode ? toggleMergeSelect(trip.id) : openTripDetail(trip))}
                 style={thumbSt.gridCard}
               >
-                {/* 출렁이는 글로우 */}
-                <LiquidCardGlow
-                  width={THUMB_WIDTH}
-                  height={260}
-                  color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
-                  opacity={0.3}
-                />
+                {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(대표 카드와 같은 이유) */}
+                {!(Platform.OS === 'android' && trip.coverUri) && (
+                  <LiquidCardGlow
+                    width={THUMB_WIDTH}
+                    height={260}
+                    color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
+                    opacity={0.3}
+                  />
+                )}
                 <LinearGradient
                   colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
                   start={{ x: 0.5, y: 0 }}

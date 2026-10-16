@@ -1016,8 +1016,11 @@ export default function TripDetailScreen() {
                   )}
                   {/* 시안: 세로 선 기준 왼쪽(글자 쪽)만 블러+스크림+틴트, 오른쪽(chevron 쪽)은 사진이 선명하게 */}
                   <View style={s.rowGlass} pointerEvents="none">
-                    {/* 안드로이드는 experimentalBlurMethod 없으면 no-op — 프로필 정보 바와 같은 dimezisBlurView(실기기 확인 필요) */}
-                    <BlurView intensity={10} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+                    {/* 안드로이드는 블러 생략(2026-10-16) — dimezisBlurView가 다시 그릴 때마다 화면 전체를 스냅샷·블러해
+                        행 수 × headerAnim 프레임만큼 돌아 진입 렉을 냈다. 아래 스크림·틴트만으로 가독성은 유지된다 */}
+                    {Platform.OS !== 'android' && (
+                      <BlurView intensity={10} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+                    )}
                     {/* 가로 스크림 — 글자 쪽을 진하게 덮어 사진 위에서도 읽히게 */}
                     <LinearGradient
                       start={{ x: 0, y: 0 }}
@@ -1120,14 +1123,16 @@ export default function TripDetailScreen() {
       {/* 하단 페이드 — 형식 행이 화면 아래까지 꽉 찼을 때 "더 있음"으로 읽히게. ScrollView 형제라 스크롤과 무관하게 고정 */}
       {listMoreBottom && (
         <View style={[s.listFadeBottom, { height: 72 + insets.bottom }]} pointerEvents="none">
-          {/* 유리 느낌 — 옅은 블러 위에 배경색 그라데이션. 안드로이드는 experimentalBlurMethod 없으면 no-op이라
-              프로필 썸네일 정보 바(ProfileVisuals)와 같은 dimezisBlurView. 뒤가 어두운 목록이라 흰 블룸 문제 없음 */}
-          <BlurView
-            intensity={22}
-            tint="dark"
-            experimentalBlurMethod="dimezisBlurView"
-            style={StyleSheet.absoluteFill}
-          />
+          {/* 유리 느낌 — 옅은 블러 위에 배경색 그라데이션. 안드로이드는 블러 생략(2026-10-16) —
+              dimezisBlurView가 다시 그릴 때마다 화면 전체를 스냅샷·블러해 렉을 냈다. 그라데이션만으로 페이드는 유지 */}
+          {Platform.OS !== 'android' && (
+            <BlurView
+              intensity={22}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={StyleSheet.absoluteFill}
+            />
+          )}
           <LinearGradient
             colors={['rgba(10,10,15,0)', 'rgba(10,10,15,0.55)', 'rgba(10,10,15,0.85)']}
             locations={[0, 0.5, 1]}
