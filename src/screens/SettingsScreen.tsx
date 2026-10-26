@@ -1,19 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { select, warn } from '../utils/haptics';
-import CountryPickerModal, { countryCodeOf } from '../components/CountryPickerModal';
+import { warn, select } from '../utils/haptics';
+import { countryCodeOf } from '../components/CountryPickerModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
   Alert,
-  Switch,
-  Modal,
-  Pressable,
   FlatList,
-  KeyboardAvoidingView,
   Platform,
+  Keyboard,
   Animated,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
@@ -23,7 +19,7 @@ import { useProfileSettings, useHomeSettings, useSkinSettings, usePrefSettings, 
 import { LANGUAGE_LABELS } from '../i18n';
 import { useRecordData, useActiveStay, useRecordActions } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
-import { COUNTRIES } from '../constants/countries';
+import { COUNTRIES, countriesHomeFirst } from '../constants/countries';
 import type { StayType } from '../utils/stayMachine';
 import { fetchNotices } from '../services/notices';
 import { hasUnreadNotice } from '../utils/noticeFeed';
@@ -31,38 +27,61 @@ import { signOut } from '../services/auth';
 import { fetchMateRecoOptin, saveMateRecoOptin } from '../services/profile';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
-  PersonIcon,
-  LockIcon,
-  BellIcon,
-  BlockIcon,
-  ArchiveIcon,
-  SparkleIcon,
-  GlobeSkinIcon,
-  LanguageIcon,
-  MoonIcon,
-  CompassIcon,
-  QuestionIcon,
-  ChatIcon,
-  DocumentIcon,
-  InfoIcon,
-  HomeIcon,
-  ExitIcon,
-  GalleryIcon,
   StarIcon,
-  StickerIcon,
-  PaletteIcon,
   LockClosedIcon as SvgLockClosedIcon,
-  BackChevronIcon,
 } from '../components/icons';
+// 행 아이콘·꺾쇠·돋보기·로그아웃 — 피그마 시안 원본 SVG를 옮긴 화면 전용 아이콘
+import {
+  SettingsProfileIcon,
+  SettingsAccountIcon,
+  SettingsNotifIcon,
+  SettingsBlockedIcon,
+  SettingsArchivedIcon,
+  SettingsMateRecoIcon,
+  SettingsHapticsIcon,
+  SettingsSimpleViewIcon,
+  SettingsGlobeSkinIcon,
+  SettingsThemeIcon,
+  SettingsLanguageIcon,
+  SettingsResidenceIcon,
+  SettingsHomeRegionIcon,
+  SettingsStayIcon,
+  SettingsTutorialIcon,
+  SettingsLogoRemoveIcon,
+  SettingsFrameCustomIcon,
+  SettingsHandleFontIcon,
+  SettingsNoticeIcon,
+  SettingsFaqIcon,
+  SettingsFeedbackIcon,
+  SettingsTermsIcon,
+  SettingsPrivacyIcon,
+  SettingsAppVersionIcon,
+  SettingsSearchIcon,
+  SettingsLogoutIcon,
+} from '../components/icons/SettingsIcons';
 import HomeRegionSheet from '../components/HomeRegionSheet';
+// 카드·헤더·그룹·알약·팝업 틀 — 설정 디자인 공용 부품
+import {
+  SETTINGS_COLORS as COLORS,
+  SettingsHeader,
+  SettingGroup,
+  type SettingItem,
+  SettingsDivider,
+  SettingsOptionRow,
+  SettingsPillButton,
+  SettingsModal,
+  settingsText,
+} from '../components/settings/SettingsUI';
 import LanguageSheet from '../components/LanguageSheet';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { useLateFontsLoaded } from '../constants/lateFonts';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
-import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
 import { andNoFontScale } from '../utils/fitText';
+import { APP_VERSION } from '../utils/appVersion';
+import StayGuideSlides from '../components/settings/StayGuideSlides';
+import { StayCountryStep, StayTypeStep } from '../components/settings/StayStartFlow';
 import { STAGE_MAX_W } from '../utils/stage';
 // 도움말 견본 카드 = 피드의 실제 카드. SocialScreen 쪽 의존 그래프에 SettingsScreen·AppNavigator가 없어 순환 import가 아니다.
 import { DiaryCardMemo } from './SocialScreen';
@@ -76,112 +95,10 @@ const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 // (VALID_COUNTRY_CODES 제거 — 거주국을 코드로 직접 입력받던 시절의 방어였다.
 //  이제 CountryPickerModal이 COUNTRIES 목록에서만 고르게 하므로 목록 밖 값이 들어올 수 없다.)
 
-const COLORS = {
-  bg:           '#0A0A0F',
-  card:         '#2E2E3B',
-  divider:      '#1A1A26',
-  purpleNeon:   '#BF85FC',
-  purpleDeep:   '#6B21A8',
-  purpleBg:     'rgba(107,33,168,0.25)',
-  purpleBorder: 'rgba(191,133,252,0.3)',
-  white:        '#FFFFFF',
-  textDim:      '#A1A1B0',
-  textMuted:    '#8B8B9E',
-  redBg:        'rgba(255,59,48,0.1)',
-  redBorder:    'rgba(255,59,48,0.2)',
-  red:          '#FF3B30',
-};
-
-// ─── 설정 그룹 ───
-const SettingGroup = ({
-  items,
-}: {
-  items: {
-    icon: React.ReactNode;
-    label: string;
-    value?: string;
-    /** value 대신 직접 그릴 노드 — 국기+이름처럼 Text를 나눠야 하는 값에 쓴다 */
-    valueNode?: React.ReactNode;
-    badge?: string;
-    toggle?: boolean;
-    onToggle?: (v: boolean) => void;
-    onPress?: () => void;
-    /** 있으면 라벨 바로 오른쪽에 작은 물음표 버튼 — 무엇이 바뀌는지 보여주는 도움말을 연다 */
-    onHelp?: () => void;
-    /** 물음표 버튼의 스크린리더 라벨 (onHelp와 짝) */
-    helpA11yLabel?: string;
-  }[];
-}) => {
-  const skinAccent = useSkinAccent();
-  return (
-  <View style={st.settingGroup}>
-    {items.map((item, index) => (
-      <React.Fragment key={item.label}>
-        <TouchableOpacity
-          style={st.settingItem}
-          activeOpacity={0.7}
-          onPress={item.onPress}
-          disabled={item.onToggle != null}
-          // 물음표가 있는 행은 행 자체를 접근성 요소로 묶지 않는다 — TouchableOpacity는 기본 accessible이라
-          // iOS VoiceOver가 행 전체를 한 덩어리로 읽어 안쪽 물음표 버튼에 초점이 가지 않는다.
-          accessible={item.onHelp ? false : undefined}
-        >
-          <View style={[st.settingLeft, item.onHelp && st.settingLeftWithHelp]}>
-            <View style={st.settingIconWrap}>{item.icon}</View>
-            <Text style={[st.settingLabel, item.onHelp && st.settingLabelShrink]}>{item.label}</Text>
-            {item.onHelp && (
-              // 바깥 행이 disabled(토글 행)여도 이 버튼은 눌린다: RN 응답자 협상은 버블 단계에서 가장 안쪽
-              // 터치 대상부터 onStartShouldSetResponder를 묻고, 바깥 Pressability는 disabled면 false를 돌려준다
-              // (Pressability.js). 안쪽 TouchableOpacity가 먼저 true로 응답자가 된다.
-              <TouchableOpacity
-                style={st.settingHelpBtn}
-                onPress={item.onHelp}
-                activeOpacity={0.6}
-                hitSlop={{ top: 12, bottom: 12, left: 10, right: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel={item.helpA11yLabel ?? item.label}
-              >
-                <QuestionIcon size={15} color={COLORS.textDim} />
-              </TouchableOpacity>
-            )}
-          </View>
-          {item.onToggle != null ? (
-            <Switch
-              value={item.toggle}
-              accessibilityLabel={item.label}
-              // 스위치가 켜지고 꺼지는 순간 — SettingGroup이 공용이라 이 그룹의 모든 토글에 적용된다.
-              // '햅틱' 스위치 자신도 여기를 지난다: 끌 때는 게이트가 아직 열려 있어 마지막 한 번이
-              // 울리고, 켤 때는 반영 전이라 울리지 않는다. 어느 쪽이든 오작동이 아니다.
-              onValueChange={(v) => { select(); item.onToggle?.(v); }}
-              trackColor={{ false: '#3A3A4A', true: skinAccent.accent }}
-              thumbColor="#FFFFFF"
-            />
-          ) : item.badge ? (
-            <View style={[st.premiumBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
-              <SvgLockClosedIcon size={9} color={skinAccent.accent} />
-              <Text style={[st.premiumBadgeText, { color: skinAccent.accent }]}>{item.badge}</Text>
-            </View>
-          ) : item.valueNode ? (
-            // 국기+이름처럼 한 Text에 합치면 안 되는 값 — 삼성 기기에서 한글이 사라진다(6ae35f9)
-            <View style={st.settingRight}>
-              {item.valueNode}
-              <Text style={st.chevron}>›</Text>
-            </View>
-          ) : item.value ? (
-            <View style={st.settingRight}>
-              <Text style={st.settingValue}>{item.value}</Text>
-              <Text style={st.chevron}>›</Text>
-            </View>
-          ) : (
-            <Text style={st.chevron}>›</Text>
-          )}
-        </TouchableOpacity>
-        {index < items.length - 1 && <View style={st.itemDivider} />}
-      </React.Fragment>
-    ))}
-  </View>
-  );
-};
+// ─── 검색 — 라벨만 비교한다(값 텍스트는 보지 않는다) ───
+// 공백을 전부 지우고 소문자로 맞춘 뒤 부분 일치. 라벨 쪽도 같은 정규화를 거쳐 '프로필편집'이 '프로필 편집'에 걸린다.
+// 가운뎃점도 지워 '다크라이트'가 '다크 · 라이트 모드'에 걸리게 한다.
+const normalizeSearch = (s: string) => s.replace(/[\s·]+/g, '').toLowerCase();
 
 // ─── '간단히 보기' 도움말 — 기본/간단히 소셜 카드를 나란히 비교 ───
 // 견본은 목업이 아니라 피드의 실제 카드(SocialScreen DiaryCardMemo)다 — 테이프·뒷장·기울기·폰트·♡·⋯까지 피드 폴라로이드와 같다.
@@ -203,7 +120,6 @@ const HOUR_MS = 3600 * 1000;
 // Modal은 닫히면 자식을 언마운트하므로, 여는 순간 마운트되며 useState 초기값으로 '몇 시간 전' 시각을 잡는다
 const SimpleViewSamples = () => {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
   const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const [openedAt] = useState(() => Date.now());
   const caption = t('settings.simpleCardViewHelpSampleCaption');
@@ -239,7 +155,7 @@ const SimpleViewSamples = () => {
         {card('full', 0)}
       </View>
       <View style={st.sampleCol}>
-        <Text style={[st.sampleLabel, { color: skinAccent.accent }]} numberOfLines={1} {...andNoFontScale}>{t('settings.simpleCardView')}</Text>
+        <Text style={[st.sampleLabel, st.sampleLabelOn]} numberOfLines={1} {...andNoFontScale}>{t('settings.simpleCardView')}</Text>
         {card('minimal', 1)}
       </View>
     </View>
@@ -254,33 +170,50 @@ const SimpleViewHelpModal = ({ visible, onClose }: { visible: boolean; onClose: 
     t('settings.simpleCardViewHelpLine3'),
     t('settings.simpleCardViewHelpLine4'),
   ];
-  // 스킨·폰트 모달과 같은 틀: 투명 fade Modal + statusBarTranslucent, 중앙 카드라 안전영역은 오버레이 여백으로 충분
+  // 틀은 스킨·폰트·장기 체류 팝업과 같은 SettingsModal(설정 카드 재질·헤더 제목·로그아웃과 같은 알약).
+  // 견본 두 장이 나란히 들어가야 해서 카드 최대 폭만 스테이지 폭으로 넓힌다.
   return (
-    <Modal
+    <SettingsModal
       visible={visible}
-      transparent statusBarTranslucent navigationBarTranslucent
-      animationType="fade"
-      onRequestClose={onClose}
+      title={t('settings.simpleCardView')}
+      closeLabel={t('common.close')}
+      onClose={onClose}
+      cardStyle={st.helpCard}
     >
-      {/* 배경 탭으로도 닫힘 — 카드(내부 Pressable)는 탭을 삼켜 오닫힘 방지 */}
-      <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={onClose}>
-        <Pressable style={[st.modalCard, st.sampleModalCard]} onPress={() => {}}>
-          <Text style={st.modalTitle}>{t('settings.simpleCardView')}</Text>
-          <SimpleViewSamples />
-          <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
-            {lines.map((line) => (
-              <View key={line} style={st.helpLineRow}>
-                <Text style={st.helpLineDot}>•</Text>
-                <Text style={st.helpLineText}>{line}</Text>
-              </View>
-            ))}
-          </ScrollView>
-          <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={onClose}>
-            <Text style={st.modalBtnCancelText}>{t('common.close')}</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      <SimpleViewSamples />
+      <ScrollView style={st.modalList} showsVerticalScrollIndicator={false}>
+        {lines.map((line) => (
+          <View key={line} style={st.helpLineRow}>
+            <Text style={st.helpLineDot}>•</Text>
+            <Text style={st.helpLineText}>{line}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </SettingsModal>
+  );
+};
+
+// 설정 행 물음표 → '이걸 바꾸면/켜면 어떻게 되는지' 글머리 설명 팝업(거주 국가·장기 체류가 쓴다).
+// 문구는 코드와 대조해 쓴다(2026-10-26):
+//  · 거주 국가 — 해외 판정 isAbroad(Arrival·Snap·Return 감지), 통계·배지 거주국 제외(도시 붙은 기록 예외),
+//    거주 지역 초기화(setHomeCountryCodeWithRegionReset), 프로필 국가 동기화(ProfileSync → 이웃의 FriendProfile),
+//    과거 여행 불러오기 거주국 사진 제외(pastTripScan)
+//  · 장기 체류 — 거주국 불변 가산 레이어(TripGroup.stay), 체류국 기록 → 체류 카드 합류(recordStore),
+//    체류국 isAbroad=false(도착·스냅 알림 없음), 귀국 일시정지·복귀 재개·제3국 별도 카드(stayMachine),
+//    체류국은 방문국·프로필 '체류 중' 이웃 노출(FriendProfile stay.stayingIn), 동시 1개·60일 무복귀 종료 넛지(shouldNudgeEnd)
+const HelpLinesModal = ({ visible, onClose, title, lines }: { visible: boolean; onClose: () => void; title: string; lines: string[] }) => {
+  const { t } = useTranslation();
+  return (
+    <SettingsModal visible={visible} title={title} closeLabel={t('common.close')} onClose={onClose}>
+      <ScrollView style={[st.modalList, st.residenceHelpList]} showsVerticalScrollIndicator={false}>
+        {lines.map((line) => (
+          <View key={line} style={st.helpLineRow}>
+            <Text style={st.helpLineDot}>•</Text>
+            <Text style={st.helpLineText}>{line}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </SettingsModal>
   );
 };
 
@@ -355,7 +288,23 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [regionSheetVisible, setRegionSheetVisible] = useState(false); // 거주 지역 설정 시트
   const [languageSheetVisible, setLanguageSheetVisible] = useState(false); // 언어 선택 시트
+  const [countrySearch, setCountrySearch] = useState('');
+  // 거주 국가는 해외 판정·통계·프로필의 기준이라 행을 누르자마자 저장하지 않는다 — 고른 값을 보류했다가
+  // 하단 알약이 '확인'으로 바뀌면 그때 저장한다. 배경 탭·안드로이드 뒤로·같은 국가 재선택은 보류를 버린다.
+  const [pendingCountryCode, setPendingCountryCode] = useState<string | null>(null);
+  const [residenceHelpVisible, setResidenceHelpVisible] = useState(false);
+  const [stayHelpVisible, setStayHelpVisible] = useState(false);
+  // 2단계 확인 — 목록에서 '확인'을 누르면 같은 팝업이 주의 단계('confirm')로 바뀌고, 거기서 '확인'을 한 번 더 눌러야 저장된다.
+  // Modal을 갈아끼우지 않고 한 Modal 안에서 단계만 바꾼다(장기 체류 팝업과 같은 이유 — 닫힌 직후 새 Modal present가 iOS에서 씹힌다).
+  const [countryStep, setCountryStep] = useState<'pick' | 'confirm'>('pick');
   const openCountryModal = () => setCountryModalVisible(true);
+  const closeCountryModal = () => {
+    setCountrySearch(''); setPendingCountryCode(null); setCountryStep('pick'); setCountryModalVisible(false);
+  };
+  const confirmCountryChange = () => {
+    if (pendingCountryCode) setHomeCountryCode(pendingCountryCode);
+    closeCountryModal();
+  };
 
   // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
   // step: null=닫힘, 'country'=국가 선택, 'type'=유형 선택
@@ -369,6 +318,20 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     [homeCountryCode],
   );
   const homeCountryName = homeCountry?.name ?? null;
+  // 주의 단계에 보여 줄 '바꿀 국가'
+  const pendingCountry = useMemo(
+    () => (pendingCountryCode ? COUNTRIES.find((c) => countryCodeOf(c) === pendingCountryCode) ?? null : null),
+    [pendingCountryCode],
+  );
+
+  // 거주 국가 팝업 목록 — 거주국을 맨 앞으로(COUNTRIES는 '한국인의 여행 빈도순'이라 해외 사용자는 자기 나라가
+  // 한참 아래였다), 한글 이름과 term(코드+영문명) 양쪽으로 검색 — 'kr'·'korea'·'대한'이 모두 걸린다(CountryPickerModal과 같은 규칙)
+  const residenceCountries = useMemo(() => {
+    const base = countriesHomeFirst(COUNTRIES, homeCountryCode);
+    const q = countrySearch.trim();
+    if (!q) return base;
+    return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()));
+  }, [countrySearch, homeCountryCode]);
 
   // 검색어 필터링 (거주국 제외)
   const stayFilteredCountries = useMemo(() => {
@@ -500,235 +463,325 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   //    (RN Alert.js 의 `buttons.slice(0, 3)`) 언어 4개 + 취소가 담기지 않는다.
   const handleLanguageChange = () => setLanguageSheetVisible(true);
 
+  const handleLogout = () => {
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
+    Alert.alert(t('settings.logout'), t('settings.logoutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('settings.logout'),
+        style: 'destructive',
+        onPress: async () => {
+          // 세션 종료를 기다린 뒤 이동한다. 먼저 이동하면 Splash가 남은 세션으로 자동 재로그인할 수 있음.
+          await signOut(); // Supabase 세션 종료 (미설정 시 no-op)
+          navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        },
+      },
+    ]);
+  };
+
+  // 상단 검색 — 입력하면 라벨이 부분 일치하는 항목만 남긴다(normalizeSearch 주석 참고).
+  // 각 그룹 배열을 그대로 거르고, 빈 그룹은 SettingGroup이 라벨째 그리지 않는다.
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchKey = normalizeSearch(searchQuery);
+  const visible = (items: SettingItem[]) =>
+    searchKey ? items.filter((i) => normalizeSearch(i.label).includes(searchKey)) : items;
+
+  const accountItems = visible([
+    { icon: <SettingsProfileIcon />,  label: t('settings.editProfile'),     onPress: () => navigation.navigate('EditProfile') },
+    { icon: <SettingsAccountIcon />,  label: t('settings.accountSettings'), onPress: () => navigation.navigate('AccountSettings') },
+    { icon: <SettingsNotifIcon />,    label: t('settings.notifications'),   onPress: () => navigation.navigate('NotificationSettings') },
+    { icon: <SettingsBlockedIcon />,  label: t('settings.blockedUsers'),    onPress: () => navigation.navigate('BlockedUsers') },
+    { icon: <SettingsArchivedIcon />, label: t('settings.archivedPosts'),   onPress: () => navigation.navigate('ArchivedPosts') },
+  ]);
+  // 메이트 추천 — 시안은 계정 카드에서 떼어 낸 단독 알약 카드(모서리 30)다
+  const mateItems = visible([
+    { icon: <SettingsMateRecoIcon />, label: t('settings.mateReco'), toggle: mateRecoOn, onToggle: toggleMateReco },
+  ]);
+  const appItems = visible([
+    // 촉각 피드백 — 끄면 utils/haptics를 경유하는 전 호출부가 조용해진다(HapticsBridge)
+    { icon: <SettingsHapticsIcon />, label: t('settings.haptics'), toggle: hapticsEnabled, onToggle: setHapticsEnabled },
+    // 간단히 보기 — 켜면 minimal. 저장값('full'|'minimal')은 그대로라 기존 full 사용자는 꺼진 상태로 보인다
+    // (시안의 '소셜 카드 상호작용 표시' 자리)
+    {
+      icon: <SettingsSimpleViewIcon />,
+      label: t('settings.simpleCardView'),
+      toggle: diaryCardMode === 'minimal',
+      onToggle: (v: boolean) => setDiaryCardMode(v ? 'minimal' : 'full'),
+      onHelp: () => setSimpleHelpVisible(true),
+      helpA11yLabel: t('settings.simpleCardViewHelpA11y'),
+    },
+    {
+      // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
+      icon: <SettingsGlobeSkinIcon />,
+      label: t('settings.globeSkin'),
+      value: t(currentSkin.labelKey),
+      onPress: () => setSkinModalVisible(true),
+    },
+    {
+      icon: <SettingsThemeIcon />,
+      label: t('settings.theme'),
+      value: t('settings.themeDark'),
+      onPress: () => Alert.alert(t('settings.themeTitle'), t('settings.themeMsg')),
+    },
+    {
+      icon: <SettingsLanguageIcon />,
+      label: t('settings.languageChange'),
+      value: LANGUAGE_LABELS[language],
+      onPress: handleLanguageChange,
+    },
+    {
+      icon: <SettingsResidenceIcon />,
+      label: t('settings.residence'),
+      // 시안대로 국가 이름만(국기 없음). 코드('KR')는 목록에 없는 값일 때의 마지막 표시다
+      value: homeCountry?.name ?? homeCountryCode,
+      onPress: openCountryModal,
+      // 바꾸면 무엇이 달라지는지 — 중요한 변경이라 행 옆에서 바로 볼 수 있게
+      onHelp: () => setResidenceHelpVisible(true),
+      helpA11yLabel: t('settings.residenceHelpA11y'),
+    },
+    {
+      // 거주 지역(시·도) — 소셜 탭 '일상' 링의 기준. 미설정이면 '미설정'
+      icon: <SettingsHomeRegionIcon />,
+      label: t('settings.homeRegion'),
+      value: homeRegion?.name ?? t('settings.homeRegionUnset'),
+      onPress: () => setRegionSheetVisible(true),
+    },
+    {
+      // 체류 중이 아니면 값을 비운다(꺾쇠만) — 예전 '—' 표시는 시안에서 뺐다
+      icon: <SettingsStayIcon />,
+      label: t('stay.settingsStart'),
+      value: activeStayGroup
+        ? `${activeStayGroup.countryFlag ?? ''} ${activeStayGroup.countryName ?? ''}`.trim()
+        : undefined,
+      onPress: handleStayPress,
+      // 켜면 무엇이 달라지는지 — 거주 국가와 헷갈리기 쉬운 기능이라 행 옆에서 바로 설명
+      onHelp: () => setStayHelpVisible(true),
+      helpA11yLabel: t('stay.helpA11y'),
+    },
+    {
+      // 튜토리얼 다시 보기 — 세 탭(메인·통계·프로필)의 1회 게이트를 모두 풀어준다.
+      // 메인은 'replay'로 지금 바로 재생하고, 통계·프로필은 그 탭에 다시 들어갈 때 뜬다.
+      icon: <SettingsTutorialIcon />,
+      label: t('settings.viewTutorial'),
+      onPress: () => {
+        resetTutorialsSeen();
+        navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } });
+      },
+    },
+  ]);
+  // 프리미엄 — 시안 순서: 스트립 로고 제거 → 스트립 프레임 커스텀 → 아이디 폰트 변경
+  const premiumItems = visible([
+    // 베타 체험 토글 — 무료 개방 중에는 의미가 없어 숨긴다.
+    // (플래그를 내리면 다시 나타난다. 결제 연동 시 구매 화면 진입으로 교체. 시안에 없는 행이라 기존 아이콘 유지)
+    ...(LAUNCH_FREE_PREMIUM
+      ? []
+      : [{ icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium }]),
+    // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
+    isPremium
+      ? {
+          icon: <SettingsLogoRemoveIcon />,
+          label: t('settings.stripLogoRemove'),
+          toggle: stripLogoRemoval,
+          onToggle: setStripLogoRemoval,
+        }
+      : {
+          icon: <SettingsLogoRemoveIcon />,
+          label: t('settings.stripLogoRemove'),
+          badge: t('settings.premiumBadge'),
+          onPress: () => navigation.navigate('Premium'),
+        },
+    {
+      // 스트립 프레임 커스텀 — 구현됨. 네컷 만들기 팔레트의 + 버튼에서 자유 색 선택(프리미엄)
+      icon: <SettingsFrameCustomIcon />,
+      label: t('settings.stripFrameCustom'),
+      badge: isPremium ? undefined : t('settings.premiumBadge'),
+      onPress: () =>
+        isPremium
+          ? Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg'))
+          : navigation.navigate('Premium'),
+    },
+    {
+      icon: <SettingsHandleFontIcon />,
+      label: t('settings.handleFont'),
+      value: t(currentFont.labelKey),
+      badge: isPremium ? undefined : t('settings.premiumBadge'),
+      onPress: openFontPicker,
+    },
+  ]);
+  const supportItems = visible([
+    {
+      icon: <SettingsNoticeIcon />,
+      label: t('settings.notice'),
+      badge: noticeUnread ? t('notice.badgeNew') : undefined,
+      onPress: () => navigation.navigate('Notice'),
+    },
+    { icon: <SettingsFaqIcon />,        label: t('settings.faq'),           onPress: () => navigation.navigate('FAQ') },
+    { icon: <SettingsFeedbackIcon />,   label: t('settings.feedback'),      onPress: handleOpenFeedback },
+    { icon: <SettingsTermsIcon />,      label: t('settings.terms'),         onPress: handleOpenTerms },
+    { icon: <SettingsPrivacyIcon />,    label: t('settings.privacyPolicy'), onPress: handleOpenPrivacyPolicy },
+    { icon: <SettingsAppVersionIcon />, label: t('settings.appVersion'),    value: APP_VERSION, chevron: false },
+  ]);
+  const noSearchResult =
+    accountItems.length + mateItems.length + appItems.length + premiumItems.length + supportItems.length === 0;
+
   return (
     <SafeAreaView style={st.safeArea}>
-      {/* 상단 헤더 */}
-      <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={st.headerTitle}>{t('settings.title')}</Text>
-        <View style={st.headerPlaceholder} />
-      </View>
+      {/* 상단 헤더 — 아래 전폭 0.8pt 구분선(흰 15%) */}
+      <SettingsHeader title={t('settings.title')} onBack={() => navigation.goBack()} />
 
       <ScrollView
         style={st.scroll}
         contentContainerStyle={st.content}
         showsVerticalScrollIndicator={false}
+        // 검색 중 결과 행을 누르면 키보드를 내리는 탭에 먹히지 않고 바로 눌리게, 스크롤하면 키보드를 내린다
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
+        {/* 검색 */}
+        <View style={st.searchBox}>
+          <SettingsSearchIcon />
+          <TextInput
+            style={st.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('settings.searchPlaceholder')}
+            placeholderTextColor={COLORS.text50}
+            accessibilityLabel={t('settings.searchPlaceholder')}
+            cursorColor="#BF85FC"
+            selectionHandleColor="#BF85FC"
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+          />
+        </View>
+
         {/* 계정 */}
-        <Text style={st.groupLabel}>{t('settings.groupAccount')}</Text>
-        <SettingGroup
-          items={[
-            { icon: <PersonIcon size={22} />,  label: t('settings.editProfile'),    onPress: () => navigation.navigate('EditProfile') },
-            { icon: <LockIcon size={22} />,    label: t('settings.accountSettings'),      onPress: () => navigation.navigate('AccountSettings') },
-            { icon: <BellIcon size={22} />,    label: t('settings.notifications'),      onPress: () => navigation.navigate('NotificationSettings') },
-            { icon: <BlockIcon size={22} />,   label: t('settings.blockedUsers'),  onPress: () => navigation.navigate('BlockedUsers') },
-            { icon: <ArchiveIcon size={22} />, label: t('settings.archivedPosts'),  onPress: () => navigation.navigate('ArchivedPosts') },
-            { icon: <CompassIcon size={22} />, label: t('settings.mateReco'), toggle: mateRecoOn, onToggle: toggleMateReco },
-          ]}
-        />
+        <SettingGroup label={t('settings.groupAccount')} items={accountItems} />
+
+        {/* 메이트 추천 — 단독 알약 카드 */}
+        <SettingGroup items={mateItems} radius={30} style={st.mateCard} />
         {/* 토글 라벨만으로는 무엇이 오가는지 알 수 없다 — 끄면 무엇이 사라지고 무엇을
             잃는지까지 적는다(개인정보처리방침·기록 작성 화면 안내와 같은 내용). */}
-        <Text style={st.groupNote}>{t('settings.mateRecoNote')}</Text>
+        {mateItems.length > 0 && <Text style={settingsText.groupNote}>{t('settings.mateRecoNote')}</Text>}
 
         {/* 앱 설정 */}
-        <Text style={st.groupLabel}>{t('settings.groupApp')}</Text>
         <SettingGroup
-          items={[
-            // 촉각 피드백 — 끄면 utils/haptics를 경유하는 전 호출부가 조용해진다(HapticsBridge)
-            { icon: <SparkleIcon size={22} />, label: t('settings.haptics'), toggle: hapticsEnabled, onToggle: setHapticsEnabled },
-            // 간단히 보기 — 켜면 minimal. 저장값('full'|'minimal')은 그대로라 기존 full 사용자는 꺼진 상태로 보인다
-            {
-              icon: <GalleryIcon size={22} />,
-              label: t('settings.simpleCardView'),
-              toggle: diaryCardMode === 'minimal',
-              onToggle: (v: boolean) => setDiaryCardMode(v ? 'minimal' : 'full'),
-              onHelp: () => setSimpleHelpVisible(true),
-              helpA11yLabel: t('settings.simpleCardViewHelpA11y'),
-            },
-            {
-              // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
-              icon: <GlobeSkinIcon size={22} />,
-              label: t('settings.globeSkin'),
-              value: t(currentSkin.labelKey),
-              onPress: () => setSkinModalVisible(true),
-            },
-            {
-              icon: <LanguageIcon size={22} />,
-              label: t('settings.languageChange'),
-              value: LANGUAGE_LABELS[language],
-              onPress: handleLanguageChange,
-            },
-            {
-              icon: <MoonIcon size={22} />,
-              label: t('settings.theme'),
-              value: t('settings.themeDark'),
-              onPress: () => Alert.alert(t('settings.themeTitle'), t('settings.themeMsg')),
-            },
-            {
-              icon: <InfoIcon size={22} />,
-              label: t('settings.residence'),
-              // 코드('KR') 대신 국기+국가명. 국기와 이름은 각각 Text여야 한다(6ae35f9)
-              valueNode: (
-                <View style={st.settingValueRow}>
-                  <Text style={st.settingValue}>{homeCountry?.flag ?? ''}</Text>
-                  <Text style={st.settingValue}>{homeCountry?.name ?? homeCountryCode}</Text>
-                </View>
-              ),
-              onPress: openCountryModal,
-            },
-            {
-              // 거주 지역(시·도) — 소셜 탭 '일상' 링의 기준. 미설정이면 '미설정'
-              icon: <HomeIcon size={22} />,
-              label: t('settings.homeRegion'),
-              value: homeRegion?.name ?? t('settings.homeRegionUnset'),
-              onPress: () => setRegionSheetVisible(true),
-            },
-            {
-              icon: <GlobeSkinIcon size={22} />,
-              label: t('stay.settingsStart'),
-              value: activeStayGroup
-                ? `${activeStayGroup.countryFlag ?? ''} ${activeStayGroup.countryName ?? ''}`.trim()
-                : '—',
-              onPress: handleStayPress,
-            },
-            {
-              // 튜토리얼 다시 보기 — 세 탭(메인·통계·프로필)의 1회 게이트를 모두 풀어준다.
-              // 메인은 'replay'로 지금 바로 재생하고, 통계·프로필은 그 탭에 다시 들어갈 때 뜬다.
-              icon: <CompassIcon size={22} />,
-              label: t('settings.viewTutorial'),
-              onPress: () => {
-                resetTutorialsSeen();
-                navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } });
-              },
-            },
-          ]}
+          label={t('settings.groupApp')}
+          items={appItems}
+          labelStyle={mateItems.length > 0 ? st.groupLabelAfterNote : undefined}
         />
 
         {/* 프리미엄 */}
-        <Text style={st.groupLabel}>{t('settings.groupPremium')}</Text>
-        <SettingGroup
-          items={[
-            // 베타 체험 토글 — 무료 개방 중에는 의미가 없어 숨긴다.
-            // (플래그를 내리면 다시 나타난다. 결제 연동 시 구매 화면 진입으로 교체)
-            ...(LAUNCH_FREE_PREMIUM
-              ? []
-              : [{ icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium }]),
-            {
-              icon: <LanguageIcon size={22} />,
-              label: t('settings.handleFont'),
-              value: t(currentFont.labelKey),
-              badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: openFontPicker,
-            },
-            // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
-            isPremium
-              ? {
-                  icon: <StickerIcon size={22} />,
-                  label: t('settings.stripLogoRemove'),
-                  toggle: stripLogoRemoval,
-                  onToggle: setStripLogoRemoval,
-                }
-              : {
-                  icon: <StickerIcon size={22} />,
-                  label: t('settings.stripLogoRemove'),
-                  badge: t('settings.premiumBadge'),
-                  onPress: () => navigation.navigate('Premium'),
-                },
-            {
-              // 스트립 프레임 커스텀 — 구현됨. 네컷 만들기 팔레트의 + 버튼에서 자유 색 선택(프리미엄)
-              icon: <PaletteIcon size={22} />,
-              label: t('settings.stripFrameCustom'),
-              badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () =>
-                isPremium
-                  ? Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg'))
-                  : navigation.navigate('Premium'),
-            },
-          ]}
-        />
+        <SettingGroup label={t('settings.groupPremium')} items={premiumItems} />
 
-        {/* 지원 */}
-        <Text style={st.groupLabel}>{t('settings.groupSupport')}</Text>
-        <SettingGroup
-          items={[
-            {
-              icon: <BellIcon size={22} />,
-              label: t('settings.notice'),
-              badge: noticeUnread ? t('notice.badgeNew') : undefined,
-              onPress: () => navigation.navigate('Notice'),
-            },
-            {
-              icon: <QuestionIcon size={22} />,
-              label: t('settings.faq'),
-              onPress: () => navigation.navigate('FAQ'),
-            },
-            {
-              icon: <ChatIcon size={22} />,
-              label: t('settings.feedback'),
-              onPress: handleOpenFeedback,
-            },
-            {
-              icon: <DocumentIcon size={22} />,
-              label: t('settings.terms'),
-              onPress: handleOpenTerms,
-            },
-            {
-              icon: <LockIcon size={22} />,
-              label: t('settings.privacyPolicy'),
-              onPress: handleOpenPrivacyPolicy,
-            },
-            { icon: <InfoIcon size={22} />,      label: t('settings.appVersion'), value: 'v1.0.0' },
-          ]}
-        />
+        {/* 기타 · 지원 */}
+        <SettingGroup label={t('settings.groupSupport')} items={supportItems} />
 
-        {/* 로그아웃 */}
-        <TouchableOpacity
+        {searchKey && noSearchResult ? <Text style={st.searchEmpty}>{t('settings.searchNoResult')}</Text> : null}
+
+        {/* 로그아웃 — 검색 중에도 그대로 둔다. 배경은 터치러블 밖 형제로 깔아 눌림 중에도 배경색이 흐려지지 않는다 */}
+        <SettingsPillButton
+          label={t('settings.logout')}
+          onPress={handleLogout}
+          tone="danger"
+          icon={<SettingsLogoutIcon />}
           style={st.logoutBtn}
-          activeOpacity={0.7}
-          onPress={() => {
-            warn(); // 되돌릴 수 없는 동작을 묻는 중
-            Alert.alert(t('settings.logout'), t('settings.logoutConfirm'), [
-              { text: t('common.cancel'), style: 'cancel' },
-              {
-                text: t('settings.logout'),
-                style: 'destructive',
-                onPress: async () => {
-                  // 세션 종료를 기다린 뒤 이동한다. 먼저 이동하면 Splash가 남은 세션으로 자동 재로그인할 수 있음.
-                  await signOut(); // Supabase 세션 종료 (미설정 시 no-op)
-                  navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
-                },
-              },
-            ]);
-          }}
-        >
-          <View style={st.logoutInner}>
-            <ExitIcon size={22} />
-            <Text style={st.logoutText}>{t('settings.logout')}</Text>
-          </View>
-        </TouchableOpacity>
+        />
 
-        <Text style={st.versionText}>{t('settings.footer')}</Text>
+        <Text style={st.versionText}>{t('settings.footer', { version: APP_VERSION })}</Text>
         {/* 유리 지구본 배경 크레딧은 2026-07-31에 제거했다 — 허블(ESA/Hubble, CC BY 4.0)
             이미지를 사용자가 직접 만든 이미지로 교체해 표기 의무가 없어졌다.
             외부 저작물을 다시 쓰게 되면 여기에 출처를 되살릴 것. */}
       </ScrollView>
 
-      {/* 거주 국가 선택 — 온보딩과 같은 공용 목록 모달.
-          예전에는 국가 코드 두 자리를 직접 타이핑하게 했다(“예: KR, US, JP”). 같은 값을
-          정하는데 온보딩은 목록이고 여기만 사용자가 자기 나라의 ISO 코드를 알아야 했다. */}
-      <CountryPickerModal
+      {/* 거주 국가 선택 — 설정 팝업(SettingsModal) 형식. 장기 체류 국가 단계와 같은 검색칸 + 설정 행 목록이다.
+          (예전엔 온보딩과 같은 전체 화면 CountryPickerModal이었다 — 온보딩은 그대로 그 모달을 쓴다.)
+          국기·국가명은 한 Text에 합치지 않는다(left 슬롯) — 삼성 기기에서 한글이 사라진다(6ae35f9). */}
+      <SettingsModal
         visible={countryModalVisible}
-        onClose={() => setCountryModalVisible(false)}
-        onSelect={(c) => { setHomeCountryCode(countryCodeOf(c)); setCountryModalVisible(false); }}
-        title={t('settings.countryModalTitle')}
-        searchPlaceholder={t('settings.countrySearchPlaceholder')}
-        selectedCode={homeCountryCode}
+        title={countryStep === 'confirm' ? t('settings.residenceConfirmTitle') : t('settings.countryModalTitle')}
+        // 중요한 변경이라 무엇이 바뀌는지 먼저 알린다(자세한 내용은 설정 행 물음표)
+        description={countryStep === 'confirm' ? t('settings.residenceConfirmWarn') : t('settings.residenceNotice')}
+        // 목록 단계: 다른 국가를 고르면 하단 알약이 '취소' → '확인'으로 바뀌고, 누르면 주의 단계로 넘어간다.
+        // 주의 단계: 본문의 '확인'이 최종 저장, 하단 '취소'는 저장 없이 닫기.
+        closeLabel={countryStep === 'pick' && pendingCountryCode ? t('common.confirm') : t('common.cancel')}
+        onClose={countryStep === 'pick' && pendingCountryCode ? () => { Keyboard.dismiss(); setCountryStep('confirm'); } : closeCountryModal}
+        // 배경 탭·안드로이드 뒤로: 주의 단계면 목록으로 한 단계 돌아가고, 목록 단계면 저장 없이 닫는다
+        onDismiss={countryStep === 'confirm' ? () => setCountryStep('pick') : closeCountryModal}
+        avoidKeyboard
+      >
+        {countryStep === 'confirm' && pendingCountryCode ? (
+          <>
+            {/* 무엇에서 무엇으로 — 국기·국가명은 한 Text에 합치지 않는다(삼성 한글 소실, 6ae35f9) */}
+            <View style={st.residenceChange}>
+              <Text style={st.residenceChangeText}>{homeCountry?.flag ?? ''}</Text>
+              <Text style={st.residenceChangeText}>{homeCountry?.name ?? homeCountryCode}</Text>
+              <Text style={st.residenceChangeArrow}>→</Text>
+              <Text style={st.residenceChangeText}>{pendingCountry?.flag ?? ''}</Text>
+              <Text style={[st.residenceChangeText, st.residenceChangeTo]}>{pendingCountry?.name ?? pendingCountryCode}</Text>
+            </View>
+            <SettingsPillButton label={t('common.confirm')} onPress={confirmCountryChange} style={st.residenceConfirmBtn} />
+          </>
+        ) : (
+        <>
+        <View style={[st.searchBox, st.modalSearch]}>
+          <SettingsSearchIcon />
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+            style={st.searchInput}
+            value={countrySearch}
+            onChangeText={setCountrySearch}
+            placeholder={t('settings.countrySearchPlaceholder')}
+            placeholderTextColor={COLORS.text50}
+            autoCorrect={false}
+          />
+        </View>
+        <FlatList
+          data={residenceCountries}
+          keyExtractor={(c) => c.term}
+          style={[st.modalList, st.modalListBleed, st.modalListAfterSearch]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          ItemSeparatorComponent={SettingsDivider}
+          renderItem={({ item }) => (
+            <SettingsOptionRow
+              left={<Text style={st.optionFlag}>{item.flag}</Text>}
+              label={item.name}
+              selected={countryCodeOf(item) === (pendingCountryCode ?? (homeCountryCode || '').toUpperCase())}
+              onPress={() => {
+                select();
+                const code = countryCodeOf(item);
+                // 지금 거주국을 다시 고르면 보류를 버린다(바뀌는 게 없으니 '확인'도 필요 없다)
+                setPendingCountryCode(code === (homeCountryCode || '').toUpperCase() ? null : code);
+              }}
+            />
+          )}
+        />
+        </>
+        )}
+      </SettingsModal>
+
+      <HelpLinesModal
+        visible={residenceHelpVisible}
+        onClose={() => setResidenceHelpVisible(false)}
+        title={t('settings.residence')}
+        lines={[1, 2, 3, 4, 5].map((n) => t(`settings.residenceHelpLine${n}` as const))}
       />
+      {/* 장기 체류 안내 — 글 대신 그림 슬라이드 6장(StayGuideSlides). 예시 국가는 내 거주국 + (체류 중이면 그 나라, 아니면 일본·미국) */}
+      <SettingsModal visible={stayHelpVisible} title={t('stay.settingsStart')} closeLabel={t('common.close')} onClose={() => setStayHelpVisible(false)}>
+        <StayGuideSlides
+          home={{ flag: homeCountry?.flag ?? '🏠', name: homeCountry?.name ?? homeCountryCode }}
+          stay={
+            activeStayGroup?.countryName
+              ? { flag: activeStayGroup.countryFlag ?? '', name: activeStayGroup.countryName }
+              : homeCountry?.name === '일본' ? { flag: '🇺🇸', name: '미국' } : { flag: '🇯🇵', name: '일본' }
+          }
+        />
+      </SettingsModal>
 
       {/* 거주 지역(시·도) 설정 — '현재 위치로 설정'(주) / '직접 선택'(보조) */}
-      <HomeRegionSheet visible={regionSheetVisible} onClose={() => setRegionSheetVisible(false)} />
+      {/* allowClear: 설정에서만 저장된 거주 지역을 지울 수 있다(온보딩·스냅 저장 시트는 고르는 맥락) */}
+      <HomeRegionSheet visible={regionSheetVisible} onClose={() => setRegionSheetVisible(false)} allowClear />
 
       {/* 언어 선택 — 안드로이드 Alert 3버튼 제한 때문에 바텀시트다(LanguageSheet 주석 참고) */}
       <LanguageSheet
@@ -738,169 +791,94 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         onClose={() => setLanguageSheetVisible(false)}
       />
 
-      {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
-      <Modal
+      {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기.
+          팝업 3종(폰트·장기 체류·스킨)의 목록은 바깥 팝업 카드를 그대로 설정 카드로 쓴다 — 행을 카드 좌우 끝까지 펴고
+          (modalListBleed) 전폭 구분선으로 나눈다. 카드 안에 CardSurface 카드를 한 겹 더 넣으면 같은 채움(#111116) 위에
+          링만 16pt 간격으로 두 겹 겹쳐 보여 산만하다(도움말 닫기 알약이 baseRim을 따로 깔아야 했던 것과 같은 이유). */}
+      <SettingsModal
         visible={fontModalVisible}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setFontModalVisible(false)}
+        title={t('settings.handleFont')}
+        description={t('settings.handleFontDesc')}
+        closeLabel={t('common.cancel')}
+        onClose={() => setFontModalVisible(false)}
       >
-        {/* 배경 탭으로도 닫힘 — 카드(내부 Pressable)는 탭을 삼켜 오닫힘 방지 */}
-        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setFontModalVisible(false)}>
-          <Pressable style={st.modalCard} onPress={() => {}}>
-            <Text style={st.modalTitle}>{t('settings.handleFont')}</Text>
-            <Text style={st.modalDesc}>{t('settings.handleFontDesc')}</Text>
-            <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
-            {HANDLE_FONTS.map((f) => {
-              const selected = (handleFont ?? 'default') === f.id;
-              return (
-                <TouchableOpacity
-                  key={f.id}
-                  style={[st.fontRow, selected && st.fontRowSelected]}
-                  activeOpacity={0.7}
-                  onPress={() => {
-                    // 'default'는 null로 저장 → 서버에서도 폰트 미지정으로 동기화
-                    setHandleFont(f.id === 'default' ? null : f.id);
-                    setFontModalVisible(false);
-                  }}
-                >
-                  <View style={st.fontRowInfo}>
-                    <Text style={st.fontRowLabel}>{t(f.labelKey)}</Text>
-                    <Text style={[st.fontRowPreview, handleFontStyle(f.id, lateFonts)]} numberOfLines={1}>
-                      {handle ? `@${handle}` : '@eorth'}
-                    </Text>
-                  </View>
-                  {selected && <Text style={st.fontRowCheck}>✓</Text>}
-                </TouchableOpacity>
-              );
-            })}
-            </ScrollView>
-            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setFontModalVisible(false)}>
-              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <ScrollView style={[st.modalList, st.modalListBleed]} showsVerticalScrollIndicator={false}>
+          {HANDLE_FONTS.map((f, i) => (
+            <React.Fragment key={f.id}>
+              {i > 0 && <SettingsDivider />}
+              <SettingsOptionRow
+                label={t(f.labelKey)}
+                selected={(handleFont ?? 'default') === f.id}
+                right={
+                  <Text style={[st.fontPreview, handleFontStyle(f.id, lateFonts)]} numberOfLines={1}>
+                    {handle ? `@${handle}` : '@eorth'}
+                  </Text>
+                }
+                onPress={() => {
+                  // 'default'는 null로 저장 → 서버에서도 폰트 미지정으로 동기화
+                  setHandleFont(f.id === 'default' ? null : f.id);
+                  setFontModalVisible(false);
+                }}
+              />
+            </React.Fragment>
+          ))}
+        </ScrollView>
+      </SettingsModal>
 
       {/* 장기체류 수동 시작 모달 — 국가 선택 → 유형 선택을 '한 Modal 안에서' 단계 전환한다.
           이전엔 단계마다 Modal을 갈아끼웠는데, 이 저장소는 "Modal이 닫힌 직후 다른 Modal/
           네이티브 시트를 present하면 씹힌다"는 iOS 함정 이력이 있어(로딩 오버레이·구글 로그인)
-          교체 구조 자체를 없앴다. 덤으로 단계 전환 시 페이드 깜빡임도 사라진다. */}
-      <Modal
+          교체 구조 자체를 없앴다. 덤으로 단계 전환 시 페이드 깜빡임도 사라진다.
+          배경 탭·안드로이드 뒤로는 한 단계 뒤로(stayModalBack), 하단 취소는 닫기.
+          avoidKeyboard: 유형 단계엔 입력이 없어 KAV는 no-op이므로 모달 전체에 걸어도 무해하다. */}
+      <SettingsModal
         visible={stayModalStep !== null}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={stayModalBack}
+        title={stayModalStep === 'type' ? t('stay.typeTitle') : t('stay.countryTitle')}
+        closeLabel={t('common.cancel')}
+        onClose={closeStayModal}
+        onDismiss={stayModalBack}
+        avoidKeyboard
       >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피.
-            유형 단계엔 입력이 없어 KAV는 no-op이므로 모달 전체에 걸어도 무해하다. */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={stayModalBack}>
-          <Pressable style={st.modalCard} onPress={() => {}}>
-            {stayModalStep === 'type' ? (
-              <>
-                <Text style={st.modalTitle}>{t('stay.typeTitle')}</Text>
-                {/* 선택한 국가는 '읽기 전용 안내'가 아니라 탭하면 국가 선택으로 돌아가는 행이다.
-                    배경 탭·뒤로가기도 되돌아가지만 화면에 아무 안내가 없어 발견되지 않았다. */}
-                <TouchableOpacity
-                  style={[st.fontRow, st.stayPickedRow]}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                  onPress={stayBackToCountry}
-                >
-                  {/* flex:1 — 국가명이 길어도 우측 '변경' 라벨을 밀어내지 않게 한다 */}
-                  <Text style={[st.fontRowPreview, { fontSize: 14, flex: 1 }]} numberOfLines={1}>
-                    {staySelectedCountry ? `${staySelectedCountry.flag} ${staySelectedCountry.name}` : ''}
-                  </Text>
-                  <Text style={st.stayPickedChange}>{t('stay.changeCountry')}</Text>
-                </TouchableOpacity>
-                {STAY_TYPES.map((item) => (
-                  <TouchableOpacity
-                    key={item.type}
-                    style={[st.fontRow, { marginBottom: 8 }]}
-                    activeOpacity={0.7}
-                    onPress={() => handleStayTypeSelect(item.type)}
-                  >
-                    <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{t(item.labelKey)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </>
-            ) : (
-              <>
-                <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
-                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                  style={[st.modalInput, { marginBottom: 8 }]}
-                  value={stayCountrySearch}
-                  onChangeText={setStayCountrySearch}
-                  placeholder={t('basicInfo.residenceSearchPlaceholder')}
-                  placeholderTextColor={COLORS.textMuted}
-                  autoCorrect={false}
-                />
-                <FlatList
-                  data={stayFilteredCountries}
-                  keyExtractor={(item) => item.name}
-                  style={st.fontList}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  // 빠른 선택 섹션은 검색 중엔 숨긴다 — 검색 결과 위에 무관한 나라가 뜨면 방해다
-                  ListHeaderComponent={
-                    stayCountrySearch.trim() === '' && stayRecentCountries.length > 0 ? (
-                      <View>
-                        <Text style={st.stayQuickTitle}>{t('stay.recentCountries')}</Text>
-                        {stayRecentCountries.map((c) => (
-                          <TouchableOpacity
-                            key={`recent-${c.name}`}
-                            style={[st.fontRow, st.stayQuickRow]}
-                            activeOpacity={0.7}
-                            onPress={() => handleStayCountrySelect(c)}
-                          >
-                            <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{c.flag} {c.name}</Text>
-                          </TouchableOpacity>
-                        ))}
-                        <Text style={st.stayQuickTitle}>{t('stay.allCountries')}</Text>
-                      </View>
-                    ) : null
-                  }
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={st.fontRow}
-                      activeOpacity={0.7}
-                      onPress={() => handleStayCountrySelect(item)}
-                    >
-                      <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{item.flag} {item.name}</Text>
-                    </TouchableOpacity>
-                  )}
-                />
-              </>
-            )}
-            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
-              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-        </KeyboardAvoidingView>
-      </Modal>
+        {/* 본문은 StayStartFlow — 진행 막대·국기 버블·국가 행(국기 배지·대륙)·유형 아이콘 카드. 단계 전환·시작은 여기 핸들러 그대로 */}
+        {stayModalStep === 'type' ? (
+          <StayTypeStep
+            country={staySelectedCountry}
+            types={STAY_TYPES}
+            onChangeCountry={stayBackToCountry}
+            onPick={handleStayTypeSelect}
+          />
+        ) : (
+          <StayCountryStep
+            search={stayCountrySearch}
+            onSearch={setStayCountrySearch}
+            recent={stayRecentCountries}
+            countries={stayFilteredCountries}
+            homeCountryName={homeCountryName}
+            onPick={handleStayCountrySelect}
+          />
+        )}
+      </SettingsModal>
 
       {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
-      <Modal
+      <SettingsModal
         visible={skinModalVisible}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setSkinModalVisible(false)}
+        title={t('settings.globeSkin')}
+        description={t('settings.globeSkinDesc')}
+        closeLabel={t('common.cancel')}
+        onClose={() => setSkinModalVisible(false)}
       >
-        {/* 배경 탭으로도 닫힘 */}
-        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setSkinModalVisible(false)}>
-          <Pressable style={st.modalCard} onPress={() => {}}>
-            <Text style={st.modalTitle}>{t('settings.globeSkin')}</Text>
-            <Text style={st.modalDesc}>{t('settings.globeSkinDesc')}</Text>
-            {GLOBE_SKINS.map((s) => {
-              const selected = globeSkin === s.id;
-              const locked = s.premium && !isPremium;
-              return (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[st.fontRow, selected && st.fontRowSelected]}
-                  activeOpacity={0.7}
+        <ScrollView style={[st.modalList, st.modalListBleed]} showsVerticalScrollIndicator={false}>
+          {GLOBE_SKINS.map((s, i) => {
+            const locked = s.premium && !isPremium;
+            return (
+              <React.Fragment key={s.id}>
+                {i > 0 && <SettingsDivider />}
+                <SettingsOptionRow
+                  label={t(s.labelKey)}
+                  // 잠긴 스킨은 체크 대신 자물쇠만(예전과 같이 둘 중 하나)
+                  selected={!locked && globeSkin === s.id}
+                  left={<LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />}
+                  right={locked ? <SvgLockClosedIcon size={14} color="#A1A1B0" /> : undefined}
                   onPress={() => {
                     if (locked) {
                       setSkinModalVisible(false);
@@ -910,23 +888,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                     setGlobeSkin(s.id);
                     setSkinModalVisible(false);
                   }}
-                >
-                  <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />
-                  <Text style={st.skinRowLabel}>{t(s.labelKey)}</Text>
-                  {locked ? (
-                    <View style={st.skinLock}><SvgLockClosedIcon size={14} color="#A1A1B0" /></View>
-                  ) : selected ? (
-                    <Text style={st.fontRowCheck}>✓</Text>
-                  ) : null}
-                </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setSkinModalVisible(false)}>
-              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+                />
+              </React.Fragment>
+            );
+          })}
+        </ScrollView>
+      </SettingsModal>
 
       {/* '간단히 보기' 물음표 도움말 */}
       <SimpleViewHelpModal visible={simpleHelpVisible} onClose={() => setSimpleHelpVisible(false)} />
@@ -940,241 +907,96 @@ const st = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  headerPlaceholder: {
-    width: 40,
-  },
-
-  // 스크롤
+  // 스크롤 — 좌우 16 = 카드·검색창 폭 371(402 기준)
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 16,
     paddingBottom: 40,
   },
 
-  // 그룹 라벨
-  groupLabel: {
-    fontSize: 10,
-    color: COLORS.textDim,
-    marginTop: 24,
-    marginBottom: 8,
-    marginLeft: 4,
-    letterSpacing: 0.8,
-  },
-
-  // 그룹 아래 보충 설명 — 토글 하나로는 뜻이 안 통하는 항목에 붙인다
-  groupNote: {
-    fontSize: 11,
-    lineHeight: 16,
-    color: COLORS.textMuted,
-    marginTop: 8,
-    marginLeft: 4,
-    marginRight: 4,
-  },
-
-  // 설정 그룹
-  settingGroup: {
-    backgroundColor: 'rgba(46,46,59,0.45)',
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  settingItem: {
+  // 검색창 — 헤더선 아래 21, 높이 40·모서리 22·흰 6%, 좌우 12·간격 8
+  searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  // 물음표가 붙은 행 — 왼쪽 묶음이 남는 폭을 차지하되 줄어들 수 있게 해서, 라벨이 길어져도
-  // 오른쪽 스위치를 밀어내거나 겹치지 않고 라벨이 줄바꿈된다.
-  settingLeftWithHelp: { flex: 1, minWidth: 0, marginRight: 12 },
-  settingLabelShrink: { flexShrink: 1 },
-  // settingLeft의 gap 12는 아이콘-라벨 간격용이라, 물음표는 음수 여백으로 라벨에 붙인다(실간격 6)
-  settingHelpBtn: { marginLeft: -6 },
-  settingIconWrap: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingLabel: {
-    fontSize: 13,
-    color: COLORS.white,
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  settingValue: {
-    fontSize: 11,
-    color: COLORS.textDim,
-  },
-  // 국기와 이름을 각각 Text로 두되 한 줄로 붙여 보이게 하는 래퍼(6ae35f9)
-  settingValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  chevron: {
-    fontSize: 18,
-    color: COLORS.textMuted,
-  },
-  itemDivider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginLeft: 52,
-  },
-  premiumBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(107,33,168,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  premiumBadgeText: {
-    fontSize: 9,
-    color: COLORS.purpleNeon,
-  },
-
-  // 로그아웃
-  logoutBtn: {
-    backgroundColor: COLORS.redBg,
-    borderWidth: 1,
-    borderColor: COLORS.redBorder,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  logoutInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  logoutText: {
-    fontSize: 14,
-    color: COLORS.red,
-  },
-
-  // 버전
-  versionText: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 20,
-  },
-
-  // 거주 국가 입력 모달
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10,10,15,0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    maxHeight: '85%', // 목록이 길어도 하단 취소 버튼이 화면 안에 남도록
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white, marginBottom: 6 },
-  modalDesc: { fontSize: 12, color: COLORS.textDim, marginBottom: 16 },
-  modalInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
+    minHeight: 40, // 고정 높이면 iOS 큰 글자(배율 상한 없음)에서 입력 글자가 잘린다
+    borderRadius: 22,
+    backgroundColor: COLORS.searchBg,
     paddingHorizontal: 12,
-    paddingVertical: 12,
+    gap: 8,
+    marginTop: 21,
+    // 시안 그림자(0/4/4, 검정 3%) — 안드로이드 elevation은 반투명 배경에서 테두리 얼룩을 만들어 생략한다
+    ...Platform.select({
+      ios: { shadowColor: '#000000', shadowOffset: { width: 0, height: 4 }, shadowRadius: 2, shadowOpacity: 0.03 },
+      default: {},
+    }),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
     color: COLORS.white,
-    fontSize: 16,
-    marginBottom: 20,
+    padding: 0, // 안드로이드 TextInput 기본 세로 패딩 제거 — 높이 40 안에 가운데 정렬
   },
-  modalBtnRow: { flexDirection: 'row', gap: 12 },
-  modalBtn: { flex: 1, height: 46, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  modalBtnCancel: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.divider },
-  modalBtnSubmit: { backgroundColor: COLORS.purpleNeon },
-  modalBtnCancelText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },
-  modalBtnSubmitText: { color: COLORS.bg, fontSize: 14, fontWeight: '600' },
-
-  // 아이디 폰트 선택 모달
-  fontList: { flexGrow: 0, flexShrink: 1 }, // 카드 maxHeight 안에서만 스크롤 — 취소 버튼 밀어내지 않음
-  fontRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 8,
+  searchEmpty: {
+    fontSize: 14,
+    color: COLORS.text50,
+    textAlign: 'center',
+    marginTop: 40,
   },
-  fontRowSelected: {
-    borderColor: COLORS.purpleBorder,
-    backgroundColor: COLORS.purpleBg,
+
+  // 메이트 안내문 아래 → '앱 설정' 라벨 간격 25(다른 그룹 라벨은 23)
+  groupLabelAfterNote: { marginTop: 25 },
+
+  // 메이트 추천 단독 카드 — 계정 카드와 간격 20
+  mateCard: { marginTop: 20 },
+
+  // 로그아웃 — 지원 카드 아래 25 (알약 치수·채움은 SettingsPillButton danger)
+  logoutBtn: { marginTop: 25 },
+
+  // 푸터 — 12pt 흰 50%, 로그아웃 아래 21
+  versionText: {
+    fontSize: 12,
+    color: COLORS.text50,
+    textAlign: 'center',
+    marginTop: 21,
   },
-  fontRowInfo: { flex: 1 },
-  fontRowLabel: { fontSize: 11, color: COLORS.textDim, marginBottom: 2 },
-  fontRowPreview: { fontSize: 18, color: COLORS.white },
-  fontRowCheck: { fontSize: 16, color: COLORS.purpleNeon, marginLeft: 10 },
-  fontModalClose: { marginTop: 8 },
 
-  // 장기체류 시작 모달 — 유형 단계의 '선택한 국가(탭하면 다시 고르기)' 행
-  stayPickedRow: { borderColor: COLORS.purpleBorder, backgroundColor: COLORS.purpleBg, marginBottom: 14 },
-  stayPickedChange: { fontSize: 12, color: COLORS.purpleNeon, marginLeft: 10 },
-  // 국가 단계 — 빠른 선택 섹션 헤더/행
-  stayQuickTitle: { fontSize: 11, color: COLORS.textDim, marginTop: 4, marginBottom: 6 },
-  stayQuickRow: { borderColor: COLORS.purpleBorder, backgroundColor: COLORS.purpleBg },
+  // 팝업 본문 목록 — 카드 maxHeight 안에서만 스크롤(flexShrink) — 하단 알약을 밀어내지 않음
+  modalList: { flexGrow: 0, flexShrink: 1 },
+  // 선택 목록은 팝업 카드 좌우 패딩(16)을 상쇄해 카드 끝까지 편다 — 행·구분선이 설정 카드처럼 전폭
+  modalListBleed: { marginHorizontal: -16, marginTop: 12 },
+  // 장기 체류 국가 단계 — 검색칸 바로 아래
+  modalListAfterSearch: { marginTop: 8 },
+  // 팝업 안 검색칸 — 하단 취소 알약과 같은 옅은 흰 테두리로 카드와 구분
+  modalSearch: { marginTop: 16, borderWidth: 1, borderColor: COLORS.line },
+  // 국가 행의 국기 — 국가명과 다른 Text(삼성 한글 소실 회피, 6ae35f9)
+  optionFlag: { fontSize: 14 },
 
-  // 지구본 스킨 선택 모달
-  skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
-  skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
-  skinLock: { marginLeft: 10 },
+  // 아이디 폰트 미리보기 — 행 값 자리에 실제 폰트로. 길면 말줄임(라벨 자리를 다 먹지 않게)
+  fontPreview: { flexShrink: 1, maxWidth: '50%', fontSize: 18, color: COLORS.white },
+
+  // 지구본 스킨 색 원(라벨과 간격은 행 gap 12)
+  skinCircle: { width: 34, height: 34, borderRadius: 17 },
 
   // '간단히 보기' 도움말 — 실제 피드 카드 두 장. 카드 폭은 열 폭을 따른다(피드 (stageW-42)/2보다 약간 좁다).
   // 좌우 패딩 16·열 간격 24: 카드 기울기 + 뒷장 -5°로 모서리가 양옆 ~13 삐져나와도 모달 밖으로 나가거나 서로 겹치지 않게.
-  // maxWidth는 스테이지 폭(STAGE_MAX_W) — 기본 모달 360보다 넓혀 카드를 피드 폭에 가깝게 한다.
-  sampleModalCard: { maxWidth: STAGE_MAX_W, paddingHorizontal: 16 },
-  sampleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 24, marginTop: 10, marginBottom: 22 },
+  // maxWidth는 스테이지 폭(STAGE_MAX_W) — 기본 팝업 360보다 넓혀 카드를 피드 폭에 가깝게 한다.
+  helpCard: { maxWidth: STAGE_MAX_W },
+  sampleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 24, marginTop: 16, marginBottom: 22 },
   sampleCol: { flex: 1, minWidth: 0 },
+  // 그룹 라벨과 같은 12 Bold. '기본'은 흰 50%, '간단히 보기'만 그룹 라벨 보라로 강조.
   // marginBottom 18: 카드 위로 걸친 테이프(top -8~-13)와 기울기 여유
-  sampleLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textDim, marginBottom: 18, textAlign: 'center' },
-  helpLineRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
-  helpLineDot: { fontSize: 12, lineHeight: 18, color: COLORS.textDim },
-  helpLineText: { flex: 1, fontSize: 12, lineHeight: 18, color: COLORS.textDim },
+  sampleLabel: { fontSize: 12, fontWeight: 'bold', color: COLORS.text50, marginBottom: 18, textAlign: 'center' },
+  sampleLabelOn: { color: COLORS.label },
+  // 설명 — 설정 값 텍스트와 같은 흰 50%
+  helpLineRow: { flexDirection: 'row', gap: 6, marginBottom: 6, paddingHorizontal: 4 },
+  // 거주 국가 도움말 — 제목 아래 첫 줄 간격
+  residenceHelpList: { marginTop: 16 },
+  // 거주 국가 변경 확인 단계 — '현재 → 바꿀 국가' 한 줄, 바꿀 국가는 그룹 라벨 보라로 강조
+  residenceChange: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 20 },
+  residenceChangeText: { fontSize: 16, fontWeight: '600', color: COLORS.white },
+  residenceChangeArrow: { fontSize: 16, color: COLORS.text50, marginHorizontal: 4 },
+  residenceChangeTo: { color: COLORS.label },
+  residenceConfirmBtn: { marginTop: 20 },
+  helpLineDot: { fontSize: 13, lineHeight: 19, color: COLORS.text50 },
+  helpLineText: { flex: 1, fontSize: 13, lineHeight: 19, color: COLORS.text50 },
 });

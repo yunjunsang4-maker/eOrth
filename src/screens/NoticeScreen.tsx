@@ -4,12 +4,17 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View,
   ScrollView,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { Text } from '../ui/Text';
-import { BackChevronIcon } from '../components/icons';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingsCard,
+  SettingsDivider,
+  SettingsEmptyState,
+} from '../components/settings/SettingsUI';
 import { useTranslation } from 'react-i18next';
 import { usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { fetchNotices } from '../services/notices';
@@ -22,14 +27,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 // 공지는 GitHub Pages의 notices.json에서 읽는다(docs/notices.json — 커밋하면 게시).
 // 화면을 연 시점에 '가장 최신 공지의 게시 시각'을 저장해 설정의 점 배지를 끈다.
 
-const COLORS = {
-  bg: '#0A0A0F',
-  card: 'rgba(46,46,59,0.45)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  white: '#FFFFFF',
-  textDim: '#A1A1B0',
-  textMuted: '#8B8B9E',
-};
+const COLORS = SETTINGS_COLORS;
 
 export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notice'>) {
   const a = useSkinAccent();
@@ -58,33 +56,33 @@ export default function NoticeScreen({ navigation }: RootStackScreenProps<'Notic
 
   return (
     <SafeAreaView style={st.safeArea}>
-      <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={st.headerTitle}>{t('notice.title')}</Text>
-        <View style={st.headerPlaceholder} />
-      </View>
+      <SettingsHeader title={t('notice.title')} onBack={() => navigation.goBack()} />
 
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {list === null ? (
-          <ActivityIndicator color={a.accent} style={st.loading} />
+          <ActivityIndicator color={COLORS.text50} style={st.loading} />
         ) : list.length === 0 ? (
-          <Text style={st.empty}>{t('notice.empty')}</Text>
+          <SettingsEmptyState title={t('notice.empty')} style={st.empty} />
         ) : (
-          list.map((n) => (
-            <View key={n.id} style={st.card}>
-              <View style={st.cardHead}>
-                <Text style={st.kind}>{t(`notice.kind_${n.kind}`, { defaultValue: t('notice.kind_service') })}</Text>
-                <Text style={st.date}>{formatDate(n.publishedAt, i18n.language)}</Text>
-              </View>
-              <Text style={st.cardTitle}>{n.title}</Text>
-              {!!n.effectiveDate && (
-                <Text style={st.effective}>{t('notice.effectiveOn', { date: n.effectiveDate })}</Text>
-              )}
-              {!!n.body && <Text style={st.body}>{n.body}</Text>}
-            </View>
-          ))
+          // 설정 카드 한 장에 공지를 행처럼 쌓고 전폭 구분선으로 나눈다(설정 화면 카드와 같은 재질)
+          <SettingsCard>
+            {list.map((n, i) => (
+              <React.Fragment key={n.id}>
+                <View style={st.item}>
+                  <View style={st.cardHead}>
+                    <Text style={st.kind}>{t(`notice.kind_${n.kind}`, { defaultValue: t('notice.kind_service') })}</Text>
+                    <Text style={st.date}>{formatDate(n.publishedAt, i18n.language)}</Text>
+                  </View>
+                  <Text style={st.cardTitle}>{n.title}</Text>
+                  {!!n.effectiveDate && (
+                    <Text style={st.effective}>{t('notice.effectiveOn', { date: n.effectiveDate })}</Text>
+                  )}
+                  {!!n.body && <Text style={st.body}>{n.body}</Text>}
+                </View>
+                {i < list.length - 1 && <SettingsDivider />}
+              </React.Fragment>
+            ))}
+          </SettingsCard>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -111,24 +109,15 @@ function formatDate(ms: number, lang: string): string {
 
 const makeStyles = (a: SkinAccent) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 6,
-  },
-  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
-  headerPlaceholder: { width: 44 },
 
+  // 좌우 16 = 설정 화면 카드 폭과 같다. 헤더선 아래 첫 카드까지 21(설정 화면 검색창 위 간격)
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 40 },
+  content: { paddingHorizontal: 16, paddingTop: 21, paddingBottom: 40 },
   loading: { marginTop: 40 },
-  empty: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center', marginTop: 60 },
+  empty: { marginTop: 60 },
 
-  card: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: COLORS.cardBorder,
-    borderRadius: 16, padding: 16, marginBottom: 12,
-  },
+  // 공지 한 건 — 설정 행과 같은 좌 20 / 우 19 여백
+  item: { paddingLeft: 20, paddingRight: 19, paddingVertical: 18 },
   cardHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   // 공지 종류 알약 — 스킨 강조색
   kind: {
@@ -136,8 +125,9 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     backgroundColor: a.tint(0.12), borderRadius: 999,
     paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden',
   },
-  date: { fontSize: 12, color: COLORS.textMuted },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, lineHeight: 21 },
+  date: { fontSize: 12, color: COLORS.text50 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: COLORS.white, lineHeight: 20 },
   effective: { fontSize: 12, color: a.accent, marginTop: 6 },
-  body: { fontSize: 13, color: COLORS.textDim, lineHeight: 21, marginTop: 10 },
+  // 본문 — 펼친 글은 흰 70%
+  body: { fontSize: 13, color: COLORS.text70, lineHeight: 21, marginTop: 10 },
 });

@@ -1,6 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View,
   ScrollView,
@@ -11,7 +10,14 @@ import {
   UIManager,
 } from 'react-native';
 import { Text } from '../ui/Text';
-import { BackChevronIcon } from '../components/icons';
+import { SettingsChevronIcon } from '../components/icons/SettingsIcons';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingsCard,
+  SettingsDivider,
+  settingsText,
+} from '../components/settings/SettingsUI';
 import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -23,21 +29,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const COLORS = {
-  bg: '#0A0A0F',
-  card: 'rgba(46,46,59,0.45)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  divider: '#1A1A26',
-  // purpleNeon은 skinTheme으로 (makeStyles의 a.accent) — 지구본 스킨 연동
-  white: '#FFFFFF',
-  textDim: '#A1A1B0',
-  textMuted: '#8B8B9E',
-};
+// Q 표시·펼친 질문은 설정 디자인의 보라(#AC6FFF — 그룹 라벨·선택 체크와 같은 색)로 고정한다.
+const COLORS = SETTINGS_COLORS;
 
 export default function FAQScreen({ navigation }: RootStackScreenProps<'FAQ'>) {
-  // 지구본 스킨 강조색 연동
-  const a = useSkinAccent();
-  const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -48,17 +43,10 @@ export default function FAQScreen({ navigation }: RootStackScreenProps<'FAQ'>) {
 
   return (
     <SafeAreaView style={st.safeArea}>
-      {/* 상단 헤더 — 설정 화면과 동일 패턴 */}
-      <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={st.headerTitle}>{t('faq.title')}</Text>
-        <View style={st.headerPlaceholder} />
-      </View>
+      <SettingsHeader title={t('faq.title')} onBack={() => navigation.goBack()} />
 
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
-        <View style={st.list}>
+        <SettingsCard>
           {Array.from({ length: FAQ_COUNT }, (_, i) => {
             const open = openIndex === i;
             return (
@@ -72,78 +60,55 @@ export default function FAQScreen({ navigation }: RootStackScreenProps<'FAQ'>) {
                 >
                   <Text style={st.qMark}>Q</Text>
                   <Text style={[st.qText, open && st.qTextOn]}>{t(`faq.q${i + 1}`)}</Text>
-                  <Text style={[st.chevron, open && st.chevronOn]}>⌄</Text>
+                  {/* 설정 행 꺾쇠를 아래(닫힘)·위(펼침)로 돌려 쓴다 */}
+                  <View style={open ? st.chevronUp : st.chevronDown}><SettingsChevronIcon /></View>
                 </TouchableOpacity>
                 {open && (
                   <View style={st.aWrap}>
                     <Text style={st.aText}>{t(`faq.a${i + 1}`)}</Text>
                   </View>
                 )}
-                {i < FAQ_COUNT - 1 && <View style={st.divider} />}
+                {i < FAQ_COUNT - 1 && <SettingsDivider />}
               </React.Fragment>
             );
           })}
-        </View>
+        </SettingsCard>
 
         {/* 추가 문의 안내 */}
-        <Text style={st.footer}>{t('faq.footer')}</Text>
+        <Text style={[settingsText.groupNote, st.footer]}>{t('faq.footer')}</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const makeStyles = (a: SkinAccent) => StyleSheet.create({
+const st = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
 
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.white },
-  headerPlaceholder: { width: 40 },
-
   scroll: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingTop: 20, paddingBottom: 40 },
+  content: { paddingHorizontal: 16, paddingTop: 21, paddingBottom: 40 },
 
-  list: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    overflow: 'hidden',
-  },
+  // 질문 행 — 설정 행과 같은 최소 높이 60·좌 20 / 우 19·글자 14 흰색
   qRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 15,
+    gap: 12,
+    minHeight: 60,
+    paddingLeft: 20,
+    paddingRight: 19,
+    paddingVertical: 12,
   },
-  qMark: { fontSize: 13, fontWeight: '800', color: a.accent, width: 16 },
-  qText: { flex: 1, fontSize: 13, color: COLORS.white, lineHeight: 19 },
-  qTextOn: { fontWeight: '700', color: a.accent },
-  chevron: { fontSize: 16, color: COLORS.textMuted },
-  chevronOn: { transform: [{ rotate: '180deg' }], color: a.accent },
+  qMark: { fontSize: 14, fontWeight: '800', color: COLORS.label, width: 14 },
+  qText: { flex: 1, fontSize: 14, fontWeight: '500', color: COLORS.white, lineHeight: 20 },
+  qTextOn: { fontWeight: '700', color: COLORS.label },
+  chevronDown: { transform: [{ rotate: '90deg' }] },
+  chevronUp: { transform: [{ rotate: '-90deg' }] },
+  // 답변 — 질문 글자 시작(20+14+12=46)에 맞춰 들여쓰고 흰 70%
   aWrap: {
-    paddingHorizontal: 16,
-    paddingLeft: 42,
-    paddingBottom: 16,
+    paddingLeft: 46,
+    paddingRight: 19,
+    paddingBottom: 18,
   },
-  aText: { fontSize: 12.5, color: COLORS.textDim, lineHeight: 19 },
-  divider: { height: 1, backgroundColor: COLORS.divider, marginLeft: 42 },
+  aText: { fontSize: 13, color: COLORS.text70, lineHeight: 20 },
 
-  footer: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 18,
-    lineHeight: 17,
-  },
+  footer: { textAlign: 'center', marginTop: 18 },
 });

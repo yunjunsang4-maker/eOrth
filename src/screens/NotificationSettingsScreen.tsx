@@ -1,90 +1,37 @@
-import { select } from '../utils/haptics';
 import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
-  Switch,
   Linking,
   AppState,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon, BackChevronIcon } from '../components/icons';
+import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon, BackpackIcon, SparkleIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
-import { useSkinAccent } from '../constants/skinTheme';
 import { useNotifSettings, useSettingsActions } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
-import { andFitText } from '../utils/fitText';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingGroup,
+  SettingsCard,
+  SettingsPillButton,
+  settingsText,
+  type SettingItem,
+} from '../components/settings/SettingsUI';
 import { shouldShowLocationBanner } from '../utils/locationDetectorBanner';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 
-const COLORS = {
-  bg:          '#0A0A0F',
-  card:        '#2E2E3B',
-  divider:     '#1A1A26',
-  purpleNeon:  '#BF85FC',
-  purpleDeep:  '#6B21A8',
-  white:       '#FFFFFF',
-  textDim:     '#A1A1B0',
-  textMuted:   '#4A4A59',
-};
+const COLORS = SETTINGS_COLORS;
 
 type Props = RootStackScreenProps<'NotificationSettings'>;
 
-// ─── 섹션 타이틀 ───
-const SectionLabel = ({ label }: { label: string }) => (
-  <Text style={styles.sectionLabel}>{label}</Text>
-);
-
-// ─── 토글 행 ───
-const ToggleRow = ({
-  icon,
-  label,
-  description,
-  value,
-  onValueChange,
-  isLast,
-  disabled,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  description?: string;
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-  isLast?: boolean;
-  disabled?: boolean;
-}) => {
-  const skinAccent = useSkinAccent();
-  const displayValue = disabled ? false : value;
-  return (
-    <>
-      <View style={[styles.row, disabled && { opacity: 0.4 }]}>
-        <View style={styles.rowLeft}>
-          <View style={styles.rowIcon}>{icon}</View>
-          <View style={styles.rowText}>
-            <Text style={styles.rowLabel}>{label}</Text>
-            {description ? (
-              <Text style={styles.rowDesc}>{description}</Text>
-            ) : null}
-          </View>
-        </View>
-        <Switch
-          value={displayValue}
-          onValueChange={(v) => { select(); onValueChange(v); }}
-          disabled={disabled}
-          trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
-          thumbColor="#FFFFFF"
-          ios_backgroundColor={COLORS.divider}
-        />
-      </View>
-      {!isLast && <View style={styles.rowDivider} />}
-    </>
-  );
-};
+// 토글 행은 설정 화면 SettingGroup의 토글 항목을 그대로 쓴다(햅틱 select()·스킨색 트랙·흰 썸·가운데 정렬 포함).
+// 설명은 SettingItem.description(라벨 아래 11·흰 50%), 전체 알림이 꺼졌을 때의 하위 토글은 disabled(흐리게·잠금·꺼짐 표시).
 
 export default function NotificationSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
@@ -209,22 +156,45 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
     Linking.openSettings().catch(() => {});
   };
 
+  // 하위 토글은 전부 전체 알림(master)이 꺼지면 잠긴다 — 예전 ToggleRow의 disabled={!masterEnabled}와 같다
+  const sub = (item: SettingItem): SettingItem => ({ ...item, disabled: !masterEnabled });
+
+  const basicItems: SettingItem[] = [
+    {
+      icon: <BellIcon size={20} />,
+      label: t('notifSettings.masterLabel'),
+      description: t('notifSettings.masterDesc'),
+      toggle: masterEnabled,
+      onToggle: (v) => setNotifPref('master', v),
+    },
+  ];
+  const socialItems: SettingItem[] = [
+    sub({ icon: <MapIcon size={20} />, label: t('notifSettings.friendTripLabel'), description: t('notifSettings.friendTripDesc'), toggle: friendTrip, onToggle: (v) => setNotifPref('friendTrip', v) }),
+    sub({ icon: <HeartIcon size={20} />, label: t('notifSettings.likesLabel'), description: t('notifSettings.likesDesc'), toggle: likes, onToggle: (v) => setNotifPref('likes', v) }),
+    sub({ icon: <ChatIcon size={20} />, label: t('notifSettings.messagesLabel'), description: t('notifSettings.messagesDesc'), toggle: messages, onToggle: (v) => setNotifPref('messages', v) }),
+    sub({ icon: <PersonIcon size={20} />, label: t('notifSettings.newFollowerLabel'), description: t('notifSettings.newFollowerDesc'), toggle: newFollower, onToggle: (v) => setNotifPref('newFollower', v) }),
+  ];
+  const travelItems: SettingItem[] = [
+    sub({ icon: <PlaneIcon size={20} />, label: t('notifSettings.arrivalLabel'), description: t('notifSettings.arrivalDesc'), toggle: arrivalDetect, onToggle: handleArrivalToggle }),
+    sub({ icon: <BellIcon size={20} />, label: t('notifSettings.snapLabel'), description: t('notifSettings.snapDesc'), toggle: snapEnabled, onToggle: setSnapEnabled }),
+    ...(TRAVEL_MOMENTS_ENABLED
+      ? [sub({ icon: <SparkleIcon size={20} />, label: t('moments.settingsLabel'), description: t('moments.settingsDesc'), toggle: travelMoment, onToggle: (v) => setNotifPref('travelMoment', v) })]
+      : []),
+    sub({ icon: <HomeIcon size={20} />, label: t('notifSettings.returnLabel'), description: t('notifSettings.returnDesc'), toggle: returnDetect, onToggle: (v) => setNotifPref('returnDetect', v) }),
+    // 이 줄만 위치 권한이 필요 없다 — 최근 사진에서 체류국 밖 여행을 찾는다
+    // 아이콘은 이모지(🧳) 대신 앱 팔레트 아이콘 — 다른 행과 같은 크기·스킨색 점
+    sub({ icon: <BackpackIcon size={20} />, label: t('notifSettings.stayTripLabel'), description: t('notifSettings.stayTripDesc'), toggle: stayTripSuggest, onToggle: (v) => setNotifPref('stayTripSuggest', v) }),
+  ];
+  const memoryItems: SettingItem[] = [
+    sub({ icon: <CalendarIcon size={20} />, label: t('notifSettings.memoryLabel'), description: t('notifSettings.memoryDesc'), toggle: memoryRemind, onToggle: (v) => setNotifPref('memoryRemind', v) }),
+  ];
+  const marketingItems: SettingItem[] = [
+    sub({ icon: <MegaphoneIcon size={20} />, label: t('notifSettings.marketingLabel'), description: t('notifSettings.marketingDesc'), toggle: marketing, onToggle: (v) => setNotifPref('marketing', v) }),
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t('notifSettings.back')}
-        >
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('notifSettings.title')}</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <SettingsHeader title={t('notifSettings.title')} onBack={() => navigation.goBack()} backA11yLabel={t('notifSettings.back')} />
 
       <ScrollView
         style={styles.scroll}
@@ -233,21 +203,16 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
       >
         {/* ── 기기 알림 권한 배너 ── */}
         {permissionGranted === false && (
-          <View style={styles.permissionBanner}>
+          <SettingsCard style={styles.permissionBanner}>
             <View style={styles.permissionTextWrap}>
               <Text style={styles.permissionTitle}>{t('notifSettings.permissionTitle')}</Text>
               <Text style={styles.permissionDesc}>
                 {t('notifSettings.permissionDesc')}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.permissionBtn}
-              onPress={requestPermission}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.openSettings')}</Text>
-            </TouchableOpacity>
-          </View>
+            {/* 배너 카드와 채움이 같아 윤곽이 사라진다 — 팝업 취소 알약과 같은 옅은 흰 테두리 */}
+            <SettingsPillButton compact label={t('notifSettings.openSettings')} onPress={requestPermission} baseRim={SETTINGS_COLORS.line} />
+          </SettingsCard>
         )}
 
         {/* ── 위치 권한 배너 ──
@@ -257,154 +222,34 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             위 알림 권한 배너와 동시에 뜰 수 있다 — 같은 스타일·같은 자리에 세로로 쌓이고
             permissionBanner의 marginTop 12가 두 배너 사이 간격이 된다. */}
         {showLocationBanner && (
-          <View style={styles.permissionBanner}>
+          <SettingsCard style={styles.permissionBanner}>
             <View style={styles.permissionTextWrap}>
               <Text style={styles.permissionTitle}>{t('notifSettings.locationPermissionTitle')}</Text>
               <Text style={styles.permissionDesc}>
                 {t('notifSettings.locationPermissionDesc')}
               </Text>
             </View>
-            <TouchableOpacity
-              style={styles.permissionBtn}
-              onPress={requestLocationPermission}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-            >
-              <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.locationPermissionBtn')}</Text>
-            </TouchableOpacity>
-          </View>
+            <SettingsPillButton compact label={t('notifSettings.locationPermissionBtn')} onPress={requestLocationPermission} baseRim={SETTINGS_COLORS.line} />
+          </SettingsCard>
         )}
 
         {/* ── 기본 알림 설정 ── */}
-        <SectionLabel label={t('notifSettings.sectionBasic')} />
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<BellIcon size={20} />}
-            label={t('notifSettings.masterLabel')}
-            description={t('notifSettings.masterDesc')}
-            value={masterEnabled}
-            onValueChange={(v) => setNotifPref('master', v)}
-            isLast
-          />
-        </View>
+        <SettingGroup label={t('notifSettings.sectionBasic')} items={basicItems} />
 
         {/* ── 소셜 알림 ── */}
-        <SectionLabel label={t('notifSettings.sectionSocial')} />
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<MapIcon size={20} />}
-            label={t('notifSettings.friendTripLabel')}
-            description={t('notifSettings.friendTripDesc')}
-            value={friendTrip}
-            onValueChange={(v) => setNotifPref('friendTrip', v)}
-            disabled={!masterEnabled}
-          />
-          <ToggleRow
-            icon={<HeartIcon size={20} />}
-            label={t('notifSettings.likesLabel')}
-            description={t('notifSettings.likesDesc')}
-            value={likes}
-            onValueChange={(v) => setNotifPref('likes', v)}
-            disabled={!masterEnabled}
-          />
-          <ToggleRow
-            icon={<ChatIcon size={20} />}
-            label={t('notifSettings.messagesLabel')}
-            description={t('notifSettings.messagesDesc')}
-            value={messages}
-            onValueChange={(v) => setNotifPref('messages', v)}
-            disabled={!masterEnabled}
-          />
-          <ToggleRow
-            icon={<PersonIcon size={20} />}
-            label={t('notifSettings.newFollowerLabel')}
-            description={t('notifSettings.newFollowerDesc')}
-            value={newFollower}
-            onValueChange={(v) => setNotifPref('newFollower', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
+        <SettingGroup label={t('notifSettings.sectionSocial')} items={socialItems} />
 
         {/* ── 여행 감지 알림 ── */}
-        <SectionLabel label={t('notifSettings.sectionTravelDetect')} />
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<PlaneIcon size={20} />}
-            label={t('notifSettings.arrivalLabel')}
-            description={t('notifSettings.arrivalDesc')}
-            value={arrivalDetect}
-            onValueChange={handleArrivalToggle}
-            disabled={!masterEnabled}
-          />
-          <ToggleRow
-            icon={<BellIcon size={20} />}
-            label={t('notifSettings.snapLabel')}
-            description={t('notifSettings.snapDesc')}
-            value={snapEnabled}
-            onValueChange={setSnapEnabled}
-            disabled={!masterEnabled}
-          />
-          {TRAVEL_MOMENTS_ENABLED && (
-            <ToggleRow
-              icon={<Text style={{ fontSize: 18 }}>✨</Text>}
-              label={t('moments.settingsLabel')}
-              description={t('moments.settingsDesc')}
-              value={travelMoment}
-              onValueChange={(v) => setNotifPref('travelMoment', v)}
-              disabled={!masterEnabled}
-            />
-          )}
-          <ToggleRow
-            icon={<HomeIcon size={20} />}
-            label={t('notifSettings.returnLabel')}
-            description={t('notifSettings.returnDesc')}
-            value={returnDetect}
-            onValueChange={(v) => setNotifPref('returnDetect', v)}
-            disabled={!masterEnabled}
-          />
-          {/* 이 줄만 위치 권한이 필요 없다 — 최근 사진에서 체류국 밖 여행을 찾는다 */}
-          <ToggleRow
-            icon={<Text style={{ fontSize: 18 }}>🧳</Text>}
-            label={t('notifSettings.stayTripLabel')}
-            description={t('notifSettings.stayTripDesc')}
-            value={stayTripSuggest}
-            onValueChange={(v) => setNotifPref('stayTripSuggest', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
+        <SettingGroup label={t('notifSettings.sectionTravelDetect')} items={travelItems} />
 
         {/* ── 추억 리마인드 ── */}
-        <SectionLabel label={t('notifSettings.sectionMemory')} />
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<CalendarIcon size={20} />}
-            label={t('notifSettings.memoryLabel')}
-            description={t('notifSettings.memoryDesc')}
-            value={memoryRemind}
-            onValueChange={(v) => setNotifPref('memoryRemind', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
+        <SettingGroup label={t('notifSettings.sectionMemory')} items={memoryItems} />
 
         {/* ── 마케팅 ── */}
-        <SectionLabel label={t('notifSettings.sectionMarketing')} />
-        <View style={styles.card}>
-          <ToggleRow
-            icon={<MegaphoneIcon size={20} />}
-            label={t('notifSettings.marketingLabel')}
-            description={t('notifSettings.marketingDesc')}
-            value={marketing}
-            onValueChange={(v) => setNotifPref('marketing', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
+        <SettingGroup label={t('notifSettings.sectionMarketing')} items={marketingItems} />
 
         {/* 안내 문구 */}
-        <Text style={styles.footnote}>
+        <Text style={[settingsText.groupNote, styles.footnote]}>
           {t('notifSettings.footnote')}
         </Text>
 
@@ -420,29 +265,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-
+  // 좌우 16 = 설정 화면 카드 폭
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 16,
@@ -450,75 +273,12 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
 
-  // 섹션 라벨
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textDim,
-    letterSpacing: 0.5,
-    marginTop: 24,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-
-  // 카드
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-
-  // 토글 행
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 12,
-  },
-  rowIcon: {
-    width: 28,
-    height: 28,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-  },
-  rowText: {
-    flex: 1,
-    gap: 2,
-  },
-  rowLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.white,
-  },
-  rowDesc: {
-    fontSize: 11,
-    color: COLORS.textDim,
-    lineHeight: 16,
-  },
-  rowDivider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginLeft: 56,
-  },
-
-  // 권한 배너
+  // 권한 배너 — 설정 카드 재질. 놓치면 기능이 조용히 죽는 안내라 제목만 보라(그룹 라벨 색)로 띄운다
   permissionBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1E1530',
-    borderWidth: 1,
-    borderColor: COLORS.purpleNeon,
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    paddingLeft: 20,
+    paddingRight: 14,
     paddingVertical: 14,
     marginTop: 12,
     gap: 12,
@@ -528,34 +288,19 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   permissionTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: COLORS.purpleNeon,
+    color: COLORS.label,
   },
   permissionDesc: {
     fontSize: 11,
-    color: COLORS.textDim,
+    color: COLORS.text50,
     lineHeight: 16,
   },
-  permissionBtn: {
-    backgroundColor: COLORS.purpleNeon,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  permissionBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0A0A0F',
-  },
 
-  // 안내 문구
+  // 안내 문구 — 카드 아래 안내문(groupNote) 톤, 가운데
   footnote: {
-    fontSize: 11,
-    color: COLORS.textMuted,
     textAlign: 'center',
-    lineHeight: 17,
     marginTop: 20,
-    paddingHorizontal: 8,
   },
 });

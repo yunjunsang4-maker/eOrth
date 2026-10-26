@@ -14,7 +14,7 @@ import {
   Linking,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { CameraIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
+import { CameraIcon, LockClosedIcon } from '../components/icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import DefaultAvatar from '../components/DefaultAvatar';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +23,15 @@ import Toast from '../components/Toast';
 import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
 import RequirementList from '../components/RequirementList';
+import { andFitText } from '../utils/fitText';
+import { AutoPillRing } from '../components/record/CalendarBottomSheet';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingsField,
+  SettingsPillButton,
+  settingsText,
+} from '../components/settings/SettingsUI';
 
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -54,20 +63,8 @@ async function persistProfilePhoto(srcUri: string): Promise<string> {
 }
 
 const COLORS = {
-  bg:           '#0A0A0F',
-  card:         '#2E2E3B',
-  cardLight:    '#1E1E2E',
-  divider:      '#1A1A26',
-  purpleNeon:   '#BF85FC',
-  purpleDeep:   '#6B21A8',
-  purpleBg:     'rgba(107,33,168,0.25)',
-  purpleBorder: 'rgba(191,133,252,0.3)',
-  white:        '#FFFFFF',
-  textDim:      '#A1A1B0',
-  textMuted:    '#8B8B9E',
-  redBg:        'rgba(255,59,48,0.1)',
-  redBorder:    'rgba(255,59,48,0.2)',
-  red:          '#FF3B30',
+  ...SETTINGS_COLORS,
+  card:         '#2E2E3B', // 아바타 카메라 배지(프로필 탭 아바타와 같은 모양 유지)
 };
 
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
@@ -263,16 +260,21 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
   return (
     <SafeAreaView style={s.safeArea}>
-      {/* 헤더 */}
-      <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={goBackOnce} accessibilityRole="button" accessibilityLabel={t('editProfile.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>{t('editProfile.title')}</Text>
-        <TouchableOpacity style={s.saveBtn} activeOpacity={0.7} onPress={handleSave} disabled={saving}>
-          <Text style={s.saveText}>{t('editProfile.save')}</Text>
-        </TouchableOpacity>
-      </View>
+      {/* 헤더 — 오른쪽 슬롯에 앱 공용 저장 알약(블로그·스트립 정보 헤더와 같은 70×30·흰 10%·AutoPillRing).
+          링(AutoPillRing) → 콘텐츠 순. 폭은 문구(다국어)마다 달라져 AutoPillRing이 스스로 실측한다 */}
+      <SettingsHeader
+        title={t('editProfile.title')}
+        onBack={goBackOnce}
+        backA11yLabel={t('editProfile.back')}
+        right={
+          <TouchableOpacity onPress={handleSave} disabled={saving} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button">
+            <View style={[s.saveBtn, saving && s.saveBtnBusy]}>
+              <AutoPillRing />
+              <Text style={s.saveText} {...andFitText}>{t('editProfile.save')}</Text>
+            </View>
+          </TouchableOpacity>
+        }
+      />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
@@ -332,22 +334,22 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 아이디 */}
           <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>{t('editProfile.handleLabel')}</Text>
-            <View style={[s.inputWrap, !canChangeHandle && s.inputWrapDisabled]}>
+            <Text style={settingsText.fieldLabel}>{t('editProfile.handleLabel')}</Text>
+            <SettingsField style={!canChangeHandle && s.fieldLocked}>
               <Text style={s.atPrefix}>@</Text>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[s.input, { flex: 1 }, !canChangeHandle && s.inputDisabled]}
+                style={[settingsText.input, !canChangeHandle && s.inputDisabled]}
                 value={handle}
                 onChangeText={(text) => setHandle(text.replace(/[^a-zA-Z0-9_]/g, ''))}
                 placeholder={t('editProfile.handlePlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 maxLength={30}
                 autoCorrect={false}
                 autoCapitalize="none"
                 editable={canChangeHandle}
               />
               {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
-            </View>
+            </SettingsField>
             {showHandleRequirements && (
               <RequirementList items={handleRequirements} style={s.reqList} />
             )}
@@ -380,26 +382,29 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 소개 */}
           <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>{t('editProfile.bioLabel')}</Text>
-            <View style={s.inputWrap}>
+            <Text style={settingsText.fieldLabel}>{t('editProfile.bioLabel')}</Text>
+            <SettingsField>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[s.input, s.bioInput]}
+                style={[settingsText.input, s.bioInput]}
                 value={bio}
                 onChangeText={setBio}
                 placeholder={t('editProfile.bioPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 maxLength={50}
                 multiline
                 textAlignVertical="top"
               />
-            </View>
+            </SettingsField>
             <Text style={s.charCountBelow}>{bio.length}/50</Text>
           </View>
 
-          {/* 저장 버튼 (하단 대형) */}
-          <TouchableOpacity style={[s.saveLargeBtn, saving && { opacity: 0.6 }]} onPress={handleSave} activeOpacity={0.85} disabled={saving}>
-            <Text style={s.saveLargeText}>{saving ? t('editProfile.checking') : t('editProfile.saveLarge')}</Text>
-          </TouchableOpacity>
+          {/* 저장 버튼 (하단 대형) — 설정 알약. 저장 중엔 잠기고 흐려진다 */}
+          <SettingsPillButton
+            label={saving ? t('editProfile.checking') : t('editProfile.saveLarge')}
+            onPress={handleSave}
+            disabled={saving}
+            style={s.saveLargeBtn}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
       {/* 토스트 문구는 showToast(msg)가 넘긴 값을 그대로 쓴다(고정 문구 하드코딩 제거) */}
@@ -414,43 +419,25 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  // 헤더 오른쪽 저장 — 앱 공용 저장 알약(BlogRecordScreen st.saveBtn과 같은 값): 70×30·반경 15·바탕 흰 10%,
+  // 테두리는 AutoPillRing이 그리므로 borderWidth 없음(링 실측이 밀린다). minWidth라 긴 번역도 잘리지 않는다.
+  saveBtn: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 15,
+    minWidth: 70,
+    height: 30,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  saveBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    backgroundColor: COLORS.purpleBg,
-    borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
-    borderRadius: 8,
-  },
+  saveBtnBusy: { opacity: 0.5 },
   saveText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
-    color: COLORS.purpleNeon,
+    color: '#C3C3C3',
   },
 
-  // 스크롤
+  // 스크롤 — 좌우 16 = 설정 화면 카드 폭
   scroll: {
     flex: 1,
   },
@@ -502,7 +489,7 @@ const s = StyleSheet.create({
   avatarHint: {
     marginTop: 8,
     fontSize: 12,
-    color: COLORS.textDim,
+    color: COLORS.text50,
   },
   removePhotoText: {
     marginTop: 6,
@@ -510,73 +497,41 @@ const s = StyleSheet.create({
     color: COLORS.red,
   },
 
-  // 입력 필드
+  // 입력 필드 — 칸은 SettingsField(설정 카드 재질), 라벨은 settingsText.fieldLabel(흰 50%)
   fieldGroup: {
     marginBottom: 20,
   },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.purpleNeon,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.cardLight,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  input: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.white,
-    padding: 0,
-  },
   atPrefix: {
     fontSize: 14,
-    color: COLORS.textDim,
+    color: COLORS.text50,
     marginRight: 2,
   },
   charCount: {
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: COLORS.text50,
     marginLeft: 8,
   },
   charCountBelow: {
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: COLORS.text50,
     textAlign: 'right',
-    marginTop: 4,
-    marginRight: 4,
+    marginTop: 6,
+    marginRight: 17,
   },
+  // 여러 줄 소개 — settingsText.input의 세로 15를 12로 줄이고 높이를 104로 해서 글 영역 80(예전 칸 안쪽 높이)을 지킨다.
+  // 칸(SettingsField)은 높이를 따라 늘어나며, 글은 위에서부터(textAlignVertical top) 채워진다.
   bioInput: {
-    height: 80,
+    height: 104,
+    paddingVertical: 12,
     textAlignVertical: 'top',
   },
 
-  // 선택 버튼
-
-  // 하단 저장 버튼
+  // 하단 저장 알약
   saveLargeBtn: {
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
     marginTop: 12,
   },
-  saveLargeText: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  inputWrapDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderColor: 'rgba(255,255,255,0.03)',
+  // 아이디 변경 잠금(2주) — 칸 전체를 흐리게
+  fieldLocked: {
     opacity: 0.6,
   },
   inputDisabled: {
@@ -584,14 +539,14 @@ const s = StyleSheet.create({
   },
   reqList: {
     marginTop: 8,
-    marginLeft: 4,
+    marginLeft: 17,
   },
   // 안내가 두 줄로 넘어갈 수 있어 아이콘은 첫 줄에 맞춰 위쪽 고정
   lockNoticeRow: {
     flexDirection: 'row',
     gap: 5,
     marginTop: 6,
-    marginLeft: 4,
+    marginLeft: 17,
     paddingTop: 1,
   },
   lockNotice: {

@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon } from '../components/icons';
+import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon, CameraIcon, SparkleIcon } from '../components/icons';
 import { useRecordData, useComments, useRecordActions, TravelRecord } from '../store/recordStore';
 import { PillRing } from '../components/record/CalendarBottomSheet';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -173,14 +173,14 @@ const FmtCutIcon = ({ color }: { color: string }) => (
   </View>
 );
 
-// 형식별 아이콘 디스패처 (스냅은 FAB에 없으므로 ⚡ 유지)
+// 형식별 아이콘 디스패처 (스냅은 FAB에 없어 전용 형식 아이콘이 없다 — 앱 카메라 아이콘)
 function FormatIcon({ type, color }: { type: string; color: string }) {
   switch (type) {
     case 'feed':  return <FmtFeedIcon color={color} />;
     case 'blog':  return <FmtBlogIcon color={color} />;
     case 'album': return <FmtAlbumIcon color={color} />;
     case 'cut':   return <FmtCutIcon color={color} />;
-    case 'snap':  return <Text style={{ fontSize: 20 }}>⚡</Text>;
+    case 'snap':  return <CameraIcon size={20} color={color} />; // 스냅 전용 아이콘이 없어 카메라(예전 ⚡ 이모지)
     default:      return null;
   }
 }
@@ -930,13 +930,11 @@ export default function TripDetailScreen() {
         {coverPhoto ? (
           <Image source={{ uri: coverPhoto }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
         ) : (
-          // 사진이 없는 카드(불러오기 실패·샘플)는 기존처럼 여행 색 그라데이션 + 이모지
-          <LinearGradient
-            colors={[trip.color, 'rgba(10,10,15,0.8)', COLORS.bg]}
-            style={[StyleSheet.absoluteFillObject, { alignItems: 'center', justifyContent: 'center' }]}
-          >
-            <Text style={s.heroEmoji}>{trip.emoji}</Text>
-          </LinearGradient>
+          // 사진이 없는 카드(체류 시작 직후 빈 체류 카드 등) — 프로필 기록 카드 썸네일과 같은 단색 + 나라 국기.
+          // 예전엔 여행 색 그라데이션 + 대체 이모지(🗼)라 나라와 상관없는 목업처럼 보였다(2026-10-27)
+          <View style={[StyleSheet.absoluteFillObject, s.heroEmpty]}>
+            <Text style={s.heroFlag}>{trip.countryFlag || trip.emoji}</Text>
+          </View>
         )}
         {/* 사진 상단만 살짝 어둡게 — 겹친 헤더(제목·버튼) 가독성. 사용자 지정 '살짝만' */}
         <LinearGradient
@@ -1114,7 +1112,7 @@ export default function TripDetailScreen() {
 
           {modules.length === 0 && (
             <View style={s.emptyCard}>
-              <Text style={s.emptyIcon}>🛰️</Text>
+              <View style={s.emptyIcon}><CameraIcon size={40} /></View>
               <Text style={s.emptyText}>{t('trip.emptyTrip')}</Text>
             </View>
           )}
@@ -1185,7 +1183,7 @@ export default function TripDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('moments.sheetTitle')}
               >
-                <Text style={{ fontSize: 16 }}>✨</Text>
+                <SparkleIcon size={18} />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={s.moreBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
@@ -1315,7 +1313,9 @@ const s = StyleSheet.create({
   scrollContent: { paddingBottom: 60 },
   // 히어로 — 높이는 창 높이에서 파생되므로 호출부에서 인라인으로 주입한다
   hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#1A0A2E' },
-  heroEmoji: { fontSize: 64 },
+  // 사진 없는 히어로 — 프로필 기록 카드(thumbSt.stayEmptyBg)와 같은 단색 위 국기
+  heroEmpty: { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  heroFlag: { fontSize: 88 },
   heroBottomRow: {
     // 사진 옆·아래 여백 16 (사용자 지정)
     position: 'absolute', left: 0, right: 0, bottom: 16, paddingHorizontal: 16,
@@ -1338,7 +1338,7 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.card, borderRadius: 16,
     borderWidth: 1, borderColor: COLORS.cardBorder,
   },
-  emptyIcon: { fontSize: 28, marginBottom: 8 },
+  emptyIcon: { marginBottom: 8 },
   emptyText: { fontSize: 13, color: COLORS.textMuted },
 
   /* ── ☰ 편집 메뉴 ── */

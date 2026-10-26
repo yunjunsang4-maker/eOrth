@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../utils/stage';
 import { LANGUAGE_LABELS, SELECTABLE_LANGUAGES, type AppLanguage } from '../i18n';
 import { select } from '../utils/haptics';
+import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton, settingsText } from './settings/SettingsUI';
 
 // 언어 선택 시트 — 설정 화면의 '언어 변경' 행이 연다.
 //
@@ -23,9 +24,9 @@ import { select } from '../utils/haptics';
 //    ko/en/ja/zh-Hant + 취소 = 5개가 되어 Alert 로는 애초에 담기지 않는다.
 //    (3개 시절에는 안드로이드에서 취소만 빼는 우회를 썼는데, 그 우회도 여기서 사라진다.)
 //
-// 재질은 UserActionSheet(팔로워 ⋯ 메뉴)의 카드 시트를 그대로 쓴다 — #1E1E2E / radius 20 /
-// 하단 스프링 등장 / 취소 카드 분리. 머리글(제목·부제)과 선택 행 강조(#BF85FC)는
-// HomeRegionSheet 의 것과 같은 값이다. 새 재질을 만들면 앱에 시트 모양이 한 벌 더 생긴다.
+// 재질은 설정 디자인 공용 부품(components/settings/SettingsUI)을 쓴다(2026-10-26 설정 화면 통일) —
+// 검은 카드(SettingsCard)·설정 행(SettingsOptionRow, 선택 시 보라 ✓)·취소 알약(SettingsPillButton).
+// 하단 스프링 등장·핸들·취소 분리 구조는 예전 카드 시트(UserActionSheet) 그대로다.
 export default function LanguageSheet({
   visible,
   current,
@@ -85,43 +86,29 @@ export default function LanguageSheet({
         <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
           <View style={styles.handle} />
 
-          <View style={styles.optionsCard}>
+          {/* 설정 카드 재질(검은 채움·공용 링) 안에 머리글(설정 팝업과 같은 제목 18 ExtraBold·설명 흰 50%) →
+              전폭 구분선 → 선택 행(설정 행과 같은 높이 60·선택 시 보라 ✓) */}
+          <SettingsCard style={styles.optionsCard}>
             <View style={styles.titleRow}>
-              <Text style={styles.titleText}>{t('settings.languageChange')}</Text>
-              <Text style={styles.descText}>{t('settings.languageSelectMsg')}</Text>
+              <Text style={settingsText.sheetTitle}>{t('settings.languageChange')}</Text>
+              <Text style={settingsText.sheetDesc}>{t('settings.languageSelectMsg')}</Text>
             </View>
-            <View style={styles.divider} />
-
+            <SettingsDivider />
             {/* 저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant 등)이어도 자기 언어 행은 보여야 한다 —
                 없으면 강조도 없고 되돌아올 길도 없다. 현재 언어를 목록에 합쳐 그린다. */}
             <ScrollView style={{ maxHeight: optionsMaxH }} bounces={false} showsVerticalScrollIndicator={false}>
-            {(SELECTABLE_LANGUAGES.includes(current) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, current]).map((lang, i) => {
-              const selected = lang === current;
-              return (
-                <React.Fragment key={lang}>
-                  {i > 0 && <View style={styles.divider} />}
-                  <TouchableOpacity
-                    style={styles.option}
-                    activeOpacity={0.7}
-                    onPress={() => pick(lang)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={LANGUAGE_LABELS[lang]}
-                  >
-                    {/* 표기는 각 언어를 자기 언어로 — 번역하지 않는다(i18n/index.ts 가 단일 출처) */}
-                    <Text style={[styles.optionText, selected && styles.optionTextSelected]}>
-                      {LANGUAGE_LABELS[lang]}
-                    </Text>
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })}
+            {(SELECTABLE_LANGUAGES.includes(current) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, current]).map((lang, i) => (
+              <React.Fragment key={lang}>
+                {i > 0 && <SettingsDivider />}
+                {/* 표기는 각 언어를 자기 언어로 — 번역하지 않는다(i18n/index.ts 가 단일 출처) */}
+                <SettingsOptionRow label={LANGUAGE_LABELS[lang]} selected={lang === current} onPress={() => pick(lang)} />
+              </React.Fragment>
+            ))}
             </ScrollView>
-          </View>
+          </SettingsCard>
 
-          <TouchableOpacity style={styles.cancelCard} activeOpacity={0.8} onPress={onClose} accessibilityRole="button">
-            <Text style={styles.cancelText}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
+          {/* 취소 — 설정 팝업 닫기와 같은 알약(높이 60·모서리 30, 옅은 흰 테두리로 시트 위에서도 윤곽 유지) */}
+          <SettingsPillButton label={t('common.cancel')} onPress={onClose} baseRim="rgba(255,255,255,0.15)" />
         </Animated.View>
       </View>
     </Modal>
@@ -149,55 +136,11 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 12,
   },
-  optionsCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
   titleRow: {
-    paddingVertical: 16,
+    paddingVertical: 20,
     paddingHorizontal: 20,
-    alignItems: 'center',
-    gap: 6,
   },
-  titleText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  descText: {
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#A1A1B0',
-    textAlign: 'center',
-  },
-  option: {
-    paddingVertical: 17,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  optionText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  optionTextSelected: {
-    color: '#BF85FC',
-    fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#2E2E3B',
-  },
-  cancelCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 20,
-    paddingVertical: 17,
-    alignItems: 'center',
-  },
-  cancelText: {
-    fontSize: 16,
-    color: '#A1A1B0',
-    fontWeight: '500',
+  optionsCard: {
+    marginBottom: 10,
   },
 });

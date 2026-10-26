@@ -6,11 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Switch,
-  Modal,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
@@ -19,27 +15,30 @@ import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDel
 import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
 import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
-import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, BackChevronIcon } from '../components/icons';
-import { useSkinAccent } from '../constants/skinTheme';
-import { andFitText } from '../utils/fitText';
+import { EmailIcon, LockClosedIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 import RequirementList from '../components/RequirementList';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingGroup,
+  SettingsDivider,
+  SettingsField,
+  SettingsModal,
+  SettingsOptionRow,
+  SettingsPillButton,
+  settingsText,
+  type SettingItem,
+} from '../components/settings/SettingsUI';
 
 const COLORS = {
-  bg:           '#0A0A0F',
-  card:         '#2E2E3B',
-  divider:      '#1A1A26',
-  purpleNeon:   '#BF85FC',
-  purpleDeep:   '#6B21A8',
-  purpleBg:     'rgba(107,33,168,0.25)',
-  purpleBorder: 'rgba(191,133,252,0.3)',
-  white:        '#FFFFFF',
-  textDim:      '#A1A1B0',
-  textMuted:    '#8B8B9E',
-  red:          '#FF3B30',
+  ...SETTINGS_COLORS,
+  textMuted:    '#8B8B9E', // 소셜 가입자의 잠긴 비밀번호 아이콘(예전 값 유지)
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
-  green:        '#34C759',
 };
+
+// 팝업 카드와 입력칸·알약이 같은 채움(#111116)이라 링 투명 구간에서 윤곽이 사라진다 — 옅은 흰 테두리를 아래에 깐다
+const RIM = SETTINGS_COLORS.line;
 
 type Props = RootStackScreenProps<'AccountSettings'>;
 
@@ -54,47 +53,8 @@ const DELETE_REASONS = [
   { value: 'other', labelKey: 'accountSettings.reasonOther' },
 ] as const;
 
-// ─── 섹션 타이틀 ───
-const SectionTitle = ({ label }: { label: string }) => (
-  <Text style={styles.sectionLabel}>{label}</Text>
-);
-
-// ─── 카드 아이템 ───
-const CardRow = ({
-  icon,
-  label,
-  value,
-  onPress,
-  danger,
-  rightElement,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  danger?: boolean;
-  rightElement?: React.ReactNode;
-}) => (
-  <TouchableOpacity
-    style={styles.cardRow}
-    onPress={onPress}
-    activeOpacity={onPress ? 0.7 : 1}
-    disabled={!onPress}
-  >
-    <View style={styles.cardLeft}>
-      <View style={styles.cardIcon}>{icon}</View>
-      <View>
-        <Text style={[styles.cardLabel, danger && { color: COLORS.red }]}>{label}</Text>
-        {value ? <Text style={styles.cardValue}>{value}</Text> : null}
-      </View>
-    </View>
-    {rightElement ?? (onPress ? <Text style={styles.chevron}>›</Text> : null)}
-  </TouchableOpacity>
-);
-
 export default function AccountSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // 토글 트랙 색 — 설정 전역 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const { signUpMethod, signUpEmail } = useProfileSettings();
   const { setSignUpEmail } = useSettingsActions();
   // 실제 identity 연동 API 미연동 — 연동 상태는 가입 수단에서 파생(가짜 토글 상태 금지, H2)
@@ -362,22 +322,38 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setDeleteSocialConfirm('');
   };
 
+  // ── 설정 행 목록 — SettingGroup(설정 화면과 같은 행 60·카드·전폭 구분선) ──
+  // 이메일 행: 이메일 가입자만 눌리고 제출 중엔 잠긴다(예전 onPress 조건 그대로). 소셜 가입자는 눌림·꺾쇠 없음.
+  const emailPressable = signUpMethod === 'email' && !emailSubmitting;
+  const emailItems: SettingItem[] = [
+    {
+      icon: <EmailIcon size={20} />,
+      label: signUpMethod === 'email' ? t('accountSettings.emailAddress') : (signUpMethod === 'google' ? t('accountSettings.googleAccount') : t('accountSettings.appleAccount')),
+      description: signUpEmail,
+      onPress: emailPressable ? handleEmailChange : undefined,
+      chevron: emailPressable,
+    },
+  ];
+  const passwordItems: SettingItem[] = [
+    {
+      icon: <LockClosedIcon size={20} color={signUpMethod !== 'email' ? COLORS.textMuted : undefined} />,
+      label: t('accountSettings.passwordChange'),
+      description: signUpMethod === 'email' ? t('accountSettings.passwordLastChanged') : t('accountSettings.socialNoPassword'),
+      onPress: handlePasswordChange,
+    },
+  ];
+  const socialItems: SettingItem[] = [
+    ...(googleLinked ? [{ icon: <GoogleIcon size={18} />, label: 'Google', value: t('accountSettings.linked'), chevron: false }] : []),
+    ...(appleLinked ? [{ icon: <AppleIcon size={18} color="#FFFFFF" />, label: 'Apple', value: t('accountSettings.linked'), chevron: false }] : []),
+    ...(!googleLinked && !appleLinked
+      // '이메일로 가입했어요'는 길어 오른쪽 값 자리(폭 50%·한 줄)에선 좁은 화면에서 말줄임된다 → 라벨 아래 설명 줄(예전 표시 위치)
+      ? [{ icon: <EmailIcon size={18} color="#FFFFFF" />, label: t('accountSettings.socialNoneLabel'), description: t('accountSettings.socialNoneValue'), chevron: false }]
+      : []),
+  ];
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* 상단 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel={t('accountSettings.back')}
-        >
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('accountSettings.title')}</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      <SettingsHeader title={t('accountSettings.title')} onBack={() => navigation.goBack()} backA11yLabel={t('accountSettings.back')} />
 
       <ScrollView
         style={styles.scroll}
@@ -385,217 +361,156 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── 이메일 ── */}
-        <SectionTitle label={t('accountSettings.sectionEmail')} />
-        <View style={styles.card}>
-          <CardRow
-            icon={<EmailIcon size={20} />}
-            label={signUpMethod === 'email' ? t('accountSettings.emailAddress') : (signUpMethod === 'google' ? t('accountSettings.googleAccount') : t('accountSettings.appleAccount'))}
-            value={signUpEmail}
-            onPress={signUpMethod === 'email' && !emailSubmitting ? handleEmailChange : undefined}
-            rightElement={emailSubmitting ? <ActivityIndicator size="small" color={COLORS.purpleNeon} /> : undefined}
-          />
-        </View>
+        {/* ── 이메일 ── 주소는 길어 오른쪽 값 자리(말줄임) 대신 라벨 아래 설명 줄에 둔다(예전처럼 전체 표시) */}
+        <SettingGroup label={t('accountSettings.sectionEmail')} labelStyle={styles.firstGroupLabel} items={emailItems} />
 
         {/* ── 비밀번호 ── */}
-        <SectionTitle label={t('accountSettings.sectionPassword')} />
-        <View style={styles.card}>
-          <CardRow
-            icon={<LockClosedIcon size={20} color={signUpMethod !== 'email' ? COLORS.textMuted : undefined} />}
-            label={t('accountSettings.passwordChange')}
-            value={signUpMethod === 'email' ? t('accountSettings.passwordLastChanged') : t('accountSettings.socialNoPassword')}
-            onPress={handlePasswordChange}
-          />
-        </View>
+        <SettingGroup label={t('accountSettings.sectionPassword')} items={passwordItems} />
 
         {/* ── 연결된 소셜 계정 (읽기 전용) ──
             ⚠️ 예전엔 켜고 끄는 스위치였지만 identity linking API 가 아직 없어 누르면
             "준비 중" 안내만 떴다. 동작하지 않는 컨트롤은 App Store 2.1(완성도) 지적
             대상이라, 실제로 연동된 가입 수단만 보여주는 정보 행으로 바꾼다.
-            연동/해제 기능이 붙으면 그때 스위치를 되살릴 것. */}
-        <SectionTitle label={t('accountSettings.sectionSocial')} />
-        <View style={styles.card}>
-          {googleLinked && (
-            <CardRow
-              icon={<GoogleIcon size={18} />}
-              label="Google"
-              value={t('accountSettings.linked')}
-            />
-          )}
-          {googleLinked && appleLinked && <View style={styles.rowDivider} />}
-          {appleLinked && (
-            <CardRow
-              icon={<AppleIcon size={18} color="#FFFFFF" />}
-              label="Apple"
-              value={t('accountSettings.linked')}
-            />
-          )}
-          {!googleLinked && !appleLinked && (
-            <CardRow
-              icon={<EmailIcon size={18} color="#FFFFFF" />}
-              label={t('accountSettings.socialNoneLabel')}
-              value={t('accountSettings.socialNoneValue')}
-            />
-          )}
-        </View>
+            연동/해제 기능이 붙으면 그때 스위치를 되살릴 것.
+            눌러도 아무 일 없는 행이라 꺾쇠를 숨긴다(chevron: false). */}
+        <SettingGroup label={t('accountSettings.sectionSocial')} items={socialItems} />
 
-        {/* ── 위험 구역 ── */}
-        <SectionTitle label={t('accountSettings.sectionDanger')} />
-        <View style={styles.card}>
-          <CardRow
-            icon={<TrashIcon size={20} />}
-            label={t('accountSettings.deleteAccount')}
-            danger
-            onPress={handleDeleteAccount}
-          />
-        </View>
+        {/* ── 위험 구역 ── 계정 삭제는 위험 동작 → 로그아웃과 같은 danger 알약 */}
+        <Text style={settingsText.groupLabel}>{t('accountSettings.sectionDanger')}</Text>
+        <SettingsPillButton
+          tone="danger"
+          icon={<TrashIcon size={20} color={SETTINGS_COLORS.logout} />}
+          label={t('accountSettings.deleteAccount')}
+          onPress={handleDeleteAccount}
+        />
 
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* ── 이메일 변경 모달 (iOS·Android 공용) ── */}
-      <Modal
+      {/* ── 이메일 변경 모달 (iOS·Android 공용) ──
+          SettingsModal: 배경 탭으로는 닫지 않는다(예전처럼 — 입력 중 실수 탭 방지), 안드로이드 뒤로·하단 취소 = closeEmailModal.
+          statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 avoidKeyboard(KAV)로 키보드를 직접 회피 */}
+      <SettingsModal
         visible={isEmailModalVisible}
-        animationType="fade"
-        transparent={true} statusBarTranslucent navigationBarTranslucent
-        onRequestClose={closeEmailModal}
+        title={t('accountSettings.emailChangeTitle')}
+        description={t('accountSettings.emailModalDesc')}
+        closeLabel={t('common.cancel')}
+        onClose={closeEmailModal}
+        avoidKeyboard
+        backdropDismiss={false}
       >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={styles.modalOverlay} accessibilityViewIsModal>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('accountSettings.emailChangeTitle')}</Text>
-            <Text style={styles.modalDesc}>{t('accountSettings.emailModalDesc')}</Text>
-
-            {/* 새 이메일 주소 */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.newEmailLabel')}</Text>
+        <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {/* 새 이메일 주소 */}
+          <View style={styles.inputGroup}>
+            <Text style={settingsText.fieldLabel}>{t('accountSettings.newEmailLabel')}</Text>
+            <SettingsField baseRim={RIM} error={emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim())}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[
-                  styles.modalInput,
-                  emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && styles.modalInputError,
-                ]}
+                style={settingsText.input}
                 placeholder={t('accountSettings.newEmailPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={emailDraft}
                 onChangeText={setEmailDraft}
               />
-              {emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && (
-                <Text style={styles.inputErrorText}>{t('accountSettings.emailInvalidMsg')}</Text>
-              )}
-            </View>
+            </SettingsField>
+            {emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && (
+              <Text style={styles.inputErrorText}>{t('accountSettings.emailInvalidMsg')}</Text>
+            )}
+          </View>
 
-            {/* 본인 확인: 현재 비밀번호 (재인증) */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
+          {/* 본인 확인: 현재 비밀번호 (재인증) */}
+          <View style={styles.inputGroup}>
+            <Text style={settingsText.fieldLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
+            <SettingsField baseRim={RIM}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={styles.modalInput}
+                style={settingsText.input}
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 secureTextEntry
                 maxLength={72}
                 value={emailCurrentPassword}
                 onChangeText={setEmailCurrentPassword}
               />
-            </View>
-
-            {/* 버튼 그룹 */}
-            <View style={styles.modalBtnGroup}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                activeOpacity={0.7}
-                onPress={closeEmailModal}
-              >
-                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalBtn,
-                  styles.modalBtnSubmit,
-                  (emailSubmitting || !EMAIL_INPUT_RE.test(emailDraft.trim()) || !emailCurrentPassword) && styles.modalBtnDisabled,
-                ]}
-                activeOpacity={0.7}
-                disabled={emailSubmitting || !EMAIL_INPUT_RE.test(emailDraft.trim()) || !emailCurrentPassword}
-                onPress={submitEmailChange}
-              >
-                {emailSubmitting ? (
-                  <ActivityIndicator size="small" color={COLORS.bg} />
-                ) : (
-                  <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            </SettingsField>
           </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
-      {/* ── 비밀번호 변경 모달 ── */}
-      <Modal
+          {/* 제출 — 하단 알약(취소) 위. 제출 중에는 라벨 앞에 스피너 */}
+          <SettingsPillButton
+            label={t('accountSettings.changeBtn')}
+            icon={emailSubmitting ? <ActivityIndicator size="small" color={COLORS.white} /> : undefined}
+            onPress={submitEmailChange}
+            disabled={emailSubmitting || !EMAIL_INPUT_RE.test(emailDraft.trim()) || !emailCurrentPassword}
+            baseRim={RIM}
+            style={styles.submitPill}
+          />
+        </ScrollView>
+      </SettingsModal>
+
+      {/* ── 비밀번호 변경 모달 ── 배경 탭 닫힘 없음·안드로이드 뒤로·취소 = closePasswordModal (예전과 같다) */}
+      <SettingsModal
         visible={isPasswordModalVisible}
-        animationType="fade"
-        transparent={true} statusBarTranslucent navigationBarTranslucent
-        onRequestClose={closePasswordModal}
+        title={t('accountSettings.passwordModalTitle')}
+        description={t('accountSettings.passwordModalDesc')}
+        closeLabel={t('common.cancel')}
+        onClose={closePasswordModal}
+        avoidKeyboard
+        backdropDismiss={false}
       >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={styles.modalOverlay} accessibilityViewIsModal>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('accountSettings.passwordModalTitle')}</Text>
-            <Text style={styles.modalDesc}>
-              {t('accountSettings.passwordModalDesc')}
-            </Text>
-
-            {/* 현재 비밀번호 */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
+        <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {/* 현재 비밀번호 */}
+          <View style={styles.inputGroup}>
+            <Text style={settingsText.fieldLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
+            <SettingsField baseRim={RIM}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={styles.modalInput}
+                style={settingsText.input}
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 secureTextEntry
                 maxLength={72}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
               />
-            </View>
+            </SettingsField>
+          </View>
 
-            {/* 새 비밀번호 */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.newPasswordLabel')}</Text>
+          {/* 새 비밀번호 */}
+          <View style={styles.inputGroup}>
+            <Text style={settingsText.fieldLabel}>{t('accountSettings.newPasswordLabel')}</Text>
+            <SettingsField baseRim={RIM}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={styles.modalInput}
+                style={settingsText.input}
                 placeholder={t('accountSettings.newPasswordPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={COLORS.text50}
                 secureTextEntry
                 maxLength={72}
                 value={newPassword}
                 onChangeText={setNewPassword}
               />
-              {/* 조건은 미리 전부 보여주고 충족되면 밝아진다 (components/RequirementList) */}
-              <RequirementList
-                style={styles.reqList}
-                items={[
-                  { key: 'length', label: t('login.passwordReqLength'), met: newPassword.length >= 6 },
-                ]}
-              />
-            </View>
+            </SettingsField>
+            {/* 조건은 미리 전부 보여주고 충족되면 밝아진다 (components/RequirementList) */}
+            <RequirementList
+              style={styles.reqList}
+              items={[
+                { key: 'length', label: t('login.passwordReqLength'), met: newPassword.length >= 6 },
+              ]}
+            />
+          </View>
 
-            {/* 새 비밀번호 확인 */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.confirmPasswordLabel')}</Text>
+          {/* 새 비밀번호 확인 */}
+          <View style={styles.inputGroup}>
+            <Text style={settingsText.fieldLabel}>{t('accountSettings.confirmPasswordLabel')}</Text>
+            <SettingsField
+              baseRim={RIM}
+              // 빨간 테두리는 입력을 끝낸 뒤(blur)에만 — 확인 비밀번호를 치는 도중에는
+              // 거의 매 글자가 '불일치'라 타이핑 내내 빨갛다. 입력 중 안내는 아래 조건 줄이 맡는다.
+              error={!confirmPwFocused && confirmPassword.length > 0 && newPassword !== confirmPassword}
+            >
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[
-                  styles.modalInput,
-                  // 빨간 테두리는 입력을 끝낸 뒤(blur)에만 — 확인 비밀번호를 치는 도중에는
-                  // 거의 매 글자가 '불일치'라 타이핑 내내 빨갛다. 입력 중 안내는 아래 조건 줄이 맡는다.
-                  !confirmPwFocused && confirmPassword.length > 0 && newPassword !== confirmPassword && styles.modalInputError
-                ]}
-                 placeholder={t('accountSettings.confirmPasswordPlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
+                style={settingsText.input}
+                placeholder={t('accountSettings.confirmPasswordPlaceholder')}
+                placeholderTextColor={COLORS.text50}
                 secureTextEntry
                 maxLength={72}
                 value={confirmPassword}
@@ -603,206 +518,163 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 onFocus={() => setConfirmPwFocused(true)}
                 onBlur={() => setConfirmPwFocused(false)}
               />
-              <RequirementList
-                style={styles.reqList}
-                items={[
-                  {
-                    key: 'match',
-                    label: t('login.passwordReqMatch'),
-                    met: newPassword.length > 0 && newPassword === confirmPassword,
-                  },
-                ]}
+            </SettingsField>
+            <RequirementList
+              style={styles.reqList}
+              items={[
+                {
+                  key: 'match',
+                  label: t('login.passwordReqMatch'),
+                  met: newPassword.length > 0 && newPassword === confirmPassword,
+                },
+              ]}
+            />
+          </View>
+
+          <SettingsPillButton
+            label={t('accountSettings.changeBtn')}
+            onPress={submitPasswordChange}
+            disabled={passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
+            baseRim={RIM}
+            style={styles.submitPill}
+          />
+        </ScrollView>
+      </SettingsModal>
+
+      {/* ── 계정 삭제 모달 (디테일 3단계) ──
+          하단 알약 = 단계별 '취소'(1단계: 닫기) / '이전'(2·3단계: 한 단계 뒤로) — 예전 왼쪽 버튼과 같은 동작.
+          안드로이드 뒤로 = closeDeleteAccountModal(예전 onRequestClose), 배경 탭 닫힘 없음.
+          KAV(avoidKeyboard)는 2단계 사유 입력·3단계 비밀번호 입력용 */}
+      <SettingsModal
+        visible={isDeleteAccountModalVisible}
+        title={t('accountSettings.deleteModalTitle')}
+        titleStyle={styles.deleteTitle}
+        description={
+          deleteStep === 1 ? t('accountSettings.deleteStep1Desc', { days: DELETION_GRACE_DAYS })
+            : deleteStep === 2 ? t('accountSettings.deleteStep2Desc')
+            : `${t('accountSettings.deleteStep3Desc1')}\n${t('accountSettings.deleteStep3Desc2', { days: DELETION_GRACE_DAYS })}`
+        }
+        closeLabel={deleteStep === 1 ? t('common.cancel') : t('accountSettings.prev')}
+        onClose={deleteStep === 1 ? closeDeleteAccountModal : () => setDeleteStep(deleteStep === 3 ? 2 : 1)}
+        onDismiss={closeDeleteAccountModal}
+        avoidKeyboard
+        backdropDismiss={false}
+      >
+        <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {/* Step 1: 안내 및 동의 */}
+          {deleteStep === 1 && (
+            <View>
+              {/* 경고 상자는 빨강 의미색 유지 — 되돌릴 수 없는 삭제 항목 안내 */}
+              <View style={styles.warningBox}>
+                <Text style={styles.warningText}>{t('accountSettings.deleteWarning1')}</Text>
+                <Text style={styles.warningText}>{t('accountSettings.deleteWarning2')}</Text>
+                <Text style={styles.warningText}>{t('accountSettings.deleteWarning3')}</Text>
+                <Text style={styles.warningText}>{t('accountSettings.deleteWarning4')}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                activeOpacity={0.7}
+                onPress={() => setDeleteConsent(!deleteConsent)}
+              >
+                <View style={[styles.checkbox, deleteConsent && styles.checkboxActive]}>
+                  {deleteConsent && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <Text style={styles.checkboxLabel}>{t('accountSettings.deleteConsent')}</Text>
+              </TouchableOpacity>
+
+              <SettingsPillButton
+                tone="danger"
+                label={t('accountSettings.next')}
+                onPress={() => setDeleteStep(2)}
+                disabled={!deleteConsent}
+                style={styles.submitPill}
               />
             </View>
+          )}
 
-            {/* 버튼 그룹 */}
-            <View style={styles.modalBtnGroup}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                activeOpacity={0.7}
-                onPress={closePasswordModal}
-              >
-                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalBtn,
-                  styles.modalBtnSubmit,
-                  (passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword) && styles.modalBtnDisabled
-                ]}
-                activeOpacity={0.7}
-                disabled={passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
-                onPress={submitPasswordChange}
-              >
-                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── 계정 삭제 모달 (디테일 3단계) ── */}
-      <Modal
-        visible={isDeleteAccountModalVisible}
-        animationType="fade"
-        transparent={true} statusBarTranslucent navigationBarTranslucent
-        onRequestClose={closeDeleteAccountModal}
-      >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (2단계 사유 입력·3단계 비밀번호 입력) */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={styles.modalOverlay} accessibilityViewIsModal>
-          <View style={[styles.modalContent, { borderColor: COLORS.redBorder }]}>
-            <Text style={[styles.modalTitle, { color: COLORS.red }]}>{t('accountSettings.deleteModalTitle')}</Text>
-
-            {/* Step 1: 안내 및 동의 */}
-            {deleteStep === 1 && (
-              <View>
-                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep1Desc', { days: DELETION_GRACE_DAYS })}</Text>
-                <View style={styles.warningBox}>
-                  <Text style={styles.warningText}>{t('accountSettings.deleteWarning1')}</Text>
-                  <Text style={styles.warningText}>{t('accountSettings.deleteWarning2')}</Text>
-                  <Text style={styles.warningText}>{t('accountSettings.deleteWarning3')}</Text>
-                  <Text style={styles.warningText}>{t('accountSettings.deleteWarning4')}</Text>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.checkboxRow}
-                  activeOpacity={0.7}
-                  onPress={() => setDeleteConsent(!deleteConsent)}
-                >
-                  <View style={[styles.checkbox, deleteConsent && styles.checkboxActive]}>
-                    {deleteConsent && <Text style={styles.checkmark}>✓</Text>}
-                  </View>
-                  <Text style={styles.checkboxLabel}>{t('accountSettings.deleteConsent')}</Text>
-                </TouchableOpacity>
-
-                <View style={styles.modalBtnGroup}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                    onPress={closeDeleteAccountModal}
-                  >
-                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteConsent && styles.modalBtnDisabled]}
-                    disabled={!deleteConsent}
-                    onPress={() => setDeleteStep(2)}
-                  >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Step 2: 탈퇴 사유 수집 */}
-            {deleteStep === 2 && (
-              <View>
-                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep2Desc')}</Text>
-
-                <View style={styles.radioGroup}>
-                  {DELETE_REASONS.map((reason) => (
-                    <TouchableOpacity
-                      key={reason.value}
-                      style={styles.radioOption}
-                      activeOpacity={0.7}
+          {/* Step 2: 탈퇴 사유 수집 — 설정 팝업 선택 행(선택 시 ✓)을 카드 끝에서 끝까지 펼친다 */}
+          {deleteStep === 2 && (
+            <View>
+              <View style={styles.reasonList}>
+                {DELETE_REASONS.map((reason, i) => (
+                  <React.Fragment key={reason.value}>
+                    <SettingsOptionRow
+                      label={t(reason.labelKey)}
+                      selected={deleteReason === reason.value}
                       onPress={() => setDeleteReason(reason.value)}
-                    >
-                      <View style={[styles.radioCircle, deleteReason === reason.value && styles.radioCircleActive]}>
-                        {deleteReason === reason.value && <View style={styles.radioDot} />}
-                      </View>
-                      <Text style={styles.radioLabel}>{t(reason.labelKey)}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                    />
+                    {i < DELETE_REASONS.length - 1 && <SettingsDivider />}
+                  </React.Fragment>
+                ))}
+              </View>
 
-                {deleteReason === 'other' && (
+              {deleteReason === 'other' && (
+                <SettingsField baseRim={RIM} style={styles.reasonOther}>
                   <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                    style={[styles.modalInput, { marginTop: 10 }]}
+                    style={settingsText.input}
                     placeholder={t('accountSettings.reasonOtherPlaceholder')}
-                    placeholderTextColor={COLORS.textMuted}
+                    placeholderTextColor={COLORS.text50}
                     value={deleteReasonDetail}
                     onChangeText={setDeleteReasonDetail}
                   />
-                )}
+                </SettingsField>
+              )}
 
-                <View style={styles.modalBtnGroup}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                    onPress={() => setDeleteStep(1)}
-                  >
-                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteReason && styles.modalBtnDisabled]}
-                    disabled={!deleteReason}
-                    onPress={() => setDeleteStep(3)}
-                  >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
+              <SettingsPillButton
+                tone="danger"
+                label={t('accountSettings.next')}
+                onPress={() => setDeleteStep(3)}
+                disabled={!deleteReason}
+                style={styles.submitPill}
+              />
+            </View>
+          )}
 
-            {/* Step 3: 보안 비밀번호 확인 */}
-            {deleteStep === 3 && (
-              <View>
-                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep3Desc1')}</Text>
-                <Text style={styles.modalDesc}>{t('accountSettings.deleteStep3Desc2', { days: DELETION_GRACE_DAYS })}</Text>
-
-                {signUpMethod === 'email' ? (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>{t('accountSettings.deletePasswordLabel')}</Text>
+          {/* Step 3: 보안 비밀번호 확인 */}
+          {deleteStep === 3 && (
+            <View>
+              {signUpMethod === 'email' ? (
+                <View style={styles.inputGroup}>
+                  <Text style={settingsText.fieldLabel}>{t('accountSettings.deletePasswordLabel')}</Text>
+                  <SettingsField baseRim={RIM}>
                     <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                      style={styles.modalInput}
+                      style={settingsText.input}
                       placeholder={t('accountSettings.deletePasswordPlaceholder')}
-                      placeholderTextColor={COLORS.textMuted}
+                      placeholderTextColor={COLORS.text50}
                       secureTextEntry
-                maxLength={72}
+                      maxLength={72}
                       value={deletePassword}
                       onChangeText={setDeletePassword}
                     />
-                  </View>
-                ) : (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>{t('accountSettings.deleteSocialLabel')}</Text>
+                  </SettingsField>
+                </View>
+              ) : (
+                <View style={styles.inputGroup}>
+                  <Text style={settingsText.fieldLabel}>{t('accountSettings.deleteSocialLabel')}</Text>
+                  <SettingsField baseRim={RIM}>
                     <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                      style={styles.modalInput}
+                      style={settingsText.input}
                       placeholder={t('accountSettings.deleteConfirmPhrase')}
-                      placeholderTextColor={COLORS.textMuted}
+                      placeholderTextColor={COLORS.text50}
                       value={deleteSocialConfirm}
                       onChangeText={setDeleteSocialConfirm}
                     />
-                  </View>
-                )}
-
-                <View style={styles.modalBtnGroup}>
-                  <TouchableOpacity
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                    onPress={() => setDeleteStep(2)}
-                  >
-                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.modalBtn,
-                      styles.modalBtnSubmit,
-                      { backgroundColor: COLORS.red },
-                      (deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))) && styles.modalBtnDisabled
-                    ]}
-                    disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
-                    onPress={submitDeleteAccount}
-                  >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.permanentDelete')}</Text>
-                  </TouchableOpacity>
+                  </SettingsField>
                 </View>
-              </View>
-            )}
+              )}
 
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
+              <SettingsPillButton
+                tone="danger"
+                label={t('accountSettings.permanentDelete')}
+                onPress={submitDeleteAccount}
+                disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
+                style={styles.submitPill}
+              />
+            </View>
+          )}
+        </ScrollView>
+      </SettingsModal>
     </SafeAreaView>
   );
 }
@@ -813,196 +685,44 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-
+  // 좌우 16 = 설정 화면 카드 폭
   scroll: { flex: 1 },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 24,
     paddingBottom: 32,
   },
+  // 헤더선 아래 첫 그룹 라벨 — 예전 첫 섹션 위 간격(24+20)보다 설정 화면 리듬(21)에 맞춘다
+  firstGroupLabel: { marginTop: 21 },
 
-  // 섹션 라벨
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textDim,
-    letterSpacing: 0.5,
-    marginBottom: 8,
-    marginLeft: 4,
-    marginTop: 20,
-  },
-
-  // 카드
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  cardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  cardIcon: {
-    width: 26,
-    height: 26,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    marginRight: 2,
-  },
-  cardLabel: {
-    fontSize: 14,
-    color: COLORS.white,
-    fontWeight: '500',
-  },
-  cardValue: {
-    fontSize: 11,
-    color: COLORS.textDim,
-    marginTop: 2,
-  },
-  chevron: {
-    fontSize: 20,
-    color: COLORS.textMuted,
-  },
-  rowDivider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginLeft: 54,
-  },
-  
-  // 비밀번호 변경 모달 스타일
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 10, 15, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.white,
-    marginBottom: 6,
-  },
-  modalDesc: {
-    fontSize: 12,
-    color: COLORS.textDim,
-    lineHeight: 18,
-    marginBottom: 20,
-  },
+  // ── 팝업 ── 틀·제목·설명·하단 취소 알약은 SettingsModal. 본문은 설명 아래 20, 높이 상한 안에서 스크롤.
+  // 스크롤뷰 자신을 팝업 카드 좌우 패딩(16)만큼 펼치고 안쪽에서 16을 되돌린다 — ScrollView는 자기 영역 밖을 잘라서,
+  // 안쪽 View에만 음수 여백을 주면 사유 목록 구분선이 좌우 16씩 잘린다(SettingsScreen modalListBleed와 같은 방식).
+  modalBody: { flexGrow: 0, flexShrink: 1, marginTop: 20, marginHorizontal: -16 },
+  modalBodyContent: { paddingHorizontal: 16 },
+  deleteTitle: { color: COLORS.red },
   inputGroup: {
     marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textDim,
-    marginBottom: 6,
-  },
-  modalInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    color: COLORS.white,
-    fontSize: 14,
-  },
-  modalInputError: {
-    borderColor: COLORS.red,
   },
   inputErrorText: {
     fontSize: 11,
     color: COLORS.red,
-    marginTop: 4,
-    marginLeft: 2,
+    marginTop: 6,
+    marginLeft: 17,
   },
   reqList: {
     marginTop: 8,
-    marginLeft: 2,
+    marginLeft: 17,
   },
-  modalBtnGroup: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  modalBtn: {
-    flex: 1,
-    height: 46,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalBtnCancel: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  modalBtnSubmit: {
-    backgroundColor: COLORS.purpleNeon,
-  },
-  modalBtnDisabled: {
-    backgroundColor: COLORS.textMuted,
-    opacity: 0.5,
-  },
-  modalBtnTextCancel: {
-    color: COLORS.textDim,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalBtnTextSubmit: {
-    color: COLORS.bg,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  
+  // 제출 알약 — 하단 취소 알약(위 14)과 같은 간격
+  submitPill: { marginTop: 4 },
+
   // 계정 삭제 디테일 스타일
   warningBox: {
     backgroundColor: COLORS.redBg,
     borderColor: COLORS.redBorder,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 16,
     gap: 6,
   },
@@ -1016,14 +736,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 20,
-    paddingHorizontal: 2,
+    paddingHorizontal: 4,
   },
   checkbox: {
     width: 18,
     height: 18,
     borderRadius: 4,
     borderWidth: 1.5,
-    borderColor: COLORS.textDim,
+    borderColor: COLORS.text50,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1037,48 +757,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   checkboxLabel: {
-    fontSize: 11,
-    color: COLORS.textDim,
+    fontSize: 12,
+    color: COLORS.text50,
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 17,
   },
-  
-  // 라디오 그룹
-  radioGroup: {
-    gap: 12,
+
+  // 탈퇴 사유 목록 — 본문 안쪽 패딩(16)을 다시 펼쳐 행·구분선이 펼쳐진 스크롤뷰(= 팝업 카드) 끝에서 끝까지
+  reasonList: {
+    marginHorizontal: -16,
     marginBottom: 16,
   },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: COLORS.bg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  radioCircle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: COLORS.textDim,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioCircleActive: {
-    borderColor: COLORS.red,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: COLORS.red,
-  },
-  radioLabel: {
-    fontSize: 13,
-    color: COLORS.white,
-  },
+  reasonOther: { marginBottom: 16 },
 });

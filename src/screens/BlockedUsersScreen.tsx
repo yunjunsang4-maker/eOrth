@@ -5,27 +5,25 @@ import {
   View,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
-import { BlockIcon, BackChevronIcon } from '../components/icons';
+import { BlockIcon } from '../components/icons';
 import DefaultAvatar from '../components/DefaultAvatar';
+import {
+  SETTINGS_COLORS,
+  SettingsHeader,
+  SettingsCard,
+  SettingsDivider,
+  SettingsEmptyState,
+  SettingsPillButton,
+  settingsText,
+} from '../components/settings/SettingsUI';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const COLORS = {
-  bg: '#0A0A0F',
-  card: '#2E2E3B',
-  divider: '#1A1A26',
-  // purpleNeon은 skinTheme으로 (makeStyles의 a.accent) — 지구본 스킨 연동
-  white: '#FFFFFF',
-  textDim: '#A1A1B0',
-  textMuted: '#8B8B9E',
-  red: '#FF6B6B',
-  redBg: 'rgba(255,107,107,0.12)',
-};
+const COLORS = SETTINGS_COLORS;
 
 export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<'BlockedUsers'>) {
   // 지구본 스킨 강조색 연동
@@ -56,46 +54,45 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
 
   return (
     <SafeAreaView style={st.safeArea}>
-      {/* 헤더 */}
-      <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={st.headerTitle}>{t('friends.blockedTitle')}</Text>
-        <View style={st.headerPlaceholder} />
-      </View>
+      <SettingsHeader title={t('friends.blockedTitle')} onBack={() => navigation.goBack()} backA11yLabel={t('friends.back')} />
 
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {blockedUsers.length === 0 ? (
-          <View style={st.emptyContainer}>
-            {/* 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 */}
-            <View style={st.emptyIcon}><BlockIcon size={48} /></View>
-            <Text style={st.emptyTitle}>{t('friends.noBlocked')}</Text>
-            <Text style={st.emptyDesc}>{t('friends.noBlockedDesc')}</Text>
-          </View>
+          <SettingsEmptyState
+            // 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다
+            icon={<BlockIcon size={48} />}
+            title={t('friends.noBlocked')}
+            desc={t('friends.noBlockedDesc')}
+            style={st.empty}
+          />
         ) : (
           <>
-            <Text style={st.countText}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
-            {blockedUsers.map((user, idx) => (
-              // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
-              <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`} style={st.userCard}>
-                {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
-                <View style={st.avatarWrap}>
-                  <DefaultAvatar size={42} />
-                </View>
-                {/* 프사 옆에는 차단한 날짜만 표시 */}
-                <View style={st.userInfo}>
-                  <Text style={st.blockedDate}>{t('friends.blockedOn', { date: formatDate(user.blockedAt) })}</Text>
-                </View>
-                <TouchableOpacity
-                  style={st.unblockBtn}
-                  activeOpacity={0.7}
-                  onPress={() => handleUnblock(user.name, user.handle)}
-                >
-                  <Text style={st.unblockText}>{t('friends.unblockShort')}</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            <Text style={settingsText.groupLabel}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
+            <SettingsCard>
+              {blockedUsers.map((user, idx) => (
+                // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
+                <React.Fragment key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`}>
+                  <View style={st.userRow}>
+                    {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
+                    <View style={st.avatarWrap}>
+                      <DefaultAvatar size={42} />
+                    </View>
+                    {/* 프사 옆에는 차단한 날짜만 표시 */}
+                    <View style={st.userInfo}>
+                      <Text style={st.blockedDate}>{t('friends.blockedOn', { date: formatDate(user.blockedAt) })}</Text>
+                    </View>
+                    {/* 차단 해제 = 위험 동작 → 로그아웃과 같은 danger 알약(행 안이라 compact) */}
+                    <SettingsPillButton
+                      compact
+                      tone="danger"
+                      label={t('friends.unblockShort')}
+                      onPress={() => handleUnblock(user.name, user.handle)}
+                    />
+                  </View>
+                  {idx < blockedUsers.length - 1 && <SettingsDivider />}
+                </React.Fragment>
+              ))}
+            </SettingsCard>
           </>
         )}
         <View style={{ height: 40 }} />
@@ -110,79 +107,27 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     backgroundColor: COLORS.bg,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  headerPlaceholder: {
-    width: 40,
-  },
-
-  // 스크롤
+  // 스크롤 — 좌우 16 = 설정 화면 카드 폭
   scroll: {
     flex: 1,
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 12,
   },
 
   // 빈 상태
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
+  empty: {
     paddingTop: 80,
   },
-  emptyIcon: {
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.white,
-    marginBottom: 8,
-  },
-  emptyDesc: {
-    fontSize: 13,
-    color: COLORS.textDim,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
 
-  // 카운트
-  countText: {
-    fontSize: 12,
-    color: COLORS.textDim,
-    marginBottom: 12,
-    marginLeft: 4,
-  },
-
-  // 유저 카드
-  userCard: {
+  // 사용자 행 — 설정 행과 같은 좌 20 / 우 19, 아바타 44 + 위아래 10
+  userRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    minHeight: 64,
+    paddingLeft: 20,
+    paddingRight: 19,
+    paddingVertical: 10,
   },
   avatarWrap: {
     width: 44,
@@ -197,23 +142,12 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   userInfo: {
     flex: 1,
     marginLeft: 12,
+    marginRight: 12,
   },
-  // 행의 유일한 텍스트(차단 날짜) — 이름 제거 후 가독성 위해 크기 상향
+  // 행의 유일한 텍스트(차단 날짜) — 설정 행 라벨과 같은 14 흰색
   blockedDate: {
-    fontSize: 13,
-    color: COLORS.textDim,
-  },
-  unblockBtn: {
-    backgroundColor: COLORS.redBg,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,107,0.25)',
-  },
-  unblockText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.red,
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.white,
   },
 });

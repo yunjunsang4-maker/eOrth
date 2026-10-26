@@ -13,13 +13,14 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
-import { ArchiveIcon, BackChevronIcon } from '../components/icons';
+import { ArchiveIcon } from '../components/icons';
+import { SETTINGS_COLORS, SettingsHeader, SettingsEmptyState } from '../components/settings/SettingsUI';
 import type { RootStackScreenProps } from '../navigation/types';
 // 소셜탭 피드와 동일한 매거진 카드(DiaryCard)·높이 추정치를 그대로 재사용해 형태를 통일한다.
 import { DiaryCardMemo, estDiaryHeight } from './SocialScreen';
 
 const C = {
-  bg: '#0A0A0F',
+  bg: SETTINGS_COLORS.bg,
   card: '#1A0A2E',
   accent: '#BF85FC',
   accentDim: 'rgba(191,133,252,0.15)',
@@ -110,14 +111,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
   return (
     <SafeAreaView style={s.safeArea}>
-      {/* 헤더 */}
-      <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <BackChevronIcon />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>{t('misc.archivedTitle')}</Text>
-        <View style={s.headerPlaceholder} />
-      </View>
+      <SettingsHeader title={t('misc.archivedTitle')} onBack={() => navigation.goBack()} backA11yLabel={t('friends.back')} />
 
       {/* 기록 형식 필터 탭바 */}
       <View style={s.tabBar}>
@@ -139,11 +133,12 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
       </View>
 
       {filteredRecords.length === 0 ? (
-        <View style={s.emptyContainer}>
-          {/* 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 — 위 useSkinAccent() 구독이 그 용도 */}
-          <ArchiveIcon size={48} />
-          <Text style={s.emptyText}>{getEmptyMessage()}</Text>
-        </View>
+        <SettingsEmptyState
+          // 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 — 위 useSkinAccent() 구독이 그 용도
+          icon={<ArchiveIcon size={48} />}
+          title={getEmptyMessage()}
+          style={s.emptyContainer}
+        />
       ) : (
         <ScrollView
           contentContainerStyle={s.scroll}
@@ -235,32 +230,6 @@ const s = StyleSheet.create({
     opacity: 1,
   },
 
-  // 헤더
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.divider,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: C.white,
-  },
-  headerPlaceholder: {
-    width: 40,
-  },
-
   // 스크롤 + 2단 매거진 (소셜탭과 동일)
   scroll: {
     paddingHorizontal: 16,
@@ -269,15 +238,9 @@ const s = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
 
-  // 빈 상태
+  // 빈 상태 — 남는 높이 가운데(문구는 SettingsEmptyState의 흰 50%)
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: C.dim,
   },
 });

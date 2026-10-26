@@ -235,6 +235,10 @@ interface TripThumbnail {
   // 체류 카드 표시용 (stay 메타가 있는 TripGroup에서 파생)
   stayLabel?: string;   // 예: "체류 · 교환학생"
   stayPeriod?: string;  // 예: "2026.03 ~ 진행 중" / "2026.03 ~ 2026.08"
+  // 사진 없는 체류 카드 — 🗼 대체 이모지 대신 체류국 국기를 크게(2026-10-27). 체류 시작 직후엔 기록이 0개라
+  // 커버가 없어서 나라와 상관없는 🗼가 떠 목업처럼 보였다
+  stayFlagCover?: boolean;
+  stayEmpty?: boolean;  // 기록 0개 — '첫 기록을 남기면 사진이 채워져요' 안내까지
 }
 
 // 프로필 여행 카드는 실제 작성 기록으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
@@ -1777,6 +1781,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         workingHoliday: 'WorkingHoliday',
         other: 'Other',
       };
+      const coverUri = group.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0]; // 오버라이드 → 크롭본 → 썸네일 순
       const stayLabel = group.stay
         ? t('stay.cardBadge', { type: t(`stay.type${stayTypeKeyMap[group.stay.type]}`) })
         : undefined;
@@ -1794,9 +1799,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         color: TRIP_GRADIENT_COLORS[group.id] ? group.id : 'trip-japan',
         records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
         uniqueViewTypes,
-        coverUri: group.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0], // 오버라이드 → 크롭본 → 썸네일 순
+        coverUri,
         stayLabel,
         stayPeriod,
+        stayFlagCover: !!group.stay && !coverUri && !!flag,
+        stayEmpty: !!group.stay && groupRecords.length === 0,
       };
     }).filter(t2 => t2.records.length > 0 || !!t2.stayLabel); // 체류 카드는 기록 0개(갓 시작)여도 노출
   }, [tripGroups, records, archivedIds, t]);
@@ -2215,20 +2222,27 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             style={thumbSt.mainCard}
           >
             {/* 출렁이는 글로우 배경 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만 무효화) */}
-            {!(Platform.OS === 'android' && displayTrips[0].coverUri) && (
-              <LiquidCardGlow
-                width={SCREEN_WIDTH}
-                height={320}
-                color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
-                opacity={0.34}
-              />
+            {/* 사진 없는 체류 카드는 단색 배경(기본 글로우·그라데이션이 목업처럼 보였다 — 2026-10-27) */}
+            {displayTrips[0].stayFlagCover ? (
+              <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
+            ) : (
+              <>
+                {!(Platform.OS === 'android' && displayTrips[0].coverUri) && (
+                  <LiquidCardGlow
+                    width={SCREEN_WIDTH}
+                    height={320}
+                    color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
+                    opacity={0.34}
+                  />
+                )}
+                <LinearGradient
+                  colors={TRIP_GRADIENT_COLORS[displayTrips[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </>
             )}
-            <LinearGradient
-              colors={TRIP_GRADIENT_COLORS[displayTrips[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={StyleSheet.absoluteFill}
-            />
             {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
             {displayTrips[0].coverUri ? (
               <>
@@ -2242,7 +2256,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               </>
             ) : (
               <View style={thumbSt.mainEmojiWrap}>
-                <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
+                {displayTrips[0].stayFlagCover ? (
+                  <>
+                    <Text style={thumbSt.mainFlag}>{displayTrips[0].countryFlag}</Text>
+                    {displayTrips[0].stayEmpty ? <Text style={thumbSt.mainEmptyHint}>{t('stay.emptyCardHint')}</Text> : null}
+                  </>
+                ) : (
+                  <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
+                )}
               </View>
             )}
             <CardInfoBar intensity={48} style={thumbSt.mainInfoBar}>
@@ -2292,21 +2313,28 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 onPress={() => (mergeMode ? toggleMergeSelect(trip.id) : openTripDetail(trip))}
                 style={thumbSt.gridCard}
               >
-                {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(대표 카드와 같은 이유) */}
-                {!(Platform.OS === 'android' && trip.coverUri) && (
-                  <LiquidCardGlow
-                    width={THUMB_WIDTH}
-                    height={260}
-                    color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
-                    opacity={0.3}
-                  />
+                {/* 사진 없는 체류 카드는 단색 배경(대표 카드와 같은 이유) */}
+                {trip.stayFlagCover ? (
+                  <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
+                ) : (
+                  <>
+                    {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(대표 카드와 같은 이유) */}
+                    {!(Platform.OS === 'android' && trip.coverUri) && (
+                      <LiquidCardGlow
+                        width={THUMB_WIDTH}
+                        height={260}
+                        color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
+                        opacity={0.3}
+                      />
+                    )}
+                    <LinearGradient
+                      colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+                      start={{ x: 0.5, y: 0 }}
+                      end={{ x: 0.5, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </>
                 )}
-                <LinearGradient
-                  colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
                 {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
                 {trip.coverUri ? (
                   <>
@@ -2320,7 +2348,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   </>
                 ) : (
                   <View style={thumbSt.gridEmojiWrap}>
-                    <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
+                    {trip.stayFlagCover ? (
+                      <>
+                        <Text style={thumbSt.gridFlag}>{trip.countryFlag}</Text>
+                        {trip.stayEmpty ? <Text style={thumbSt.gridEmptyHint} numberOfLines={2}>{t('stay.emptyCardHint')}</Text> : null}
+                      </>
+                    ) : (
+                      <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
+                    )}
                   </View>
                 )}
                 <CardInfoBar intensity={44} style={thumbSt.gridInfoBar}>
@@ -3274,6 +3309,10 @@ const thumbSt = StyleSheet.create({
   mainEmoji: {
     fontSize: 72,
   },
+  // 사진 없는 체류 카드 — 단색 배경(디자인 토큰 '카드') 위에 체류국 국기 + (기록 0개면) 안내
+  stayEmptyBg: { backgroundColor: '#2E2E3B' },
+  mainFlag: { fontSize: 88 },
+  mainEmptyHint: { fontSize: 12, lineHeight: 17, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginTop: 10, paddingHorizontal: 24 },
   mainInfoBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3332,6 +3371,8 @@ const thumbSt = StyleSheet.create({
   gridEmoji: {
     fontSize: 48,
   },
+  gridFlag: { fontSize: 56 },
+  gridEmptyHint: { fontSize: 10, lineHeight: 14, color: 'rgba(255,255,255,0.7)', textAlign: 'center', marginTop: 6, paddingHorizontal: 10 },
   gridInfoBar: {
     backgroundColor: 'rgba(14,14,17,0.16)',
     borderTopWidth: 1,
