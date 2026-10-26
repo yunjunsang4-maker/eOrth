@@ -2036,7 +2036,29 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return newGroup;
   };
 
+  // ─── 사용자가 지운 카드의 서버 삭제 표시(tombstone) ───
+  // ⚠️ 삭제 전파를 아래 push effect의 행 diff(`gone`)에 맡기면 안 된다(2026-10-27 '체류 카드를 지워도
+  //    새로고침하면 되살아난다' 신고). `gone`은 `lastPushedRef`(useRef, **앱 실행마다 빈 맵**)의 키에서만
+  //    뽑으므로, 지난 실행에서 만든 카드를 이번 실행에서 지우면 tombstone이 영영 안 나간다. 그 상태에서
+  //    pull(`syncTripCards`)이 서버 행을 '로컬에 없는 새 카드'(missing)로 되받아 되살린다. 마지막 카드
+  //    1장을 지운 경우는 push effect의 빈 상태 가드(`tripGroups.length === 0`)에 막혀 아예 안 나간다.
+  //    북한 카드 정리(kpCleanup)와 같은 판단 — **사용자가 고른 카드 id만** 직접 tombstone한다(대량 오삭제 경로 없음).
+  // 서버 반영 전에 pull이 돌아도 되살리지 않도록 대기 집합에 넣고, 실패하면 다음 `syncTripCards`가 재시도한다.
+  // 대기 집합은 메모리뿐이다 — 오프라인에서 지우고 앱을 종료하면 다음 실행에 되살아날 수 있다(알려진 한계).
+  const pendingCardDeletesRef = useRef<Set<string>>(new Set());
+  const tombstoneDeletedCards = (ids: string[]) => {
+    if (ids.length === 0 || !isSupabaseConfigured) return;
+    for (const id of ids) {
+      pendingCardDeletesRef.current.add(id);
+      lastPushedRef.current.delete(id); // push diff가 같은 카드에 tombstone을 한 번 더 쏘지 않게
+    }
+    tombstoneTripCards(ids)
+      .then((ok) => { if (ok) for (const id of ids) pendingCardDeletesRef.current.delete(id); })
+      .catch(() => {});
+  };
+
   const deleteTripGroup = (id: string) => {
+    tombstoneDeletedCards([id]);
     setTripGroups((prev) => prev.filter((g) => g.id !== id));
     // 여행 세션이 가리키던 카드면 매핑도 정리 (다음 기록 때 새 카드가 자연스럽게 생성됨)
     setTripSession((prev) => {
@@ -2057,6 +2079,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const mergeTripGroups = (targetId: string, sourceIds: string[]) => {
     const ids = sourceIds.filter((id) => id !== targetId);
     if (ids.length === 0) return;
+    // 흡수돼 사라지는 카드도 서버에 직접 tombstone — 안 그러면 pull이 되살린다(위 tombstoneDeletedCards 주석)
+    tombstoneDeletedCards(ids);
     setTripGroups((prev) => {
       const target = prev.find((g) => g.id === targetId);
       if (!target) return prev;
@@ -2127,6 +2151,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     //    tripGroups를 통째로 비우므로, 이 맵을 안 비우면 **이전 계정의 카드 전체에
     //    tombstone을 쏜다(대량 오삭제, 조용하고 되돌릴 수 없다).**
     lastPushedRef.current.clear();
+    pendingCardDeletesRef.current.clear(); // 이전 계정의 삭제 대기 카드를 새 계정에 재시도하지 않는다
     lastLegacySavedRef.current = ''; // legacy 백업 중복 방지 서명도 계정 경계에서 비운다
     // ⚠️ 부가상태 집합(user_state_flags) 지문도 **같은 이유로 반드시** 비운다. 위 카드와 판박이다:
     //    계정 전환은 6개 집합을 통째로 비우므로(위 setArchivedIds([]) 등), 이 맵을 남겨두면
@@ -2440,6 +2465,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // (복원 effect의 M1 방어와 같은 장치).
     const epoch = tripRestoreEpochRef.current;
     try {
+      // 지난 회차에 실패한 삭제 표시를 먼저 다시 보낸다 — 성공해야 아래 프로브가 그 카드를 tombstone으로 본다
+      const pendingDel = Array.from(pendingCardDeletesRef.current);
+      if (pendingDel.length > 0) {
+        const ok = await tombstoneTripCards(pendingDel).catch(() => false);
+        if (ok) for (const id of pendingDel) pendingCardDeletesRef.current.delete(id);
+      }
       const probe = preProbe ?? (await withTimeout(probeTripCards(), 12000));
       if (!probe) return 'failed'; // 표 없음·네트워크 실패 — 조용히 포기(다음 트리거에서 재시도)
       if (epoch !== tripRestoreEpochRef.current) return 'skipped';
@@ -2501,6 +2532,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const addSeeds: { cardId: string; json: string }[] = [];
       for (const r of rows) {
         if (staleSet.has(r.cardId) || existing.has(r.cardId)) continue;
+        // 사용자가 지웠고 서버 tombstone이 아직 반영 전인 카드 — 되살리지 않는다
+        if (pendingCardDeletesRef.current.has(r.cardId)) continue;
         const c = toLocalTripCard(r, mapRemoteToLocal);
         if (!c) continue; // 쓸 수 없는 본문(tombstone 잔재 등) — 건너뛴다
         addCards.push(c as TripGroup);
@@ -2525,7 +2558,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         if (addCards.length > 0) {
           // 커밋 시점 기준으로 한 번 더 중복을 거른다(그 사이 같은 id가 생겼을 수 있다)
           const have = new Set(next.map((g) => g.id));
-          const add = addCards.filter((c) => !have.has(c.id));
+          // 응답을 기다리는 사이 사용자가 지운 카드도 거른다
+          const add = addCards.filter((c) => !have.has(c.id) && !pendingCardDeletesRef.current.has(c.id));
           // 새 카드를 앞에 둔다 — 이 저장소의 카드 생성 경로(makeTripGroup·addTripGroup)와 같은 규칙
           if (add.length > 0) next = [...add, ...next];
         }
