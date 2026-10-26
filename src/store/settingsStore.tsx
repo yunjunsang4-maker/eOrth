@@ -85,8 +85,6 @@ export interface HomeRegionPref {
 }
 
 interface SettingsContextType {
-  showCounts: boolean;
-  setShowCounts: (v: boolean) => void;
   homeCountryCode: string;
   setHomeCountryCode: (v: string) => void;
   /** 거주지 시·도 (미설정이면 null) */
@@ -244,7 +242,6 @@ interface SettingsContextType {
 
 // AsyncStorage에 저장되는 설정 스냅샷
 interface SettingsPersistPayload {
-  showCounts: boolean;
   homeCountryCode: string;
   homeRegion?: HomeRegionPref | null;   // 과거 저장본엔 없다
   homeRegionPromptShown?: boolean;      // 과거 저장본엔 없다
@@ -337,7 +334,7 @@ type BadgeSettingsSlice = Pick<SettingsContextType,
   'representativeBadgeIds' | 'badgeEarnedAt' | 'pendingBadgeToasts' | 'shareSentCount' | 'loginStreak' | 'installedAt'>;
 // 그 밖의 앱 취향·1회성 표시 기록 — 드물게 바뀌고 소비자가 흩어져 있다
 type PrefSettingsSlice = Pick<SettingsContextType,
-  'showCounts' | 'diaryCardMode' | 'hapticsEnabled' | 'language' | 'verifiedNaverBlogIds' | 'tutorialsSeen'
+  'diaryCardMode' | 'hapticsEnabled' | 'language' | 'verifiedNaverBlogIds' | 'tutorialsSeen'
   | 'lastImportAt' | 'lastSeenNoticeAt' | 'mateRecoAskedAt' | 'stayNudgeDismissedFor' | 'lastPhotoFrame'>;
 // 백업 내보내기는 위 여러 슬라이스(+ 비공개 상태 regionKeySchema·lastVisitDay)를 한꺼번에 읽는다.
 // 어느 슬라이스에 붙여도 그 구독자가 전 설정 변경에 리렌더되므로 혼자 둔다(AppStateSync 전용).
@@ -359,7 +356,6 @@ const SettingsBackupContext = createContext<SettingsBackupSlice | null>(null);
 const SettingsActionsContext = createContext<SettingsActions | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [showCounts, setShowCounts] = useState(true);
   // 기본 거주국: 기기 지역(ISO2)이 국가 목록에 있으면 그 나라, 아니면 KR — 저장된 값이 있으면 hydrate가 덮는다
   const [homeCountryCode, setHomeCountryCode] = useState(DEVICE_DEFAULT_HOME_COUNTRY);
   const [homeRegion, setHomeRegion] = useState<HomeRegionPref | null>(null); // 거주지 시·도(미설정)
@@ -502,7 +498,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const hydrated = usePersistence<SettingsPersistPayload>(
     STORE_KEYS.settings,
     (p) => {
-      setShowCounts(p.showCounts);
       setHomeCountryCode(p.homeCountryCode);
       setHomeRegion(p.homeRegion ?? null);
       setHomeRegionPromptShown(p.homeRegionPromptShown ?? false);
@@ -625,7 +620,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLastPhotoFrame(p.lastPhotoFrame ? normalizePhotoFrame(p.lastPhotoFrame) : null);
     },
     () => ({
-      showCounts,
       homeCountryCode,
       homeRegion,
       homeRegionPromptShown,
@@ -682,7 +676,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       lastPhotoFrame,
     }),
     [
-      showCounts,
       homeCountryCode,
       homeRegion,
       homeRegionPromptShown,
@@ -762,7 +755,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   //   함께 보존했지만, 지금의 신호인 onboardedAt은 keepIdentity와 무관하게 항상 초기화된다 — 아래 참고)
   const resetSettings = (opts?: { keepIdentity?: boolean }) => {
     const keepIdentity = opts?.keepIdentity === true;
-    setShowCounts(true);
     setHomeCountryCode(DEVICE_DEFAULT_HOME_COUNTRY);
     setHomeRegion(null);
     // 제안 시트 1회 플래그도 되돌린다 — 거주 지역이 비워졌으니 다시 물어봐야 한다
@@ -832,7 +824,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
   // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
-    showCounts, snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect,
+    snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect,
     // 거주지 시·도 — 거주 '국가'와 달리 profiles에 칸이 없어(서버 SQL 없이 도입) 여기 싣는다.
     // 기기를 옮겨도 '일상' 링 판정이 살아 있어야 한다. homeRegionPromptShown은 로컬 전용이라 제외.
     homeRegion,
@@ -854,7 +846,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   });
   const applySettingsBackup = (b: Record<string, unknown>) => {
     const v = b as any;
-    if (typeof v.showCounts === 'boolean') setShowCounts(v.showCounts);
     if (typeof v.snapEnabled === 'boolean') setSnapEnabled(v.snapEnabled);
     if (typeof v.hapticsEnabled === 'boolean') setHapticsEnabled(v.hapticsEnabled);
     if (typeof v.diaryCardMode === 'string') setDiaryCardMode(v.diaryCardMode);
@@ -948,7 +939,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // 이미 건너뜀). 자식 effect가 같은 커밋에서 액션을 불러도 이번 렌더의 클로저가 돌도록 렌더에서 넣는다.
   const latestActionsRef = useRef<SettingsActions>(null!);
   latestActionsRef.current = {
-    setShowCounts,
     setHomeCountryCode: setHomeCountryCodeWithRegionReset,
     setHomeRegion,
     setHomeRegionPromptShown,
@@ -1040,10 +1030,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   );
   const prefSettings = useMemo<PrefSettingsSlice>(
     () => ({
-      showCounts, diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
+      diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
       lastImportAt, lastSeenNoticeAt, mateRecoAskedAt, stayNudgeDismissedFor, lastPhotoFrame,
     }),
-    [showCounts, diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
+    [diaryCardMode, hapticsEnabled, language, verifiedNaverBlogIds, tutorialsSeen,
       lastImportAt, lastSeenNoticeAt, mateRecoAskedAt, stayNudgeDismissedFor, lastPhotoFrame],
   );
   // exportSettingsBackup은 일반 클로저라 매 렌더 새것이다. 그 함수가 읽는 상태가 바뀔 때만 새 참조를
@@ -1054,7 +1044,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const settingsBackup = useMemo<SettingsBackupSlice>(
     () => ({ exportSettingsBackup }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showCounts, snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect, homeRegion,
+    [snapEnabled, hapticsEnabled, diaryCardMode, language, arrivalDetect, homeRegion,
       globeVariant, globeSkin, globeDisplayMode, globeColor,
       countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
       taggedRegions, dismissedRegionTagChips, regionFavoriteCodes, regionKeySchema,

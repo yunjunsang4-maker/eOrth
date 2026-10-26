@@ -217,7 +217,7 @@ const tiltFor = (id: string): number => {
   return TILTS[Math.abs(h) % TILTS.length];
 };
 
-function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
+function DiaryMeta({ item, navigation, toggleLike, onMore, onLight }: any) {
   const { t, i18n } = useTranslation();
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
   const lateFonts = useLateFontsLoaded(); // 아이디 서체 등록 전엔 기본 폰트로 — constants/lateFonts.ts
@@ -255,7 +255,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
-        {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
+        {item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
       {!item.isExample && (
         <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
@@ -268,7 +268,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 
 // 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
 // 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
-function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
+function CutMeta({ item, navigation, toggleLike, onMore }: any) {
   // (예전 'use no memo'는 timeAgo() 고착 때문이었다 — 시간 표기를 TimeAgoText로 옮겨 그 지시어도 그쪽으로 갔다)
   const { t, i18n } = useTranslation();
   const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useProfileSettings();
@@ -300,7 +300,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
         </TouchableOpacity>
         <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
           <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
-          {showCounts && item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
+          {item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
         </TouchableOpacity>
         {!item.isExample && (
           <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
@@ -511,7 +511,7 @@ function CutCanvasPreview({ cutPhoto, thumbs }: { cutPhoto: any; thumbs?: Record
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { records } = useRecordData();
@@ -600,13 +600,20 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         { key: 'report', icon: <WarningIcon size={18} color="#FF3B30" />, label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
-  const meta = mode === 'full'
-    ? <DiaryMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} showCounts={showCounts} onLight={vt === 'feed'} />
+  // 설정 '소셜 카드 상호작용 표시'가 꺼지면(mode !== 'full') 모든 형식이 "미디어 + 국가"만 보인다 —
+  // 올린 시간·@아이디·♡·⋯·캡션·스크랩 제목/발췌가 빠진다. 높이 추정(feedMasonry estimateFeedCellHeight의
+  // full=false 분기)이 아래 구조를 그대로 셈하므로, 여기를 바꾸면 그쪽 숫자도 같이 고칠 것(어긋나면 피드에 빈칸).
+  // 빈 피드에 주입되는 공식 예시(isExample)는 간단히 보기에서 제외 — 항상 full(estimateFeedCellHeight·estDiaryHeight도 같은 판정).
+  const full = mode === 'full' || !!item.isExample;
+  const meta = full
+    ? <DiaryMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} onLight={vt === 'feed'} />
     : null;
-  // 스트립(네컷) 전용 푸터 — 프로필사진 없이 @아이디 + 방문국가
-  const cutMeta = mode === 'full'
-    ? <CutMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} showCounts={showCounts} />
-    : null;
+  // minimal 국가 라벨 — CutMeta 상단 행에서 시간만 뺀 것과 같은 글자(cutMetaCountry, 여백 없음)
+  const placeOnly = <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>;
+  // 스트립(네컷) 전용 푸터 — 프로필사진 없이 @아이디 + 방문국가. minimal은 국가만(cutMeta 8 + 15 + 2)
+  const cutMeta = full
+    ? <CutMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} />
+    : <View style={d.cutMeta}>{placeOnly}</View>;
 
   const cardRef = useRef<View>(null);
   // 창↔컬럼 좌표 변환 오프셋. 이 파일이 이미 세 곳(491·1025·1325행)에서 쓰는 것과
@@ -700,15 +707,16 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     const photo = firstPhoto(item);
     const title = (item.content || '').trim();
     const excerpt = blogExcerpt(item);
-    // 블로그는 사진이 있어도 시안처럼 글로만(저널 레이아웃). 사진 스크랩은 앨범만.
-    if (photo && vt === 'album') {
+    // 블로그는 사진이 있어도 시안처럼 글로만(저널 레이아웃). 사진 스크랩은 앨범만 —
+    // 단 minimal에선 사진 있는 블로그도 스크랩(사진 + 국가)으로 그린다.
+    if (photo && (vt === 'album' || !full)) {
       return (
         <DiaryTappable style={d.scrap} tilt={tilt} onSingle={open} onDouble={like}>
           <View style={d.tape} />
           <FeedPhoto key={photo} uri={photo} thumbs={item.thumbs} style={d.scrapImg} />
-          {!!title && <Text style={[d.scrapTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
-          {!!excerpt && <Text style={d.scrapExcerpt} numberOfLines={3}>{excerpt}</Text>}
-          {meta}
+          {full && !!title && <Text style={[d.scrapTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
+          {full && !!excerpt && <Text style={d.scrapExcerpt} numberOfLines={3}>{excerpt}</Text>}
+          {full ? meta : placeOnly}
         </DiaryTappable>
       );
     }
@@ -732,7 +740,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {!!title && <Text style={[d.jourTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
         {!!item.subtitle && <Text style={[d.jourSubtitle, { color: skinAccent.accent }]} numberOfLines={1}>{item.subtitle}</Text>}
         {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
-        <View style={d.jourFooter}>
+        {/* minimal: 글은 그대로, 구분선 아래 푸터(시간·@아이디·♡·⋯)만 통째로 뺀다 */}
+        {full && <View style={d.jourFooter}>
           {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
           {!item.isExample && <TimeAgoText ts={item.timestamp} style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1} />}
           <View style={d.jourFooterRow}>
@@ -750,7 +759,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             <View style={d.jourFooterRight}>
               <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
                 <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
-                {showCounts && item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
+                {item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
               </TouchableOpacity>
               {!item.isExample && (
                 <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
@@ -759,7 +768,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
               )}
             </View>
           </View>
-        </View>
+        </View>}
         </View>
         </LinearGradient>
       </DiaryTappable>
@@ -787,12 +796,13 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
-          {!item.isExample && <TimeAgoText ts={item.timestamp} style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1} />}
+          {full && !item.isExample && <TimeAgoText ts={item.timestamp} style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1} />}
         </View>
+        {/* minimal은 위 국가 행까지만 — 시간·캡션·@아이디·♡·⋯ 행이 빠진다 */}
         {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
-        {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
+        {full && !!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
         {/* 그 아래: @아이디(좌) + 좋아요·더보기(우) */}
-        <View style={d.polaMetaRow}>
+        {full && <View style={d.polaMetaRow}>
           <TouchableOpacity
             style={d.polaHandleBtn}
             activeOpacity={item.isExample ? 1 : 0.7}
@@ -807,7 +817,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           <View style={d.polaMetaRight}>
             <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
               <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
-              {showCounts && item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
+              {item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
             </TouchableOpacity>
             {!item.isExample && (
               <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
@@ -815,7 +825,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
               </TouchableOpacity>
             )}
           </View>
-        </View>
+        </View>}
       </View>
     </DiaryTappable>
   );
@@ -872,18 +882,22 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
 }
 
 // 높이 추정 (2단 균형 분배용)
+// 대략치(보관함 ArchivedPostsScreen 2단 분배용) — 피드는 실제 스타일에서 유도한 estimateFeedCellHeight를 쓴다.
+// full 값은 예전 그대로다. minimal(미디어 + 국가만)은 full에서 빠지는 높이를 feedMasonry 유도치로 뺐다:
+// 네컷 메타 48 → 국가 25, 스크랩 제목·발췌 28(+메타), 저널 푸터 54, 폴라로이드 캡션 19 + 메타 행 27.
 export const estDiaryHeight = (item: any, mode: string): number => {
   const vt = item.viewType || 'feed';
-  let h = 200;
+  const full = mode === 'full' || !!item.isExample; // 공식 예시는 항상 full(DiaryCard와 같은 판정)
   if (vt === 'cut') {
     const a = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
-    h = 30 + 165 / a;
-  } else if (vt === 'blog' || vt === 'album') {
-    h = firstPhoto(item) ? 240 : 200;
-  } else {
-    h = 210;
+    return 30 + 165 / a + (full ? 34 : 25);
   }
-  return h + (mode === 'full' ? 34 : 0);
+  if (vt === 'blog' || vt === 'album') {
+    // minimal: 사진 있으면 앨범·블로그 모두 스크랩(사진 + 국가), 없으면 푸터 없는 저널
+    if (full) return firstPhoto(item) ? 274 : 234;
+    return firstPhoto(item) ? 212 : 180;
+  }
+  return full ? 244 : 198;
 };
 
 const d = StyleSheet.create({
@@ -1261,7 +1275,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     }, [refreshing, feedInitialLoading, refreshFeed, refreshMyPostCounts, refreshNeighbors])
   );
   const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useProfileSettings();
-  const { diaryCardMode, showCounts } = usePrefSettings();
+  const { diaryCardMode } = usePrefSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
@@ -1711,7 +1725,6 @@ function FriendsTab({ navigation }: { navigation: any }) {
           mode={diaryCardMode}
           navigation={navigation}
           toggleLike={cbToggleLike}
-          showCounts={showCounts}
           onArchive={cbArchive}
           onDelete={cbDelete}
           onBlock={cbBlock}
@@ -1747,7 +1760,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     );
     // 실제로 바뀌는 건 앞의 셋뿐 — cb*·dragPos는 참조 고정(fnRef 박제·useRef), navigation은 화면 수명 동안 고정.
     // (eslint-disable 대신 전부 나열 — 함수 안 react-hooks 억제는 React Compiler 건너뜀 사유가 된다)
-  }, [diaryCardMode, showCounts, mateSuggestions, navigation, dragPos, cbToggleLike, cbArchive, cbDelete, cbBlock, cbReport, cbToggleVisibility, cbQuickStart, cbQuickMove, cbQuickEnd, cbQuickCancel]);
+  }, [diaryCardMode, mateSuggestions, navigation, dragPos, cbToggleLike, cbArchive, cbDelete, cbBlock, cbReport, cbToggleVisibility, cbQuickStart, cbQuickMove, cbQuickEnd, cbQuickCancel]);
 
   return (
     <View style={{ flex: 1 }}>

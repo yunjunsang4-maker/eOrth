@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { select, warn } from '../utils/haptics';
 import CountryPickerModal, { countryCodeOf } from '../components/CountryPickerModal';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
@@ -35,7 +36,6 @@ import {
   BellIcon,
   BlockIcon,
   ArchiveIcon,
-  EyeIcon,
   SparkleIcon,
   GlobeSkinIcon,
   LanguageIcon,
@@ -62,6 +62,11 @@ import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
 import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
+import { andNoFontScale } from '../utils/fitText';
+import { STAGE_MAX_W } from '../utils/stage';
+// 도움말 견본 카드 = 피드의 실제 카드. SocialScreen 쪽 의존 그래프에 SettingsScreen·AppNavigator가 없어 순환 import가 아니다.
+import { DiaryCardMemo } from './SocialScreen';
+import { EXAMPLE_FEED_RECORD } from '../constants/exampleContent';
 
 // 개인정보처리방침·이용약관 게시 URL — 가입 화면과 공유하므로 constants/legalLinks 가 단일 출처
 import { privacyPolicyUrl, termsUrl } from '../constants/legalLinks';
@@ -101,6 +106,10 @@ const SettingGroup = ({
     toggle?: boolean;
     onToggle?: (v: boolean) => void;
     onPress?: () => void;
+    /** 있으면 라벨 바로 오른쪽에 작은 물음표 버튼 — 무엇이 바뀌는지 보여주는 도움말을 연다 */
+    onHelp?: () => void;
+    /** 물음표 버튼의 스크린리더 라벨 (onHelp와 짝) */
+    helpA11yLabel?: string;
   }[];
 }) => {
   const skinAccent = useSkinAccent();
@@ -113,14 +122,33 @@ const SettingGroup = ({
           activeOpacity={0.7}
           onPress={item.onPress}
           disabled={item.onToggle != null}
+          // 물음표가 있는 행은 행 자체를 접근성 요소로 묶지 않는다 — TouchableOpacity는 기본 accessible이라
+          // iOS VoiceOver가 행 전체를 한 덩어리로 읽어 안쪽 물음표 버튼에 초점이 가지 않는다.
+          accessible={item.onHelp ? false : undefined}
         >
-          <View style={st.settingLeft}>
+          <View style={[st.settingLeft, item.onHelp && st.settingLeftWithHelp]}>
             <View style={st.settingIconWrap}>{item.icon}</View>
-            <Text style={st.settingLabel}>{item.label}</Text>
+            <Text style={[st.settingLabel, item.onHelp && st.settingLabelShrink]}>{item.label}</Text>
+            {item.onHelp && (
+              // 바깥 행이 disabled(토글 행)여도 이 버튼은 눌린다: RN 응답자 협상은 버블 단계에서 가장 안쪽
+              // 터치 대상부터 onStartShouldSetResponder를 묻고, 바깥 Pressability는 disabled면 false를 돌려준다
+              // (Pressability.js). 안쪽 TouchableOpacity가 먼저 true로 응답자가 된다.
+              <TouchableOpacity
+                style={st.settingHelpBtn}
+                onPress={item.onHelp}
+                activeOpacity={0.6}
+                hitSlop={{ top: 12, bottom: 12, left: 10, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel={item.helpA11yLabel ?? item.label}
+              >
+                <QuestionIcon size={15} color={COLORS.textDim} />
+              </TouchableOpacity>
+            )}
           </View>
           {item.onToggle != null ? (
             <Switch
               value={item.toggle}
+              accessibilityLabel={item.label}
               // 스위치가 켜지고 꺼지는 순간 — SettingGroup이 공용이라 이 그룹의 모든 토글에 적용된다.
               // '햅틱' 스위치 자신도 여기를 지난다: 끌 때는 게이트가 아직 열려 있어 마지막 한 번이
               // 울리고, 켤 때는 반영 전이라 울리지 않는다. 어느 쪽이든 오작동이 아니다.
@@ -155,13 +183,114 @@ const SettingGroup = ({
   );
 };
 
+// ─── '간단히 보기' 도움말 — 기본/간단히 소셜 카드를 나란히 비교 ───
+// 견본은 목업이 아니라 피드의 실제 카드(SocialScreen DiaryCardMemo)다 — 테이프·뒷장·기울기·폰트·♡·⋯까지 피드 폴라로이드와 같다.
+// 글은 공식 예시(EXAMPLE_FEED_RECORD)를 펼치되 isExample: false로 둔다. 예시 글은 간단히 보기에서 제외돼(DiaryCard의
+// full 판정) 그대로 두면 오른쪽 카드도 기본 모양으로 그려진다.
+//
+// 견본은 눌려도 아무 일도 없어야 한다(상세·프로필·좋아요·더블탭·⋯·롱프레스 DM 끌기). 감싼 View의 pointerEvents="none" 하나로 막는다:
+//  - iOS(Fabric): RCTViewComponentView hitTest가 None이면 nil을 돌려 하위 뷰가 히트 대상이 못 된다 → RN Pressable도,
+//    하위 뷰에 addGestureRecognizer로 붙은 RNGH Pan(UIGestureRecognizer)도 터치를 받지 못한다.
+//  - Android: RNGH GestureHandlerOrchestrator.traverseWithPointerEvents가 NONE이면 그 뷰와 자식 전체를 건너뛴다.
+//    (RN Modal은 별도 창이라 앱 루트 GestureHandlerRootView의 오케스트레이터가 애초에 보지 못하는 영역이기도 하다.)
+//  - pointerEvents=none인 View는 Fabric에서 평탄화되지 않는다(ViewShadowNode formsStackingContext).
+//  - 스크린리더 활성화는 히트 테스트를 거치지 않으므로 접근성 트리에서도 숨긴다(accessibilityElementsHidden·no-hide-descendants).
+// 견본 줄은 ScrollView 밖에 둔다 — ScrollView는 내용을 잘라 기울어진 뒷장 모서리·테이프가 잘린다.
+const noop = () => {};
+const NOOP_NAV = { navigate: noop };
+const HOUR_MS = 3600 * 1000;
+
+// Modal은 닫히면 자식을 언마운트하므로, 여는 순간 마운트되며 useState 초기값으로 '몇 시간 전' 시각을 잡는다
+const SimpleViewSamples = () => {
+  const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
+  const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [openedAt] = useState(() => Date.now());
+  const caption = t('settings.simpleCardViewHelpSampleCaption');
+  const sample = useMemo(
+    () => ({ ...EXAMPLE_FEED_RECORD, id: 'simple-view-demo', isExample: false, likes: 12, memo: caption, timestamp: openedAt - 3 * HOUR_MS }),
+    [caption, openedAt],
+  );
+  const card = (mode: 'full' | 'minimal', columnIndex: number) => (
+    <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <DiaryCardMemo
+        item={sample}
+        mode={mode}
+        navigation={NOOP_NAV}
+        toggleLike={noop}
+        onArchive={noop}
+        onDelete={noop}
+        onBlock={noop}
+        onReport={noop}
+        onToggleVisibility={noop}
+        onQuickStart={noop}
+        onQuickMove={noop}
+        onQuickEnd={noop}
+        onQuickCancel={noop}
+        dragPos={dragPos}
+        columnIndex={columnIndex}
+      />
+    </View>
+  );
+  return (
+    <View style={st.sampleRow}>
+      <View style={st.sampleCol}>
+        <Text style={st.sampleLabel} numberOfLines={1} {...andNoFontScale}>{t('settings.simpleCardViewHelpFull')}</Text>
+        {card('full', 0)}
+      </View>
+      <View style={st.sampleCol}>
+        <Text style={[st.sampleLabel, { color: skinAccent.accent }]} numberOfLines={1} {...andNoFontScale}>{t('settings.simpleCardView')}</Text>
+        {card('minimal', 1)}
+      </View>
+    </View>
+  );
+};
+
+const SimpleViewHelpModal = ({ visible, onClose }: { visible: boolean; onClose: () => void }) => {
+  const { t } = useTranslation();
+  const lines = [
+    t('settings.simpleCardViewHelpLine1'),
+    t('settings.simpleCardViewHelpLine2'),
+    t('settings.simpleCardViewHelpLine3'),
+    t('settings.simpleCardViewHelpLine4'),
+  ];
+  // 스킨·폰트 모달과 같은 틀: 투명 fade Modal + statusBarTranslucent, 중앙 카드라 안전영역은 오버레이 여백으로 충분
+  return (
+    <Modal
+      visible={visible}
+      transparent statusBarTranslucent navigationBarTranslucent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      {/* 배경 탭으로도 닫힘 — 카드(내부 Pressable)는 탭을 삼켜 오닫힘 방지 */}
+      <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={onClose}>
+        <Pressable style={[st.modalCard, st.sampleModalCard]} onPress={() => {}}>
+          <Text style={st.modalTitle}>{t('settings.simpleCardView')}</Text>
+          <SimpleViewSamples />
+          <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
+            {lines.map((line) => (
+              <View key={line} style={st.helpLineRow}>
+                <Text style={st.helpLineDot}>•</Text>
+                <Text style={st.helpLineText}>{line}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={onClose}>
+            <Text style={st.modalBtnCancelText}>{t('common.close')}</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+};
+
 export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
   const { t, i18n } = useTranslation();
   const { isPremium, handleFont, stripLogoRemoval, handle } = useProfileSettings();
   const { homeCountryCode, homeRegion } = useHomeSettings();
   const { globeSkin } = useSkinSettings();
-  const { showCounts, hapticsEnabled, diaryCardMode, language, lastSeenNoticeAt } = usePrefSettings();
-  const { setShowCounts, setHapticsEnabled, setHomeCountryCode, setDiaryCardMode, setLanguage, setIsPremium, setHandleFont, setStripLogoRemoval, setGlobeSkin, resetTutorialsSeen } = useSettingsActions();
+  const { hapticsEnabled, diaryCardMode, language, lastSeenNoticeAt } = usePrefSettings();
+  const { setHapticsEnabled, setHomeCountryCode, setDiaryCardMode, setLanguage, setIsPremium, setHandleFont, setStripLogoRemoval, setGlobeSkin, resetTutorialsSeen } = useSettingsActions();
   // 미읽음 공지 배지. 실패하면 배지를 띄우지 않을 뿐 화면은 그대로다.
   // lastSeenNoticeAt이 의존성이라, 공지 화면에서 읽고 돌아오면 다시 계산돼 배지가 꺼진다.
   const [noticeUnread, setNoticeUnread] = useState(false);
@@ -216,6 +345,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   // 지구본 스킨 선택 모달 — 무료 2종 + 기본. 유료 스킨 추가 시 premium 플래그로 게이트
   const [skinModalVisible, setSkinModalVisible] = useState(false);
   const currentSkin = GLOBE_SKINS.find((s) => s.id === globeSkin) ?? GLOBE_SKINS[0];
+  // '간단히 보기' 물음표 → 기본/간단히 카드 비교 도움말
+  const [simpleHelpVisible, setSimpleHelpVisible] = useState(false);
 
   // 거주 국가 선택 모달 — 목록에서 고르므로 유효성 검사가 필요 없다.
   // (예전 코드 직접 입력 방식에는 VALID_COUNTRY_CODES 방어가 있었다. 지원 목록 밖 코드가
@@ -405,10 +536,17 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <Text style={st.groupLabel}>{t('settings.groupApp')}</Text>
         <SettingGroup
           items={[
-            { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
             // 촉각 피드백 — 끄면 utils/haptics를 경유하는 전 호출부가 조용해진다(HapticsBridge)
             { icon: <SparkleIcon size={22} />, label: t('settings.haptics'), toggle: hapticsEnabled, onToggle: setHapticsEnabled },
-            { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
+            // 간단히 보기 — 켜면 minimal. 저장값('full'|'minimal')은 그대로라 기존 full 사용자는 꺼진 상태로 보인다
+            {
+              icon: <GalleryIcon size={22} />,
+              label: t('settings.simpleCardView'),
+              toggle: diaryCardMode === 'minimal',
+              onToggle: (v: boolean) => setDiaryCardMode(v ? 'minimal' : 'full'),
+              onHelp: () => setSimpleHelpVisible(true),
+              helpA11yLabel: t('settings.simpleCardViewHelpA11y'),
+            },
             {
               // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
               icon: <GlobeSkinIcon size={22} />,
@@ -789,6 +927,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* '간단히 보기' 물음표 도움말 */}
+      <SimpleViewHelpModal visible={simpleHelpVisible} onClose={() => setSimpleHelpVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -872,6 +1013,12 @@ const st = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  // 물음표가 붙은 행 — 왼쪽 묶음이 남는 폭을 차지하되 줄어들 수 있게 해서, 라벨이 길어져도
+  // 오른쪽 스위치를 밀어내거나 겹치지 않고 라벨이 줄바꿈된다.
+  settingLeftWithHelp: { flex: 1, minWidth: 0, marginRight: 12 },
+  settingLabelShrink: { flexShrink: 1 },
+  // settingLeft의 gap 12는 아이콘-라벨 간격용이라, 물음표는 음수 여백으로 라벨에 붙인다(실간격 6)
+  settingHelpBtn: { marginLeft: -6 },
   settingIconWrap: {
     width: 24,
     height: 24,
@@ -1018,4 +1165,16 @@ const st = StyleSheet.create({
   skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
   skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
   skinLock: { marginLeft: 10 },
+
+  // '간단히 보기' 도움말 — 실제 피드 카드 두 장. 카드 폭은 열 폭을 따른다(피드 (stageW-42)/2보다 약간 좁다).
+  // 좌우 패딩 16·열 간격 24: 카드 기울기 + 뒷장 -5°로 모서리가 양옆 ~13 삐져나와도 모달 밖으로 나가거나 서로 겹치지 않게.
+  // maxWidth는 스테이지 폭(STAGE_MAX_W) — 기본 모달 360보다 넓혀 카드를 피드 폭에 가깝게 한다.
+  sampleModalCard: { maxWidth: STAGE_MAX_W, paddingHorizontal: 16 },
+  sampleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 24, marginTop: 10, marginBottom: 22 },
+  sampleCol: { flex: 1, minWidth: 0 },
+  // marginBottom 18: 카드 위로 걸친 테이프(top -8~-13)와 기울기 여유
+  sampleLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textDim, marginBottom: 18, textAlign: 'center' },
+  helpLineRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
+  helpLineDot: { fontSize: 12, lineHeight: 18, color: COLORS.textDim },
+  helpLineText: { flex: 1, fontSize: 12, lineHeight: 18, color: COLORS.textDim },
 });

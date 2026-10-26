@@ -33,7 +33,10 @@ export const FEED_DRAW_DISTANCE = 1250;
 export type FeedEstimateCtx = {
   /** 카드 폭 = (스테이지 폭 - 42) / 2 (셀 좌우 패딩 16+5) */
   cardW: number;
-  /** 피드 카드 표시 모드가 'full'이면 앨범·네컷에 메타 행이 붙는다(폴라로이드·블로그는 항상 자체 메타) */
+  /**
+   * 피드 카드 표시 모드(diaryCardMode)가 'full'인가. false(설정 '소셜 카드 상호작용 표시' 꺼짐)면 모든 형식이
+   * "미디어 + 국가"만 그린다 — 시간·@아이디·♡·⋯·캡션·스크랩 제목/발췌가 빠지고, 사진 있는 블로그는 스크랩 형태가 된다.
+   */
   full: boolean;
   /** 추천 메이트 카드 행 수 */
   mates: number;
@@ -46,7 +49,9 @@ export type FeedEstimateCtx = {
  * (줄 높이는 글자 크기 ×≈1.25로 잡았다. 범위는 글이 몇 줄이냐에 따라 갈린다.)
  */
 export function estimateFeedCellHeight(item: any, ctx: FeedEstimateCtx): number {
-  const { cardW, full, mates } = ctx;
+  const { cardW, mates } = ctx;
+  // 빈 피드에 주입되는 공식 예시(isExample)는 모드와 상관없이 항상 full로 그린다(SocialScreen DiaryCard와 같은 판정)
+  const full = ctx.full || !!item.isExample;
   let h: number;
   if (item._adSlot) {
     // 광고 폴라로이드(adPolaroidStyles): 테두리 2 + 패딩 10/8 + 정사각 사진(cardW-22) + 캡션 8+15 = cardW+21, 배지 등으로 ~+15
@@ -58,20 +63,27 @@ export function estimateFeedCellHeight(item: any, ctx: FeedEstimateCtx): number 
   } else {
     const vt = item.viewType || 'feed';
     if (vt === 'cut') {
-      // cutCardLight 패딩 6×2+테두리 2 = 14, 캔버스 폭 cardW-14 ÷ 프레임 비, 메타(full) 8+15+5+18+2 = 48
-      h = (cardW - 14) / ctx.cutAspect(item) + 14 + (full ? 48 : 0);
-    } else if (vt === 'album' && item.medias?.[0]) {
-      // scrap: 테두리 2 + 패딩 20 + 사진(cardW-22)/1.3 + 8 + 제목 1줄 17 + 발췌(70%에 5+16×2) ≈26 + 메타(full) 8+18
-      h = (cardW - 22) / 1.3 + 73 + (full ? 26 : 0);
+      // cutCardLight 패딩 6×2+테두리 2 = 14, 캔버스 폭 cardW-14 ÷ 프레임 비 + 푸터 d.cutMeta(paddingTop 8 / Bottom 2):
+      //  full    = 8 + 국가·시간 행 15 + gap 5 + @아이디·♡ 행 18 + 2 = 48
+      //  minimal = 8 + 국가(cutMetaCountry lineHeight 15) + 2 = 25
+      h = (cardW - 14) / ctx.cutAspect(item) + 14 + (full ? 48 : 25);
+    } else if ((vt === 'album' || (vt === 'blog' && !full)) && item.medias?.[0]) {
+      // 사진 판정 item.medias?.[0] = SocialScreen firstPhoto(item)의 네컷 외 분기(`item.medias?.[0] || null`)와 같은 기준.
+      // scrap: 테두리 2 + 패딩 20 + 사진(cardW-22)/1.3 + 사진 marginBottom 8 = 사진+30, 그 아래
+      //  full    = 제목 1줄 17 + 발췌(70%에 5+16×2) ≈26 + 메타 8+18 → 사진+99 (앨범만 — full 블로그는 저널)
+      //  minimal = 국가(cutMetaCountry lineHeight 15)만 → 사진+45 (앨범·사진 있는 블로그 공통)
+      h = (cardW - 22) / 1.3 + (full ? 99 : 45);
     } else if (vt === 'blog' || vt === 'album') {
-      // 저널(jour): 블로그는 사진이 있어도 글로만 그린다(사진 가산 없음 — 예전 +40은 과대 추정이었다).
-      // 테두리 3 + 패딩 24 + 나라 21 + 제목 1~2줄 24~44 + 소제목 0/21 + 본문 0~3줄 0~51 + 푸터 19+17+18
-      // → 126~218, 중앙 172. 메타 행이 카드 안에 있어 모드와 무관.
-      h = 172;
+      // 저널(jour): full 블로그는 사진이 있어도 글로만 그린다(사진 가산 없음 — 예전 +40은 과대 추정이었다).
+      // 테두리 3 + 패딩 24 + 나라 21 + 제목 1~2줄 24~44 + 소제목 0/21 + 본문 0~3줄 0~51 = 72~164
+      //  full    = + 푸터(marginTop 10 + paddingTop 8 + 구분선 1 + 시간 17 + @아이디·♡ 행 18 = 54) → 126~218, 중앙 172
+      //  minimal = 푸터 없음 → 72~164, 중앙 118 (여기 오는 건 글만 블로그·사진 없는 앨범)
+      h = full ? 172 : 118;
     } else {
-      // 폴라로이드: 테두리 2 + 패딩 10/8 + 정사각 사진(cardW-22) + 나라·시간 23 + 캡션 19(대부분 있음) + 메타 27
-      // = cardW+66 (캡션 없으면 +47). 메타 행이 카드 안에 있어 모드와 무관.
-      h = cardW + 66;
+      // 폴라로이드: 테두리 2 + 패딩 10/8 + 정사각 사진(cardW-22) + 나라 행(paddingTop 8 + 15) 23
+      //  full    = + 캡션 19(대부분 있음) + 메타 27 → cardW+66 (캡션 없으면 +47)
+      //  minimal = 나라 행까지만 → 2 + 18 - 22 + 23 = cardW+21
+      h = full ? cardW + 66 : cardW + 21;
     }
   }
   return h + FEED_CARD_GAP;

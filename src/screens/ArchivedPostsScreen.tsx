@@ -11,7 +11,6 @@ import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
-import { usePrefSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
 import { ArchiveIcon, BackChevronIcon } from '../components/icons';
@@ -40,7 +39,6 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { records, archivedIds } = useRecordData();
   const { unarchiveRecord, deleteRecord, toggleLike } = useRecordActions();
-  const { diaryCardMode, showCounts } = usePrefSettings();
   const { pushToast } = useToast(); // 공용 토스트(자체 구현 대체)
   // DiaryCard의 빠른공유 팬 제스처가 요구하는 드래그 좌표 — 이 화면에선 no-op이라 더미 값이면 충분
   const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -105,7 +103,9 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   filteredRecords.forEach((item) => {
     const c = colH[0] <= colH[1] ? 0 : 1;
     columns[c].push(item);
-    colH[c] += estDiaryHeight(item, diaryCardMode);
+    // 보관함은 '간단히 보기' 설정을 적용하지 않는다 — 보관 해제·삭제 ⋯ 메뉴가 full 카드 푸터에 있어서
+    // 설정을 따르면 minimal 사용자는 보관함에서 꺼낼 방법이 사라진다. 카드 mode도 아래에서 'full' 고정.
+    colH[c] += estDiaryHeight(item, 'full');
   });
 
   return (
@@ -157,11 +157,10 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
                   <DiaryCardMemo
                     key={item.id}
                     item={item}
-                    mode={diaryCardMode}
+                    mode="full"
                     navigation={navigation}
                     variant="archived"
                     toggleLike={toggleLike}
-                    showCounts={showCounts}
                     onUnarchive={handleUnarchive}
                     onDelete={handleDelete}
                     onArchive={noop}

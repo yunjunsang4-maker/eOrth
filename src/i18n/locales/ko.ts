@@ -147,9 +147,16 @@ const ko = {
     mateReco: '메이트 추천에 내 여행 기록 사용',
     mateRecoNote: '내가 방문한 나라·도시 이름을 다른 이용자와의 공통점 계산에 사용합니다. 사진·본문·날짜는 사용하지 않습니다. 끄면 내 방문 국가가 다른 이용자의 추천 목록에 나타나지 않으며, 나에게 표시되는 추천의 정확도도 함께 낮아집니다. 끄더라도 다른 기능은 그대로 이용할 수 있습니다.',
     mateRecoSaveFail: '설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.',
-    showCounts: '좋아요·댓글 수 표시',
     haptics: '터치할 때 진동',
-    diaryInteraction: '소셜 카드 상호작용 표시',
+    // 켜면 소셜 피드 카드가 사진·스트립 + 나라만 남는다(diaryCardMode 'minimal'). 물음표 → 도움말 모달
+    simpleCardView: '간단히 보기',
+    simpleCardViewHelpA11y: '간단히 보기 설명',
+    simpleCardViewHelpFull: '기본',
+    simpleCardViewHelpSampleCaption: '뉴욕에서 보낸 하루',
+    simpleCardViewHelpLine1: '사진·스트립과 나라만 보여요.',
+    simpleCardViewHelpLine2: '글만 있는 블로그는 글이 그대로 보여요.',
+    simpleCardViewHelpLine3: '좋아요는 두 번 탭해서 누를 수 있어요.',
+    simpleCardViewHelpLine4: '보관함에는 적용되지 않아요.',
     globeSkin: '지구본 스킨',
     premiumBadge: '프리미엄', // 자물쇠는 화면에서 아이콘으로 붙인다
     premiumTitle: '프리미엄 기능',

@@ -10,6 +10,7 @@
  *     열마다 피드 순서대로 쌓인다(gap 셀 높이 0) — 실측 높이가 추정과 달라도.
  *  2) 실제 스타일에서 유도한 추정(estimateFeedCellHeight) + FEED_DRAW_DISTANCE면 게시물 200개 피드를 위아래로
  *     훑을 때 화면 안 카드가 렌더 범위 밖으로 빠지지 않는다(QA M1 회귀). 실측 높이는 QA qa5 높이 모델.
+ *     카드 표시 모드 full·minimal(미디어 + 국가만) 둘 다 본다.
  */
 import Module, { createRequire } from 'node:module';
 import { buildMasonryCells, estimateFeedCellHeight, FEED_CARD_GAP, FEED_DRAW_DISTANCE, type FeedCell } from './feedMasonry';
@@ -102,20 +103,47 @@ eq(estimateFeedCellHeight({ viewType: 'blog', medias: ['x'] }, ctx), estimateFee
 eq(estimateFeedCellHeight({ viewType: 'blog' }, ctx), 172 + FEED_CARD_GAP, '블로그 = 저널 실측 범위 126~218의 중앙 172 + 간격 12');
 eq(estimateFeedCellHeight({ viewType: 'feed' }, ctx), CARD_W + 66 + FEED_CARD_GAP, '폴라로이드 = 카드폭+66(캡션 있음) + 간격 12');
 eq(estimateFeedCellHeight({ id: 'x' }, ctx), estimateFeedCellHeight({ viewType: 'feed' }, ctx), 'viewType 없음 → 폴라로이드');
-eq(estimateFeedCellHeight({ viewType: 'feed' }, { ...ctx, full: false }), estimateFeedCellHeight({ viewType: 'feed' }, ctx), '폴라로이드는 메타가 카드 안이라 모드와 무관');
+eq(estimateFeedCellHeight({ viewType: 'album', medias: ['x'] }, ctx), (CARD_W - 22) / 1.3 + 99 + FEED_CARD_GAP, '앨범·사진 있음(full) = 스크랩 사진+99(제목·발췌·메타) + 간격');
 eq(estimateFeedCellHeight({ viewType: 'cut', cutPhoto: { layout: LAYOUTS[0] } }, ctx) - estimateFeedCellHeight({ viewType: 'cut', cutPhoto: { layout: LAYOUTS[0] } }, { ...ctx, full: false }),
-  48, '네컷 full 메타 48(compact엔 없음)');
+  48 - 25, '네컷: full 푸터 48 → minimal 국가 한 줄 25');
+
+// ── minimal(설정 '소셜 카드 상호작용 표시' 꺼짐): 모든 형식이 미디어 + 국가만 ──
+const mini = { ...ctx, full: false };
+eq(estimateFeedCellHeight({ viewType: 'feed' }, mini), CARD_W + 21 + FEED_CARD_GAP, 'minimal 폴라로이드 = 카드폭+21(사진+국가 행, 캡션·메타 행 없음) + 간격');
+eq(estimateFeedCellHeight({ viewType: 'feed' }, ctx) - estimateFeedCellHeight({ viewType: 'feed' }, mini), 45, '폴라로이드: minimal은 캡션 19 + 메타 행 27만큼(반올림 45) 짧다 — 이제 모드를 탄다');
+eq(estimateFeedCellHeight({ viewType: 'album', medias: ['x'] }, mini), (CARD_W - 22) / 1.3 + 45 + FEED_CARD_GAP, 'minimal 앨범·사진 있음 = 스크랩 사진+45(국가만) + 간격');
+eq(estimateFeedCellHeight({ viewType: 'blog', medias: ['x'] }, mini), estimateFeedCellHeight({ viewType: 'album', medias: ['x'] }, mini),
+  'minimal 사진 있는 블로그 = 앨범 스크랩과 같은 형태(사진 + 국가)');
+eq(estimateFeedCellHeight({ viewType: 'blog', medias: ['x'] }, ctx), 172 + FEED_CARD_GAP, 'full 사진 있는 블로그는 그대로 저널(172)');
+eq(estimateFeedCellHeight({ viewType: 'blog', medias: [] }, mini), 118 + FEED_CARD_GAP, 'minimal 글만 블로그 = 푸터 없는 저널 72~164의 중앙 118 + 간격');
+eq(estimateFeedCellHeight({ viewType: 'blog' }, mini), 118 + FEED_CARD_GAP, 'minimal 블로그 medias 없음(undefined) → 저널');
+eq(estimateFeedCellHeight({ viewType: 'album', medias: [] }, mini), 118 + FEED_CARD_GAP, 'minimal 사진 없는 앨범 = 저널(푸터 없음)');
+eq(estimateFeedCellHeight({ viewType: 'blog', medias: [''] }, mini), 118 + FEED_CARD_GAP, "minimal 블로그 medias[0]이 '' → firstPhoto와 같이 사진 없음 취급(저널)");
+eq(estimateFeedCellHeight({ viewType: 'cut', cutPhoto: { layout: LAYOUTS[0] } }, mini),
+  (CARD_W - 14) / cutAspect({ cutPhoto: { layout: LAYOUTS[0] } }) + 14 + 25 + FEED_CARD_GAP, 'minimal 네컷 = 캔버스 + 14 + 국가 25 + 간격');
+eq(estimateFeedCellHeight({ _adSlot: true }, mini), estimateFeedCellHeight({ _adSlot: true }, ctx), '광고는 모드와 무관');
+// 빈 피드 공식 예시(isExample)는 간단히 보기에서 제외 — DiaryCard가 full로 그리므로 추정도 full이어야 빈칸·겹침이 없다
+for (const ex of [{ viewType: 'feed' }, { viewType: 'blog', medias: ['x'] }, { viewType: 'album', medias: ['x'] }, { viewType: 'cut', cutPhoto: { layout: LAYOUTS[0] } }]) {
+  eq(estimateFeedCellHeight({ ...ex, isExample: true }, mini), estimateFeedCellHeight(ex, ctx), `isExample 항목은 full=false여도 full 높이(${ex.viewType})`);
+}
+eq(estimateFeedCellHeight({ viewType: 'feed', isExample: false }, mini), estimateFeedCellHeight({ viewType: 'feed' }, mini), 'isExample: false는 minimal 그대로');
 eq(estimateFeedCellHeight({ _mateSlot: true }, ctx), 102 + 2 * 48 + FEED_CARD_GAP, '추천 메이트 = 102 + 행 48×n + 간격');
 eq(estimateFeedCellHeight({ _adSlot: true }, { ...ctx, cardW: 200 }) - estimateFeedCellHeight({ _adSlot: true }, ctx), 200 - CARD_W, '광고 높이는 카드 폭을 따라간다(정사각 사진)');
 
 // ── 불변식 2: 빈칸 회귀(QA M1) — 진짜 렌더 범위 계산(EngagedIndicesTracker) ──
-// 실측 높이 모델(QA qa5/blank.ts, SocialScreen 스타일에서 손으로 유도한 가정)
-function realHeight(it: any): number {
+// 실측 높이 모델(QA qa5/blank.ts, SocialScreen 스타일에서 손으로 유도한 가정). full=false는 minimal(미디어 + 국가만).
+// full 경로의 난수 소비 순서는 예전과 같다(full 시뮬 결과가 바뀌지 않게).
+function realHeight(it: any, full: boolean): number {
   if (it._adSlot) return CARD_W + 21 + ri(0, 15);
   if (it._mateSlot) return 102 + it._mates * 48 + ri(-15, 15);
   const vt = it.viewType;
-  if (vt === 'cut') return (CARD_W - 14) / cutAspect(it) + 14 + 48;
-  if (vt === 'blog') return 3 + 24 + 21 + 20 * ri(1, 2) + 4 + (rnd() < 0.5 ? 21 : 0) + 17 * ri(0, 3) + 10 + 8 + 1 + 17 + 18;
+  if (vt === 'cut') return (CARD_W - 14) / cutAspect(it) + 14 + (full ? 48 : 25);
+  if (vt === 'blog') {
+    // minimal 사진 있는 블로그 → 스크랩: 테두리 2 + 패딩 20 + 사진 + marginBottom 8 + 국가 15
+    if (!full && it.medias?.[0]) return 2 + 20 + (CARD_W - 22) / 1.3 + 8 + 15;
+    return 3 + 24 + 21 + 20 * ri(1, 2) + 4 + (rnd() < 0.5 ? 21 : 0) + 17 * ri(0, 3) + (full ? 10 + 8 + 1 + 17 + 18 : 0);
+  }
+  if (!full) return CARD_W + 21; // 폴라로이드 minimal: 사진 + 국가 행
   return CARD_W + 47 + (rnd() < 0.9 ? 19 : 0); // 폴라로이드
 }
 // timelineWithAds 규칙(i%5==0 게시물 뒤 광고, 마지막 제외) + index 2 추천 메이트. 앨범은 피드에서 빠진다.
@@ -130,11 +158,11 @@ function makeFeed(nPosts: number, mates: number) {
   if (mates > 0) out.splice(2, 0, { id: 'mate', _mateSlot: true, _mates: mates });
   return out;
 }
-function hasBlank(nPosts: number): boolean {
+function hasBlank(nPosts: number, full: boolean): boolean {
   const mates = ri(0, 3);
   const feed = makeFeed(nPosts, mates);
-  const cells = buildMasonryCells<any>(feed, (it) => estimateFeedCellHeight(it, { cardW: CARD_W, full: true, mates, cutAspect }));
-  const lm = layoutWithFlash(cells, (c) => (c.kind === 'gap' ? 0 : realHeight(c.item) + (c.first ? 0 : FEED_CARD_GAP)));
+  const cells = buildMasonryCells<any>(feed, (it) => estimateFeedCellHeight(it, { cardW: CARD_W, full, mates, cutAspect }));
+  const lm = layoutWithFlash(cells, (c) => (c.kind === 'gap' ? 0 : realHeight(c.item, full) + (c.first ? 0 : FEED_CARD_GAP)));
   const L = lm.layouts;
   const total = lm.getLayoutSize().height;
   for (const dir of [1, -1]) {
@@ -156,8 +184,11 @@ function hasBlank(nPosts: number): boolean {
   }
   return false;
 }
-const blanks = Array.from({ length: 8 }, () => hasBlank(200)).filter(Boolean).length;
+const blanks = Array.from({ length: 8 }, () => hasBlank(200, true)).filter(Boolean).length;
 eq(blanks, 0, `게시물 200개 피드 8개를 위아래로 훑어도 화면 안 카드가 렌더 범위 밖으로 빠지지 않음(drawDistance ${FEED_DRAW_DISTANCE})`);
+// minimal 모드 — 형식마다 높이가 달라지므로(사진 있는 블로그는 스크랩) 추정이 따라가지 않으면 여기서 빈칸이 난다
+const blanksMini = Array.from({ length: 8 }, () => hasBlank(200, false)).filter(Boolean).length;
+eq(blanksMini, 0, `minimal 모드에서도 게시물 200개 피드 8개 빈칸 없음(drawDistance ${FEED_DRAW_DISTANCE})`);
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
