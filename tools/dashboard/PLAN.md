@@ -6,6 +6,7 @@
 - [ ] 안드로이드 실기기: 소셜·보관함 카드와 광고 카드 테두리가 깨져 보이는지 확인 (iOS만 고침) · [[eorth-tilt-rotation-antialiasing]]
 - [ ] 아이폰: 광고 카드 프레임 테두리가 선명해졌는지 다시 확인
 - [x] 보관함 가상 게시물 끄기 — ArchivedPostsScreen의 SHOW_ARCHIVE_MOCKS
+- [ ] 아이폰·안드로이드: DM 카메라(기본 카메라로 바꿈) 셔터가 눌리고 사진이 전송되는지 — 안 되면 되돌리기 · [[eorth-launchcamera-broken-usecameraview]]
 
 ## 이번 주
 - [ ] 10/10 파기 기한 전에 행사 메이트 매칭 데이터 정리 · [[eorth-event-mate-matching]]

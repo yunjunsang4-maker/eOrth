@@ -26,11 +26,14 @@ import { useRecordData, useFeed, useRecordActions, useSocialGraph, TravelRecord 
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon } from '../components/icons';
+import { SHOW_MOCK_DM, MOCK_DM_HANDLE, mockDMMessages, mockDMActions } from '../store/dmMock';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon, ExitIcon } from '../components/icons';
+import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton } from '../components/settings/SettingsUI';
+import Svg, { Path as SvgPath } from 'react-native-svg';
+import { AutoPillRing } from './PostDetailScreen';
 import DefaultAvatar from '../components/DefaultAvatar';
 import ReportModal from '../components/ReportModal';
 import { handleBlock } from '../utils/reportAndBlock';
-import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -293,7 +296,8 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
     <GestureDetector gesture={composed}>
       <View>
         <Animated.View style={[st.swipeIcon, { opacity: iconOpacity }]} pointerEvents="none">
-          <Text style={st.swipeIconText}>↩</Text>
+          {/* 앱 공용 답글 아이콘(롱프레스 메뉴와 같은 모양) — 예전 '↩' 글자(20)의 절반 크기 */}
+          <ReplyIcon size={10} color={C.accent} />
         </Animated.View>
         <Animated.View ref={rowRef} style={{ transform: [{ translateX: tx }] }}>
           {children}
@@ -336,8 +340,13 @@ export default function DMScreen({ navigation, route }: Props) {
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
   const { conversations } = useDMData();
-  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory, checkBlockedWith } = useDMActions();
-  const messages = conversations[friend.handle] ?? [];
+  // 개발용 가상 대화방(store/dmMock) — 메시지·액션을 로컬 state로 바꿔 끼워 서버·저장소를 건드리지 않는다
+  const isMockDM = SHOW_MOCK_DM && friend.handle === MOCK_DM_HANDLE;
+  const [mockMsgs, setMockMsgs] = useState<Message[]>(() => (isMockDM ? mockDMMessages() : []));
+  const realDMActions = useDMActions();
+  const dmActions = useMemo(() => (isMockDM ? mockDMActions(realDMActions, setMockMsgs) : realDMActions), [isMockDM, realDMActions]);
+  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory, checkBlockedWith } = dmActions;
+  const messages = isMockDM ? mockMsgs : conversations[friend.handle] ?? [];
 
   // 대화 진입 시 상대(profile uuid) 등록 + 서버 히스토리 로드 (백엔드 설정 시)
   useEffect(() => {
@@ -367,8 +376,6 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const [input, setInput] = useState('');
-  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
   const [recordPickerOpen, setRecordPickerOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
@@ -432,7 +439,6 @@ export default function DMScreen({ navigation, route }: Props) {
     const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;
     dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record, replyTo });
     if (replyTarget) setReplyTarget(null);
-    setAttachMenuOpen(false);
   };
 
   // ─── 텍스트 전송 ───
@@ -445,7 +451,6 @@ export default function DMScreen({ navigation, route }: Props) {
 
   // ─── 사진 전송 ───
   const pickImage = async () => {
-    setAttachMenuOpen(false);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -459,11 +464,22 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   // ─── 카메라 촬영 전송 ───
-  // expo-image-picker launchCameraAsync가 SDK54/새 아키텍처에서 셔터가 먹지 않아,
-  // 검증된 expo-camera(CameraCaptureModal)로 촬영한다(권한도 모달 내부에서 처리).
-  const takePhoto = () => {
-    setAttachMenuOpen(false);
-    setCameraOpen(true);
+  // 기종별 기본 카메라(expo-image-picker launchCameraAsync) — 사용자 요청(2026-10-29)으로 자체 촬영 화면에서 되돌림.
+  // ⚠️ 2026-07에 SDK54/새 아키텍처에서 셔터가 먹지 않아 CameraCaptureModal로 바꿨던 경로다(같은 17.0.10).
+  //    실기기에서 셔터가 안 먹으면 CameraCaptureModal로 되돌릴 것(블로그·순간 기록은 아직 그쪽).
+  const takePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('dm.cameraPermTitle'), t('dm.cameraPermMsg'));
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
+      if (result.canceled || !result.assets?.length) return;
+      addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
+    } catch (e: any) {
+      Alert.alert(t('dm.photoAttachFailTitle'), e?.message ?? t('dm.photoAttachFailMsg'));
+    }
   };
 
   // ─── 여행 기록 공유 ───
@@ -521,8 +537,17 @@ export default function DMScreen({ navigation, route }: Props) {
     setMenuMsg(null);
   };
 
+  // 답글 시작 — 스와이프·메뉴 둘 다 바로 키보드를 올린다(답글 줄만 뜨고 입력창을 다시 눌러야 하던 문제)
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const startReply = (m: Message) => {
+    setReplyTarget(m);
+    inputRef.current?.focus();
+  };
+  // 답글 미리보기 줄 높이 — 떠 있는 동안 '맨아래 이동' 버튼을 그만큼 올려 겹치지 않게 한다
+  const [replyBarH, setReplyBarH] = useState(0);
+
   const handleReplyFromMenu = () => {
-    if (menuMsg) setReplyTarget(menuMsg);
+    if (menuMsg) startReply(menuMsg);
     setMenuMsg(null);
   };
 
@@ -534,6 +559,15 @@ export default function DMScreen({ navigation, route }: Props) {
     Alert.alert(t('dm.deleteMsgTitle'), t('dm.deleteMsgMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('dm.delete'), style: 'destructive', onPress: () => deleteMessage(friend.handle, target.id) },
+    ]);
+  };
+
+  // 전송 실패 메시지 — 바로 재전송하지 않고 재전송/삭제를 묻는다(실패 글은 서버에 없어 삭제는 로컬에서만)
+  const confirmFailedMessage = (m: Message) => {
+    Alert.alert(t('dm.sendFailedTitle'), t('dm.sendFailedMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('dm.delete'), style: 'destructive', onPress: () => deleteMessage(friend.handle, m.id) },
+      { text: t('dm.resend'), onPress: () => retrySend(friend.handle, m.id) },
     ]);
   };
 
@@ -559,7 +593,6 @@ export default function DMScreen({ navigation, route }: Props) {
     setHeaderMenuOpen(false);
     handleBlock(friend.handle, () => {
       blockUser({ name: friend.handle, emoji: '', handle: friend.handle, id: friend.id });
-      setAttachMenuOpen(false);
       setReplyTarget(null);
       // 새로 차단하면 안내 카드를 다시 보여 준다(예전에 '삭제'했더라도)
       dismissedBlockNotices.delete(friend.handle);
@@ -671,7 +704,7 @@ export default function DMScreen({ navigation, route }: Props) {
         <Text style={st.dateSepText}>{label}</Text>
       </View>
     )}
-    <SwipeRow onReply={() => setReplyTarget(item)} onLongPress={(rect) => { setMenuRect(rect); setMenuMsg(item); }}>
+    <SwipeRow onReply={() => startReply(item)} onLongPress={(rect) => { setMenuRect(rect); setMenuMsg(item); }}>
     <View style={[st.msgRow, item.isMine && st.msgRowMine, groupedWithNext && st.msgRowGrouped]}>
       {!item.isMine && (
         groupedWithNext
@@ -754,7 +787,7 @@ export default function DMScreen({ navigation, route }: Props) {
         {/* '읽음' 표시는 제거 — 상대 열람과 무관하게 무조건 렌더되는 허위 정보였다.
             (서버 read_at 기록·조회 인프라가 없어 실제 읽음 확인은 별도 작업) */}
         {item.isMine && item.failed ? (
-          <TouchableOpacity onPress={() => retrySend(friend.handle, item.id)} hitSlop={6}>
+          <TouchableOpacity onPress={() => confirmFailedMessage(item)} hitSlop={6}>
             <Text style={st.sendFailed}>⚠ {t('comp2.sendFailedRetry')}</Text>
           </TouchableOpacity>
         ) : null}
@@ -870,7 +903,7 @@ export default function DMScreen({ navigation, route }: Props) {
         {/* 맨아래 이동 버튼 */}
         {showScrollDown && (
           <TouchableOpacity
-            style={st.scrollDownBtn}
+            style={[st.scrollDownBtn, replyTarget && !dmBlocked && { bottom: st.scrollDownBtn.bottom + replyBarH }]}
             activeOpacity={0.8}
             onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
           >
@@ -878,27 +911,9 @@ export default function DMScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         )}
 
-        {/* 첨부 메뉴 */}
-        {attachMenuOpen && !dmBlocked && (
-          <View style={st.attachMenu}>
-            <TouchableOpacity style={st.attachItem} onPress={takePhoto}>
-              <CameraIcon size={22} />
-              <Text style={st.attachLabel}>{t('dm.camera')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={st.attachItem} onPress={pickImage}>
-              <GalleryIcon size={22} />
-              <Text style={st.attachLabel}>{t('dm.photo')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={st.attachItem} onPress={() => { setAttachMenuOpen(false); setRecordPickerOpen(true); }}>
-              <GlobeIcon size={22} />
-              <Text style={st.attachLabel}>{t('dm.travelRecord')}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {/* 답글 미리보기 바 */}
         {replyTarget && !dmBlocked && (
-          <View style={st.replyBar}>
+          <View style={st.replyBar} onLayout={(e) => setReplyBarH(e.nativeEvent.layout.height)}>
             <View style={st.replyBarLine} />
             <View style={st.replyBarBody}>
               <Text style={st.replyBarName}>
@@ -930,25 +945,27 @@ export default function DMScreen({ navigation, route }: Props) {
           </View>
         ) : dmBlocked ? (
           <View style={[st.inputBar, st.inputBarBlocked]} pointerEvents="none" accessibilityState={{ disabled: true }}>
-            <View style={st.attachBtn}><Text style={st.attachBtnText}>+</Text></View>
-            <View style={[st.input, st.inputBlocked]}>
+            <View style={[st.inputPill, st.inputBlocked]}>
+              <AutoPillRing radius={20} />
               <Text style={st.inputBlockedText} numberOfLines={1}>{blockedByMe ? t('dm.blockedByMe') : t('dm.cannotMessage')}</Text>
             </View>
-            <View style={[st.sendBtn, st.sendBtnDisabled]}><Text style={st.sendBtnText}>↑</Text></View>
           </View>
         ) : (
+        // 재질은 상세 게시물 댓글 입력(PostDetailScreen inputPill·sendPill)과 통일 — 흰 10% 유리 알약(AutoPillRing) 전폭.
+        // 알약 안: 왼쪽 카메라 / 오른쪽 음성·기록·사진. 글을 쓰기 시작하면 네 버튼은 숨고 보라 전송 알약만 뜬다.
         <View style={st.inputBar}>
-          <TouchableOpacity
-            style={st.attachBtn}
-            onPress={() => setAttachMenuOpen(prev => !prev)}
-            activeOpacity={0.7}
-          >
-            <Text style={st.attachBtnText}>{attachMenuOpen ? '✕' : '+'}</Text>
-          </TouchableOpacity>
+          <View style={st.inputPill}>
+          <AutoPillRing radius={20} />
+          {!input.trim() && (
+            <TouchableOpacity style={st.pillIconBtn} onPress={takePhoto} hitSlop={{ top: 6, bottom: 6, left: 6, right: 4 }} accessibilityRole="button" accessibilityLabel={t('dm.camera')}>
+              <CameraIcon size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
           <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-            style={st.input}
+            ref={inputRef}
+            style={[st.input, !!input.trim() && { paddingRight: 56 }]}
             placeholder={t('dm.messagePlaceholder')}
-            placeholderTextColor={C.muted}
+            placeholderTextColor="rgba(255,255,255,0.7)"
             value={input}
             onChangeText={setInput}
             returnKeyType="send"
@@ -960,26 +977,29 @@ export default function DMScreen({ navigation, route }: Props) {
             submitBehavior="submit"
             multiline
             maxLength={500}
-            onFocus={() => setAttachMenuOpen(false)}
           />
-          <TouchableOpacity
-            style={[st.sendBtn, !input.trim() && st.sendBtnDisabled]}
-            onPress={sendMessage}
-            disabled={!input.trim()}
-            activeOpacity={0.7}
-          >
-            <Text style={st.sendBtnText}>↑</Text>
-          </TouchableOpacity>
+          {/* 전송은 쓸 내용이 있을 때만 — 댓글 입력과 같은 60×30 보라 알약 + 흰 위 화살표 */}
+          {input.trim() ? (
+            <TouchableOpacity style={st.sendPill} onPress={sendMessage} hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel={t('postDetail.send')}>
+              <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+                <SvgPath d="M7 12.5V1.8M2.2 6.6L7 1.8l4.8 4.8" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </TouchableOpacity>
+          ) : (
+            <View style={st.pillActions}>
+              <TouchableOpacity style={st.pillIconBtn} onPress={() => setRecordPickerOpen(true)} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }} accessibilityRole="button" accessibilityLabel={t('dm.travelRecord')}>
+                <GlobeIcon size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity style={st.pillIconBtn} onPress={pickImage} hitSlop={{ top: 6, bottom: 6, left: 4, right: 6 }} accessibilityRole="button" accessibilityLabel={t('dm.photo')}>
+                <GalleryIcon size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+          </View>
         </View>
         )}
       </KeyboardAvoidingView>
 
-      {/* 인앱 카메라 촬영 (expo-camera) — 촬영 후 사진 메시지 전송 */}
-      <CameraCaptureModal
-        visible={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onCapture={(uri) => addMessage({ type: 'image', text: '', imageUri: uri })}
-      />
 
       {/* 여행 기록 선택 모달 */}
       <Modal visible={recordPickerOpen} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
@@ -1095,26 +1115,39 @@ export default function DMScreen({ navigation, route }: Props) {
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           <Animated.View
             // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-            style={[st.sheet, st.sheetAnchor, { paddingBottom: Platform.OS === 'ios' ? 34 : insets.bottom + 14 }, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [240, 0] }) }] }]}
+            // 재질은 설정 계열 시트(LanguageSheet)·게시물 ⋯ 시트와 같은 공용 부품 — 검은 카드·설정 행·취소 알약
+            style={[st.sheetAnchor, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [400, 0] }) }] }]}
           >
             <View style={st.sheetHandle} />
-            <TouchableOpacity style={st.sheetItem} onPress={handleClearConversation}>
-              <Text style={st.sheetIcon}>🧹</Text>
-              <Text style={st.sheetText}>{t('dm.clearChatTitle')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={st.sheetItem} onPress={handleReportPeer}>
-              <View style={st.sheetIconWrap}><FlagIcon size={18} color="#A1A1B0" /></View>
-              <Text style={st.sheetText}>{t('social.report')}</Text>
-            </TouchableOpacity>
-            {/* 이미 차단했으면 같은 자리에 '차단 해제' */}
-            <TouchableOpacity style={st.sheetItem} onPress={blockedByMe ? handleUnblockPeer : handleBlockPeer}>
-              <View style={st.sheetIconWrap}><BlockIcon size={18} color="#FF6B6B" /></View>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{blockedByMe ? t('friends.unblockTitle') : t('social.blockTitle')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={st.sheetItem} onPress={handleLeaveConversation}>
-              <Text style={st.sheetIcon}>🚪</Text>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.leave')}</Text>
-            </TouchableOpacity>
+            <SettingsCard style={{ marginBottom: 10 }}>
+              <SettingsOptionRow
+                left={<View style={st.sheetIconWrap}><TrashIcon size={18} color="#FFFFFF" /></View>}
+                label={t('dm.clearChatTitle')}
+                onPress={handleClearConversation}
+              />
+              <SettingsDivider />
+              <SettingsOptionRow
+                left={<View style={st.sheetIconWrap}><FlagIcon size={18} color="#FFFFFF" /></View>}
+                label={t('social.report')}
+                onPress={handleReportPeer}
+              />
+              <SettingsDivider />
+              {/* 이미 차단했으면 같은 자리에 '차단 해제' */}
+              <SettingsOptionRow
+                left={<View style={st.sheetIconWrap}><BlockIcon size={18} color="#FF3B30" /></View>}
+                label={blockedByMe ? t('friends.unblockTitle') : t('social.blockTitle')}
+                danger
+                onPress={blockedByMe ? handleUnblockPeer : handleBlockPeer}
+              />
+              <SettingsDivider />
+              <SettingsOptionRow
+                left={<View style={st.sheetIconWrap}><ExitIcon size={18} color="#FF3B30" /></View>}
+                label={t('dm.leave')}
+                danger
+                onPress={handleLeaveConversation}
+              />
+            </SettingsCard>
+            <SettingsPillButton label={t('common.cancel')} onPress={() => setHeaderMenuOpen(false)} baseRim="rgba(255,255,255,0.15)" />
           </Animated.View>
         </View>
       </Modal>
@@ -1237,21 +1270,15 @@ const st = StyleSheet.create({
   },
   scrollDownIcon: { fontSize: 18, color: C.accent, fontWeight: '700' },
 
-  // 액션 시트 (롱프레스/헤더 메뉴 공용)
-  sheet: {
-    backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    paddingBottom: 34, paddingTop: 8, paddingHorizontal: 16,
-  },
+  // 헤더 ⋯ 시트 — LanguageSheet와 같은 틀(배경 없는 시트 위에 설정 카드·취소 알약이 뜬다).
   // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
   // left/right로 붙이면 폴드에서 창 폭 전체로 늘어난다. 절대배치라도 left/right가
   // 없으면 부모의 alignItems/alignSelf가 가로 위치를 정한다.
-  sheetAnchor: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
+  sheetAnchor: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', paddingHorizontal: 16 },
   sheetHandle: {
-    width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted,
-    alignSelf: 'center', marginBottom: 8,
+    width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)',
+    alignSelf: 'center', marginBottom: 12,
   },
-  sheetItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12 },
-  sheetIcon: { fontSize: 18, width: 24, textAlign: 'center' },
   sheetIconWrap: { width: 24, alignItems: 'center' },
   // 메시지 롱프레스 컨텍스트 메뉴
   ctxDim: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
@@ -1263,7 +1290,6 @@ const st = StyleSheet.create({
   ctxIconWrap: { width: 22, alignItems: 'center', justifyContent: 'center' },
   ctxText: { fontSize: 15, color: C.white, fontWeight: '600' },
   ctxDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: 8 },
-  sheetText: { fontSize: 15, color: C.white, fontWeight: '600' },
 
   // 날짜 구분 헤더
   dateSep: { alignItems: 'center', marginVertical: 12 },
@@ -1278,7 +1304,6 @@ const st = StyleSheet.create({
     position: 'absolute', right: 8, top: 0, bottom: 0,
     alignItems: 'center', justifyContent: 'center',
   },
-  swipeIconText: { fontSize: 20, color: C.accent },
 
   // 버블 안 답글 인용
   replyQuote: {
@@ -1308,41 +1333,36 @@ const st = StyleSheet.create({
   },
   replyBarCloseText: { fontSize: 13, color: C.dim },
 
-  // 첨부 메뉴
-  attachMenu: {
-    flexDirection: 'row', gap: 12,
-    paddingHorizontal: 16, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: C.divider,
-  },
-  attachItem: {
-    alignItems: 'center', gap: 4,
-    backgroundColor: C.card, borderRadius: 14,
-    paddingHorizontal: 20, paddingVertical: 12,
-  },
-  attachLabel: { fontSize: 11, color: C.dim, fontWeight: '500' },
-
   // 입력 바
+  // 입력 바 — 상세 게시물 댓글 입력(PostDetailScreen inputBar·inputAvatar·inputPill·sendPill)과 같은 치수·재질.
+  // 링(AutoPillRing)과 이중 테두리가 되지 않게 borderWidth·overflow:'hidden'은 두지 않는다.
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end',
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderTopWidth: 1, borderTopColor: C.divider, gap: 8,
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10,
   },
-  attachBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.card, alignItems: 'center', justifyContent: 'center',
+  // 입력 알약(전폭) — 한 줄일 땐 높이 40 완전 둥근 알약, 여러 줄이면 모서리 20으로 늘어난다.
+  // alignItems flex-end: 여러 줄로 커져도 카메라·음성·기록·사진 버튼은 마지막 줄 높이에 남는다
+  inputPill: {
+    flex: 1, minHeight: 40, borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 8,
   },
-  attachBtnText: { fontSize: 20, fontWeight: '600', color: C.accent },
+  // 알약 안 아이콘 버튼 — 한 줄 높이(40)에 세로 가운데
+  pillIconBtn: { height: 40, minWidth: 24, alignItems: 'center', justifyContent: 'center' },
+  pillActions: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 },
+  // multiline은 글자를 위에 붙인다(댓글 입력은 한 줄이라 높이 40에서 자동 가운데) — 한 줄일 때 40 안 가운데가 되도록
+  // iOS는 위 여백을 (40 - 14pt 줄높이≈17)/2로 맞추고, 안드로이드는 textAlignVertical로 가운데 정렬한다.
   input: {
-    flex: 1, backgroundColor: C.card, borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 10,
-    fontSize: 14, color: C.white, maxHeight: 100,
+    flex: 1, minHeight: 40, maxHeight: 100,
+    paddingTop: Platform.OS === 'ios' ? 12 : 10, paddingBottom: Platform.OS === 'ios' ? 11 : 10,
+    textAlignVertical: 'center',
+    color: C.white, fontSize: 14, fontWeight: '600',
   },
-  sendBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center',
+  // 전송 알약 — 시안 고정색(#8741FF). 입력 알약 안 오른쪽 아래 끝, 여백 5(여러 줄이어도 마지막 줄 옆)
+  sendPill: {
+    position: 'absolute', right: 5, bottom: 5, width: 60, height: 30, borderRadius: 15,
+    backgroundColor: '#8741FF', alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: C.card },
-  sendBtnText: { fontSize: 18, fontWeight: '700', color: C.white },
   // 차단 안내 카드 — 입력 바 자리(같은 구분선). 제목·설명 가운데, 아래에 해제·삭제 두 칸
   blockNotice: {
     paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6,
@@ -1356,8 +1376,8 @@ const st = StyleSheet.create({
   blockNoticeDelete: { fontSize: 14, fontWeight: '600', color: C.muted },
   // 막힌 입력창 — 같은 모양을 흐리게, 글 대신 안내 문구
   inputBarBlocked: { opacity: 0.45 },
-  inputBlocked: { justifyContent: 'center' },
-  inputBlockedText: { fontSize: 14, color: C.muted },
+  inputBlocked: { justifyContent: 'flex-start' },
+  inputBlockedText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 
   // 여행 기록 선택 모달
   pickerOverlay: {

@@ -20,6 +20,7 @@ import type { TFunction } from 'i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
+import { SHOW_MOCK_DM, mockDMListRow } from '../store/dmMock';
 import { getProfileByHandle } from '../services/profile';
 import { tap } from '../utils/haptics';
 import Toast from '../components/Toast';
@@ -212,7 +213,8 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
-  const mergedFriends = friends.map(f => {
+  // 개발용 가상 대화방 행(store/dmMock) — 목록 화면에만 붙고 friends state·dmStore에는 들어가지 않는다
+  const mergedFriends = (SHOW_MOCK_DM ? [...friends, mockDMListRow()] : friends).map(f => {
     const msgs = conversations[f.handle];
     const blocked = isBlocked({ name: f.name, handle: f.handle });
     const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;

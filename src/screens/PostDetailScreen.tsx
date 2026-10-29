@@ -191,7 +191,8 @@ const CalendarLineIcon = ({ size = 13.3667, color = C.white }: { size?: number; 
 // ─── 알약 유리 테두리 — 블로그 기록 화면 알약과 같은 좌상단·우하단 흰색 대각 그라데이션 링(PillRing diagonal) ───
 // 부모 알약의 첫 자식으로 넣으면 absoluteFill 층이 제 크기를 실측해 링을 얹는다(폭이 글자마다 달라도 됨).
 // ⚠️ 부모에 borderWidth·overflow:'hidden'을 주지 말 것 — 링이 잘리거나 이중 테두리가 된다(블로그 알약 규칙).
-const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
+// DMScreen 입력 바도 같은 링을 쓴다(댓글 입력과 디자인 통일) — 그래서 export.
+export const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
     <View
