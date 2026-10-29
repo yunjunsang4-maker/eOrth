@@ -80,7 +80,16 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 0건 (2026-10-12 추천 메이트 나라 표본 상한 반영)
+## 1. 지금 해야 하는 것 — 1건 (2026-10-29 차단 목록 현재 아이디 RPC)
+
+### ⏳ 미실행 — `my_blocked_profiles()` 내가 차단한 사람의 현재 아이디 (2026-10-29 추가)
+
+> `supabase/migration-2026-10-29-my-blocked-profiles.sql` (schema.sql `is_blocked_between` 바로 아래 본문과 동일). **운영·테스트 양쪽** SQL Editor에서 실행.
+
+- **문제:** 설정 > 차단한 사용자 목록이 차단 당시 아이디로 남는다. `public_profiles`는 차단 관계를 걸러 내 id로 다시 조회할 수 없다.
+- **고침:** 내가 차단한 사람(blocker_id = 나)의 id·handle만 돌려주는 security definer RPC. 나를 차단한 사람은 안 나오고, handle 외 정보는 내리지 않는다.
+- **앱 배포 순서 제약 없음:** 미반영이면 RPC 오류 → 저장된 handle로 폴백(지금과 같은 표시).
+- **확인:** `select proname from pg_proc where proname = 'my_blocked_profiles';` → 1행.
 
 ### ✅ 반영 완료(2026-10-12, 사용자 실행) — `mate_suggestions_compute` 나라 이름 표본 상한 3 → 30
 

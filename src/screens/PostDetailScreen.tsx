@@ -1143,6 +1143,8 @@ function SnapStoryViewer({
     mentionCandidates.push({ handle: c.name, photo: c.photo });
     for (const r of ((c.replies ?? []) as any[])) mentionCandidates.push({ handle: r.name, photo: r.photo });
   }
+  // 차단한 상대는 후보에서 뺀다 — 화면의 댓글은 숨기지만 후보는 숨기기 전 목록(저장된 예전 댓글 포함)에서 뽑는다
+  const visibleMentionCandidates = mentionCandidates.filter((c) => !isBlocked({ name: c.handle, handle: c.handle }));
   const activeMention = findActiveMention(commentText, commentCursor);
   const pickMention = (handle: string) => {
     if (!activeMention) return;
@@ -1575,7 +1577,7 @@ function SnapStoryViewer({
               목록 ScrollView 밖·입력 바 바로 위에 둔다(칩 줄은 keyboardShouldPersistTaps="always"). */}
           {commentFocused && activeMention && (
             <MentionSuggestBar
-              candidates={mentionCandidates}
+              candidates={visibleMentionCandidates}
               query={activeMention.query}
               exclude={myHandle}
               onPick={pickMention}
@@ -2070,6 +2072,8 @@ export default function PostDetailScreen() {
     mentionCandidates.push({ handle: c.name, photo: c.photo });
     for (const r of (c.replies ?? [])) mentionCandidates.push({ handle: r.name, photo: r.photo });
   }
+  // 차단한 상대는 후보에서 뺀다 — 화면의 댓글은 숨기지만 후보는 숨기기 전 목록(저장된 예전 댓글 포함)에서 뽑는다
+  const visibleMentionCandidates = mentionCandidates.filter((c) => !isBlocked({ name: c.handle, handle: c.handle }));
   const activeMention = findActiveMention(commentText, commentCursor);
   const pickMention = (handle: string) => {
     if (!activeMention) return;
@@ -2987,7 +2991,7 @@ export default function PostDetailScreen() {
             입력 바 바로 위·KeyboardAvoidingView 안이라 키보드 위에 붙어 뜬다. */}
         {commentFocused && activeMention && (
           <MentionSuggestBar
-            candidates={mentionCandidates}
+            candidates={visibleMentionCandidates}
             query={activeMention.query}
             exclude={globalHandle}
             onPick={pickMention}

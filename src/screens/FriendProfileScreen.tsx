@@ -254,11 +254,18 @@ export default function FriendProfileScreen({
   const friendDnaLabel = labelFromKey(profileRow?.dna_type_key);
 
   // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
-  const { neighbors, isNeighbor, isNeighborRequested, isNeighborRequestReceived, isMuted } = useSocialGraph();
-  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, blockUser, toggleMute } = useRecordActions();
+  const { neighbors, isNeighbor, isNeighborRequested, isNeighborRequestReceived, isMuted, blockedUsers } = useSocialGraph();
+  const { requestNeighbor, cancelNeighborRequest, acceptNeighbor, removeNeighbor, blockUser, unblockUser, toggleMute } = useRecordActions();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
   const realId = userId ?? profileRow?.id ?? null;
+  // 내가 차단한 상대 — 서버가 프로필을 내려주지 않아 빈 껍데기(신청 버튼·차단 메뉴)가 뜨던 자리를
+  // 차단 안내 + 해제로 바꾼다. 상대가 아이디를 바꿨을 수 있어 저장된 uuid로도 대조한다
+  // (이름 폴백은 handle 없는 구버전 항목에만 — isBlocked와 같은 규칙).
+  const blockedEntry = isSelf ? undefined : blockedUsers.find((b) =>
+    (!!realId && b.id === realId) ||
+    (b.handle ? b.handle === (profileRow?.handle ?? route.params?.handle) : b.name === displayUsername));
+  const blockedByMe = !!blockedEntry;
   const neighborNow = !!realId && isNeighbor(realId);
   const requested = !!realId && isNeighborRequested(realId);
   // 상대가 나에게 신청해 둔 상태 — 이땐 '신청'이 아니라 '수락'이 맞는 행동이다.
@@ -413,8 +420,30 @@ export default function FriendProfileScreen({
     },
   ];
 
+  // 차단 해제 — 재확인 후 해제하고 프로필을 다시 불러온다. 해제 요청이 서버에 닿기 전에 부르면
+  // 아직 차단으로 걸러지므로 잠시 뒤에 부른다(ponytail: 고정 지연 — 당겨서 새로고침으로도 복구된다)
+  const handleUnblock = () => {
+    if (!blockedEntry) return;
+    setMenuVisible(false);
+    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name: `@${displayUsername}` }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('friends.unblock'),
+        onPress: () => {
+          unblockUser(blockedEntry.handle || blockedEntry.name);
+          setTimeout(() => { if (aliveRef.current) loadProfile(); }, 1200);
+        },
+      },
+    ]);
+  };
+
   const MENU_DANGER = [
-    {
+    blockedByMe ? {
+      key: 'unblock',
+      icon: <BlockIcon size={MENU_ICON} color={MENU_DANGER_RED} />,
+      label: t('friends.unblockTitle'),
+      onPress: handleUnblock,
+    } : {
       key: 'block',
       icon: <BlockIcon size={MENU_ICON} color={MENU_DANGER_RED} />,
       label: t('friends.blockAction'),
@@ -571,8 +600,8 @@ export default function FriendProfileScreen({
           </View>
         </View>
 
-        {/* ── 메이트신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
-        {!isSelf && (
+        {/* ── 메이트신청 + DM 버튼 (본인·차단한 상대면 숨김) ── */}
+        {!isSelf && !blockedByMe && (
           <>
             <View style={s.actionRow}>
               {/* 메이트 상태에 따라 위계가 바뀐다 —
@@ -616,7 +645,22 @@ export default function FriendProfileScreen({
           </>
         )}
 
-        {!isSelf && !profileLoaded ? (
+        {blockedByMe ? (
+          /* ── 차단한 상대 — 잠금 안내와 같은 자리·글꼴에 차단 안내 + 해제 ── */
+          <View style={s.lockedBox}>
+            <BlockIcon size={64} color="#D9D9D9" />
+            <Text style={s.lockedTitle}>{t('friends.blockedProfileTitle')}</Text>
+            <Text style={s.lockedDesc}>{t('friends.blockedProfileDesc')}</Text>
+            <ProfileActionButton
+              variant="ghost"
+              label={t('friends.unblock')}
+              onPress={handleUnblock}
+              accent={skinAccent.accent}
+              tint={skinAccent.tint}
+              style={{ marginTop: 20, minWidth: 140 }}
+            />
+          </View>
+        ) : !isSelf && !profileLoaded ? (
           /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
         ) : locked ? (

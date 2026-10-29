@@ -1,15 +1,15 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View,
   StyleSheet,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
-import { useSocialGraph, useRecordActions } from '../store/recordStore';
+import { useSocialGraph, useRecordActions, type BlockedUser } from '../store/recordStore';
+import { fetchMyBlockedHandles } from '../services/social';
 import { BlockIcon } from '../components/icons';
 import DefaultAvatar from '../components/DefaultAvatar';
 import {
@@ -18,6 +18,7 @@ import {
   SettingsCard,
   SettingsDivider,
   SettingsEmptyState,
+  SettingsModal,
   SettingsPillButton,
   settingsText,
 } from '../components/settings/SettingsUI';
@@ -33,19 +34,25 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
   const { blockedUsers } = useSocialGraph();
   const { unblockUser } = useRecordActions();
 
-  // handle 우선 — 동명(name) 계정이 있어도 어떤 계정을 해제하는지 식별·매칭이 정확하다
-  const handleUnblock = (name: string, handle?: string) => {
-    const label = handle ? `@${handle}` : name;
-    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name: label }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('friends.unblock'),
-        onPress: () => {
-          unblockUser(handle || name);
-        },
-      },
-    ]);
+  // 상대의 '현재' 아이디 { id: handle } — 저장된 handle은 차단 당시 값이라 아이디를 바꾸면 낡는다.
+  // 표시만 바꾼다: 저장된 handle은 차단 신원 키(isBlocked·해제 매칭·state_flags 동기화)라 그대로 둔다.
+  const [currentHandles, setCurrentHandles] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    fetchMyBlockedHandles().then((m) => { if (alive && m) setCurrentHandles(m); });
+    return () => { alive = false; };
+  }, []);
+  const displayHandle = (u: BlockedUser) => (u.id && currentHandles[u.id]) || u.handle;
+
+  // 해제 재확인 팝업 대상 — 앱 설정 팝업(SettingsModal)으로 한 번 더 묻는다
+  const [confirmTarget, setConfirmTarget] = useState<BlockedUser | null>(null);
+  const closeConfirm = () => setConfirmTarget(null);
+  const confirmUnblock = () => {
+    // 신원 키는 저장된 handle 우선 — 동명(name) 계정이 있어도 어떤 계정을 해제하는지 정확하다
+    if (confirmTarget) unblockUser(confirmTarget.handle || confirmTarget.name);
+    closeConfirm();
   };
+  const confirmHandle = confirmTarget ? displayHandle(confirmTarget) : undefined;
 
   const formatDate = (timestamp: number) => {
     const d = new Date(timestamp);
@@ -68,17 +75,18 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         ) : (
           <>
             <Text style={settingsText.groupLabel}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
-            <SettingsCard>
+            <SettingsCard baseRim={COLORS.line}>
               {blockedUsers.map((user, idx) => (
                 // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
                 <React.Fragment key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`}>
                   <View style={st.userRow}>
-                    {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
+                    {/* 차단된 사용자는 기본 프사로만 표시(사진은 미노출 — 사용자 결정) */}
                     <View style={st.avatarWrap}>
                       <DefaultAvatar size={42} />
                     </View>
-                    {/* 프사 옆에는 차단한 날짜만 표시 */}
+                    {/* 프사 옆 — 아이디(현재 값), 그 아래 차단한 날짜 작게 */}
                     <View style={st.userInfo}>
+                      <Text style={st.handle} numberOfLines={1}>{displayHandle(user) ? `@${displayHandle(user)}` : user.name}</Text>
                       <Text style={st.blockedDate}>{t('friends.blockedOn', { date: formatDate(user.blockedAt) })}</Text>
                     </View>
                     {/* 차단 해제 = 위험 동작 → 로그아웃과 같은 danger 알약(행 안이라 compact) */}
@@ -86,7 +94,8 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
                       compact
                       tone="danger"
                       label={t('friends.unblockShort')}
-                      onPress={() => handleUnblock(user.name, user.handle)}
+                      onPress={() => setConfirmTarget(user)}
+                      baseRim={COLORS.line}
                     />
                   </View>
                   {idx < blockedUsers.length - 1 && <SettingsDivider />}
@@ -97,6 +106,17 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* 차단 해제 재확인 — 하단 알약(취소) 위에 빨간 해제 알약 */}
+      <SettingsModal
+        visible={!!confirmTarget}
+        title={t('friends.unblockTitle')}
+        description={t('friends.unblockMsg', { name: confirmHandle ? `@${confirmHandle}` : confirmTarget?.name ?? '' })}
+        closeLabel={t('common.cancel')}
+        onClose={closeConfirm}
+      >
+        <SettingsPillButton tone="danger" label={t('friends.unblock')} onPress={confirmUnblock} baseRim={COLORS.line} style={st.confirmPill} />
+      </SettingsModal>
     </SafeAreaView>
   );
 }
@@ -144,10 +164,17 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     marginLeft: 12,
     marginRight: 12,
   },
-  // 행의 유일한 텍스트(차단 날짜) — 설정 행 라벨과 같은 14 흰색
-  blockedDate: {
+  // 아이디 — 설정 행 라벨과 같은 14 흰색
+  handle: {
     fontSize: 14,
     fontWeight: '500',
     color: COLORS.white,
   },
+  // 차단 날짜 — 아이디 아래 작게(설정 행 설명 줄과 같은 12 흐림)
+  blockedDate: {
+    fontSize: 12,
+    color: COLORS.text50,
+    marginTop: 2,
+  },
+  confirmPill: { marginTop: 20 },
 });

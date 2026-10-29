@@ -335,7 +335,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           {/* 아이디 */}
           <View style={s.fieldGroup}>
             <Text style={settingsText.fieldLabel}>{t('editProfile.handleLabel')}</Text>
-            <SettingsField style={!canChangeHandle && s.fieldLocked}>
+            <SettingsField style={!canChangeHandle && s.fieldLocked} baseRim={COLORS.line}>
               <Text style={s.atPrefix}>@</Text>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[settingsText.input, !canChangeHandle && s.inputDisabled]}
@@ -383,7 +383,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           {/* 소개 */}
           <View style={s.fieldGroup}>
             <Text style={settingsText.fieldLabel}>{t('editProfile.bioLabel')}</Text>
-            <SettingsField>
+            <SettingsField baseRim={COLORS.line}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[settingsText.input, s.bioInput]}
                 value={bio}
@@ -403,6 +403,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
             label={saving ? t('editProfile.checking') : t('editProfile.saveLarge')}
             onPress={handleSave}
             disabled={saving}
+            baseRim={COLORS.line}
             style={s.saveLargeBtn}
           />
         </ScrollView>

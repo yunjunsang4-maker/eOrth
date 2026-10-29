@@ -228,6 +228,17 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
+// 내가 차단한 사람의 현재 아이디 { id: handle } — 상대가 아이디를 바꿔도 차단 목록이 따라가게.
+// public_profiles는 차단 관계를 걸러 내 전용 RPC를 쓴다. 미반영·오류면 null(저장된 handle로 폴백).
+export async function fetchMyBlockedHandles(): Promise<Record<string, string> | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc('my_blocked_profiles');
+    if (error) return null;
+    return Object.fromEntries(((data ?? []) as any[]).filter((r) => r.handle).map((r) => [r.id, r.handle]));
+  } catch { return null; }
+}
+
 // ─── 알림 ───
 // notifications 테이블은 서버 트리거로 채워진다 (schema.sql 10-c/d/e):
 //   neighbor_request·neighbor_accept — 메이트 신청/수락

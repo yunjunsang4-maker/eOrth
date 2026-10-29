@@ -11,7 +11,7 @@ import { onReconnect } from '../utils/connectivity';
 import { remapDocUri } from '../utils/remapDocumentUris';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage } from '../services/media';
-import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers, fetchInboxSince } from '../services/dm';
+import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers, fetchInboxSince, isBlockedWith } from '../services/dm';
 import { inboxCatchUpSince, advanceServerSeen } from '../utils/dmCatchUp';
 import { normalizePeerMap, invertPeerMap, prunePeerMap } from '../utils/dmPeerMap';
 
@@ -95,6 +95,8 @@ interface DMContextType {
   // 백엔드 DM: 대화 상대(profile uuid) 등록 + 서버 히스토리 로드. 미설정 시 무동작.
   registerPeer: (handle: string, userId?: string) => void;
   loadHistory: (handle: string, userId?: string) => Promise<void>;
+  // 상대와 차단 관계인지(양방향) — null = 모름(상대 uuid 미확인·오류·미설정)
+  checkBlockedWith: (handle: string, userId?: string) => Promise<boolean | null>;
 }
 
 // ── Context 슬라이스 ── (recordStore·settingsStore와 같은 방식 — stableActions.ts 참조)
@@ -433,6 +435,18 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     });
   }, [registerPeer]);
 
+  // 차단 관계 확인 — 상대 uuid는 loadHistory와 같은 순서로 해석한다.
+  // 차단 관계면 public_profiles가 상대를 숨겨 handle 조회가 실패하므로, 예전 대화에서 등록해 둔 매핑이 주 경로다.
+  const checkBlockedWith = useCallback(async (handle: string, userId?: string) => {
+    if (!isSupabaseConfigured || !handle) return null;
+    const UUID_RE = /^[0-9a-f-]{36}$/i;
+    let peer: string | undefined =
+      userId && UUID_RE.test(userId) ? userId : peerByHandle.current[handle];
+    if (!peer) peer = (await getProfileByHandle(handle).catch(() => null))?.id ?? undefined;
+    if (!peer) return null;
+    return isBlockedWith(peer);
+  }, []);
+
   const sendRecord = useCallback((handle: string, record: TravelRecord) => {
     addMessage(handle, { type: 'record', text: '', record: buildSharedRecord(record) });
     incrementShareSent(); // 게시물 공유 횟수 +1 (배지 74)
@@ -636,7 +650,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const latestActionsRef = useRef<DMActions>(null!);
   latestActionsRef.current = {
     addMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead,
-    resetConversations, registerPeer, loadHistory,
+    resetConversations, registerPeer, loadHistory, checkBlockedWith,
   };
   const [dmActions] = useState(() => makeStableActions(latestActionsRef));
   const dmData = useMemo<DMDataSlice>(

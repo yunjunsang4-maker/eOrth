@@ -185,6 +185,7 @@ export const SettingGroup = ({
   radius = 22,
   style,
   labelStyle,
+  baseRim,
 }: {
   label?: string;
   items: SettingItem[];
@@ -193,13 +194,15 @@ export const SettingGroup = ({
   style?: StyleProp<ViewStyle>;
   /** 그룹 라벨 간격 덮어쓰기 — 메이트 안내문 바로 뒤 '앱 설정'만 위 간격 25 */
   labelStyle?: StyleProp<TextStyle>;
+  /** 카드 윤곽선 — SettingsCard.baseRim 그대로 전달(계정 설정처럼 배경과 겹쳐 보일 때) */
+  baseRim?: string;
 }) => {
   const skinAccent = useSkinAccent();
   if (items.length === 0) return null;
   return (
   <>
     {label ? <Text style={[settingsText.groupLabel, labelStyle]}>{label}</Text> : null}
-    <SettingsCard radius={radius} style={style}>
+    <SettingsCard radius={radius} baseRim={baseRim} style={style}>
       {items.map((item, index) => {
       const rowStyle = [s.settingItem, item.description ? s.settingItemTall : null, item.disabled ? s.settingItemDisabled : null];
       const content = (

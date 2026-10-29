@@ -674,6 +674,20 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.is_blocked_between(uuid, uuid) to authenticated;
 
+-- 내가 차단한 사람의 현재 아이디 — public_profiles는 차단 관계를 걸러 내 id로 재조회할 수 없다.
+-- 설정 > 차단한 사용자 목록이 상대의 아이디 변경을 따라가게 한다(migration-2026-10-29-my-blocked-profiles.sql).
+-- 나를 차단한 사람은 안 나온다(blocker_id = 나만), handle 외 정보는 내리지 않는다.
+create or replace function public.my_blocked_profiles()
+returns table (id uuid, handle text)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.handle
+  from public.blocks b
+  join public.profiles p on p.id = b.blocked_id
+  where b.blocker_id = auth.uid();
+$$;
+revoke execute on function public.my_blocked_profiles() from public, anon;
+grant execute on function public.my_blocked_profiles() to authenticated;
+
 -- ============================================================
 -- 서로이웃 관계 (양방향·수락제). accepted 행 1개가 두 사람의 대칭 관계를 의미.
 -- is_blocked_between(neighbors_insert_own에서 참조)이 위에서 정의된 뒤라야 하고,

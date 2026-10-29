@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -22,7 +22,7 @@ import type { TFunction } from 'i18next';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { tap, warn } from '../utils/haptics';
-import { useRecordData, useFeed, useRecordActions, TravelRecord } from '../store/recordStore';
+import { useRecordData, useFeed, useRecordActions, useSocialGraph, TravelRecord } from '../store/recordStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
@@ -33,6 +33,7 @@ import { handleBlock } from '../utils/reportAndBlock';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
+import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
 import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
@@ -302,6 +303,10 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
   );
 }
 
+// 차단 안내 카드를 '삭제'한 대화(handle) — 다시 들어와도 안내 없이 막힌 입력창만 보인다.
+// ponytail: 메모리 보관이라 앱을 재시작하면 안내가 다시 뜬다. 영구 보관이 필요하면 dmStore 영속 상태로 옮길 것.
+const dismissedBlockNotices = new Set<string>();
+
 export default function DMScreen({ navigation, route }: Props) {
   const { friend, sharePostId } = route.params as {
     friend: { id?: string; name: string; handle: string; emoji: string; photo?: string; online: boolean };
@@ -323,17 +328,36 @@ export default function DMScreen({ navigation, route }: Props) {
   const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
   const { records } = useRecordData();
   const { feedPosts } = useFeed();
-  const { blockUser, reportPost } = useRecordActions();
+  const { blockUser, unblockUser, reportPost } = useRecordActions();
+  // 차단한 상대는 기본 프사만 — 사진은 진입 파라미터에 박혀 와서 차단 뒤에도 남는다. 해제하면 다시 보인다
+  const { isBlocked } = useSocialGraph();
+  const blockedByMe = isBlocked({ name: friend.name, handle: friend.handle });
+  const friendPhoto = blockedByMe ? undefined : friend.photo;
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
   const { conversations } = useDMData();
-  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDMActions();
+  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory, checkBlockedWith } = useDMActions();
   const messages = conversations[friend.handle] ?? [];
 
   // 대화 진입 시 상대(profile uuid) 등록 + 서버 히스토리 로드 (백엔드 설정 시)
   useEffect(() => {
     loadHistory(friend.handle, friend.id);
   }, [friend.handle, friend.id, loadHistory]);
+
+  // 차단 관계(양방향)면 입력창 대신 안내 — 인스타그램처럼 대화 기록은 남기고 전송만 막는다.
+  // 내가 차단한 경우는 로컬 목록으로 즉시 알고, 상대가 나를 차단한 경우는 서버에 묻는다(null = 확인 중/모름).
+  // 서버 RLS가 어차피 전송을 거부하지만, 앱이 모르면 보낼 때마다 '전송 실패'만 쌓인다.
+  const [peerBlocked, setPeerBlocked] = useState<boolean | null>(null);
+  const recheckBlocked = useCallback(() => {
+    checkBlockedWith(friend.handle, friend.id).then(setPeerBlocked);
+  }, [checkBlockedWith, friend.handle, friend.id]);
+  useEffect(() => { recheckBlocked(); }, [recheckBlocked]);
+  const dmBlocked = blockedByMe || peerBlocked === true;
+  const [blockNoticeHidden, setBlockNoticeHidden] = useState(() => dismissedBlockNotices.has(friend.handle));
+  const hideBlockNotice = () => {
+    dismissedBlockNotices.add(friend.handle);
+    setBlockNoticeHidden(true);
+  };
 
   // 당겨서 새로고침 — 서버 히스토리 재로드 (로컬 전용 메시지는 loadHistory가 병합 보존)
   const [refreshing, setRefreshing] = useState(false);
@@ -396,11 +420,13 @@ export default function DMScreen({ navigation, route }: Props) {
   // 공유로 진입한 경우 자동 전송 — 타인 게시물은 feedPosts에 있으므로 둘 다 검색
   useEffect(() => {
     if (!sharePostId || sharedRef.current) return;
+    // 차단 관계면 공유하지 않는다 — 확인 결과(null=모름 포함)가 나온 뒤에만 보낸다
+    if (dmBlocked || (isSupabaseConfigured && peerBlocked === null)) return;
     const r = records.find(rec => rec.id === sharePostId) ?? feedPosts.find(rec => rec.id === sharePostId);
     if (!r) return;
     sharedRef.current = true;
     sendRecord(friend.handle, r);
-  }, [sharePostId, records, feedPosts, friend.handle, sendRecord]);
+  }, [sharePostId, records, feedPosts, friend.handle, sendRecord, dmBlocked, peerBlocked]);
 
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
     const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;
@@ -528,14 +554,33 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   // 상대 차단 — 서버 blocks 에 기록돼 RLS가 이후 게시물·댓글·DM을 걸러낸다.
-  // 차단 후에는 이 대화에 머무를 이유가 없으므로 대화를 비우고 뒤로 나간다.
+  // 인스타그램처럼 대화 기록은 남기고(지우려면 '대화 나가기') 이 자리에서 입력창만 차단 안내로 바뀐다.
   const handleBlockPeer = () => {
     setHeaderMenuOpen(false);
     handleBlock(friend.handle, () => {
       blockUser({ name: friend.handle, emoji: '', handle: friend.handle, id: friend.id });
-      clearConversation(friend.handle);
-      navigation.goBack();
+      setAttachMenuOpen(false);
+      setReplyTarget(null);
+      // 새로 차단하면 안내 카드를 다시 보여 준다(예전에 '삭제'했더라도)
+      dismissedBlockNotices.delete(friend.handle);
+      setBlockNoticeHidden(false);
     }, t);
+  };
+
+  // 차단 해제 — 재확인 후 해제. 상대도 나를 차단했을 수 있으니 잠시 뒤 서버에 다시 묻는다
+  // (해제 요청이 서버에 닿기 전에 물으면 아직 차단으로 나온다 — ponytail: 고정 지연, 해제 완료를 기다리려면 unblockUser가 promise를 돌려줘야 한다)
+  const unblockNow = () => {
+    unblockUser(friend.handle);
+    setPeerBlocked(null);
+    setTimeout(recheckBlocked, 1200);
+  };
+  // 헤더 ⋯ 메뉴의 해제는 재확인을 거친다(안내 카드의 '차단 해제'는 카드 자체가 확인이라 바로 해제)
+  const handleUnblockPeer = () => {
+    setHeaderMenuOpen(false);
+    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name: `@${friend.handle}` }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('friends.unblock'), onPress: unblockNow },
+    ]);
   };
 
   const handleLeaveConversation = () => {
@@ -631,8 +676,8 @@ export default function DMScreen({ navigation, route }: Props) {
       {!item.isMine && (
         groupedWithNext
           ? <View style={st.msgAvatarSpacer} />
-          : friend.photo ? (
-            <Image source={{ uri: friend.photo }} style={st.msgAvatar} />
+          : friendPhoto ? (
+            <Image source={{ uri: friendPhoto }} style={st.msgAvatar} />
           ) : (
             <View style={st.msgAvatar}>
               <DefaultAvatar size={30} />
@@ -733,8 +778,8 @@ export default function DMScreen({ navigation, route }: Props) {
           onPress={() => navigation.navigate('FriendProfile', { userId: friend.id ?? null, username: friend.name, handle: friend.handle })}
         >
           <View style={st.headerAvatarWrap}>
-            {friend.photo ? (
-              <Image source={{ uri: friend.photo }} style={st.headerAvatar} />
+            {friendPhoto ? (
+              <Image source={{ uri: friendPhoto }} style={st.headerAvatar} />
             ) : (
               <View style={st.headerAvatar}>
                 <DefaultAvatar size={36} />
@@ -810,8 +855,8 @@ export default function DMScreen({ navigation, route }: Props) {
           }}
           ListEmptyComponent={
             <View style={st.emptyWrap}>
-              {friend.photo ? (
-                <Image source={{ uri: friend.photo }} style={st.emptyAvatar} />
+              {friendPhoto ? (
+                <Image source={{ uri: friendPhoto }} style={st.emptyAvatar} />
               ) : (
                 <View style={st.emptyAvatar}>
                   <DefaultAvatar size={72} />
@@ -834,7 +879,7 @@ export default function DMScreen({ navigation, route }: Props) {
         )}
 
         {/* 첨부 메뉴 */}
-        {attachMenuOpen && (
+        {attachMenuOpen && !dmBlocked && (
           <View style={st.attachMenu}>
             <TouchableOpacity style={st.attachItem} onPress={takePhoto}>
               <CameraIcon size={22} />
@@ -852,7 +897,7 @@ export default function DMScreen({ navigation, route }: Props) {
         )}
 
         {/* 답글 미리보기 바 */}
-        {replyTarget && (
+        {replyTarget && !dmBlocked && (
           <View style={st.replyBar}>
             <View style={st.replyBarLine} />
             <View style={st.replyBarBody}>
@@ -867,7 +912,31 @@ export default function DMScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* 입력 바 */}
+        {/* 입력 바 — 차단 관계면 막는다.
+            내가 차단: 인스타그램처럼 입력창 자리에 안내 카드(차단 해제·삭제). '삭제'는 카드만 지우고 입력창은 계속 막힌다.
+            상대가 차단 / 카드 삭제 후: 흐린 입력창(누를 수 없음)에 안내 문구 */}
+        {blockedByMe && !blockNoticeHidden ? (
+          <View style={st.blockNotice}>
+            <Text style={st.blockNoticeTitle}>{t('dm.blockNoticeTitle', { name: `@${friend.handle}` })}</Text>
+            <Text style={st.blockNoticeDesc}>{t('dm.blockNoticeDesc')}</Text>
+            <View style={st.blockNoticeActions}>
+              <TouchableOpacity style={st.blockNoticeBtn} onPress={unblockNow} activeOpacity={0.7} accessibilityRole="button">
+                <Text style={st.blockNoticeUnblock}>{t('friends.unblockTitle')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={st.blockNoticeBtn} onPress={hideBlockNotice} activeOpacity={0.7} accessibilityRole="button">
+                <Text style={st.blockNoticeDelete}>{t('dm.delete')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : dmBlocked ? (
+          <View style={[st.inputBar, st.inputBarBlocked]} pointerEvents="none" accessibilityState={{ disabled: true }}>
+            <View style={st.attachBtn}><Text style={st.attachBtnText}>+</Text></View>
+            <View style={[st.input, st.inputBlocked]}>
+              <Text style={st.inputBlockedText} numberOfLines={1}>{blockedByMe ? t('dm.blockedByMe') : t('dm.cannotMessage')}</Text>
+            </View>
+            <View style={[st.sendBtn, st.sendBtnDisabled]}><Text style={st.sendBtnText}>↑</Text></View>
+          </View>
+        ) : (
         <View style={st.inputBar}>
           <TouchableOpacity
             style={st.attachBtn}
@@ -902,6 +971,7 @@ export default function DMScreen({ navigation, route }: Props) {
             <Text style={st.sendBtnText}>↑</Text>
           </TouchableOpacity>
         </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* 인앱 카메라 촬영 (expo-camera) — 촬영 후 사진 메시지 전송 */}
@@ -1036,9 +1106,10 @@ export default function DMScreen({ navigation, route }: Props) {
               <View style={st.sheetIconWrap}><FlagIcon size={18} color="#A1A1B0" /></View>
               <Text style={st.sheetText}>{t('social.report')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={st.sheetItem} onPress={handleBlockPeer}>
+            {/* 이미 차단했으면 같은 자리에 '차단 해제' */}
+            <TouchableOpacity style={st.sheetItem} onPress={blockedByMe ? handleUnblockPeer : handleBlockPeer}>
               <View style={st.sheetIconWrap}><BlockIcon size={18} color="#FF6B6B" /></View>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('social.blockTitle')}</Text>
+              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{blockedByMe ? t('friends.unblockTitle') : t('social.blockTitle')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.sheetItem} onPress={handleLeaveConversation}>
               <Text style={st.sheetIcon}>🚪</Text>
@@ -1272,6 +1343,21 @@ const st = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: C.card },
   sendBtnText: { fontSize: 18, fontWeight: '700', color: C.white },
+  // 차단 안내 카드 — 입력 바 자리(같은 구분선). 제목·설명 가운데, 아래에 해제·삭제 두 칸
+  blockNotice: {
+    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 6,
+    borderTopWidth: 1, borderTopColor: C.divider, alignItems: 'center',
+  },
+  blockNoticeTitle: { fontSize: 15, fontWeight: '700', color: C.white, textAlign: 'center' },
+  blockNoticeDesc: { fontSize: 12, color: C.muted, textAlign: 'center', marginTop: 6, lineHeight: 17 },
+  blockNoticeActions: { flexDirection: 'row', alignSelf: 'stretch', marginTop: 10 },
+  blockNoticeBtn: { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  blockNoticeUnblock: { fontSize: 14, fontWeight: '700', color: C.accent },
+  blockNoticeDelete: { fontSize: 14, fontWeight: '600', color: C.muted },
+  // 막힌 입력창 — 같은 모양을 흐리게, 글 대신 안내 문구
+  inputBarBlocked: { opacity: 0.45 },
+  inputBlocked: { justifyContent: 'center' },
+  inputBlockedText: { fontSize: 14, color: C.muted },
 
   // 여행 기록 선택 모달
   pickerOverlay: {

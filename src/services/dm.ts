@@ -57,6 +57,21 @@ export async function fetchThreadPeers(): Promise<string[]> {
 }
 
 // 두 사용자 사이 스레드 찾거나 생성 → thread_id (실패 시 null)
+// 상대와 차단 관계인지(어느 쪽이 차단했든) — DM 입력창을 막는 데 쓴다. 서버 RLS가 이미 전송을 막지만
+// 앱이 모르면 보낼 때마다 '전송 실패'만 쌓인다. 오류·미설정이면 null(모름 → 막지 않는다).
+export async function isBlockedWith(otherUserId: string): Promise<boolean | null> {
+  if (!supabase || !otherUserId) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase.rpc('is_blocked_between', { a: uid, b: otherUserId });
+    if (error || typeof data !== 'boolean') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export async function getOrCreateThread(otherUserId: string): Promise<string | null> {
   if (!supabase || !otherUserId) return null;
   const uid = await getMyUserId();

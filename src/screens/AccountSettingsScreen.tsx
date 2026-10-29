@@ -362,10 +362,10 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         {/* ── 이메일 ── 주소는 길어 오른쪽 값 자리(말줄임) 대신 라벨 아래 설명 줄에 둔다(예전처럼 전체 표시) */}
-        <SettingGroup label={t('accountSettings.sectionEmail')} labelStyle={styles.firstGroupLabel} items={emailItems} />
+        <SettingGroup label={t('accountSettings.sectionEmail')} labelStyle={styles.firstGroupLabel} items={emailItems} baseRim={RIM} />
 
         {/* ── 비밀번호 ── */}
-        <SettingGroup label={t('accountSettings.sectionPassword')} items={passwordItems} />
+        <SettingGroup label={t('accountSettings.sectionPassword')} items={passwordItems} baseRim={RIM} />
 
         {/* ── 연결된 소셜 계정 (읽기 전용) ──
             ⚠️ 예전엔 켜고 끄는 스위치였지만 identity linking API 가 아직 없어 누르면
@@ -373,7 +373,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             대상이라, 실제로 연동된 가입 수단만 보여주는 정보 행으로 바꾼다.
             연동/해제 기능이 붙으면 그때 스위치를 되살릴 것.
             눌러도 아무 일 없는 행이라 꺾쇠를 숨긴다(chevron: false). */}
-        <SettingGroup label={t('accountSettings.sectionSocial')} items={socialItems} />
+        <SettingGroup label={t('accountSettings.sectionSocial')} items={socialItems} baseRim={RIM} />
 
         {/* ── 위험 구역 ── 계정 삭제는 위험 동작 → 로그아웃과 같은 danger 알약 */}
         <Text style={settingsText.groupLabel}>{t('accountSettings.sectionDanger')}</Text>
@@ -382,6 +382,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           icon={<TrashIcon size={20} color={SETTINGS_COLORS.logout} />}
           label={t('accountSettings.deleteAccount')}
           onPress={handleDeleteAccount}
+          baseRim={RIM}
         />
 
         <View style={{ height: 40 }} />
@@ -588,6 +589,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 label={t('accountSettings.next')}
                 onPress={() => setDeleteStep(2)}
                 disabled={!deleteConsent}
+                baseRim={RIM}
                 style={styles.submitPill}
               />
             </View>
@@ -626,6 +628,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 label={t('accountSettings.next')}
                 onPress={() => setDeleteStep(3)}
                 disabled={!deleteReason}
+                baseRim={RIM}
                 style={styles.submitPill}
               />
             </View>
@@ -669,6 +672,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 label={t('accountSettings.permanentDelete')}
                 onPress={submitDeleteAccount}
                 disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
+                baseRim={RIM}
                 style={styles.submitPill}
               />
             </View>

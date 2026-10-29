@@ -214,6 +214,7 @@ export default function FriendsScreen({ navigation }: Props) {
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
   const mergedFriends = friends.map(f => {
     const msgs = conversations[f.handle];
+    const blocked = isBlocked({ name: f.name, handle: f.handle });
     const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
     const hasConvo = msgs !== undefined; // 대화 키가 있으면(=비웠어도) 더미로 되돌리지 않음
     return {
@@ -222,10 +223,14 @@ export default function FriendsScreen({ navigation }: Props) {
       lastMessageAt: last?.createdAt ?? (hasConvo ? 0 : f.lastMessageAt),
       unread: unreadCount(f.handle),
       isMuted: isMuted(f.handle), // 음소거는 store(mutedHandles)에서 — 재진입·재시작에도 유지
+      blocked,
+      photo: blocked ? undefined : f.photo, // 차단한 상대는 기본 프사만
     };
   });
 
-  const visibleFriends = mergedFriends.filter(f => !isBlocked({ name: f.name, handle: f.handle }));
+  // 차단한 상대 — 인스타그램처럼 대화 기록이 있으면 목록에 남긴다('대화 나가기'로 지울 때까지).
+  // 들어가면 입력창 대신 차단 안내가 뜬다(DMScreen). 대화가 없으면 숨긴다.
+  const visibleFriends = mergedFriends.filter(f => !f.blocked || (conversations[f.handle]?.length ?? 0) > 0);
 
   const filtered = (search.trim()
     ? visibleFriends.filter(
