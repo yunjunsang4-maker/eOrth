@@ -512,7 +512,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
   const isSearching = query.trim().length > 0;
   // 차단한 사용자는 검색·추천 결과에서 제외 (노출·재팔로우 방지)
-  const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
+  // f.id = 검색 결과 profiles.id / 추천의 author_id — 둘 다 profile uuid
+  const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username, id: f.id });
   const displayList = remoteResults.filter(notBlocked);
   // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
   const visibleSuggestions = suggestions.filter(notBlocked);

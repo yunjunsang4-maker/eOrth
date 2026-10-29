@@ -1331,7 +1331,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const dmFriends = useMemo(
     () => neighbors
       // 차단한 상대는 공유 대상에서 제외 — 차단 시 언팔되지만 로컬 상태가 어긋난 경우의 안전망
-      .filter((f) => !isBlocked({ handle: f.username, name: f.username }))
+      .filter((f) => !isBlocked({ handle: f.username, name: f.username, id: f.id }))
       // photo 를 함께 넘겨야 빠른공유 원 안에 프로필 사진이 뜬다 (없으면 이모지로 폴백)
       .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo })),
     [neighbors, isBlocked]
@@ -1518,7 +1518,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
           // 보이고 소셜 피드 스트림에는 흐르지 않는다 (b84d93a로 friends 승격되며 피드
           // 공개범위 조건을 충족하게 된 부작용 차단).
           r.viewType !== 'album' &&
-          !isBlocked(r.user) &&
+          // authorId = posts.author_id(uuid) — 아이디를 바꾼 차단 상대의 캐시 글도 가린다
+          !isBlocked({ ...r.user, id: r.authorId }) &&
           !archivedIds.includes(r.id) &&
           !reportedPostIds.includes(r.id)
       )

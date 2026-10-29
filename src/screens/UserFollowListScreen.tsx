@@ -48,7 +48,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
         if (!alive) return;
         setLoadError(result === null);
         // 서버가 차단 관계를 거르지만, 로컬 전용 차단(서버 미반영)도 함께 가린다
-        setList((result ?? []).filter((e) => !isBlocked({ handle: e.handle ?? undefined })));
+        setList((result ?? []).filter((e) => !isBlocked({ handle: e.handle ?? undefined, id: e.id })));
         setLoading(false);
       })();
       return () => { alive = false; };

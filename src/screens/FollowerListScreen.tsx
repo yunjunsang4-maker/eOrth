@@ -104,8 +104,9 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
         if (!alive) return;
         setLoadError(list === null);
         // 로컬 전용 차단(서버 미반영) 항목도 목록에서 가리기 — 서버 트리거가 못 지운 행 대비
-        setFollowers((list ?? []).filter((f) => !isBlocked({ handle: f.handle ?? undefined })));
-        setRequests(reqs.filter((r) => !isBlocked({ handle: r.handle ?? undefined })));
+        // id도 넘긴다(profile uuid) — 아이디를 바꾼 차단 상대도 가린다
+        setFollowers((list ?? []).filter((f) => !isBlocked({ handle: f.handle ?? undefined, id: f.id })));
+        setRequests(reqs.filter((r) => !isBlocked({ handle: r.handle ?? undefined, id: r.requesterId })));
         setLoading(false);
       })();
       return () => { alive = false; };

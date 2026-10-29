@@ -336,7 +336,8 @@ export default function DMScreen({ navigation, route }: Props) {
   const { blockUser, unblockUser, reportPost } = useRecordActions();
   // 차단한 상대는 기본 프사만 — 사진은 진입 파라미터에 박혀 와서 차단 뒤에도 남는다. 해제하면 다시 보인다
   const { isBlocked } = useSocialGraph();
-  const blockedByMe = isBlocked({ name: friend.name, handle: friend.handle });
+  // id: 진입 경로가 넘긴 상대 uuid(없거나 'dm-핸들' 합성값이면 isBlocked가 id 비교를 건너뛴다)
+  const blockedByMe = isBlocked({ name: friend.name, handle: friend.handle, id: friend.id });
   const friendPhoto = blockedByMe ? undefined : friend.photo;
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);

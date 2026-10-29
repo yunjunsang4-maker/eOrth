@@ -84,8 +84,9 @@ export default function NotiToastHost() {
           if (r.type === 'neighbor_accept' || r.type === 'neighbor_request') {
             refreshMates().catch(() => { /* 무시 — 배너 처리를 막지 않는다 */ });
           }
-          // 뮤트/차단한 사용자의 알림은 배너도 띄우지 않는다(알림 화면 필터와 동일 규칙)
-          if (r.actorHandle && (muted(r.actorHandle) || blocked({ handle: r.actorHandle }))) return;
+          // 뮤트/차단한 사용자의 알림은 배너도 띄우지 않는다(NotificationScreen 필터와 동일 규칙) —
+          // 음소거는 handle 있을 때만, 차단은 actor_id(uuid)로도 본다(아이디를 바꿨거나 handle이 비어 와도 가림)
+          if ((r.actorHandle && muted(r.actorHandle)) || blocked({ handle: r.actorHandle ?? undefined, id: r.actorId })) return;
           const m = TYPE_MAP[r.type];
           if (!m) return;
           const name = r.actorHandle || tr('friends.travelerDefault');

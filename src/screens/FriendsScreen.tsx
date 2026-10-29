@@ -245,7 +245,8 @@ export default function FriendsScreen({ navigation }: Props) {
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
   const mergedFriends = friends.map(f => {
     const msgs = conversations[f.handle];
-    const blocked = isBlocked({ name: f.name, handle: f.handle });
+    // f.id는 메이트·조회된 낯선 상대면 uuid, 조회 실패면 'dm-핸들' 합성값 — 후자는 isBlocked가 id 비교를 건너뛴다
+    const blocked = isBlocked({ name: f.name, handle: f.handle, id: f.id });
     const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
     const hasConvo = msgs !== undefined; // 대화 키가 있으면(=비웠어도) 더미로 되돌리지 않음
     return {

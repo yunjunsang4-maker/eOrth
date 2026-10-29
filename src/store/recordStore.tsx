@@ -77,6 +77,7 @@ import {
   deleteComment as apiDeleteComment,
 } from '../services/social';
 import { REGION_KEY_SCHEMA, migrateRegionNameEn } from '../utils/regionKeyMigration';
+import { isBlockedIn, isProfileUuid } from '../utils/blockMatch';
 import { ISO2_TO_GEO } from '../constants/homeRegions'; // Task 1에서 export로 바꿔둔 것
 import { removeComment, restoreComment } from './commentListLogic';
 import { makeStableActions } from './stableActions';
@@ -367,7 +368,8 @@ interface RecordContextType {
   blockedUsers: BlockedUser[];
   blockUser: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   unblockUser: (nameOrHandle: string) => void;
-  isBlocked: (user: { name?: string; handle?: string }) => boolean;
+  // id = 상대 계정 profile uuid(있을 때만) — 아이디를 바꾼 차단 상대도 가린다(utils/blockMatch.ts)
+  isBlocked: (user: { name?: string; handle?: string; id?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
   reportedPostIds: string[];
   reportedCommentIds: string[];
@@ -1618,14 +1620,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 게시물/사용자가 차단 대상인지 — handle 기준. 이름 폴백은 '핸들이 없는 구버전 차단 항목'에만
-  // 허용한다(핸들 있는 항목까지 이름을 보면 동명이인 사용자가 통째로 차단돼 보였다).
-  const isBlocked = useCallback((user: { name?: string; handle?: string }) =>
-    blockedUsers.some((b) =>
-      b.handle
-        ? (!!user.handle && b.handle === user.handle)
-        : (!!user.name && b.name === user.name)
-    ), [blockedUsers]);
+  // 게시물/사용자가 차단 대상인지 — handle 기준 + 계정 uuid 일치(상대가 아이디를 바꾼 경우).
+  // 이름 폴백은 '핸들이 없는 구버전 차단 항목'에만 허용한다(핸들 있는 항목까지 이름을 보면 동명이인
+  // 사용자가 통째로 차단돼 보였다). 규칙 본체는 utils/blockMatch.ts(검증 파일 있음).
+  // ⚠️ useCallback([blockedUsers]) 유지 — 차단 목록이 바뀔 때 참조도 바뀌어야 React Compiler 메모가 풀린다.
+  const isBlocked = useCallback((user: { name?: string; handle?: string; id?: string }) =>
+    isBlockedIn(blockedUsers, user), [blockedUsers]);
 
   // 게시물 신고 → 신고 목록에 추가(피드에서 숨김) + 서버 reports에 접수(운영자 확인용).
   // 이미 신고했으면 무시.
@@ -3084,7 +3084,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const blockBackfillDoneRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured) return;
-    const targets = blockedUsers.filter((b) => !b.id && b.handle && !blockBackfillDoneRef.current.has(b.handle!));
+    // id가 uuid가 아니면(없음 또는 오프라인 차단 때 남은 'dm-핸들' 합성값) '없음'으로 보고 채운다 —
+    // 합성 id가 남아 있으면 isBlocked의 uuid 대조가 영영 동작하지 않는다(utils/blockMatch.ts).
+    const targets = blockedUsers.filter((b) => !isProfileUuid(b.id) && b.handle && !blockBackfillDoneRef.current.has(b.handle!));
     if (targets.length === 0) return;
     (async () => {
       for (const b of targets) {
@@ -3096,7 +3098,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             continue;
           }
           setBlockedUsers((prev) =>
-            prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+            prev.map((x) => (x.handle === b.handle && !isProfileUuid(x.id) ? { ...x, id: p.id } : x))
           );
           await apiBlock(p.id); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
           blockBackfillDoneRef.current.add(b.handle!); // 성공한 항목만 제외

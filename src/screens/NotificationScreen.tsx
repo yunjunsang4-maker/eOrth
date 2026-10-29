@@ -256,7 +256,8 @@ export default function NotificationScreen({ navigation }: Props) {
     setServerNotis(
       rows
         // 뮤트/차단한 사용자의 알림은 표시하지 않는다 (뮤트 = 알림 끔의 실제 적용 지점)
-        .filter((n) => !n.actorHandle || (!isMuted(n.actorHandle) && !isBlocked({ handle: n.actorHandle })))
+        // 차단은 actor_id(uuid)로도 본다 — 아이디를 바꿨거나 handle이 비어 와도 가린다
+        .filter((n) => !(n.actorHandle && isMuted(n.actorHandle)) && !isBlocked({ handle: n.actorHandle ?? undefined, id: n.actorId }))
         .map((n) => {
           const m = TYPE_MAP[n.type] ?? TYPE_MAP.neighbor_request;
           return {

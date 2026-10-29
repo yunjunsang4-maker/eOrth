@@ -1090,7 +1090,8 @@ function SnapStoryViewer({
   // 차단한 사용자 + 신고한 댓글 필터(App Store 1.2). PostComment.name은 서버 profiles.handle이라
   // handle로도 넘긴다 — isBlocked는 차단 항목에 handle이 있으면 handle끼리만 비교한다.
   const rawSnapComments = commentsByPost[currentSnap.id] ?? [];
-  const hideSnapComment = (c: any) => isBlocked({ name: c.name, handle: c.name }) || reportedCommentIds.includes(c.id);
+  // authorId = comments.author_id(uuid) — commentsByPost는 PostComment[]라 아래 hideComment와 같은 필드
+  const hideSnapComment = (c: any) => isBlocked({ name: c.name, handle: c.name, id: c.authorId }) || reportedCommentIds.includes(c.id);
   const comments = rawSnapComments
     .filter((c: any) => !hideSnapComment(c))
     .map((c: any) => ({
@@ -1139,7 +1140,11 @@ function SnapStoryViewer({
   // comments 도 매 렌더 새 배열이라 메모해도 매번 다시 계산된다.
   const mentionCandidates: MentionCandidate[] = [];
   for (const n of neighbors) mentionCandidates.push({ handle: n.username, photo: n.photo, emoji: n.emoji });
-  if (currentSnap.user?.handle) mentionCandidates.push({ handle: currentSnap.user.handle, photo: currentSnap.user.photo });
+  // 스냅 작성자도 authorId(uuid)로 차단을 본다 — 단독 스냅 경로(snapFallbackRef)는 거르지 않은 [record]를 넘겨서
+  // '이미 id로 걸러진 스냅'이라는 전제가 틀린다(QA L3). 본문 경로(아래 @자동완성)와 같은 조건.
+  if (currentSnap.user?.handle && !isBlocked({ ...currentSnap.user, id: currentSnap.authorId })) {
+    mentionCandidates.push({ handle: currentSnap.user.handle, photo: currentSnap.user.photo });
+  }
   for (const c of comments) {
     mentionCandidates.push({ handle: c.name, photo: c.photo });
     for (const r of ((c.replies ?? []) as any[])) mentionCandidates.push({ handle: r.name, photo: r.photo });
@@ -1727,7 +1732,7 @@ export default function PostDetailScreen() {
         .filter(
           (r) =>
             r.visibility === 'neighbors' &&
-            !isBlocked(r.user) &&
+            !isBlocked({ ...r.user, id: r.authorId }) && // authorId = posts.author_id(uuid)
             !archivedIds.includes(r.id) &&
             !reportedPostIds.includes(r.id)
         )
@@ -1741,7 +1746,8 @@ export default function PostDetailScreen() {
   // PostComment.name은 서버 profiles.handle이라 handle로도 넘긴다 — isBlocked는 차단 항목에
   // handle이 있으면 handle끼리만 비교해, name만 넘기면 항상 '차단 아님'이었다.
   const rawComments = commentsByPost[postId] ?? [];
-  const hideComment = (c: PostComment) => isBlocked({ name: c.name, handle: c.name }) || reportedCommentIds.includes(c.id);
+  // authorId = comments.author_id(uuid, 서버 댓글만) — 아이디를 바꾼 차단 상대의 댓글도 가린다
+  const hideComment = (c: PostComment) => isBlocked({ name: c.name, handle: c.name, id: c.authorId }) || reportedCommentIds.includes(c.id);
   const comments = rawComments
     .filter((c) => !hideComment(c))
     .map((c) => ({
@@ -2068,7 +2074,11 @@ export default function PostDetailScreen() {
   // comments 도 매 렌더 새 배열이라 메모해도 매번 다시 계산된다.
   const mentionCandidates: MentionCandidate[] = [];
   for (const n of neighbors) mentionCandidates.push({ handle: n.username, photo: n.photo, emoji: n.emoji });
-  if (record.user?.handle) mentionCandidates.push({ handle: record.user.handle, photo: record.user.photo });
+  // 글 작성자는 authorId(uuid)로도 차단을 본다 — 아래 handle 필터만으로는 아이디를 바꾼 차단 상대가
+  // 후보에 남는다(MentionCandidate엔 id가 없어 여기서 거른다). 이 후보 한 명만 빠진다.
+  if (record.user?.handle && !isBlocked({ ...record.user, id: record.authorId })) {
+    mentionCandidates.push({ handle: record.user.handle, photo: record.user.photo });
+  }
   for (const c of comments) {
     mentionCandidates.push({ handle: c.name, photo: c.photo });
     for (const r of (c.replies ?? [])) mentionCandidates.push({ handle: r.name, photo: r.photo });
