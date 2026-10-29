@@ -156,7 +156,8 @@ const hashTag = (k: string) => `#${k.replace(/^#+/, '')}`;
 
 const HEART_W = 24;
 const HEART_H = 21;
-const HeartSvg = ({ filled, size = HEART_W, color, strokeWidth = 2 }: { filled: boolean; size?: number; color?: string; strokeWidth?: number }) => {
+// SocialScreen 카드 하트도 같은 시안 하트를 쓴다(♥/♡ 글자는 플랫폼마다 글꼴이 달라 안드로이드 모양이 달랐다) — 그래서 export.
+export const HeartSvg = ({ filled, size = HEART_W, color, strokeWidth = 2 }: { filled: boolean; size?: number; color?: string; strokeWidth?: number }) => {
   const skin = useSkinAccent();
   const fillColor = color ?? skin.accent;
   return (

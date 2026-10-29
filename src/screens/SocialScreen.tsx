@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Text } from '../ui/Text';
+import { HeartSvg } from './PostDetailScreen';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
@@ -189,6 +190,10 @@ function SheetShell({
 // 여행 다이어리 카드 (2단 매거진 배치)
 // ─────────────────────────────────────────────
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
+// 카드 좋아요 하트 색 — 예전 ♥/♡ 글자 스타일 값 그대로(글자 → 시안 SVG 하트로 바꿔 플랫폼 간 모양 통일)
+const HEART_ON = '#FF6B9D';
+const HEART_OFF = '#99999B';
+const HEART_OFF_META = '#7A7A8A';
 
 const firstPhoto = (item: any): string | null => {
   if (item.viewType === 'cut') return item.cutPhoto?.previewUri || item.medias?.[0] || null;
@@ -255,7 +260,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, onLight }: any) {
         )}
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
-        <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
+        <HeartSvg filled={!!item.liked} size={12} strokeWidth={1.6} color={item.liked ? HEART_ON : HEART_OFF_META} />
         {item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
       {!item.isExample && (
@@ -300,7 +305,7 @@ function CutMeta({ item, navigation, toggleLike, onMore }: any) {
           )}
         </TouchableOpacity>
         <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
-          <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
+          <HeartSvg filled={!!item.liked} size={12} strokeWidth={1.6} color={item.liked ? HEART_ON : HEART_OFF_META} />
           {item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
         </TouchableOpacity>
         {!item.isExample && (
@@ -366,7 +371,7 @@ function DiaryTappable({ style, tilt, onSingle, onDouble, onLayout, children }: 
         pointerEvents="none"
         style={[d.heartPop, { opacity: heart, transform: [{ scale: heart.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.1] }) }] }]}
       >
-        <Text style={d.heartIcon}>♥</Text>
+        <View style={d.heartIconShadow}><HeartSvg filled size={64} color="rgba(255,255,255,0.95)" /></View>
       </Animated.View>
     </View>
   );
@@ -763,7 +768,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
             </TouchableOpacity>
             <View style={d.jourFooterRight}>
               <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
-                <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
+                <HeartSvg filled={!!item.liked} size={14} strokeWidth={1.6} color={item.liked ? HEART_ON : HEART_OFF} />
                 {item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
               </TouchableOpacity>
               {!item.isExample && (
@@ -824,7 +829,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
           </TouchableOpacity>
           <View style={d.polaMetaRight}>
             <TouchableOpacity onPress={() => { if (item.isExample) return; tap(); toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
-              <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
+              <HeartSvg filled={!!item.liked} size={14} strokeWidth={1.6} color={item.liked ? HEART_ON : HEART_OFF} />
               {item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
             </TouchableOpacity>
             {!item.isExample && (
@@ -922,7 +927,7 @@ const d = StyleSheet.create({
   // 더블탭 하트 팝
   tapWrap: { position: 'relative' },
   heartPop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
-  heartIcon: { fontSize: 68, color: 'rgba(255,255,255,0.95)', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
+  heartIconShadow: { shadowColor: '#000', shadowOpacity: 0.45, shadowOffset: { width: 0, height: 2 }, shadowRadius: 8 },
 
   // 폴라로이드 (피드)
   // 시안(Group 2085664521): 두 장 겹친 각진 폴라로이드
@@ -963,8 +968,6 @@ const d = StyleSheet.create({
   polaHandle: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
   polaMetaRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   polaLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  polaHeart: { color: '#99999B', fontSize: 15 },
-  polaHeartOn: { color: '#FF6B9D' },
   polaLikeCount: { color: '#99999B', fontSize: 11, fontWeight: '500' },
   polaMore: { color: '#99999B', fontSize: 16, fontWeight: '700' },
 
@@ -1006,8 +1009,6 @@ const d = StyleSheet.create({
   jourHandle: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
   jourFooterRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   jourLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  jourHeart: { color: '#99999B', fontSize: 15 },
-  jourHeartOn: { color: '#FF6B9D' },
   jourLikeCount: { color: '#99999B', fontSize: 11, fontWeight: '500' },
   jourMore: { color: '#99999B', fontSize: 16, fontWeight: '700' },
 
@@ -1050,8 +1051,6 @@ const d = StyleSheet.create({
   metaHandle: { color: '#9A95A5', fontSize: 10, flexShrink: 1 },
   metaTextLight: { color: '#8a7f6c' },
   metaLike: { flexDirection: 'row', alignItems: 'center' },
-  heart: { color: '#7A7A8A', fontSize: 13 },
-  heartOn: { color: '#FF6B9D' },
   metaCount: { color: '#9A95A5', fontSize: 10, marginLeft: 3 },
   more: { color: '#8B8B9E', fontSize: 14, paddingLeft: 4 },
 });
