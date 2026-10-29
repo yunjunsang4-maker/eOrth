@@ -113,7 +113,7 @@ const VIEW_CONFIG: Record<string, {
     gradient: ['rgba(0,216,243,0.12)', 'rgba(0,216,243,0.02)'],
   },
   album: {
-    name: '사진첩',
+    name: '앨범',
     accent: COLORS.albumAccent,
     gradient: ['rgba(255,166,87,0.12)', 'rgba(255,166,87,0.02)'],
   },
@@ -190,7 +190,7 @@ const ADD_FORMATS: { type: string; name: string }[] = [
   { type: 'feed',  name: '피드' },
   { type: 'blog',  name: '블로그' },
   { type: 'cut',   name: '스트립' },
-  { type: 'album', name: '사진첩' },
+  { type: 'album', name: '앨범' },
 ];
 
 // 기록의 미리보기 사진들 — 형식마다 사진이 들어 있는 필드가 달라(피드·사진첩은 medias,

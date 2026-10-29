@@ -103,7 +103,7 @@ const FORMATS: { type: string; icon: React.ReactNode; name: string; screen: stri
   { type: 'feed', icon: <FeedIcon />, name: '피드', screen: 'NewRecord' },
   { type: 'blog', icon: <BlogIcon />, name: '블로그', screen: 'BlogRecord' },
   { type: 'cut', icon: <CutIcon />, name: '스트립', screen: 'CutRecord' },
-  { type: 'album', icon: <AlbumIcon />, name: '사진첩', screen: 'AlbumCreate' },
+  { type: 'album', icon: <AlbumIcon />, name: '앨범', screen: 'AlbumCreate' },
 ];
 
 interface RecordFabProps {

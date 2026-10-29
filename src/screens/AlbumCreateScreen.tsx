@@ -342,7 +342,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     })).filter(g => g.countries.length > 0);
   })();
 
-  const defaultTitle = selectedCountry ? `${selectedCountry.name} 사진첩` : `${fmtDate(startDate)} 사진첩`;
+  const defaultTitle = selectedCountry ? `${selectedCountry.name} 앨범` : `${fmtDate(startDate)} 앨범`;
 
   // 이어 담기 모드: 그 사진첩에 이미 들어간 사진은 목록에서 뺀다
   const notAppended = appendedAssetIds

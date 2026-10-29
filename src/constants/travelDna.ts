@@ -99,7 +99,7 @@ export const DNA_QUESTIONS: DnaQuestion[] = [
     ko: { s: '일정표에서 먼저 정해지는 것', a: '인스타·유튜브에서 저장해놓은 맛집', b: '해당 도시의 관광지' },
     en: { s: 'What gets locked in first', a: 'Restaurants I saved online', b: 'The city landmarks' } },
   { id: 24, axis: 'purpose', weight: 2,
-    ko: { s: '내 여행 사진첩엔', a: '음식 사진 한 가득', b: '풍경과 건물 사진' },
+    ko: { s: '내 여행 앨범엔', a: '음식 사진 한 가득', b: '풍경과 건물 사진' },
     en: { s: 'My trip album says', a: 'Full of food photos', b: 'Scenery and architecture' } },
   { id: 25, axis: 'purpose', weight: 1,
     ko: { s: '여행지에서 가장 아까운 건', a: '맛없는 한 끼', b: '못 본 명소' },
