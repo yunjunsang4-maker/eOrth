@@ -10,10 +10,11 @@ import {
   Platform,
   Image,
   Modal,
-  ScrollView,
   Dimensions,
   Animated,
   Alert,
+  PanResponder,
+  Easing,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -32,6 +33,7 @@ import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton } 
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { AutoPillRing } from './PostDetailScreen';
 import DefaultAvatar from '../components/DefaultAvatar';
+import FeedPhoto from '../components/FeedPhoto';
 import ReportModal from '../components/ReportModal';
 import { handleBlock } from '../utils/reportAndBlock';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
@@ -377,6 +379,41 @@ export default function DMScreen({ navigation, route }: Props) {
 
   const [input, setInput] = useState('');
   const [recordPickerOpen, setRecordPickerOpen] = useState(false);
+  // 기록 공유 시트 — 소셜 ⋯ 메뉴(SocialScreen menuAnim)와 같은 방식: Modal 자체 애니메이션은 끄고(slide는 딤까지
+  // 통째로 올라와 검은 그림자가 따라온다) 값 하나(pickerAnim 0=닫힘·1=열림)로 딤은 제자리 페이드, 시트만 슬라이드.
+  // 끌어내리기는 pickerDragY를 그 위에 더한다. 닫기는 탭·끌기·배경·공유 모두 recordPickerOpen=false 한 경로.
+  // (예전엔 끌기가 시트를 800으로 따로 보낸 채 Modal slide와 겹쳐, 다시 열면 딤만 뜨고 시트가 안 보였다)
+  const [pickerMounted, setPickerMounted] = useState(false);
+  const pickerAnim = useRef(new Animated.Value(0)).current;
+  const pickerDragY = useRef(new Animated.Value(0)).current;
+  // 여는 애니메이션은 Modal onShow(모달이 실제로 뜬 뒤)에서 시작한다 — 마운트와 같은 순간에 시작하면
+  // 모달 생성·목록/사진 첫 렌더가 첫 프레임들을 잡아먹어 올라오는 게 끊겼다. 곡선은 빠르게 나와 부드럽게 멈추는 감속.
+  const openPickerAnim = () =>
+    Animated.timing(pickerAnim, { toValue: 1, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  useEffect(() => {
+    if (recordPickerOpen) {
+      pickerDragY.setValue(0);
+      if (pickerMounted) openPickerAnim(); // 닫히는 도중 다시 연 경우 — 모달이 그대로라 onShow가 다시 안 온다
+      else setPickerMounted(true);
+    } else if (pickerMounted) {
+      Animated.timing(pickerAnim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setPickerMounted(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordPickerOpen]);
+  // 콜백이 쓰는 값은 Animated 값·state setter뿐이라 useRef 박제(stale closure)에 안전
+  const pickerPan = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dy) > 4,
+    onPanResponderMove: (_e, g) => pickerDragY.setValue(Math.max(0, g.dy)),
+    onPanResponderRelease: (_e, g) => {
+      const isTap = Math.abs(g.dy) < 5 && Math.abs(g.dx) < 5; // 손잡이 탭
+      if (isTap || g.dy > 120 || g.vy > 0.8) setRecordPickerOpen(false);
+      else Animated.spring(pickerDragY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
+    },
+    onPanResponderTerminate: () => Animated.spring(pickerDragY, { toValue: 0, useNativeDriver: true }).start(),
+  })).current;
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [menuMsg, setMenuMsg] = useState<Message | null>(null);
@@ -1002,29 +1039,39 @@ export default function DMScreen({ navigation, route }: Props) {
 
 
       {/* 여행 기록 선택 모달 */}
-      <Modal visible={recordPickerOpen} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
+      <Modal visible={pickerMounted} transparent statusBarTranslucent navigationBarTranslucent animationType="none" onShow={openPickerAnim} onRequestClose={() => setRecordPickerOpen(false)}>
         <View style={st.pickerOverlay} accessibilityViewIsModal>
+          {/* 딤 — 제자리 페이드 */}
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, st.pickerDim, { opacity: pickerAnim }]} />
+          {/* 배경 탭으로 닫기 — 시트 '뒤' 형제 층이 받는다(시트를 Pressable로 감싸면 안쪽 목록 스크롤이 막힌다) */}
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setRecordPickerOpen(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[st.pickerSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }]}>
-            <View style={st.pickerHeader}>
+          <Animated.View style={[st.pickerSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }, { transform: [{ translateY: Animated.add(pickerAnim.interpolate({ inputRange: [0, 1], outputRange: [700, 0] }), pickerDragY) }] }]}>
+            {/* ✕ 대신 가운데 손잡이 — 이 머리 영역을 끌어내리면 닫히고(덜 내리면 복귀), 탭해도 닫힌다 */}
+            <View style={st.pickerHeader} {...pickerPan.panHandlers} accessibilityRole="button" accessibilityLabel={t('common.close')}>
+              <View style={st.pickerHandle} />
               <Text style={st.pickerTitle}>{t('dm.shareTravelRecord')}</Text>
-              <TouchableOpacity onPress={() => setRecordPickerOpen(false)}>
-                <Text style={st.pickerClose}>✕</Text>
-              </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.pickerList}>
-              {myRecords.length === 0 && (
-                <Text style={st.pickerEmpty}>{t('dm.noTravelRecord')}</Text>
-              )}
-              {myRecords.map(r => {
+            {/* FlatList — 보이는 줄부터 그린다(예전 ScrollView+map은 열자마자 전 기록 사진을 한꺼번에 불렀다).
+                썸네일은 FeedPhoto: 640px 축소본(r.thumbs) + expo-image 디스크 캐시 — RN Image로 원본을 매번 받아 70px로 줄이던 지연 제거 */}
+            <FlatList
+              data={myRecords}
+              keyExtractor={(r) => r.id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={st.pickerList}
+              initialNumToRender={8}
+              windowSize={5}
+              ListEmptyComponent={<Text style={st.pickerEmpty}>{t('dm.noTravelRecord')}</Text>}
+              renderItem={({ item: r }) => {
                 const viewLabel =
                   r.viewType === 'blog' ? t('postDetail.typeBlog') :
                   r.viewType === 'album' ? t('postDetail.typeAlbum') :
                   r.viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
+                const thumb = r.medias?.[0] || r.snapBackUri;
                 return (
-                  <TouchableOpacity key={r.id} style={st.pickerItem} activeOpacity={0.7} onPress={() => shareRecord(r)}>
-                    {(r.medias?.[0] || r.snapBackUri) ? (
-                      <Image source={{ uri: r.medias?.[0] || r.snapBackUri }} style={st.pickerThumb} resizeMode="cover" />
+                  <TouchableOpacity style={st.pickerItem} activeOpacity={0.7} onPress={() => shareRecord(r)}>
+                    {thumb ? (
+                      <FeedPhoto key={thumb} uri={thumb} thumbs={r.thumbs} style={st.pickerThumb} />
                     ) : (
                       <View style={[st.pickerThumb, st.pickerThumbEmpty]}>
                         <GlobeIcon size={20} />
@@ -1040,9 +1087,9 @@ export default function DMScreen({ navigation, route }: Props) {
                     </View>
                   </TouchableOpacity>
                 );
-              })}
-            </ScrollView>
-          </View>
+              }}
+            />
+          </Animated.View>
         </View>
       </Modal>
 
@@ -1381,22 +1428,24 @@ const st = StyleSheet.create({
 
   // 여행 기록 선택 모달
   pickerOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    flex: 1,
     justifyContent: 'flex-end',
   },
+  pickerDim: { backgroundColor: 'rgba(0,0,0,0.6)' },
   pickerSheet: {
     // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 pickerOverlay는 전체 폭 유지)
     width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
     backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '70%', paddingBottom: 30,
   },
+  // 머리 영역 = 끌기 손잡이 — 손잡이 바(설정 시트와 같은 40×4 흰 30%) 아래 제목 가운데
   pickerHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 16,
+    alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
+  pickerHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)', marginBottom: 12 },
   pickerTitle: { fontSize: 16, fontWeight: '700', color: C.white },
-  pickerClose: { fontSize: 20, color: C.muted },
   pickerList: { paddingHorizontal: 16, paddingTop: 12 },
   pickerEmpty: { textAlign: 'center', color: C.dim, marginTop: 40, fontSize: 14 },
   pickerItem: {

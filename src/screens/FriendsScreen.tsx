@@ -10,9 +10,12 @@ import {
   Animated,
   Image,
   useWindowDimensions,
+  Alert,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { SearchIcon, BackChevronIcon } from '../components/icons';
+import { SearchIcon, BackChevronIcon, EyeIcon, PinIcon, BellIcon, BellOffIcon, TrashIcon } from '../components/icons';
+import { SettingsCard } from '../components/settings/SettingsUI';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DefaultAvatar from '../components/DefaultAvatar';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -22,9 +25,8 @@ import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
 import { SHOW_MOCK_DM, mockDMListRow } from '../store/dmMock';
 import { getProfileByHandle } from '../services/profile';
-import { tap } from '../utils/haptics';
+import { tap, warn } from '../utils/haptics';
 import Toast from '../components/Toast';
-import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -39,7 +41,11 @@ const C = {
   dim: '#A1A1B0',
   muted: '#8B8B9E',
   online: '#34C759',
+  red: '#FF3B30', // 디자인 토큰 빨강(삭제)
 };
+
+// 고정한 대화(아이디 배열 JSON) — 이 기기 전용
+const PINNED_KEY = '@eorth/dm/pinnedHandles';
 
 interface Friend {
   id: string;
@@ -52,6 +58,7 @@ interface Friend {
   unread: number;
   online: boolean;
   isMuted?: boolean;
+  isPinned?: boolean;
 }
 
 // 상대시간 표기 (방금 전 / N분 전 / N시간 전 / 어제 / N일 전 / M월 D일)
@@ -82,9 +89,9 @@ export default function FriendsScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { neighbors, isBlocked, isMuted } = useSocialGraph();
-  const { blockUser, toggleMute, refreshNeighbors } = useRecordActions();
+  const { toggleMute, refreshNeighbors } = useRecordActions();
   const { conversations, unreadCount } = useDMData();
-  const { markRead, registerPeer } = useDMActions();
+  const { markRead, registerPeer, clearConversation } = useDMActions();
 
   // 당겨서 새로고침 — 메이트 목록(메이트)을 서버 기준으로 재동기화
   const [refreshing, setRefreshing] = useState(false);
@@ -181,7 +188,7 @@ export default function FriendsScreen({ navigation }: Props) {
 
   const handleToggleMute = () => {
     if (!selectedFriendId) return;
-    const friend = friends.find(f => f.id === selectedFriendId);
+    const friend = findSelected();
     if (!friend) return;
     const willMute = !isMuted(friend.handle);
     toggleMute(friend.handle); // store에 영속 저장
@@ -190,7 +197,7 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   const handleMarkAsRead = () => {
-    const friend = friends.find(f => f.id === selectedFriendId);
+    const friend = findSelected();
     if (!friend) return;
     if (unreadCount(friend.handle) > 0) {
       markRead(friend.handle);
@@ -201,15 +208,39 @@ export default function FriendsScreen({ navigation }: Props) {
     setSelectedFriendId(null);
   };
 
-  const handleBlockSelected = () => {
-    if (!selectedFriendId) return;
-    const friend = friends.find(f => f.id === selectedFriendId);
+  // 고정 — 고정한 대화는 목록 맨 위. ponytail: 이 기기에만 저장(음소거처럼 서버 user_state_flags로 기기 간
+  // 동기화하려면 서버 flag 종류 추가가 필요하다 — 요청이 오면 그때).
+  const [pinnedHandles, setPinnedHandles] = useState<string[]>([]);
+  useEffect(() => {
+    AsyncStorage.getItem(PINNED_KEY)
+      .then((v) => { try { const a = v ? JSON.parse(v) : []; if (Array.isArray(a)) setPinnedHandles(a); } catch { /* 깨진 값은 무시 */ } })
+      .catch(() => {});
+  }, []);
+
+  // 목록 행 조회 — 가상 대화방 행(store/dmMock)도 메뉴 대상이라 friends가 아니라 화면에 그린 목록(mergedFriends)에서 찾는다
+  const findSelected = () => mergedFriends.find(f => f.id === selectedFriendId);
+
+  const handleTogglePin = () => {
+    const friend = findSelected();
     if (!friend) return;
-    confirmBlock(friend.name, () => {
-      blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle, id: friend.id });
-      showToast(t('friends.blockedNameToast', { name: friend.name }));
-      setSelectedFriendId(null);
-    }, t);
+    const willPin = !pinnedHandles.includes(friend.handle);
+    const next = willPin ? [...pinnedHandles, friend.handle] : pinnedHandles.filter((h) => h !== friend.handle);
+    setPinnedHandles(next);
+    AsyncStorage.setItem(PINNED_KEY, JSON.stringify(next)).catch(() => {});
+    showToast(willPin ? t('friends.toastPinOn', { name: friend.name }) : t('friends.toastPinOff', { name: friend.name }));
+    setSelectedFriendId(null);
+  };
+
+  // 삭제 — 대화방 '나가기'와 같은 동작(clearConversation). 메이트 행은 목록에 남고 대화 내용만 지워진다
+  const handleDeleteSelected = () => {
+    const friend = findSelected();
+    if (!friend) return;
+    setSelectedFriendId(null);
+    warn(); // 되돌릴 수 없는 동작을 묻는 중
+    Alert.alert(t('friends.deleteChatTitle'), t('dm.leaveChatMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('friends.deleteShort'), style: 'destructive', onPress: () => clearConversation(friend.handle) },
+    ]);
   };
 
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
@@ -225,6 +256,7 @@ export default function FriendsScreen({ navigation }: Props) {
       lastMessageAt: last?.createdAt ?? (hasConvo ? 0 : f.lastMessageAt),
       unread: unreadCount(f.handle),
       isMuted: isMuted(f.handle), // 음소거는 store(mutedHandles)에서 — 재진입·재시작에도 유지
+      isPinned: pinnedHandles.includes(f.handle),
       blocked,
       photo: blocked ? undefined : f.photo, // 차단한 상대는 기본 프사만
     };
@@ -241,7 +273,7 @@ export default function FriendsScreen({ navigation }: Props) {
           f.handle.toLowerCase().includes(search.toLowerCase())
       )
     : visibleFriends
-  ).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+  ).sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || b.lastMessageAt - a.lastMessageAt); // 고정한 대화가 맨 위
 
   return (
     <SafeAreaView style={st.safe}>
@@ -336,6 +368,12 @@ export default function FriendsScreen({ navigation }: Props) {
         </Pressable>
       </ScrollView>
 
+      {/* 메뉴가 떠 있는 동안 화면 전체를 덮는 투명 닫기 층 — 행·머리글마다 붙인 닫기 처리로는 목록 아래 빈 공간 등
+          빈틈이 남아 '그 행을 다시 눌러야만' 풀렸다. 팝업은 이 층 위(뒤에 렌더 + zIndex)라 계속 눌린다 */}
+      {selectedFriendId !== null && (
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelectedFriendId(null)} accessible={false} />
+      )}
+
       {/* 팝업 메뉴 — 행 내부가 아니라 화면 루트에서 측정 좌표로 렌더 (안드로이드 터치 호환) */}
       {selectedFriendId !== null && popupAnchor && (() => {
         const friend = filtered.find((f) => f.id === selectedFriendId);
@@ -344,9 +382,11 @@ export default function FriendsScreen({ navigation }: Props) {
           <FriendPopupMenu
             anchor={popupAnchor}
             isCurrentlyMuted={friend.isMuted ?? false}
+            isCurrentlyPinned={friend.isPinned}
             onToggleMute={handleToggleMute}
             onMarkAsRead={handleMarkAsRead}
-            onBlock={handleBlockSelected}
+            onTogglePin={handleTogglePin}
+            onDelete={handleDeleteSelected}
           />
         );
       })()}
@@ -358,18 +398,24 @@ export default function FriendsScreen({ navigation }: Props) {
 }
 
 // ─── 팝업 메뉴 (화면 루트 오버레이) ───
+// 옵션: 읽음 · 고정 · 끄기 · 삭제(차단은 대화방 ⋯ 시트에 있다). 재질은 설정 계열 카드(SettingsCard — #111116 + 공용 링)와
+// 통일, 아이콘은 이모지 대신 공용 SVG.
 function FriendPopupMenu({
   anchor,
   isCurrentlyMuted,
+  isCurrentlyPinned,
   onToggleMute,
   onMarkAsRead,
-  onBlock,
+  onTogglePin,
+  onDelete,
 }: {
   anchor: { y: number; height: number; placeBelow: boolean };
   isCurrentlyMuted: boolean;
+  isCurrentlyPinned: boolean;
   onToggleMute: () => void;
   onMarkAsRead: () => void;
-  onBlock: () => void;
+  onTogglePin: () => void;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const { height: winH } = useWindowDimensions();
@@ -392,22 +438,27 @@ function FriendPopupMenu({
     <Animated.View
       style={[st.popupMenu, placement, { opacity: popupOpacity, transform: [{ scale: popupScale }] }]}
     >
-      <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
-        <Text style={st.popupIcon}>{isCurrentlyMuted ? '🔔' : '🔕'}</Text>
-        <Text style={st.popupText}>{isCurrentlyMuted ? t('friends.muteOnShort') : t('friends.muteOffShort')}</Text>
-      </TouchableOpacity>
-      <View style={st.popupDivider} />
-      <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
-        <Text style={st.popupIcon}>📖</Text>
-        <Text style={st.popupText}>{t('friends.read')}</Text>
-      </TouchableOpacity>
-      <View style={st.popupDivider} />
-      <TouchableOpacity style={st.popupBtn} onPress={onBlock}>
-        <Text style={st.popupIcon}>🚫</Text>
-        <Text style={[st.popupText, { color: '#FF6B6B' }]}>{t('friends.block')}</Text>
-      </TouchableOpacity>
-      {/* 말풍선 꼬리 */}
-      <View style={anchor.placeBelow ? st.popupArrowBelow : st.popupArrow} />
+      <SettingsCard style={st.popupCard}>
+        <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
+          <EyeIcon size={16} color={C.white} />
+          <Text style={st.popupText}>{t('friends.read')}</Text>
+        </TouchableOpacity>
+        <View style={st.popupDivider} />
+        <TouchableOpacity style={st.popupBtn} onPress={onTogglePin}>
+          <PinIcon size={16} color={C.white} />
+          <Text style={st.popupText}>{isCurrentlyPinned ? t('friends.unpinShort') : t('friends.pinShort')}</Text>
+        </TouchableOpacity>
+        <View style={st.popupDivider} />
+        <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
+          {isCurrentlyMuted ? <BellIcon size={16} color={C.white} /> : <BellOffIcon size={16} color={C.white} />}
+          <Text style={st.popupText}>{isCurrentlyMuted ? t('friends.muteOnShort') : t('friends.muteOffShort')}</Text>
+        </TouchableOpacity>
+        <View style={st.popupDivider} />
+        <TouchableOpacity style={st.popupBtn} onPress={onDelete}>
+          <TrashIcon size={16} color={C.red} />
+          <Text style={[st.popupText, { color: C.red }]}>{t('friends.deleteShort')}</Text>
+        </TouchableOpacity>
+      </SettingsCard>
     </Animated.View>
   );
 }
@@ -482,10 +533,11 @@ function FriendRow({
         {/* 정보 */}
         <View style={st.rowInfo}>
           <View style={st.rowTop}>
-            <Text style={st.rowName} {...andFitText}>
-              {friend.name}
-              {friend.isMuted && <Text style={st.rowMuteIcon}> 🔕</Text>}
-            </Text>
+            <View style={st.rowNameWrap}>
+              <Text style={[st.rowName, { flexShrink: 1 }]} {...andFitText}>{friend.name}</Text>
+              {friend.isPinned && <PinIcon size={12} color={C.dim} />}
+              {friend.isMuted && <BellOffIcon size={12} color={C.dim} />}
+            </View>
             <Text style={st.rowTime}>{friend.lastMessageAt ? timeAgo(friend.lastMessageAt, t) : ''}</Text>
           </View>
           <View style={st.rowBottom}>
@@ -597,73 +649,44 @@ const st = StyleSheet.create({
   rowContainer: {
     position: 'relative',
   },
+  // 위치·그림자만 바깥, 재질(#111116 + 공용 링, 모서리 22)은 SettingsCard(popupCard)
   popupMenu: {
     position: 'absolute',
     left: 20,
     right: 20,
-    backgroundColor: '#1E1E28',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#BF85FC',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingVertical: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
-    shadowRadius: 8,
+    shadowRadius: 10,
     elevation: 12,
     zIndex: 9999,
   },
-  popupBtn: {
+  popupCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    justifyContent: 'space-around',
+    minHeight: 52,
+    paddingHorizontal: 6,
+  },
+  popupBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
     gap: 6,
   },
-  popupIcon: {
-    fontSize: 14,
-  },
   popupText: {
-    fontSize: 12,
+    fontSize: 13,
     color: C.white,
     fontWeight: '600',
   },
   popupDivider: {
-    width: 1,
+    width: 0.8,
     height: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.15)', // 설정 행 구분선과 같은 흰 15%
   },
-  popupArrow: {
-    position: 'absolute',
-    bottom: -6,
-    alignSelf: 'center',
-    width: 10,
-    height: 10,
-    backgroundColor: '#1E1E28',
-    borderBottomWidth: 1.5,
-    borderRightWidth: 1.5,
-    borderColor: '#BF85FC',
-    transform: [{ rotate: '45deg' }],
-  },
-  popupArrowBelow: {
-    position: 'absolute',
-    top: -6,
-    alignSelf: 'center',
-    width: 10,
-    height: 10,
-    backgroundColor: '#1E1E28',
-    borderTopWidth: 1.5,
-    borderLeftWidth: 1.5,
-    borderColor: '#BF85FC',
-    transform: [{ rotate: '45deg' }],
-  },
-  rowMuteIcon: {
-    fontSize: 11,
-    color: C.dim,
-  },
+  rowNameWrap: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   avatarWrap: {
     position: 'relative',
     marginRight: 12,
