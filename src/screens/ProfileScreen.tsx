@@ -1528,8 +1528,17 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   });
   const [isDragging, setIsDragging] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
-  // 화면 이탈 시 드래그로 숨긴 탭 바가 남지 않게 안전 복원
-  useEffect(() => () => setTabBarHidden(false), []);
+  // 드롭 직후 화면에 먼저 반영할 순서. 공유 스토어 갱신(setCardOrder)은 useSyncExternalStore라 부르는 즉시
+  // 다른 상태 변경과 묶이지 않는 동기 렌더를 한 번 더 일으키고 AsyncStorage 쓰기도 따라온다 — 손을 떼는 순간
+  // 렌더 2번 + 탭 바 복원 애니메이션이 정착 스프링·LayoutAnimation과 겹쳐 끊겼다. 그래서 드롭 순간엔 이 로컬
+  // 상태만 바꿔(다른 상태와 한 번에 렌더) 카드를 옮기고, 스토어 저장·탭 바 복원은 정착이 끝난 뒤(commitDrop)로 미룬다.
+  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
+  const pendingOrderRef = useRef<string[] | null>(null);
+  // 화면 이탈 시 드래그로 숨긴 탭 바가 남지 않게 안전 복원 + 정착 도중 이탈해도 미뤄 둔 순서는 저장
+  useEffect(() => () => {
+    setTabBarHidden(false);
+    if (pendingOrderRef.current) setCardOrder(pendingOrderRef.current);
+  }, []);
   // 카드 표시 순서(id 배열) — 드래그 재정렬은 이 순서만 갱신한다
   const cardOrder = useCardOrder(); // 공유 스토어 — 다른 인스턴스의 재정렬도 즉시 반영
   // ─── 여행 카드 합치기(병합 모드) — 탭 순서 유지, 첫 번째로 선택한 카드가 대표 ───
@@ -1613,8 +1622,23 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     });
   };
 
+  // 드롭을 확정 — 정착 애니메이션이 끝난 뒤(움직이는 게 없을 때) 스토어 저장·탭 바 복원을 한다
+  const commitDrop = () => {
+    setTabBarHidden(false);
+    const ids = pendingOrderRef.current;
+    pendingOrderRef.current = null;
+    if (ids) setCardOrder(ids);
+    setPendingOrder(null);
+  };
+
   const handleDragStart = (idx: number) => {
     if (mergeMode) return; // 병합 모드 중엔 순서 변경 드래그 비활성
+    // 이전 드롭의 정착 도중 다시 잡으면 그 정착 콜백은 안 불린다(finished=false) → 미뤄 둔 순서를 지금 저장
+    if (pendingOrderRef.current) {
+      setCardOrder(pendingOrderRef.current);
+      pendingOrderRef.current = null;
+      setPendingOrder(null);
+    }
     // 진행 중인 정착 애니메이션이 있으면 멈추고 새 드래그 시작
     dragOffset.stopAnimation();
     dragScale.stopAnimation();
@@ -1683,7 +1707,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     stopAutoScroll(); // 어떤 경로로 끝나든 루프는 먼저 멈춘다
     if (mergeMode) return;
     setIsDragging(false);
-    setTabBarHidden(false);
+    // 탭 바 복원은 정착이 끝난 뒤(commitDrop) — 놓는 순간 탭 바 애니메이션까지 겹치면 끊긴다
     hoverIdxRef.current = null;
     setHoverIdx(null);
 
@@ -1702,7 +1726,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       // 메이트 카드들은 LayoutAnimation으로 새 위치까지 출렁이며 이동,
       // 끌던 카드는 새 자리(targetIdx)에서 손가락 위치 → 슬롯으로 스프링 정착
       LayoutAnimation.configureNext(LIQUID_LAYOUT);
-      setCardOrder(ids);
+      // 스토어(setCardOrder)가 아니라 로컬 상태로 — 위 상태 변경들과 한 번의 렌더로 묶인다. 저장은 commitDrop
+      pendingOrderRef.current = ids;
+      setPendingOrder(ids);
       // 대표 카드(0)가 낀 이동은 새 자리에 다른 인스턴스가 그려져 LayoutAnimation이 위치를 이어주지 않는다
       // → 오프셋을 새 슬롯 기준으로 옮겨야 손가락 위치에서 출발한다(안 하면 두 슬롯 거리만큼 튐)
       if (idx === 0 || targetIdx === 0) {
@@ -1711,10 +1737,10 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         dragOffset.setValue({ x: from.x + dx - to.x, y: from.y + sy - to.y });
       }
       setActiveIdx(targetIdx);
-      settle(() => setActiveIdx(null));
+      settle(() => { setActiveIdx(null); commitDrop(); });
     } else {
       // 유효한 대상이 없으면 원래 자리로 부드럽게 복귀
-      settle(() => setActiveIdx(null));
+      settle(() => { setActiveIdx(null); commitDrop(); });
     }
   };
 
@@ -1898,14 +1924,15 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 사용자가 드래그로 지정한 순서(cardOrder)대로 정렬.
   // cardOrder에 없는(새로 만든) 카드는 맨 앞으로 → 메인 카드 자리를 차지한다.
   const displayTrips = useMemo(() => {
-    if (cardOrder.length === 0) return baseTrips;
-    const orderIndex = new Map(cardOrder.map((id, i) => [id, i] as const));
+    const order = pendingOrder ?? cardOrder; // 드롭 직후엔 아직 스토어에 안 쓴 순서(pendingOrder)가 우선
+    if (order.length === 0) return baseTrips;
+    const orderIndex = new Map(order.map((id, i) => [id, i] as const));
     return [...baseTrips].sort((a, b) => {
       const ia = orderIndex.has(a.id) ? (orderIndex.get(a.id) as number) : -1;
       const ib = orderIndex.has(b.id) ? (orderIndex.get(b.id) as number) : -1;
       return ia - ib;
     });
-  }, [baseTrips, cardOrder]);
+  }, [baseTrips, cardOrder, pendingOrder]);
 
   // ─── 여행 카드 합치기 (병합 모드) ───
   // tripGroups 기반 카드만 합칠 수 있다 (legacy 더미 카드는 그룹 데이터가 없음)
