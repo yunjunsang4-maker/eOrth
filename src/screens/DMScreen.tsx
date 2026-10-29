@@ -27,7 +27,6 @@ import { useRecordData, useFeed, useRecordActions, useSocialGraph, TravelRecord 
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { SHOW_MOCK_DM, MOCK_DM_HANDLE, mockDMMessages, mockDMActions } from '../store/dmMock';
 import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon, BackChevronIcon, ExitIcon } from '../components/icons';
 import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton } from '../components/settings/SettingsUI';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -342,13 +341,8 @@ export default function DMScreen({ navigation, route }: Props) {
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
   const { conversations } = useDMData();
-  // 개발용 가상 대화방(store/dmMock) — 메시지·액션을 로컬 state로 바꿔 끼워 서버·저장소를 건드리지 않는다
-  const isMockDM = SHOW_MOCK_DM && friend.handle === MOCK_DM_HANDLE;
-  const [mockMsgs, setMockMsgs] = useState<Message[]>(() => (isMockDM ? mockDMMessages() : []));
-  const realDMActions = useDMActions();
-  const dmActions = useMemo(() => (isMockDM ? mockDMActions(realDMActions, setMockMsgs) : realDMActions), [isMockDM, realDMActions]);
-  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory, checkBlockedWith } = dmActions;
-  const messages = isMockDM ? mockMsgs : conversations[friend.handle] ?? [];
+  const { addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory, checkBlockedWith } = useDMActions();
+  const messages = conversations[friend.handle] ?? [];
 
   // 대화 진입 시 상대(profile uuid) 등록 + 서버 히스토리 로드 (백엔드 설정 시)
   useEffect(() => {

@@ -23,7 +23,6 @@ import type { TFunction } from 'i18next';
 import { useSocialGraph, useRecordActions } from '../store/recordStore';
 import { useDMData, useDMActions } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
-import { SHOW_MOCK_DM, mockDMListRow } from '../store/dmMock';
 import { getProfileByHandle } from '../services/profile';
 import { tap, warn } from '../utils/haptics';
 import Toast from '../components/Toast';
@@ -217,7 +216,7 @@ export default function FriendsScreen({ navigation }: Props) {
       .catch(() => {});
   }, []);
 
-  // 목록 행 조회 — 가상 대화방 행(store/dmMock)도 메뉴 대상이라 friends가 아니라 화면에 그린 목록(mergedFriends)에서 찾는다
+  // 목록 행 조회 — 화면에 그린 목록(mergedFriends) 기준
   const findSelected = () => mergedFriends.find(f => f.id === selectedFriendId);
 
   const handleTogglePin = () => {
@@ -244,8 +243,7 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
-  // 개발용 가상 대화방 행(store/dmMock) — 목록 화면에만 붙고 friends state·dmStore에는 들어가지 않는다
-  const mergedFriends = (SHOW_MOCK_DM ? [...friends, mockDMListRow()] : friends).map(f => {
+  const mergedFriends = friends.map(f => {
     const msgs = conversations[f.handle];
     const blocked = isBlocked({ name: f.name, handle: f.handle });
     const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
