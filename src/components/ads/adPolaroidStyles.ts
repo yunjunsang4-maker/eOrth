@@ -12,14 +12,23 @@ export const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default
 
 export const polaroidStyles = StyleSheet.create({
   wrap: {},
+  // iOS는 회전된 뷰 테두리를 안티앨리어싱하지 않아 계단처럼 깨진다 — 래스터화(shouldRasterizeIOS) +
+  // 1px 투명 블리드 링으로 테두리를 비트맵 안쪽에 두어 보간되게 한다(SocialScreen DiaryTappable·polaBack과 같은 방식).
+  // 뒷장: 바깥 = 회전 + 블리드(-1 + padding 1이라 보이는 크기는 앞장과 같다), 안쪽 = 채움
   back: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: -1, left: -1, right: -1, bottom: -1,
+    padding: 1,
+    transform: [{ rotate: '-5deg' }],
+  },
+  backFill: {
+    flex: 1,
     backgroundColor: '#2B2B30',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 0,
-    transform: [{ rotate: '-5deg' }],
   },
+  // 앞장을 감싸는 래스터화 블리드 링 — 레이아웃 크기는 그대로(margin -1 + padding 1)
+  raster: { margin: -1, padding: 1 },
   front: {
     backgroundColor: '#333337',
     borderRadius: 0,

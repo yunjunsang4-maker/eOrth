@@ -123,16 +123,21 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
       accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
     >
       {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
-      <View style={polaroidStyles.back} pointerEvents="none" />
-      <View style={polaroidStyles.front}>
-        <LinearGradient colors={[...ad.gradient]} style={polaroidStyles.media}>
-          <Text style={polaroidStyles.mediaEmoji}>{ad.emoji}</Text>
-          <View style={polaroidStyles.badge}>
-            <Text style={polaroidStyles.badgeText}>{t('social.adBadge')}</Text>
-          </View>
-        </LinearGradient>
-        {/* 사진 밑 캡션 한 줄 — 기록 카드와 동일 */}
-        <Text style={[polaroidStyles.caption, { fontFamily: SERIF }]} numberOfLines={1}>{t(ad.titleKey)}</Text>
+      {/* 뒷장·앞장 모두 래스터화 + 블리드 링 — 회전 테두리 계단현상 방지(adPolaroidStyles 주석) */}
+      <View style={polaroidStyles.back} pointerEvents="none" collapsable={false} shouldRasterizeIOS>
+        <View style={polaroidStyles.backFill} />
+      </View>
+      <View style={polaroidStyles.raster} collapsable={false} shouldRasterizeIOS>
+        <View style={polaroidStyles.front}>
+          <LinearGradient colors={[...ad.gradient]} style={polaroidStyles.media}>
+            <Text style={polaroidStyles.mediaEmoji}>{ad.emoji}</Text>
+            <View style={polaroidStyles.badge}>
+              <Text style={polaroidStyles.badgeText}>{t('social.adBadge')}</Text>
+            </View>
+          </LinearGradient>
+          {/* 사진 밑 캡션 한 줄 — 기록 카드와 동일 */}
+          <Text style={[polaroidStyles.caption, { fontFamily: SERIF }]} numberOfLines={1}>{t(ad.titleKey)}</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );

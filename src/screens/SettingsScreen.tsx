@@ -663,7 +663,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <SettingGroup items={mateItems} radius={30} style={st.mateCard} />
         {/* 토글 라벨만으로는 무엇이 오가는지 알 수 없다 — 끄면 무엇이 사라지고 무엇을
             잃는지까지 적는다(개인정보처리방침·기록 작성 화면 안내와 같은 내용). */}
-        {mateItems.length > 0 && <Text style={settingsText.groupNote}>{t('settings.mateRecoNote')}</Text>}
+        {mateItems.length > 0 && <Text style={[settingsText.groupNote, st.mateNote]}>{t('settings.mateRecoNote')}</Text>}
 
         {/* 앱 설정 */}
         <SettingGroup
@@ -945,6 +945,13 @@ const st = StyleSheet.create({
 
   // 메이트 안내문 아래 → '앱 설정' 라벨 간격 25(다른 그룹 라벨은 23)
   groupLabelAfterNote: { marginTop: 25 },
+
+  // 메이트 안내문 — 시안 AppleSDGothicNeoM00 10pt·행간 140%·자간 0 (크기·행간·색은 groupNote 그대로)
+  mateNote: {
+    letterSpacing: 0,
+    fontWeight: '400',
+    fontFamily: Platform.select({ ios: 'AppleSDGothicNeo-Medium', default: undefined }),
+  },
 
   // 메이트 추천 단독 카드 — 계정 카드와 간격 20
   mateCard: { marginTop: 20 },

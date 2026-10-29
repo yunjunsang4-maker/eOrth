@@ -58,7 +58,11 @@ export default function AffiliatePolaroidCard({ campaign, tilt = -3, onFallback 
       accessibilityRole="button"
       accessibilityLabel={`${t('social.adBadge')} · ${headline}`}
     >
-      <View style={polaroidStyles.back} pointerEvents="none" />
+      {/* 뒷장·앞장 모두 래스터화 + 블리드 링 — 회전 테두리 계단현상 방지(adPolaroidStyles 주석) */}
+      <View style={polaroidStyles.back} pointerEvents="none" collapsable={false} shouldRasterizeIOS>
+        <View style={polaroidStyles.backFill} />
+      </View>
+      <View style={polaroidStyles.raster} collapsable={false} shouldRasterizeIOS>
       <View style={polaroidStyles.front}>
         <View style={polaroidStyles.media}>
           {/* 원격 광고 이미지 — 디스크 캐시가 있는 FeedPhoto로. 같은 배너가 피드에서
@@ -80,6 +84,7 @@ export default function AffiliatePolaroidCard({ campaign, tilt = -3, onFallback 
           // 법정 고지 문구라 잘리면 안 되므로 numberOfLines로 줄 수를 제한하지 않는다.
           <Text style={s.disclosure}>{disclosure}</Text>
         )}
+      </View>
       </View>
     </TouchableOpacity>
   );

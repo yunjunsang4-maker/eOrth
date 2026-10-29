@@ -2,6 +2,11 @@
 
 체크 항목(`- [ ]`)만 화면에 나온다. `## 제목`으로 묶고, 끝의 `[[메모리이름]]`은 자동 발견과 연결한다.
 
+## 오늘 (10/29)
+- [ ] 안드로이드 실기기: 소셜·보관함 카드와 광고 카드 테두리가 깨져 보이는지 확인 (iOS만 고침) · [[eorth-tilt-rotation-antialiasing]]
+- [ ] 아이폰: 광고 카드 프레임 테두리가 선명해졌는지 다시 확인
+- [ ] 보관함 가상 게시물 끄기 — ArchivedPostsScreen의 SHOW_ARCHIVE_MOCKS
+
 ## 이번 주
 - [ ] 10/10 파기 기한 전에 행사 메이트 매칭 데이터 정리 · [[eorth-event-mate-matching]]
 - [ ] photo-lab 미커밋 변경 정리하고 커밋 · [[eorth-photo-lab-workbench]]

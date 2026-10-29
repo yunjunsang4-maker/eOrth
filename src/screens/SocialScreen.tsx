@@ -69,6 +69,7 @@ import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
 import { stageWidthNow, useStageGutter, useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton } from '../components/settings/SettingsUI';
 import { useTabBarClearance } from '../utils/tabBar';
 
 const APP_LOGO = require('../../assets/example-avatar.webp'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
@@ -353,8 +354,12 @@ function DiaryTappable({ style, tilt, onSingle, onDouble, onLayout, children }: 
   return (
     <View style={d.tapWrap}>
       <Pressable onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} onLayout={onLayout}>
-        <Animated.View style={[style, { transform: cardTransform }]}>
-          {children}
+        {/* iOS는 회전된 뷰의 테두리를 안티앨리어싱하지 않아 tilt 카드 가장자리가 계단처럼 깨진다.
+            회전 레이어를 래스터화하면 비트맵이 보간돼 부드러워지지만 비트맵 '가장자리'는 여전히 하드엣지라,
+            margin:-1+padding:1 투명 블리드 링으로 카드 테두리를 비트맵 안쪽으로 밀어 넣는다(CutCanvasPreview와 같은 방식).
+            안드로이드는 renderToHardwareTextureAndroid가 뷰 경계로 잘라 핀·테이프가 잘리므로 iOS만. */}
+        <Animated.View collapsable={false} shouldRasterizeIOS style={{ margin: -1, padding: 1, transform: cardTransform }}>
+          <View style={style}>{children}</View>
         </Animated.View>
       </Pressable>
       <Animated.View
@@ -784,7 +789,10 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
   return (
     <DiaryTappable style={d.polaWrap} tilt={tilt} onSingle={open} onDouble={like}>
       {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
-      <View style={d.polaBack} pointerEvents="none" />
+      {/* 뒷장도 자체 회전이라 같은 래스터화 + 블리드 링(DiaryTappable 주석 참조) */}
+      <View style={d.polaBack} pointerEvents="none" collapsable={false} shouldRasterizeIOS>
+        <View style={d.polaBackFill} />
+      </View>
       <View style={d.polaFront}>
         {/* 데코 테이프 — 위 모서리에 붙임 (2종 중 카드별 랜덤) */}
         <View pointerEvents="none" style={[d.polaTape, tapeVariant === 1 && { top: -13 }]}>
@@ -848,27 +856,24 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
             // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
             // left/right:0 대신 ss.sheet의 width/maxWidth/alignSelf에 맡긴다 —
             // 절대배치에 left/right를 주면 폭이 창 폭으로 고정돼 클램프가 무시된다
-            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
+            // 재질은 설정 계열 시트(LanguageSheet)와 같은 공용 부품 — 검은 카드(SettingsCard)·설정 행·취소 알약
+            style={[ss.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { position: 'absolute', bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [120 + menuOptions.length * 60 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
           >
-            <View style={ss.handle} />
-            <View style={{ paddingTop: 4, paddingBottom: 8 }}>
+            <View style={ss.menuHandle} />
+            <SettingsCard style={{ marginBottom: 10 }}>
               {menuOptions.map((opt, i) => (
-                <View key={opt.key}>
-                  {i > 0 && <View style={[s.menuDivider, { marginHorizontal: 16 }]} />}
-                  <TouchableOpacity
-                    style={[s.menuItem, { height: 54 }]}
-                    activeOpacity={0.7}
+                <React.Fragment key={opt.key}>
+                  {i > 0 && <SettingsDivider />}
+                  <SettingsOptionRow
+                    left={<View style={{ width: 24, alignItems: 'center' }}>{opt.icon}</View>}
+                    label={opt.label}
+                    danger={opt.danger}
                     onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}
-                  >
-                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>{opt.icon}</View>
-                    <Text style={[s.menuItemText, { fontSize: 15 }, opt.danger && s.menuItemDanger]}>{opt.label}</Text>
-                  </TouchableOpacity>
-                </View>
+                  />
+                </React.Fragment>
               ))}
-            </View>
-            <TouchableOpacity style={ss.cancelCard} activeOpacity={0.7} onPress={() => setMenuVisible(false)}>
-              <Text style={ss.cancelText}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
+            </SettingsCard>
+            <SettingsPillButton label={t('common.cancel')} onPress={() => setMenuVisible(false)} baseRim="rgba(255,255,255,0.15)" />
           </Animated.View>
         </View>
       </Modal>
@@ -923,13 +928,18 @@ const d = StyleSheet.create({
   // 시안(Group 2085664521): 두 장 겹친 각진 폴라로이드
   polaWrap: {},
   // 뒷장 — 앞장과 같은 크기를 살짝 더 회전시켜 모서리가 뒤로 삐져나와 겹쳐 보인다
+  // 바깥 = 회전 + 1px 투명 블리드(top/left/right/bottom -1 + padding 1이라 보이는 크기는 앞장과 같다), 안쪽 = 채움
   polaBack: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute', top: -1, left: -1, right: -1, bottom: -1,
+    padding: 1,
+    transform: [{ rotate: '-5deg' }],
+  },
+  polaBackFill: {
+    flex: 1,
     backgroundColor: '#2B2B30',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
     borderRadius: 0,
-    transform: [{ rotate: '-5deg' }],
   },
   // 앞장 — 불투명 회색 유리 룩(별 차단), 각진 모서리(블로그 카드처럼)
   polaFront: {
@@ -2198,28 +2208,9 @@ const s = StyleSheet.create({
   },
 
   // (메이트 피드 friendsScroll 패딩은 FlashList 전환으로 d.cellLeft/cellRight/feedSide/feedTopGap에 나뉘어 옮겨졌다)
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 48,
-    paddingHorizontal: 16,
-    gap: 10,
-  },
   // (구) 이모지 아이콘 칸 — 메뉴는 앱 아이콘(SVG)으로 교체됨. 남은 이모지 목록(공유 시트 등)에만 쓰인다.
   menuItemIcon: {
     fontSize: 16,
-  },
-  menuItemText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: C.white,
-  },
-  menuItemDanger: {
-    color: '#FF3B30',
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#3A3A4A',
   },
 
   // 빈 상태
@@ -2376,17 +2367,20 @@ const ss = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 12,
   },
-  cancelCard: {
-    marginHorizontal: 16,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
+  // 게시물 ⋯ 메뉴 — LanguageSheet와 같은 틀(배경 없는 시트 위에 카드·알약이 뜬다)
+  menuSheet: {
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
   },
-  cancelText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#A1A1B0',
+  menuHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    alignSelf: 'center',
+    marginBottom: 12,
   },
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {

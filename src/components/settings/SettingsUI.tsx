@@ -302,9 +302,11 @@ export const SettingGroup = ({
 export const SettingsDivider = () => <View style={s.itemDivider} />;
 
 /** 팝업 선택 목록 행 — 설정 행과 같은 치수(높이 60·좌 20/우 19·라벨 14 흰색). 선택되면 오른쪽 끝에 보라 ✓. */
-export const SettingsOptionRow = ({ label, onPress, selected, left, right }: {
+export const SettingsOptionRow = ({ label, onPress, selected, left, right, danger }: {
   label: string;
   onPress: () => void;
+  /** 삭제·차단·신고 같은 위험 행 — 라벨 빨강(디자인 토큰) */
+  danger?: boolean;
   /** 생략 = 선택 개념이 없는 행(체크 자리도 없음) */
   selected?: boolean;
   /** 라벨 앞 부속물(스킨 색 원 등) */
@@ -320,7 +322,7 @@ export const SettingsOptionRow = ({ label, onPress, selected, left, right }: {
     accessibilityState={selected != null ? { selected } : undefined}
   >
     {left}
-    <Text style={[s.settingLabel, s.optionLabel]} numberOfLines={1}>{label}</Text>
+    <Text style={[s.settingLabel, s.optionLabel, danger && { color: COLORS.red }]} numberOfLines={1}>{label}</Text>
     {right}
     {selected ? <Text style={s.optionCheck}>✓</Text> : null}
   </TouchableOpacity>

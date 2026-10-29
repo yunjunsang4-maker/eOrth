@@ -33,7 +33,11 @@ export default function AdMobPolaroidCard({ ad, tilt = -3 }: Props) {
 
   return (
     <NativeAdView nativeAd={ad} style={[polaroidStyles.wrap, { transform: [{ rotate: `${tilt}deg` }] }]}>
-      <View style={polaroidStyles.back} pointerEvents="none" />
+      {/* 뒷장만 래스터화 + 블리드 링(adPolaroidStyles 주석). 앞장은 NativeMediaView(영상일 수 있음)를 품고 있어
+          래스터화하면 영상 레이어가 검게 굳거나 매 프레임 다시 구워진다 — 앞장 테두리는 그대로 둔다. */}
+      <View style={polaroidStyles.back} pointerEvents="none" collapsable={false} shouldRasterizeIOS>
+        <View style={polaroidStyles.backFill} />
+      </View>
       <View style={polaroidStyles.front}>
         <View style={polaroidStyles.media}>
           <NativeMediaView style={s.media} resizeMode="cover" />
