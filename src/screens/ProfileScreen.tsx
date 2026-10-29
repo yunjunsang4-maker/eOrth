@@ -1048,7 +1048,7 @@ function getCardLayout(idx: number): { x: number; y: number; w: number; h: numbe
   const cardH = 210;
   const gap = 12;
   const x = col * (cardW + gap);
-  const y = 260 + 12 + row * (cardH + gap);
+  const y = 260 + 16 + row * (cardH + gap); // 16 = thumbSt.mainCard.marginBottom
   return { x, y, w: cardW, h: cardH };
 }
 
@@ -1060,7 +1060,8 @@ interface DraggableCardWrapperProps {
   dragOffset: Animated.ValueXY;
   dragScale: Animated.Value;
   onDragStart: (idx: number) => void;
-  onDragMove: (idx: number, dx: number, dy: number) => void;
+  // moveY = 손가락의 화면 y좌표 — 가장자리 자동 스크롤 판정용
+  onDragMove: (idx: number, dx: number, dy: number, moveY: number) => void;
   onDragEnd: (idx: number, dx: number, dy: number) => void;
   onPress: () => void;
   children: React.ReactNode;
@@ -1130,7 +1131,7 @@ function DraggableCardWrapper({
       },
       onPanResponderMove: (evt, gestureState) => {
         if (isDraggingRef.current) {
-          cbRef.current.onDragMove(cbRef.current.idx, gestureState.dx, gestureState.dy);
+          cbRef.current.onDragMove(cbRef.current.idx, gestureState.dx, gestureState.dy, gestureState.moveY);
         } else {
           if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
             if (timerRef.current) {
@@ -1194,6 +1195,8 @@ function DraggableCardWrapper({
       {...panResponder.panHandlers}
       style={[
         style,
+        // 비활성(JS 드라이버: hoverScale·pressX·pressY)과 활성(네이티브 드라이버: dragOffset·dragScale)
+        // transform을 절대 한 배열에 섞지 말 것 — 섞이면 "moved to native" 오류가 난다
         !isActive && { transform: [{ scale: hoverScale }, { scaleX: pressX }, { scaleY: pressY }] },
         isActive && {
           transform: [
@@ -1538,9 +1541,43 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   useEffect(() => { setTabBarHidden(mergeMode); }, [mergeMode]);
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragScale = useRef(new Animated.Value(1)).current;
+  // 렉 원인: JS 드라이버 Animated는 새 아키텍처에서 setValue마다 JS→네이티브 props 커밋이 일어나는데,
+  // 끌리는 카드에 BlurView·글로우·사진이 있어 무겁다. 두 값을 마운트 즉시 네이티브 노드로 만들어
+  // 첫 드래그 첫 프레임부터 setValue가 UI 스레드 노드 값만 갱신하게 한다(이후 모든 애니메이션도 네이티브여야 함).
+  useEffect(() => {
+    Animated.timing(dragOffset, { toValue: { x: 0, y: 0 }, duration: 0, useNativeDriver: true }).start();
+    Animated.timing(dragScale, { toValue: 1, duration: 0, useNativeDriver: true }).start();
+  }, [dragOffset, dragScale]);
   // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응)
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const hoverIdxRef = useRef<number | null>(null);
+
+  // ─── 드래그 중 가장자리 자동 스크롤 — 전부 ref(리렌더 없음) ───
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const viewportHRef = useRef(0);
+  const contentHRef = useRef(0);
+  const scrollWinRef = useRef({ top: 0, bottom: 0 }); // ScrollView의 화면상 위·아래 (measureInWindow)
+  const dragStartScrollYRef = useRef(0);
+  const lastDragRef = useRef({ idx: 0, dx: 0, dy: 0, moveY: 0 });
+  const autoScrollRafRef = useRef<number | null>(null);
+  const stopAutoScroll = () => {
+    if (autoScrollRafRef.current != null) cancelAnimationFrame(autoScrollRafRef.current);
+    autoScrollRafRef.current = null;
+  };
+  useEffect(() => () => {
+    if (autoScrollRafRef.current != null) cancelAnimationFrame(autoScrollRafRef.current);
+  }, []);
+  // 가장자리 90px 안이면 프레임당 4~18px(가장자리에 가까울수록 빠르게), 위쪽은 음수. 밖이면 0
+  const EDGE = 90;
+  const edgeSpeed = (moveY: number) => {
+    const { top, bottom } = scrollWinRef.current;
+    if (bottom <= top) return 0; // 측정 전
+    const into = moveY < top + EDGE ? top + EDGE - moveY : moveY > bottom - EDGE ? moveY - (bottom - EDGE) : 0;
+    if (into <= 0) return 0;
+    const v = 4 + 14 * Math.min(1, into / EDGE);
+    return moveY < top + EDGE ? -v : v;
+  };
 
   // 드롭 중심 좌표가 어느 카드 슬롯 위에 있는지 찾는다 (-1이면 없음)
   const findTargetIdx = (idx: number, dx: number, dy: number) => {
@@ -1561,13 +1598,13 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     Animated.parallel([
       Animated.spring(dragOffset, {
         toValue: { x: 0, y: 0 },
-        useNativeDriver: false,
+        useNativeDriver: true,
         friction: 7,
         tension: 65,
       }),
       Animated.spring(dragScale, {
         toValue: 1,
-        useNativeDriver: false,
+        useNativeDriver: true,
         friction: 7,
         tension: 65,
       }),
@@ -1588,20 +1625,28 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // 카드가 톡 튀지 않고 부드럽게 떠오르도록 스케일을 스프링으로 확대
     Animated.spring(dragScale, {
       toValue: 1.05,
-      useNativeDriver: false,
+      useNativeDriver: true,
       friction: 6,
       tension: 140,
     }).start();
     setIsDragging(true);
     // 드래그(순서 변경) 동안 하단 탭 바 잠시 숨김 — 하단 카드 이동 시 가리지 않게
     setTabBarHidden(true);
+    // 자동 스크롤 기준점 — 시작 시점 스크롤 위치와 ScrollView의 화면상 위·아래
+    stopAutoScroll();
+    dragStartScrollYRef.current = scrollYRef.current;
+    // measure의 pageY는 터치 moveY와 같은 루트 기준 — measureInWindow는 안드로이드에서 상태바만큼 어긋난다
+    scrollRef.current?.getNativeScrollRef()?.measure((_x, _y, _w, h, _px, pageY) => {
+      scrollWinRef.current = { top: pageY, bottom: pageY + h };
+    });
   };
 
-  const handleDragMove = (idx: number, dx: number, dy: number) => {
-    if (mergeMode) return;
-    dragOffset.setValue({ x: dx, y: dy });
+  // 손가락 이동량 + 시작 이후 스크롤된 양으로 카드 위치·대상 카드를 계산 (스크롤돼도 카드가 손가락을 따라감)
+  const applyDrag = (idx: number, dx: number, dy: number) => {
+    const sy = dy + scrollYRef.current - dragStartScrollYRef.current;
+    dragOffset.setValue({ x: dx, y: sy });
     // 현재 올라가 있는 대상 카드를 갱신 (경계를 넘을 때만 setState → 매 프레임 리렌더 방지)
-    const target = findTargetIdx(idx, dx, dy);
+    const target = findTargetIdx(idx, dx, sy);
     const hv = target !== -1 && target !== idx ? target : null;
     if (hoverIdxRef.current !== hv) {
       hoverIdxRef.current = hv;
@@ -1609,14 +1654,42 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     }
   };
 
+  // 가장자리에 손가락이 있는 동안 매 프레임 프로그램 스크롤 — 손가락이 멈춰 있어도 마지막 dx/dy로 재계산.
+  // scrollY는 onScroll 도착을 기다리지 않고 여기서 직접 갱신한다.
+  const autoScrollTick = () => {
+    const speed = edgeSpeed(lastDragRef.current.moveY);
+    if (speed === 0) { autoScrollRafRef.current = null; return; }
+    const maxY = Math.max(0, contentHRef.current - viewportHRef.current);
+    const nextY = Math.min(maxY, Math.max(0, scrollYRef.current + speed));
+    if (nextY !== scrollYRef.current) {
+      scrollYRef.current = nextY;
+      scrollRef.current?.scrollTo({ y: nextY, animated: false });
+      const { idx, dx, dy } = lastDragRef.current;
+      applyDrag(idx, dx, dy);
+    }
+    autoScrollRafRef.current = requestAnimationFrame(autoScrollTick);
+  };
+
+  const handleDragMove = (idx: number, dx: number, dy: number, moveY: number) => {
+    if (mergeMode) return;
+    lastDragRef.current = { idx, dx, dy, moveY };
+    applyDrag(idx, dx, dy);
+    if (autoScrollRafRef.current == null && edgeSpeed(moveY) !== 0) {
+      autoScrollRafRef.current = requestAnimationFrame(autoScrollTick);
+    }
+  };
+
   const handleDragEnd = (idx: number, dx: number, dy: number) => {
+    stopAutoScroll(); // 어떤 경로로 끝나든 루프는 먼저 멈춘다
     if (mergeMode) return;
     setIsDragging(false);
     setTabBarHidden(false);
     hoverIdxRef.current = null;
     setHoverIdx(null);
 
-    const targetIdx = findTargetIdx(idx, dx, dy);
+    // 자동 스크롤로 움직인 만큼 보정해 대상 판정
+    const sy = dy + scrollYRef.current - dragStartScrollYRef.current;
+    const targetIdx = findTargetIdx(idx, dx, sy);
 
     if (targetIdx !== -1 && targetIdx !== idx) {
       // displayTrips(병합된 전체 목록) 기준으로 순서를 재배열하고 id 순서만 저장한다.
@@ -1630,6 +1703,13 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       // 끌던 카드는 새 자리(targetIdx)에서 손가락 위치 → 슬롯으로 스프링 정착
       LayoutAnimation.configureNext(LIQUID_LAYOUT);
       setCardOrder(ids);
+      // 대표 카드(0)가 낀 이동은 새 자리에 다른 인스턴스가 그려져 LayoutAnimation이 위치를 이어주지 않는다
+      // → 오프셋을 새 슬롯 기준으로 옮겨야 손가락 위치에서 출발한다(안 하면 두 슬롯 거리만큼 튐)
+      if (idx === 0 || targetIdx === 0) {
+        const from = getCardLayout(idx);
+        const to = getCardLayout(targetIdx);
+        dragOffset.setValue({ x: from.x + dx - to.x, y: from.y + sy - to.y });
+      }
       setActiveIdx(targetIdx);
       settle(() => setActiveIdx(null));
     } else {
@@ -2012,10 +2092,19 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         )}
 
       <ScrollView
+        ref={scrollRef}
         style={[styles.container, { backgroundColor: 'transparent' }]}
         contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
         showsVerticalScrollIndicator={false}
+        // 사용자 스크롤은 드래그 중 막고, 가장자리 자동 스크롤(scrollTo)만 허용 — scrollTo는 scrollEnabled=false에서도 동작
         scrollEnabled={!isDragging}
+        // 자동 스크롤용 측정값 — 리렌더 없이 ref에만 기록.
+        // 드래그 중엔 무시: 그동안 스크롤은 루프의 scrollTo뿐이고 ref는 루프가 직접 갱신한다.
+        // 늦게 도착한 옛 이벤트가 ref를 되돌리면 카드가 떨리고 스크롤이 느려진다.
+        onScroll={(e) => { if (!isDragging) scrollYRef.current = e.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={16}
+        onLayout={(e) => { viewportHRef.current = e.nativeEvent.layout.height; }}
+        onContentSizeChange={(_w, h) => { contentHRef.current = h; }}
         // progressViewOffset 제거: 헤더가 ScrollView 밖(위)으로 빠져 스크롤 상단이 이미 안전영역 아래다.
         // insets.top을 그대로 두면 스피너가 그만큼 더 내려가 엉뚱한 곳에 뜬다(iOS·안드로이드 모두 적용되는 prop).
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
