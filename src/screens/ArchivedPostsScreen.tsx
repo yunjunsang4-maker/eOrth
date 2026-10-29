@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Image,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
@@ -33,33 +32,6 @@ const C = {
 
 const noop = () => {}; // 아카이브 화면에서 안 쓰는 콜백(빠른공유·차단·신고 등) 자리채움
 
-// ponytail: 형식별 카드 모양 확인용 가상 보관 기록 — 개발 빌드에서만, 화면 목록에만 붙는다(스토어·서버 무관).
-// 확인 끝나면 false로 두거나 이 블록째 지울 것.
-const SHOW_ARCHIVE_MOCKS = __DEV__;
-const MOCK_PREFIX = 'mock-archived-';
-const MOCK_ARCHIVED: TravelRecord[] = (() => {
-  if (!SHOW_ARCHIVE_MOCKS) return [];
-  const uri = (m: number) => Image.resolveAssetSource(m).uri;
-  const feed = uri(require('../../assets/example/feed1.webp'));
-  const snapBack = uri(require('../../assets/example/snap1.webp'));
-  const snapFront = uri(require('../../assets/example/snap1-pip.webp'));
-  const globe = uri(require('../../assets/example/feature-globe.jpg'));
-  const stats = uri(require('../../assets/example/feature-stats.jpg'));
-  const base = {
-    user: { name: 'me', emoji: '🌏', handle: 'me' },
-    country: '🇯🇵 일본', countryName: '일본', countryFlag: '🇯🇵',
-    date: '2026.10.01', timestamp: Date.now() - 3 * 86400000,
-    likes: 3, comments: 1, liked: false, isMyPost: true, visibility: 'neighbors' as const,
-  };
-  return [
-    { ...base, id: `${MOCK_PREFIX}feed`, viewType: 'feed', content: '도쿄 여행 기록', memo: '시부야 골목에서 마신 커피가 제일 기억에 남는다', medias: [feed] },
-    { ...base, id: `${MOCK_PREFIX}blog`, viewType: 'blog', content: '교토 3박 4일 정리', subtitle: '단풍 시즌 동선', memo: '첫날은 기요미즈데라부터 걸어서 기온까지. 사람이 많아서 아침 일찍 가는 게 좋았다.', medias: [globe] },
-    { ...base, id: `${MOCK_PREFIX}album`, viewType: 'album', content: '오사카 앨범', memo: '도톤보리·우메다·유니버설', medias: [stats, feed, globe] },
-    { ...base, id: `${MOCK_PREFIX}snap`, viewType: 'snap', content: '지금 여기', snapCaption: '지금 여기', medias: [snapBack], snapBackUri: snapBack, snapFrontUri: snapFront },
-    { ...base, id: `${MOCK_PREFIX}cut`, viewType: 'cut', content: '네컷', medias: [feed], cutPhoto: { layout: 'four', frameId: 'basic-four', photos: [feed, snapBack, globe, stats], previewUri: feed } },
-  ];
-})();
-
 // ─────────────────────────────────────────────
 // 보관된 게시물 화면
 // ─────────────────────────────────────────────
@@ -75,7 +47,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   // 기록 형식 필터링 상태 추가
   const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'album' | 'snap' | 'cut'>('all');
 
-  const archivedRecords = [...records.filter((r) => archivedIds.includes(r.id)), ...MOCK_ARCHIVED];
+  const archivedRecords = records.filter((r) => archivedIds.includes(r.id));
 
   // 과거 여행 불러오기가 카드만 세우려고 만든 '표지 전용' 기록 판정.
   // viewType은 'album'이지만 사용자가 만든 사진첩이 아니라, 사진첩 탭·개수에서 뺀다.
@@ -113,13 +85,11 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   };
 
   const handleUnarchive = (id: string) => {
-    if (id.startsWith(MOCK_PREFIX)) return;
     unarchiveRecord(id);
     pushToast(t('misc.unarchivedToast'));
   };
 
   const handleDelete = (id: string) => {
-    if (id.startsWith(MOCK_PREFIX)) return;
     deleteRecord(id);
   };
 
