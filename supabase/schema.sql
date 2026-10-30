@@ -2915,6 +2915,8 @@ create trigger trg_notify_friend_post_visibility after update of visibility on p
 --     → INSERT OR UPDATE 로 확장하되, UPDATE 경로는 '읽지 않은 상태로 되살아난' 경우
 --       (read=false 이면서 created_at 이 갱신됨)에만 발화시켜 중복 푸시를 막는다.
 --       사용자가 알림을 읽음 처리(read=true)하는 update 는 created_at 이 그대로라 발화 안 함.
+--     created_at 은 '앞으로 갱신'(>)일 때만 발화한다(2026-10-30) — collapse 재알림은 항상 now()로
+--       앞으로 가고, 10-f-2 의 반응 취소 되돌리기는 남은 반응의 과거 시각으로 내려가므로 푸시가 안 나간다.
 --     ⚠️ 남는 한계: collapse 시 post_id 가 최신 것으로 덮여 이전 알림의 딥링크는 사라진다.
 --        (알림 1건 유지가 목표인 설계라 의도된 손실 — 분리하려면 유일 인덱스 설계 변경 필요)
 -- ============================================================
@@ -2926,7 +2928,7 @@ as $$
 begin
   if tg_op = 'UPDATE' then
     -- 재알림(collapse)만 발화. 그 외 update(읽음 처리 등)는 조용히 통과.
-    if not (new.read = false and new.created_at is distinct from old.created_at) then
+    if not (new.read = false and new.created_at > old.created_at) then
       return new;
     end if;
   end if;
@@ -2958,6 +2960,201 @@ drop trigger if exists notifications_push on public.notifications;
 create trigger notifications_push
   after insert or update on public.notifications
   for each row execute function public.notify_send_push();
+
+-- ============================================================
+-- 10-f-2) 반응 취소 시 알림 정리 (2026-10-30)
+--   좋아요 취소(post_likes delete)·댓글 삭제(comments delete)·글 삭제(posts.deleted_at soft
+--   delete)를 해도 상대의 알림이 그대로 남아, 탭하면 없는 좋아요·댓글·글로 가는 유령 알림이 됐다.
+--   생성 트리거(10-c·10-d·10-d-2·10-e)만 있고 정리 트리거가 없었다
+--   (메이트 신청만 4-c 의 cleanup_neighbor_request_notification 으로 정리한다).
+--
+--   ⚠️ 그냥 지우면 안 되는 이유: uq_notifications_actor_type 때문에 알림은
+--      (수신자·행위자·타입)당 1행으로 collapse 되고 post_id 는 '가장 최근 반응'만 가리킨다.
+--      A가 내 글 1·2에 좋아요 → 알림 1행(post_id=2). 글 2 좋아요만 취소하면 글 1 좋아요는
+--      여전히 살아 있으므로 알림은 지울 게 아니라 글 1을 가리키도록 되돌려야 한다.
+--   → 알림 1행을 '지금 남아 있는 원천(반응)'으로 다시 계산하는 함수 하나를 두고,
+--     세 삭제 경로의 트리거가 영향받은 알림마다 이 함수를 부른다.
+--
+--   푸시: 되돌리기는 created_at 을 남은 반응의 과거 시각으로 내리므로 10-f 의
+--   `new.created_at > old.created_at` 가드에 걸려 푸시가 다시 나가지 않는다. read 는 건드리지 않는다.
+--   (이미 나간 푸시는 회수 불가 — 앱 내 목록·배지만 정리된다)
+--
+--   기존 유령 알림의 1회성 일괄 정리는 여기 넣지 않는다 — 이 파일은 재실행되는 파일이라
+--   매번 알림 전수 스캔이 돈다. migration-2026-10-30-reaction-notif-cleanup.sql 끝에만 있다.
+--
+--   ⚠️ public.are_neighbors(4-b)·notifications.post_id(10-b) 정의보다 뒤에 있어야 한다.
+-- ============================================================
+create or replace function public.reconcile_reaction_notification(p_id uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  n        public.notifications%rowtype;
+  src_post uuid;
+  src_at   timestamptz;
+  rcpt     text;
+begin
+  select * into n from public.notifications where id = p_id;
+  if not found then
+    return;
+  end if;
+
+  -- 원천 고르기: 지금 가리키는 글에 원천이 남아 있으면 그걸 우선(= 손대지 않음),
+  -- 없으면 남은 것 중 가장 최근 반응. 원천은 전부 삭제표식 없는 글에서만 찾는다.
+  -- (select into 가 0행이면 src_post 는 null 로 남는다 → 아래에서 삭제)
+  if n.type = 'like' then
+    select pl.post_id, pl.created_at into src_post, src_at
+      from public.post_likes pl
+      join public.posts p on p.id = pl.post_id
+     where pl.user_id = n.actor_id
+       and p.author_id = n.user_id
+       and p.deleted_at is null
+     order by (pl.post_id = n.post_id) desc, pl.created_at desc
+     limit 1;
+
+  elsif n.type = 'comment' then
+    select c.post_id, c.created_at into src_post, src_at
+      from public.comments c
+      join public.posts p on p.id = c.post_id
+     where c.author_id = n.actor_id
+       and c.parent_id is null
+       and p.author_id = n.user_id
+       and p.deleted_at is null
+     order by (c.post_id = n.post_id) desc, c.created_at desc
+     limit 1;
+
+  elsif n.type = 'reply' then
+    -- 부모 댓글 삭제로 답글이 cascade 로 지워질 때는 이 조인이 부모를 못 찾아 원천 없음 →
+    -- 삭제가 된다. 부모 댓글이 없는 답글 알림은 열 곳이 없으므로 그게 정답이다.
+    select c.post_id, c.created_at into src_post, src_at
+      from public.comments c
+      join public.comments pc on pc.id = c.parent_id
+      join public.posts p on p.id = c.post_id
+     where c.author_id = n.actor_id
+       and pc.author_id = n.user_id
+       and p.deleted_at is null
+     order by (c.post_id = n.post_id) desc, c.created_at desc
+     limit 1;
+
+  elsif n.type = 'mention' then
+    -- 토큰 정규식은 10-d-2 notify_on_mention(= 앱 src/utils/mentions.ts)과 **글자 그대로 같다.**
+    -- 한쪽만 고치면 '언급이 남아 있는데 알림이 지워지는' 어긋남이 생긴다.
+    -- 가시성 조건도 같은 기준: neighbors 글 + (수신자가 작성자이거나 작성자와 서로이웃).
+    select handle into rcpt from public.profiles where id = n.user_id;
+    select c.post_id, c.created_at into src_post, src_at
+      from public.comments c
+      join public.posts p on p.id = c.post_id
+     where c.author_id = n.actor_id
+       and p.deleted_at is null
+       and p.visibility = 'neighbors'
+       and (n.user_id = p.author_id or public.are_neighbors(n.user_id, p.author_id))
+       and exists (
+         select 1
+           from regexp_matches(c.text, '(^|[^A-Za-z0-9_])@([A-Za-z0-9_]{4,30})(?![A-Za-z0-9_])', 'g') as t(m)
+          where lower((t.m)[2]) = lower(rcpt)
+       )
+     order by (c.post_id = n.post_id) desc, c.created_at desc
+     limit 1;
+
+  elsif n.type = 'friend_post' then
+    -- 새 기록 알림은 다른 글로 되돌리지 않는다 — 그 글이 살아 있고 공개면 유지, 아니면 삭제.
+    -- (되돌리면 이미 본 옛 글이 '새 기록'으로 다시 뜬다)
+    select p.id into src_post
+      from public.posts p
+     where p.id = n.post_id
+       and p.deleted_at is null
+       and p.visibility <> 'private';
+
+  else
+    return; -- neighbor_request / neighbor_accept 는 대상 아님 (4-c 에서 따로 정리)
+  end if;
+
+  if src_post is null then
+    delete from public.notifications where id = n.id;
+  elsif src_post is distinct from n.post_id then
+    update public.notifications
+       set post_id = src_post, created_at = src_at
+     where id = n.id;
+  end if;
+exception when others then
+  return; -- 알림 정리 실패가 좋아요 취소·댓글 삭제·글 삭제를 막으면 안 된다
+end; $$;
+-- 트리거(소유자 권한)와 SQL Editor 에서만 부른다. 클라이언트 RPC 로 열 이유가 없다.
+revoke execute on function public.reconcile_reaction_notification(uuid) from public, anon, authenticated;
+
+-- 좋아요 취소 → 그 좋아요를 가리키던 like 알림 재계산.
+-- post_id 조건: 알림이 이미 다른(더 최근) 글을 가리키고 있으면 이 취소와 무관하다.
+create or replace function public.cleanup_like_notification()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+begin
+  for r in
+    select id from public.notifications
+     where post_id = old.post_id and actor_id = old.user_id and type = 'like'
+  loop
+    perform public.reconcile_reaction_notification(r.id);
+  end loop;
+  return null;
+exception when others then
+  return null; -- 알림 정리 실패가 좋아요 취소를 막으면 안 된다
+end; $$;
+
+drop trigger if exists trg_cleanup_like_notif on public.post_likes;
+create trigger trg_cleanup_like_notif after delete on public.post_likes
+  for each row execute function public.cleanup_like_notification();
+
+-- 댓글 삭제 → 그 댓글이 만들었을 수 있는 comment/reply/mention 알림 재계산.
+-- 부모 댓글을 지워 답글이 cascade 로 함께 지워질 때도 맞다: AFTER 트리거는 문장 끝에 돌아
+-- 부모 행이 이미 없으므로, reply 원천 조인이 부모를 못 찾아 그 답글 알림은 삭제된다.
+create or replace function public.cleanup_comment_notification()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+begin
+  for r in
+    select id from public.notifications
+     where post_id = old.post_id and actor_id = old.author_id
+       and type in ('comment', 'reply', 'mention')
+  loop
+    perform public.reconcile_reaction_notification(r.id);
+  end loop;
+  return null;
+exception when others then
+  return null; -- 알림 정리 실패가 댓글 삭제를 막으면 안 된다
+end; $$;
+
+drop trigger if exists trg_cleanup_comment_notif on public.comments;
+create trigger trg_cleanup_comment_notif after delete on public.comments
+  for each row execute function public.cleanup_comment_notification();
+
+-- 글 soft delete(deleted_at null → 값) → 그 글을 가리키는 반응·새 기록 알림 전부 재계산.
+-- (좋아요·댓글 행은 tombstone 동안 남아 있지만, 원천 조회가 deleted_at is null 글만 보므로
+--  다른 글로 되돌아가거나 지워진다)
+-- UPDATE 전용 트리거라 old 가 항상 있다 — notify_on_friend_post 의 'INSERT 경로에서 old 평가'
+-- 함정은 여기 해당하지 않는다.
+create or replace function public.cleanup_deleted_post_notifications()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  r record;
+begin
+  if not (old.deleted_at is null and new.deleted_at is not null) then
+    return null; -- 이미 지워진 글의 재표식·복원은 대상 아님
+  end if;
+  for r in
+    select id from public.notifications
+     where post_id = new.id
+       and type in ('like', 'comment', 'reply', 'mention', 'friend_post')
+  loop
+    perform public.reconcile_reaction_notification(r.id);
+  end loop;
+  return null;
+exception when others then
+  return null; -- 알림 정리 실패가 글 삭제를 막으면 안 된다
+end; $$;
+
+-- `of deleted_at` 로 좁힌다 — 좋아요·댓글 카운터 갱신 등 posts 의 다른 UPDATE 에는 안 탄다.
+drop trigger if exists trg_cleanup_deleted_post_notifs on public.posts;
+create trigger trg_cleanup_deleted_post_notifs after update of deleted_at on public.posts
+  for each row execute function public.cleanup_deleted_post_notifications();
 
 -- ============================================================
 -- 10-g) DM 새 메시지 → send-push 직접 호출(내용 숨김 백그라운드 푸시)

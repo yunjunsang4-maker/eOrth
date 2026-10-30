@@ -80,7 +80,20 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 1건 (2026-10-29 차단 목록 현재 아이디 RPC)
+## 1. 지금 해야 하는 것 — 2건 (2026-10-30 반응 취소 알림 정리 · 2026-10-29 차단 목록 현재 아이디 RPC)
+
+### ⏳ 미실행 — 반응 취소 시 알림 정리 (2026-10-30 추가)
+
+> `supabase/migration-2026-10-30-reaction-notif-cleanup.sql` (schema.sql 10-f `notify_send_push` 가드 수정 + 10-f-2 절과 동일, 끝에 1회성 일괄 정리 추가). **운영·테스트 양쪽** SQL Editor에서 실행.
+> `notify_send_push`는 함수 전체가 아니라 서버 정의의 가드 한 구절만 바꾼다(do 블록) — 두 프로젝트의 send-push URL·키가 달라서다.
+
+- **문제:** 좋아요 취소·댓글 삭제·글 삭제(soft delete)를 해도 상대의 알림이 남아, 탭하면 없는 반응·글로 가는 유령 알림이 된다. 알림은 (수신자·행위자·타입)당 1행으로 collapse되므로 단순 삭제도 틀리다(같은 사람의 같은 반응이 다른 글에 남아 있을 수 있다).
+- **고침:** `reconcile_reaction_notification(id)`가 알림 1행을 남아 있는 원천으로 재계산(없음 → 삭제 / 다른 글에 남음 → 그 글·시각으로 되돌림). `post_likes`·`comments` after delete, `posts` after update of deleted_at 트리거 3개가 이를 부른다. 되돌리기가 푸시를 다시 쏘지 않도록 `notify_send_push` UPDATE 가드를 `created_at > old.created_at`로 좁혔다.
+- **앱 배포 순서 제약 없음:** 서버만 바뀐다. 앱 코드 변경 없음.
+- **확인:**
+  - `select proname from pg_proc where proname in ('reconcile_reaction_notification','cleanup_like_notification','cleanup_comment_notification','cleanup_deleted_post_notifications');` → 4행
+  - `select tgname from pg_trigger where tgname in ('trg_cleanup_like_notif','trg_cleanup_comment_notif','trg_cleanup_deleted_post_notifs');` → 3행
+  - `select pg_get_functiondef('public.notify_send_push()'::regprocedure) like '%new.created_at > old.created_at%';` → `true`
 
 ### ⏳ 미실행 — `my_blocked_profiles()` 내가 차단한 사람의 현재 아이디 (2026-10-29 추가)
 
