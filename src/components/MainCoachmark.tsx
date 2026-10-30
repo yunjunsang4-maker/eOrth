@@ -8,7 +8,8 @@ import {
   Animated,
   Easing,
 } from 'react-native';
-import { Text, FONT_SCALE_CAP } from '../ui/Text';
+import { Text, FONT_SCALE_CAP, useDesignTextScale } from '../ui/Text';
+import { scaleFontKeys } from '../utils/designTextScale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { select, success } from '../utils/haptics';
@@ -120,6 +121,8 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const skinAccent = useSkinAccent();
+  // 안드로이드 Profile·Analysis(AndroidDesignText 안)면 k>0 — 설명문 Animated.Text에 같은 축소를 직접 건다.
+  const designK = useDesignTextScale();
   const [idx, setIdx] = useState(0);
 
   const [rendered, setRendered] = useState(visible);
@@ -508,8 +511,15 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
                 <Text style={styles.title}>{step.title}</Text>
               </Animated.View>
               {/* Animated.Text는 래퍼(ui/Text)를 거치지 않으므로 상한을 직접 넘긴다.
-                  FONT_SCALE_CAP은 android에서만 값이 있고 iOS에선 undefined(상한 없음)다. */}
-              <Animated.Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
+                  FONT_SCALE_CAP은 android에서만 값이 있고 iOS에선 undefined(상한 없음)다.
+                  designK>0(AndroidDesignText 안)이면 ui/Text와 같은 규칙: 기기 배율 끄고 ×k.
+                  styles.desc는 StyleSheet.create가 원본 객체를 그대로 돌려주므로(RN 0.81) flatten 없이 넘긴다.
+                  k===0이면 이전과 같은 JSX(Main 화면 등 Provider 밖). */}
+              {designK === 0 ? (
+                <Animated.Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
+              ) : (
+                <Animated.Text maxFontSizeMultiplier={FONT_SCALE_CAP} allowFontScaling={false} style={[styles.desc, scaleFontKeys(styles.desc, designK), { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
+              )}
 
               <Animated.View style={[styles.footer, { transform: [{ translateY: tip.footerY }] }]}>
                 <View style={styles.dots}>

@@ -21,7 +21,7 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
-import { Text } from '../ui/Text';
+import { Text, AndroidDesignText } from '../ui/Text';
 import { HeartSvg } from './PostDetailScreen';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
@@ -2068,7 +2068,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
 export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
+  // 안드로이드는 기기 글자 크기를 무시하고 시안 기준으로 고정(Profile·Analysis와 같은 AndroidDesignText, iOS는 통과)
   return (
+    <AndroidDesignText>
     <View style={s.container}>
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
       <StarFieldBackground />
@@ -2099,6 +2101,7 @@ export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>
 
       <FriendsTab navigation={navigation} />
     </View>
+    </AndroidDesignText>
   );
 }
 

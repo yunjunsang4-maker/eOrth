@@ -1,6 +1,8 @@
 import React from 'react';
-import { Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
+import { Platform, StyleSheet, Text as RNText, TextInput as RNTextInput } from 'react-native';
 import type { TextProps, TextInputProps } from 'react-native';
+import { useStageWidth } from '../utils/stage';
+import { designTextScaleFor, scaleFontKeys } from '../utils/designTextScale';
 
 /**
  * 시스템 글꼴 배율 상한값.
@@ -39,11 +41,63 @@ export const MAX_FONT_SCALE = 1.2;
  */
 export const FONT_SCALE_CAP = Platform.OS === 'android' ? MAX_FONT_SCALE : undefined;
 
+/**
+ * 시안 폭 비례 글자 배율(k). 0 = 비활성 — Provider 밖의 Text는 기존 동작 그대로다.
+ * AndroidDesignText(아래)만 값을 내려준다.
+ */
+const DesignTextScaleContext = React.createContext<number>(0);
+
+function AndroidDesignTextProvider({ children }: { children: React.ReactNode }) {
+  const k = designTextScaleFor(useStageWidth());
+  return <DesignTextScaleContext.Provider value={k}>{children}</DesignTextScaleContext.Provider>;
+}
+function PassThrough({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
+}
+
+/**
+ * 이 아래의 Text는 **안드로이드에서만** 기기 글꼴 배율을 무시하고 화면 폭 ÷ DESIGN_W(402)로
+ * 글자를 줄인다(utils/designTextScale.ts). Profile·Analysis 화면 전용(사용자 결정, 2026-10-30):
+ * 실측에서 글자가 fontSize의 ×1.16~1.19로 렌더돼 iOS 시안보다 커 보였다.
+ * - iOS는 통과(Provider 없음) — "iOS 렌더링은 절대 변경하지 않는다"(utils/fitText.ts:3).
+ * - 플랫폼 분기를 모듈 상수로 둬 훅(useStageWidth)이 조건부로 불리지 않게 한다.
+ * - RN Modal도 React 트리 안이라 context가 그대로 전달된다.
+ * - TextInput은 대상이 아니다 — 입력칸은 기기 배율을 유지한다(기존 결정).
+ * - 레이아웃 숫자는 건드리지 않는다. 카드·행은 flex라 이미 폭 비례다.
+ */
+export const AndroidDesignText = Platform.OS === 'android' ? AndroidDesignTextProvider : PassThrough;
+
+/**
+ * 현재 글자 배율 k(0 = Provider 밖·iOS → 아무것도 바꾸지 말 것).
+ * 래퍼를 거치지 않는 RN 원본(Animated.Text 등)이 직접 같은 규칙을 적용할 때 쓴다(MainCoachmark 설명문).
+ */
+export function useDesignTextScale(): number {
+  return React.useContext(DesignTextScaleContext);
+}
+
 // props를 뒤에 펼쳐 개별 화면이 필요하면 상한을 덮어쓸 수 있게 한다.
 // forwardRef는 필수다 — TextInput은 .focus()/.blur()를 ref로 호출하는 화면이 있고
 // (LoginScreen·PostDetailScreen·BlogRecordScreen), ref를 흘리지 않으면 조용히 깨진다.
+//
+// AndroidDesignText 안(k>0)에서는 allowFontScaling={false}를 props **뒤에** 강제한다.
+// 상한(maxFontSizeMultiplier)을 1로 주지 않는 이유는 utils/fitText.ts andNoFontScale 주석과 같다:
+// 상한 1로는 lineHeight가 여전히 SP로 커지고, layout-parity 규칙 8이 상한 값을 FONT_SCALE_CAP로만 허용한다.
+// 스케일은 이 Text가 **직접 지정한** fontSize·lineHeight·letterSpacing에만 곱한다. 지정 안 한 중첩 Text는
+// 부모의 (이미 곱해진) 값을 상속하므로 기본 fontSize를 주입하면 안 된다(두 번 곱해지거나 상속이 깨짐).
 export const Text = React.forwardRef<React.ComponentRef<typeof RNText>, TextProps>(
-  (props, ref) => <RNText ref={ref} maxFontSizeMultiplier={FONT_SCALE_CAP} {...props} />,
+  (props, ref) => {
+    const k = React.useContext(DesignTextScaleContext);
+    if (k === 0) return <RNText ref={ref} maxFontSizeMultiplier={FONT_SCALE_CAP} {...props} />;
+    return (
+      <RNText
+        ref={ref}
+        maxFontSizeMultiplier={FONT_SCALE_CAP}
+        {...props}
+        allowFontScaling={false}
+        style={[props.style, scaleFontKeys(StyleSheet.flatten(props.style), k)]}
+      />
+    );
+  },
 );
 Text.displayName = 'Text';
 

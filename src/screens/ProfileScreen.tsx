@@ -24,8 +24,8 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
-import { Text, TextInput } from '../ui/Text';
-import type { ImageSourcePropType, StyleProp, ViewStyle } from 'react-native';
+import { AndroidDesignText, Text, TextInput } from '../ui/Text';
+import type { ImageSourcePropType, StyleProp, ViewStyle, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -88,6 +88,25 @@ const LIQUID_LAYOUT = {
   delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
 };
 
+// ─── 여행 카드 순서 변경 드래그: 안드로이드 전용 경로 (2026-10-30) ───
+// iOS(파리티 기준)는 RCTViewComponentView가 "네이티브 Animated가 관리 중인 transform"을 React 커밋에서
+// 건너뛴다(propKeysManagedByAnimated). 안드로이드(RN 0.81 Fabric)엔 이 보호가 없어, 끌리는 카드처럼
+// 네이티브 드라이버로 움직이는 뷰가 React 커밋을 받으면 JS 쪽의 묵은 transform 값이 덮어써 한 프레임씩 튄다.
+//  · LayoutAnimation은 안드로이드에서 매 프레임 transform을 rawProps로 다시 보낸다
+//    (ViewPropsInterpolation.h `#ifdef ANDROID`) → 드롭 순간 정착 스프링과 싸워 340ms 내내 깜빡임(C)
+//  · 경계를 넘을 때마다 setHoverIdx → 화면 전체 리렌더 → 끌리는 카드 transform 덮어쓰기(B)
+//  · 가장자리 자동 스크롤: scrollTo(뷰 명령)와 보정 setValue(네이티브 모듈 큐)가 다른 프레임에 반영(B)
+// 그래서 안드로이드는 ① 드래그 동안 React 커밋을 0회로 ② 스크롤 보정을 네이티브 합성으로
+// ③ 드롭은 LayoutAnimation 없이, 레이아웃 이동과 '새 슬롯 기준 오프셋(rebase, 렌더 상수)'을 같은 커밋에 싣고
+// ④ 정착은 진행값 하나(settleP)로 — 끌던 카드 transform = (드롭 직전 오프셋) × (1 − settleP).
+//    애니메이션이 하나뿐이라 '먼저 끝난 애니메이션의 재렌더에 아직 도는 값의 묵은 JS 값이 실리는' 일이 없다
+//    (Animation.js 종료 콜백 → node.update → Fabric scheduleUpdate 재렌더). iOS는 기존 경로 그대로.
+const IS_ANDROID = Platform.OS === 'android';
+const NO_REBASE = { x: 0, y: 0 };
+// 안드로이드만 Animated.ScrollView — onScroll을 네이티브 Animated.event로 받아 끌리는 카드 보정에 합성한다.
+// iOS는 컴포넌트까지 그대로 둔다(동작 불변).
+const CardScrollView = (IS_ANDROID ? Animated.ScrollView : ScrollView) as typeof ScrollView;
+
 // ─── 컬러 상수 (Figma 디자인 기반) ───
 const COLORS = {
   bg:           '#0A0A0F',
@@ -104,16 +123,6 @@ const COLORS = {
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
   red:          '#FF3B30',
-};
-
-// ─── 리퀴드 글래스 (실제 BlurView — 디벨롭 빌드 전용) ───
-// Expo Go 에선 안드로이드 backdrop blur 가 동작하지 않아 가짜 그라디언트를 썼지만,
-// 디벨롭 빌드에선 진짜 프로스티드 글래스를 깔 수 있다.
-const GLASS = {
-  border:      'rgba(255,255,255,0.30)',
-  innerTop:    'rgba(255,255,255,0.16)',
-  innerBottom: 'rgba(255,255,255,0.02)',
-  specular:    'rgba(255,255,255,0.55)',
 };
 
 // ─── 여행 카드 하단 정보 바 재질 — iOS는 실블러, Android는 블러 없는 어두운 반투명 매트 ───
@@ -1056,9 +1065,16 @@ function getCardLayout(idx: number): { x: number; y: number; w: number; h: numbe
 interface DraggableCardWrapperProps {
   idx: number;
   activeIdx: number | null;
-  hoverIdx: number | null;
+  // 드롭 대상 표시(호버) 스위치 등록부 — 부모가 상태(setState) 없이 직접 켜고 끈다.
+  // 상태로 두면 경계를 넘을 때마다 화면 전체가 리렌더돼 안드로이드에서 끌리는 카드가 깜빡였다(B).
+  hoverSetters: Map<number, (on: boolean) => void>;
   dragOffset: Animated.ValueXY;
+  // 끌리는 카드의 translateY — iOS는 dragOffset.y, 안드로이드는 dragOffset.y + 스크롤 보정(네이티브 합성)
+  dragY: Animated.Value | Animated.AnimatedAddition<number>;
   dragScale: Animated.Value;
+  // 안드로이드 전용: 정착 잔여량(1 → 0)과 드롭 커밋의 새 슬롯 기준 보정(렌더 상수, 활성 카드에만 의미)
+  settleQ: Animated.AnimatedSubtraction<number>;
+  rebase: { x: number; y: number };
   onDragStart: (idx: number) => void;
   // moveY = 손가락의 화면 y좌표 — 가장자리 자동 스크롤 판정용
   onDragMove: (idx: number, dx: number, dy: number, moveY: number) => void;
@@ -1071,9 +1087,12 @@ interface DraggableCardWrapperProps {
 function DraggableCardWrapper({
   idx,
   activeIdx,
-  hoverIdx,
+  hoverSetters,
   dragOffset,
+  dragY,
   dragScale,
+  settleQ,
+  rebase,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -1082,6 +1101,8 @@ function DraggableCardWrapper({
   style,
 }: DraggableCardWrapperProps) {
   const isDraggingRef = useRef(false);
+  // 이번 터치가 슬롭(10px)을 넘게 움직였는가 — 안드로이드에서 '스크롤하려던 손'이 떼질 때 카드가 열리지 않게
+  const movedRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   // 언마운트 시 롱프레스 타이머 해제 — 터치 진행 중 카드가 사라지면(병합·보관) 유령 발화로
   // onDragStart(스크롤 잠금+탭바 숨김)가 대응 release 없이 실행되는 것을 방지
@@ -1119,8 +1140,16 @@ function DraggableCardWrapper({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => isDraggingRef.current,
+      // 안드로이드: PanResponder 기본값(true)은 응답자가 되는 순간 부모 ScrollView에
+      // requestDisallowInterceptTouchEvent를 걸어 네이티브 스크롤이 카드 터치를 못 빼앗는다 →
+      // 카드 위에서 시작한 스크롤이 막히고, 떼는 순간 아래 release가 onPress를 불러 카드가 열렸다(A).
+      // false면 슬롭을 넘는 순간 ScrollView가 가로채고 카드엔 terminate가 온다(iOS가 원래 그렇게 동작).
+      // 드래그로 전환된 뒤엔 handleDragStart가 스크롤을 즉시 잠가 가로채기를 막는다.
+      // iOS는 기존 값(true) 그대로 — 동작 불변.
+      onShouldBlockNativeResponder: () => !IS_ANDROID,
       onPanResponderGrant: (evt, gestureState) => {
         isDraggingRef.current = false;
+        movedRef.current = false;
         squishIn(); // 탭 눌림 피드백 (드래그로 전환되면 아래에서 원복)
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
@@ -1134,6 +1163,7 @@ function DraggableCardWrapper({
           cbRef.current.onDragMove(cbRef.current.idx, gestureState.dx, gestureState.dy, gestureState.moveY);
         } else {
           if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
+            movedRef.current = true;
             if (timerRef.current) {
               clearTimeout(timerRef.current);
               timerRef.current = null;
@@ -1150,6 +1180,10 @@ function DraggableCardWrapper({
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
           cbRef.current.onDragEnd(cbRef.current.idx, gestureState.dx, gestureState.dy);
+        } else if (IS_ANDROID && movedRef.current) {
+          // 슬롭을 넘게 움직인 손(=스크롤하려던 손)은 탭이 아니다 — 눌림 원복은 이동 시점에 이미 했다.
+          // (세로는 위 onShouldBlockNativeResponder로 ScrollView가 가로채 여기까지 안 오고, 가로 쓸기 등 남은 경우의 안전망)
+          // iOS는 기존 동작 유지.
         } else {
           squishOut(); // 탭 릴리즈 → 탄성 복원
           cbRef.current.onPress();
@@ -1172,19 +1206,42 @@ function DraggableCardWrapper({
   ).current;
 
   const isActive = activeIdx === idx;
-  // 드래그 중인 카드가 이 카드 위에 올라온 상태 → "여기로 바뀐다"는 신호를 준다
-  const isHoverTarget = activeIdx !== null && activeIdx !== idx && hoverIdx === idx;
 
-  // 호버 반응 애니메이션 (0 → 1 스프링)
+  // 호버 반응 애니메이션 (0 → 1 스프링) — 드래그 중인 카드가 이 카드 위에 올라오면 "여기로 바뀐다"는 신호.
+  // 부모가 hoverSetters로 직접 켜고 끈다(리렌더 없음). 스프링 값·궤적은 예전 상태 기반과 같다.
   const hoverAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(hoverAnim, {
-      toValue: isHoverTarget ? 1 : 0,
-      useNativeDriver: false,
-      friction: 7,
-      tension: 130,
-    }).start();
-  }, [isHoverTarget]);
+    const set = (on: boolean) => {
+      Animated.spring(hoverAnim, {
+        toValue: on ? 1 : 0,
+        useNativeDriver: false,
+        friction: 7,
+        tension: 130,
+      }).start();
+    };
+    hoverSetters.set(idx, set);
+    // 재정렬로 idx가 바뀌면 같은 커밋 안에서 정리(cleanup)가 먼저 돈다 — 남의 등록을 지우지 않게 확인 후 삭제
+    return () => { if (hoverSetters.get(idx) === set) hoverSetters.delete(idx); };
+  }, [idx, hoverSetters, hoverAnim]);
+
+  // 활성(끌림·정착) transform. iOS는 예전 그대로 세 값.
+  // 안드로이드: (손가락 오프셋 + 스크롤 보정 + rebase) × settleQ, 스케일은 1 + (dragScale − 1) × settleQ.
+  //  · rebase는 렌더 상수(AnimatedAddition이 숫자를 새 AnimatedValue로 감쌈) — 드롭 커밋에서 레이아웃 이동과
+  //    같은 마운트에 JS 값으로 실리고, 네이티브 노드도 같은 값으로 만들어져 이어받는다(튐 없음).
+  //  · 정착은 settleQ 하나만 움직이므로 목표가 네이티브에서 정확히 0 — JS가 실제 스크롤량을 몰라도 된다.
+  const rebaseX = rebase.x;
+  const rebaseY = rebase.y;
+  const activeTransform = useMemo(
+    () =>
+      IS_ANDROID
+        ? [
+            { translateX: Animated.multiply(Animated.add(dragOffset.x, rebaseX), settleQ) },
+            { translateY: Animated.multiply(Animated.add(dragY, rebaseY), settleQ) },
+            { scale: Animated.add(1, Animated.multiply(Animated.subtract(dragScale, 1), settleQ)) },
+          ]
+        : [{ translateX: dragOffset.x }, { translateY: dragY }, { scale: dragScale }],
+    [dragOffset, dragY, dragScale, settleQ, rebaseX, rebaseY],
+  );
 
   // 카드 모서리 반경을 그대로 따와 링 오버레이가 카드와 정확히 겹치게 한다
   const cornerRadius = StyleSheet.flatten(style)?.borderRadius ?? 24;
@@ -1199,11 +1256,7 @@ function DraggableCardWrapper({
         // transform을 절대 한 배열에 섞지 말 것 — 섞이면 "moved to native" 오류가 난다
         !isActive && { transform: [{ scale: hoverScale }, { scaleX: pressX }, { scaleY: pressY }] },
         isActive && {
-          transform: [
-            { translateX: dragOffset.x },
-            { translateY: dragOffset.y },
-            { scale: dragScale },
-          ],
+          transform: activeTransform,
           zIndex: 1000,
           // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
           ...Platform.select({
@@ -1219,7 +1272,8 @@ function DraggableCardWrapper({
       ]}
     >
       {children}
-      {/* 드롭 대상 표시 — 유리에 빛이 닿은 듯 리퀴드 글래스 질감을 밝힌다 */}
+      {/* 드롭 대상 표시 — 흰 테두리만 나타난다. 카드 배경은 그대로 둔다(안쪽 밝기·스페큘러 그라데이션이
+          카드를 하얗게 덮었다 — 2026-10-30 사용자 요청으로 제거) */}
       {!isActive && (
         <Animated.View
           pointerEvents="none"
@@ -1232,29 +1286,178 @@ function DraggableCardWrapper({
             borderRadius: cornerRadius,
             borderWidth: 1.5,
             borderColor: 'rgba(255,255,255,0.7)',
-            overflow: 'hidden',
             opacity: hoverAnim,
           }}
-        >
-          {/* 유리 안쪽 밝기 상승 (위→아래) */}
-          <LinearGradient
-            colors={[GLASS.innerTop, 'rgba(255,255,255,0.02)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          {/* 좌상단 스페큘러 — 유리에 빛이 닿는 하이라이트 */}
-          <LinearGradient
-            colors={[GLASS.specular, 'rgba(255,255,255,0)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0.75, y: 0.75 }}
-            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '60%' }}
-          />
-        </Animated.View>
+        />
       )}
     </Animated.View>
   );
 }
+
+// ─── 여행 카드 본문(대표·그리드) — React.memo ───
+// 드래그 시작·드롭·정착 끝마다 ProfileScreen 전체가 다시 렌더되는데(activeIdx·pendingOrder·rebase·isDragging,
+// 정착 끝엔 스토어 동기 렌더까지 2번), 본문 JSX가 화면 안에 인라인이면 카드 N장의 사진·글로우·정보 바·배지가
+// 매번 통째로 다시 그려졌다 — 놓아서 순서가 바뀌는 순간 이 렌더가 JS를 붙잡아 잔렉(2026-10-30).
+// trip 객체는 mappedThumbnails 메모에서 오므로 순서만 바뀌면 같은 참조 → 순서 변경 렌더에선 본문을 건너뛴다.
+// 바뀌는 건 래퍼(DraggableCardWrapper)뿐. mergeOrder: 병합 모드에서 고를 수 있는 카드면 선택 순번(-1 = 미선택),
+// 아니면 null(오버레이 없음) — 원시값이라 memo 비교가 깨지지 않는다.
+type TripCardBodyProps = { trip: TripThumbnail; mergeOrder: number | null };
+
+const MainTripCardBody = React.memo(function MainTripCardBody({ trip, mergeOrder }: TripCardBodyProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {/* 출렁이는 글로우 배경 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만 무효화) */}
+      {/* 사진 없는 체류 카드는 단색 배경(기본 글로우·그라데이션이 목업처럼 보였다 — 2026-10-27) */}
+      {trip.stayFlagCover ? (
+        <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
+      ) : (
+        <>
+          {!(Platform.OS === 'android' && trip.coverUri) && (
+            <LiquidCardGlow
+              width={SCREEN_WIDTH}
+              height={320}
+              color={trip.id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
+              opacity={0.34}
+            />
+          )}
+          <LinearGradient
+            colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      )}
+      {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
+      {trip.coverUri ? (
+        <>
+          <TripCoverImage uri={trip.coverUri} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
+          <View style={thumbSt.mainEmojiWrap} />
+        </>
+      ) : (
+        <View style={thumbSt.mainEmojiWrap}>
+          {trip.stayFlagCover ? (
+            <>
+              <Text style={thumbSt.mainFlag}>{trip.countryFlag}</Text>
+              {trip.stayEmpty ? <Text style={thumbSt.mainEmptyHint}>{t('stay.emptyCardHint')}</Text> : null}
+            </>
+          ) : (
+            <Text style={thumbSt.mainEmoji}>{trip.emoji}</Text>
+          )}
+        </View>
+      )}
+      <CardInfoBar intensity={48} style={thumbSt.mainInfoBar}>
+        <View style={{ flex: 1 }}>
+          {trip.stayLabel && (
+            <Text style={thumbSt.stayBadge}>{trip.stayLabel}</Text>
+          )}
+          <Text style={thumbSt.mainTitle}>{trip.countryFlag} {trip.title}</Text>
+          <Text style={thumbSt.mainDate}>{trip.stayPeriod ?? trip.date}</Text>
+        </View>
+        <View style={thumbSt.mainBadges}>
+          {(trip.uniqueViewTypes
+            ?? Array.from(new Set(trip.records.map((r) => r.viewType || 'feed')))
+          ).map((vt) => (
+            <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
+              {VIEW_TYPE_BADGE[vt] || null}
+            </LiquidPressable>
+          ))}
+        </View>
+        {/* 여행 기억(✨) 진입은 상세 여행 화면(TripDetail) 헤더에서만 — 카드에는 두지 않는다(사용자 결정) */}
+      </CardInfoBar>
+      {mergeOrder !== null && (
+        <MergeSelectOverlay
+          order={mergeOrder}
+          radius={20}
+          primaryLabel={t('profile.mergePrimary')}
+        />
+      )}
+    </>
+  );
+});
+
+const GridTripCardBody = React.memo(function GridTripCardBody({ trip, mergeOrder }: TripCardBodyProps) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {/* 사진 없는 체류 카드는 단색 배경(대표 카드와 같은 이유) */}
+      {trip.stayFlagCover ? (
+        <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
+      ) : (
+        <>
+          {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(대표 카드와 같은 이유) */}
+          {!(Platform.OS === 'android' && trip.coverUri) && (
+            <LiquidCardGlow
+              width={THUMB_WIDTH}
+              height={260}
+              color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
+              opacity={0.3}
+            />
+          )}
+          <LinearGradient
+            colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      )}
+      {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
+      {trip.coverUri ? (
+        <>
+          <TripCoverImage uri={trip.coverUri} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
+          <View style={thumbSt.gridEmojiWrap} />
+        </>
+      ) : (
+        <View style={thumbSt.gridEmojiWrap}>
+          {trip.stayFlagCover ? (
+            <>
+              <Text style={thumbSt.gridFlag}>{trip.countryFlag}</Text>
+              {trip.stayEmpty ? <Text style={thumbSt.gridEmptyHint} numberOfLines={2}>{t('stay.emptyCardHint')}</Text> : null}
+            </>
+          ) : (
+            <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
+          )}
+        </View>
+      )}
+      <CardInfoBar intensity={44} style={thumbSt.gridInfoBar}>
+        {trip.stayLabel && (
+          <Text style={thumbSt.stayBadge}>{trip.stayLabel}</Text>
+        )}
+        <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
+        <Text style={thumbSt.gridDate}>{trip.stayPeriod ?? trip.date}</Text>
+        <View style={thumbSt.gridBadges}>
+          {(trip.uniqueViewTypes
+            ?? Array.from(new Set(trip.records.map((r) => r.viewType || 'feed')))
+          ).map((vt) => (
+            <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
+              {VIEW_TYPE_BADGE[vt] || null}
+            </LiquidPressable>
+          ))}
+        </View>
+        {/* 여행 기억(✨) 진입은 상세 여행 화면에서만(사용자 결정) */}
+      </CardInfoBar>
+      {mergeOrder !== null && (
+        <MergeSelectOverlay
+          order={mergeOrder}
+          radius={30}
+          primaryLabel={t('profile.mergePrimary')}
+        />
+      )}
+    </>
+  );
+});
 
 // ─── 병합 모드 카드 오버레이 — 선택 시 네온 테두리 + 우상단 뱃지(대표/순번), 미선택 시 빈 원 ───
 function MergeSelectOverlay({ order, radius, primaryLabel }: { order: number; radius: number; primaryLabel: string }) {
@@ -1557,9 +1760,39 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     Animated.timing(dragOffset, { toValue: { x: 0, y: 0 }, duration: 0, useNativeDriver: true }).start();
     Animated.timing(dragScale, { toValue: 1, duration: 0, useNativeDriver: true }).start();
   }, [dragOffset, dragScale]);
-  // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응)
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응).
+  // 상태가 아니라 ref + 카드별 스위치(hoverSetters) — 경계를 넘을 때 화면 전체 리렌더를 없앤다.
+  // (리렌더 = 끌리는 카드에 React 커밋 → 안드로이드에서 네이티브 transform이 묵은 값으로 덮여 깜빡임)
   const hoverIdxRef = useRef<number | null>(null);
+  const hoverSetters = useRef(new Map<number, (on: boolean) => void>()).current;
+  const setHover = (hv: number | null) => {
+    if (hoverIdxRef.current === hv) return;
+    if (hoverIdxRef.current != null) hoverSetters.get(hoverIdxRef.current)?.(false);
+    hoverIdxRef.current = hv;
+    if (hv != null) hoverSetters.get(hv)?.(true);
+  };
+  // 안드로이드 전용 스크롤 보정 합성: 끌리는 카드 translateY = 손가락 dy + (현재 스크롤 − 드래그 시작 스크롤).
+  // scrollYAnim은 ScrollView onScroll의 네이티브 Animated.event가 UI 스레드에서 직접 갱신한다 →
+  // 자동 스크롤로 내용이 움직인 바로 그 프레임에 카드 보정도 반영된다(JS setValue는 다른 큐라 프레임이 어긋났다).
+  // iOS는 기존대로 dragOffset.y 하나(JS에서 스크롤량까지 더해 setValue).
+  const scrollYAnim = useRef(new Animated.Value(0)).current;
+  const scrollBase = useRef(new Animated.Value(0)).current;
+  const dragY = useMemo(
+    () => (IS_ANDROID ? Animated.add(dragOffset.y, Animated.subtract(scrollYAnim, scrollBase)) : dragOffset.y),
+    [dragOffset, scrollYAnim, scrollBase],
+  );
+  // 드래그가 실제로 진행 중인가(시작 수락 ~ 손 뗌). 안드로이드는 정착 중 새 드래그를 거부하므로
+  // 거부된 터치의 move/end가 정착 중인 카드를 건드리지 않게 이 값으로 거른다.
+  const dragLiveRef = useRef(false);
+  // 안드로이드: 손을 뗀 뒤 정착 스프링이 도는 중 — 이 동안 새 드래그를 받지 않는다(정착 콜백과 엉키지 않게)
+  const settlingRef = useRef(false);
+  // 안드로이드 정착 진행값(0 → 1)과 잔여량 settleQ = 1 − settleP. 정착할 땐 이 값 하나만 움직인다.
+  const settleP = useRef(new Animated.Value(0)).current;
+  const settleQ = useMemo(() => Animated.subtract(1, settleP), [settleP]);
+  // 안드로이드 드롭 커밋의 '옛 슬롯 → 새 슬롯' 보정(렌더 상수). 정착이 끝나면 NO_REBASE로.
+  const [dropRebase, setDropRebase] = useState(NO_REBASE);
+  // 안드로이드: 드롭 렌더가 커밋된 뒤 정착을 시작하라는 신호(값이 바뀔 때마다 effect가 settleP 스프링 시작)
+  const [settleTick, setSettleTick] = useState(0);
 
   // ─── 드래그 중 가장자리 자동 스크롤 — 전부 ref(리렌더 없음) ───
   const scrollRef = useRef<ScrollView>(null);
@@ -1570,6 +1803,18 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const dragStartScrollYRef = useRef(0);
   const lastDragRef = useRef({ idx: 0, dx: 0, dy: 0, moveY: 0 });
   const autoScrollRafRef = useRef<number | null>(null);
+  // 안드로이드 onScroll — 네이티브 드라이버가 scrollYAnim을 UI 스레드에서 갱신하고(카드 보정 합성),
+  // listener는 기존 JS 처리(드래그 중엔 무시 — 아래 iOS onScroll 주석과 같은 이유)를 그대로 한다.
+  // 렌더마다 새로 만들면 네이티브 이벤트가 떼였다 붙었다 하므로 한 번만 만든다(드래그 여부는 ref로 읽음).
+  const onScrollAndroid = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollYAnim } } }], {
+      useNativeDriver: true,
+      listener: (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+        if (!dragLiveRef.current) scrollYRef.current = e.nativeEvent.contentOffset.y;
+      },
+    }),
+    [scrollYAnim],
+  );
   const stopAutoScroll = () => {
     if (autoScrollRafRef.current != null) cancelAnimationFrame(autoScrollRafRef.current);
     autoScrollRafRef.current = null;
@@ -1602,7 +1847,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     return -1;
   };
 
-  // 드롭/제자리 복귀 시 카드를 부드럽게 정착시키는 리퀴드 스프링
+  // 드롭/제자리 복귀 시 카드를 부드럽게 정착시키는 리퀴드 스프링 (iOS 경로 — 안드로이드는 아래 settleP)
   const settle = (onDone?: () => void) => {
     Animated.parallel([
       Animated.spring(dragOffset, {
@@ -1631,8 +1876,47 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     setPendingOrder(null);
   };
 
+  // 안드로이드 정착 시작 — 드롭 렌더가 커밋된 '뒤'여야 한다. 이 effect는 자식(Animated.View)의 노드 연결·해제
+  // effect보다 늦게 돌므로, 스프링 연산이 네이티브 큐에서 '옛 활성 노드 해제 → 새 노드 연결' 뒤에 놓인다.
+  // (커밋 전에 시작하면 아직 연결된 옛 노드가 새 레이아웃 위에서 옛 오프셋으로 움직인다)
+  // 스프링 설정은 iOS 정착과 같다 — 선형계라 0→1 진행값으로 몰아도 궤적 모양이 같다. 임계는 진행값 기준
+  // 0.002(이동 250px에서 0.5px) — 기본 0.001px 임계면 안 보이는 꼬리까지 1초 넘게 기다린다.
+  // 단, 옛 노드 해제는 마이크로태스크로 미뤄진다(scheduleAnimatedCleanupInMicrotask 기본 true) — 드롭은 동기
+  // 렌더라 이 effect가 그보다 먼저 돈다. 한 프레임(rAF) 미뤄 해제 연산이 먼저 네이티브 배치에 들어가게 한다.
+  // cleanup으로 취소하지 않는다: 취소되면 settlingRef가 true로 남아 드래그가 영구히 잠긴다(언마운트 저장은 별도 effect가 함).
+  useEffect(() => {
+    if (!IS_ANDROID || settleTick === 0) return;
+    requestAnimationFrame(() => Animated.spring(settleP, {
+      toValue: 1,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 65,
+      restDisplacementThreshold: 0.002,
+      restSpeedThreshold: 0.002,
+    }).start(() => {
+      // 중단(언마운트)돼도 마무리 — 잠금·탭 바가 남지 않게. settleP는 다음 드래그 시작에서 0으로(지금 돌리면
+      // 아직 연결된 카드가 드롭 직전 오프셋으로 되튄다).
+      // settleQ = 0이라 이 시점의 렌더(스토어 동기 렌더 포함)는 JS 값과 상관없이 transform 0을 커밋한다.
+      settlingRef.current = false;
+      setActiveIdx(null);
+      setDropRebase(NO_REBASE);
+      commitDrop();
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settleTick]);
+
+  // 안드로이드: 탭 바 숨김은 드래그 시작 렌더가 커밋된 뒤에. 탭 바 스토어(useSyncExternalStore)는 동기 렌더를
+  // 먼저 일으키는데, 그 커밋은 React가 들고 있던 옛 ScrollView 노드를 그대로 써 setNativeProps 잠금을 되돌린다.
+  useEffect(() => {
+    if (IS_ANDROID && isDragging) setTabBarHidden(true);
+  }, [isDragging]);
+
   const handleDragStart = (idx: number) => {
     if (mergeMode) return; // 병합 모드 중엔 순서 변경 드래그 비활성
+    // 안드로이드: 직전 드롭의 정착 중(~0.5초)엔 새 드래그를 받지 않는다 — 순서가 아직 옛 배치라
+    // 지금 잡은 idx가 정착 끝 커밋 뒤 다른 카드를 가리키게 된다. 거부된 터치의 move/end는 dragLiveRef로 걸러진다.
+    if (IS_ANDROID && settlingRef.current) return;
+    dragLiveRef.current = true;
     // 이전 드롭의 정착 도중 다시 잡으면 그 정착 콜백은 안 불린다(finished=false) → 미뤄 둔 순서를 지금 저장
     if (pendingOrderRef.current) {
       setCardOrder(pendingOrderRef.current);
@@ -1642,10 +1926,25 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // 진행 중인 정착 애니메이션이 있으면 멈추고 새 드래그 시작
     dragOffset.stopAnimation();
     dragScale.stopAnimation();
-    hoverIdxRef.current = null;
-    setHoverIdx(null);
+    setHover(null);
     setActiveIdx(idx);
     dragOffset.setValue({ x: 0, y: 0 });
+    if (IS_ANDROID) {
+      // 직전 정착의 진행값·스케일을 원위치 — 지금은 활성 카드가 없어 화면에 영향이 없다
+      settleP.setValue(0);
+      dragScale.setValue(1);
+      // 스크롤 즉시 잠금 — scrollEnabled={!isDragging}은 이 큰 화면의 렌더가 끝나야 반영돼, 그 사이 손가락이
+      // 슬롭을 넘으면(onShouldBlockNativeResponder=false라) ScrollView가 터치를 빼앗아 드래그가 끊긴다.
+      // setNativeProps는 React 렌더 없이 섀도 트리에 바로 커밋된다. 해제는 정착 끝 렌더의
+      // scrollEnabled(true) 변경분이 덮어쓴다(Fabric은 이후 React 변경분이 nativeProps보다 우선).
+      scrollRef.current?.getNativeScrollRef()?.setNativeProps({ scrollEnabled: false });
+      // 합성 기준점 — 네이티브 scrollYAnim·scrollBase와 각 JS 값을 같은 값으로 맞춘다. 스크롤은 400ms 이상
+      // 멈춰 있었으므로 마지막 onScroll 값(scrollYRef)이 곧 네이티브 값이다. JS 값까지 맞추는 이유: 활성 전환
+      // 렌더가 합성 노드의 JS 값을 커밋하는데, scrollYAnim의 JS 값은 네이티브를 리스너 이벤트
+      // (onAnimatedValueUpdate, 비동기)로 늦게 따라가 시작 순간엔 어긋나 있을 수 있다.
+      scrollYAnim.setValue(scrollYRef.current);
+      scrollBase.setValue(scrollYRef.current);
+    }
     // 카드가 톡 튀지 않고 부드럽게 떠오르도록 스케일을 스프링으로 확대
     Animated.spring(dragScale, {
       toValue: 1.05,
@@ -1654,8 +1953,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       tension: 140,
     }).start();
     setIsDragging(true);
-    // 드래그(순서 변경) 동안 하단 탭 바 잠시 숨김 — 하단 카드 이동 시 가리지 않게
-    setTabBarHidden(true);
+    // 드래그(순서 변경) 동안 하단 탭 바 잠시 숨김 — 하단 카드 이동 시 가리지 않게 (안드로이드는 위 effect에서)
+    if (!IS_ANDROID) setTabBarHidden(true);
     // 자동 스크롤 기준점 — 시작 시점 스크롤 위치와 ScrollView의 화면상 위·아래
     stopAutoScroll();
     dragStartScrollYRef.current = scrollYRef.current;
@@ -1668,14 +1967,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 손가락 이동량 + 시작 이후 스크롤된 양으로 카드 위치·대상 카드를 계산 (스크롤돼도 카드가 손가락을 따라감)
   const applyDrag = (idx: number, dx: number, dy: number) => {
     const sy = dy + scrollYRef.current - dragStartScrollYRef.current;
-    dragOffset.setValue({ x: dx, y: sy });
-    // 현재 올라가 있는 대상 카드를 갱신 (경계를 넘을 때만 setState → 매 프레임 리렌더 방지)
+    // 안드로이드는 스크롤량을 네이티브 합성(dragY)이 더한다 → 여기선 손가락 이동량만
+    dragOffset.setValue({ x: dx, y: IS_ANDROID ? dy : sy });
+    // 현재 올라가 있는 대상 카드를 갱신 (경계를 넘을 때만, 리렌더 없이 해당 카드 스위치만)
     const target = findTargetIdx(idx, dx, sy);
-    const hv = target !== -1 && target !== idx ? target : null;
-    if (hoverIdxRef.current !== hv) {
-      hoverIdxRef.current = hv;
-      setHoverIdx(hv);
-    }
+    setHover(target !== -1 && target !== idx ? target : null);
   };
 
   // 가장자리에 손가락이 있는 동안 매 프레임 프로그램 스크롤 — 손가락이 멈춰 있어도 마지막 dx/dy로 재계산.
@@ -1695,7 +1991,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   };
 
   const handleDragMove = (idx: number, dx: number, dy: number, moveY: number) => {
-    if (mergeMode) return;
+    if (mergeMode || !dragLiveRef.current) return;
     lastDragRef.current = { idx, dx, dy, moveY };
     applyDrag(idx, dx, dy);
     if (autoScrollRafRef.current == null && edgeSpeed(moveY) !== 0) {
@@ -1705,15 +2001,43 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
   const handleDragEnd = (idx: number, dx: number, dy: number) => {
     stopAutoScroll(); // 어떤 경로로 끝나든 루프는 먼저 멈춘다
-    if (mergeMode) return;
-    setIsDragging(false);
-    // 탭 바 복원은 정착이 끝난 뒤(commitDrop) — 놓는 순간 탭 바 애니메이션까지 겹치면 끊긴다
-    hoverIdxRef.current = null;
-    setHoverIdx(null);
+    if (mergeMode || !dragLiveRef.current) return;
+    dragLiveRef.current = false;
+    setHover(null);
 
     // 자동 스크롤로 움직인 만큼 보정해 대상 판정
     const sy = dy + scrollYRef.current - dragStartScrollYRef.current;
     const targetIdx = findTargetIdx(idx, dx, sy);
+
+    if (IS_ANDROID) {
+      // 안드로이드: LayoutAnimation 없이 한 번의 커밋으로 새 순서를 그린다(나머지 카드는 새 자리로 바로 이동 —
+      // iOS와의 의도된 차이). 끌던 카드는 새 슬롯 인스턴스가 활성으로 이어받고(대표 카드↔그리드도 드롭 즉시
+      // 새 칸 크기 — iOS와 같다), 옛 슬롯→새 슬롯 차이는 rebase(렌더 상수)로 같은 마운트에 실린다.
+      // 정착 시작은 커밋 뒤 effect(settleTick)에서.
+      const moved = targetIdx !== -1 && targetIdx !== idx;
+      // 들어올림 스프링이 아직 돌면 멈춘다 — 커밋 직후 '옛 노드 해제' 전에 그 스프링이 옛 노드를 갱신하면
+      // 새 레이아웃 위에 옛 오프셋이 그려진다. 멈춘 값에서 settleQ(1→0)가 스케일을 1로 수렴시킨다.
+      dragScale.stopAnimation();
+      if (moved) {
+        const newOrder = [...displayTrips];
+        const [removed] = newOrder.splice(idx, 1);
+        newOrder.splice(targetIdx, 0, removed);
+        const ids = newOrder.map((t) => t.id);
+        pendingOrderRef.current = ids; // 저장은 정착 끝(commitDrop). 정착 중 이탈하면 언마운트 effect가 저장
+        setPendingOrder(ids);
+        const from = getCardLayout(idx);
+        const to = getCardLayout(targetIdx);
+        setDropRebase({ x: from.x - to.x, y: from.y - to.y });
+        setActiveIdx(targetIdx);
+      }
+      settlingRef.current = true;
+      setIsDragging(false); // 스크롤 잠금 해제(iOS와 같은 시점). 정착 중 스크롤해도 settleQ가 0으로 수렴시킨다
+      setSettleTick((n) => n + 1);
+      return;
+    }
+
+    setIsDragging(false);
+    // 탭 바 복원은 정착이 끝난 뒤(commitDrop) — 놓는 순간 탭 바 애니메이션까지 겹치면 끊긴다
 
     if (targetIdx !== -1 && targetIdx !== idx) {
       // displayTrips(병합된 전체 목록) 기준으로 순서를 재배열하고 id 순서만 저장한다.
@@ -2064,6 +2388,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
 
   return (
+    <AndroidDesignText>
     <View style={styles.safeArea}>
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다. 다른 배경 요소(블롭·오로라 그라데이션)는 제거됨 */}
       <StarFieldBackground />
@@ -2118,7 +2443,18 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         </View>
         )}
 
-      <ScrollView
+      {/* 안드로이드: scrollYAnim 상시 소비자(크기 0·투명). Animated.event는 붙는 순간의 scrollYAnim 네이티브
+          노드 태그를 이벤트 드라이버에 박아 둔다(AnimatedEvent.js attachNativeEventImpl). scrollYAnim의 자식이
+          끌리는 카드 합성값뿐이면, 정착 끝에 카드가 비활성이 될 때 자식 0 → __detach → dropAnimatedNode로
+          노드가 지워지고(AnimatedWithChildren.__removeChild, AnimatedNode.__detach), 다음 드래그는 새 태그에
+          붙어 스크롤 이벤트를 못 받는다(두 번째 드래그부터 보정 0). 이 뷰가 늘 자식으로 붙어 있어 노드가 유지된다. */}
+      {IS_ANDROID && (
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', width: 0, height: 0, opacity: 0, transform: [{ translateY: scrollYAnim }] }}
+        />
+      )}
+      <CardScrollView
         ref={scrollRef}
         style={[styles.container, { backgroundColor: 'transparent' }]}
         contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
@@ -2128,7 +2464,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         // 자동 스크롤용 측정값 — 리렌더 없이 ref에만 기록.
         // 드래그 중엔 무시: 그동안 스크롤은 루프의 scrollTo뿐이고 ref는 루프가 직접 갱신한다.
         // 늦게 도착한 옛 이벤트가 ref를 되돌리면 카드가 떨리고 스크롤이 느려진다.
-        onScroll={(e) => { if (!isDragging) scrollYRef.current = e.nativeEvent.contentOffset.y; }}
+        onScroll={IS_ANDROID ? onScrollAndroid : (e) => { if (!isDragging) scrollYRef.current = e.nativeEvent.contentOffset.y; }}
         scrollEventThrottle={16}
         onLayout={(e) => { viewportHRef.current = e.nativeEvent.layout.height; }}
         onContentSizeChange={(_w, h) => { contentHRef.current = h; }}
@@ -2328,86 +2664,22 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           <DraggableCardWrapper
             idx={0}
             activeIdx={activeIdx}
-            hoverIdx={hoverIdx}
+            hoverSetters={hoverSetters}
             dragOffset={dragOffset}
+            dragY={dragY}
             dragScale={dragScale}
+            settleQ={settleQ}
+            rebase={dropRebase}
             onDragStart={handleDragStart}
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
             onPress={() => (mergeMode ? toggleMergeSelect(displayTrips[0].id) : openTripDetail(displayTrips[0]))}
             style={thumbSt.mainCard}
           >
-            {/* 출렁이는 글로우 배경 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만 무효화) */}
-            {/* 사진 없는 체류 카드는 단색 배경(기본 글로우·그라데이션이 목업처럼 보였다 — 2026-10-27) */}
-            {displayTrips[0].stayFlagCover ? (
-              <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
-            ) : (
-              <>
-                {!(Platform.OS === 'android' && displayTrips[0].coverUri) && (
-                  <LiquidCardGlow
-                    width={SCREEN_WIDTH}
-                    height={320}
-                    color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
-                    opacity={0.34}
-                  />
-                )}
-                <LinearGradient
-                  colors={TRIP_GRADIENT_COLORS[displayTrips[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </>
-            )}
-            {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
-            {displayTrips[0].coverUri ? (
-              <>
-                <TripCoverImage uri={displayTrips[0].coverUri} />
-                <LinearGradient
-                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
-                  style={StyleSheet.absoluteFill}
-                />
-                {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
-                <View style={thumbSt.mainEmojiWrap} />
-              </>
-            ) : (
-              <View style={thumbSt.mainEmojiWrap}>
-                {displayTrips[0].stayFlagCover ? (
-                  <>
-                    <Text style={thumbSt.mainFlag}>{displayTrips[0].countryFlag}</Text>
-                    {displayTrips[0].stayEmpty ? <Text style={thumbSt.mainEmptyHint}>{t('stay.emptyCardHint')}</Text> : null}
-                  </>
-                ) : (
-                  <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
-                )}
-              </View>
-            )}
-            <CardInfoBar intensity={48} style={thumbSt.mainInfoBar}>
-              <View style={{ flex: 1 }}>
-                {displayTrips[0].stayLabel && (
-                  <Text style={thumbSt.stayBadge}>{displayTrips[0].stayLabel}</Text>
-                )}
-                <Text style={thumbSt.mainTitle}>{displayTrips[0].countryFlag} {displayTrips[0].title}</Text>
-                <Text style={thumbSt.mainDate}>{displayTrips[0].stayPeriod ?? displayTrips[0].date}</Text>
-              </View>
-              <View style={thumbSt.mainBadges}>
-                {(displayTrips[0].uniqueViewTypes
-                  ?? Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed')))
-                ).map((vt) => (
-                  <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
-                    {VIEW_TYPE_BADGE[vt] || null}
-                  </LiquidPressable>
-                ))}
-              </View>
-              {/* 여행 기억(✨) 진입은 상세 여행 화면(TripDetail) 헤더에서만 — 카드에는 두지 않는다(사용자 결정) */}
-            </CardInfoBar>
-            {mergeMode && mergeableIds.has(displayTrips[0].id) && (
-              <MergeSelectOverlay
-                order={mergeSelected.indexOf(displayTrips[0].id)}
-                radius={20}
-                primaryLabel={t('profile.mergePrimary')}
-              />
-            )}
+            <MainTripCardBody
+              trip={displayTrips[0]}
+              mergeOrder={mergeMode && mergeableIds.has(displayTrips[0].id) ? mergeSelected.indexOf(displayTrips[0].id) : null}
+            />
           </DraggableCardWrapper>
         )}
 
@@ -2420,90 +2692,28 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 key={trip.id}
                 idx={idx}
                 activeIdx={activeIdx}
-                hoverIdx={hoverIdx}
+                hoverSetters={hoverSetters}
                 dragOffset={dragOffset}
+                dragY={dragY}
                 dragScale={dragScale}
+                settleQ={settleQ}
+                rebase={dropRebase}
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
                 onPress={() => (mergeMode ? toggleMergeSelect(trip.id) : openTripDetail(trip))}
                 style={thumbSt.gridCard}
               >
-                {/* 사진 없는 체류 카드는 단색 배경(대표 카드와 같은 이유) */}
-                {trip.stayFlagCover ? (
-                  <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
-                ) : (
-                  <>
-                    {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(대표 카드와 같은 이유) */}
-                    {!(Platform.OS === 'android' && trip.coverUri) && (
-                      <LiquidCardGlow
-                        width={THUMB_WIDTH}
-                        height={260}
-                        color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
-                        opacity={0.3}
-                      />
-                    )}
-                    <LinearGradient
-                      colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
-                      start={{ x: 0.5, y: 0 }}
-                      end={{ x: 0.5, y: 1 }}
-                      style={StyleSheet.absoluteFill}
-                    />
-                  </>
-                )}
-                {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
-                {trip.coverUri ? (
-                  <>
-                    <TripCoverImage uri={trip.coverUri} />
-                    <LinearGradient
-                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
-                      style={StyleSheet.absoluteFill}
-                    />
-                    {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
-                    <View style={thumbSt.gridEmojiWrap} />
-                  </>
-                ) : (
-                  <View style={thumbSt.gridEmojiWrap}>
-                    {trip.stayFlagCover ? (
-                      <>
-                        <Text style={thumbSt.gridFlag}>{trip.countryFlag}</Text>
-                        {trip.stayEmpty ? <Text style={thumbSt.gridEmptyHint} numberOfLines={2}>{t('stay.emptyCardHint')}</Text> : null}
-                      </>
-                    ) : (
-                      <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
-                    )}
-                  </View>
-                )}
-                <CardInfoBar intensity={44} style={thumbSt.gridInfoBar}>
-                  {trip.stayLabel && (
-                    <Text style={thumbSt.stayBadge}>{trip.stayLabel}</Text>
-                  )}
-                  <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
-                  <Text style={thumbSt.gridDate}>{trip.stayPeriod ?? trip.date}</Text>
-                  <View style={thumbSt.gridBadges}>
-                    {(trip.uniqueViewTypes
-                      ?? Array.from(new Set(trip.records.map((r) => r.viewType || 'feed')))
-                    ).map((vt) => (
-                      <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
-                        {VIEW_TYPE_BADGE[vt] || null}
-                      </LiquidPressable>
-                    ))}
-                  </View>
-                  {/* 여행 기억(✨) 진입은 상세 여행 화면에서만(사용자 결정) */}
-                </CardInfoBar>
-                {mergeMode && mergeableIds.has(trip.id) && (
-                  <MergeSelectOverlay
-                    order={mergeSelected.indexOf(trip.id)}
-                    radius={30}
-                    primaryLabel={t('profile.mergePrimary')}
-                  />
-                )}
+                <GridTripCardBody
+                  trip={trip}
+                  mergeOrder={mergeMode && mergeableIds.has(trip.id) ? mergeSelected.indexOf(trip.id) : null}
+                />
               </DraggableCardWrapper>
             );
           })}
         </View>
 
-      </ScrollView>
+      </CardScrollView>
 
       {/* 병합 모드 하단 고정 바 — 2장 이상 선택 시 활성화 */}
       {mergeMode && (
@@ -2602,6 +2812,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       />
 
     </View>
+    </AndroidDesignText>
   );
 }
 

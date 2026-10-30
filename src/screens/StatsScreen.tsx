@@ -10,7 +10,7 @@ import {
   PanResponder,
   Platform,
 } from 'react-native';
-import { Text } from '../ui/Text';
+import { AndroidDesignText, Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { grab, select } from '../utils/haptics';
@@ -739,6 +739,7 @@ export default function StatsScreen() {
   const avgRating = ratedRecordsCount > 0 ? (ratingSum / ratedRecordsCount).toFixed(1) : '0.0';
 
   return (
+    <AndroidDesignText>
     <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
       {/* 소셜·프로필탭과 동일한 검정 배경(#0A0A0F) — 보라끼 나던 그라데이션 제거 */}
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
@@ -1068,6 +1069,7 @@ export default function StatsScreen() {
         onClose={() => setCoachVisible(false)}
       />
     </LinearGradient>
+    </AndroidDesignText>
   );
 }
 

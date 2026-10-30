@@ -11,7 +11,7 @@ import {
   ActivityIndicator,
   Animated,
 } from 'react-native';
-import { Text } from '../ui/Text';
+import { Text, AndroidDesignText } from '../ui/Text';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -476,7 +476,9 @@ export default function FriendProfileScreen({
     </View>
   );
 
+  // 안드로이드: 내 프로필(isSelf → ProfileScreen)과 같은 시안 폭 글자 축소를 받는다(ui/Text AndroidDesignText).
   return (
+    <AndroidDesignText>
     <View style={s.container} ref={containerRef}>
 
       {/* ── 헤더 ── */}
@@ -839,6 +841,7 @@ export default function FriendProfileScreen({
 
       <Toast visible={toastVisible} message={toastMsg} />
     </View>
+    </AndroidDesignText>
   );
 }
 
