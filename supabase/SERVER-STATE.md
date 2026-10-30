@@ -80,7 +80,7 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 1건 (2026-10-29 차단 목록 현재 아이디 RPC)
+## 1. 지금 해야 하는 것 — 0건 (2026-10-31 기준 미실행 SQL 없음)
 
 ### ✅ 반영 완료(2026-10-31 운영·테스트 양쪽, 사용자 실행·확인 쿼리 3개 통과) — 반응 취소 시 알림 정리 (2026-10-30 추가)
 
@@ -95,7 +95,7 @@
   - `select tgname from pg_trigger where tgname in ('trg_cleanup_like_notif','trg_cleanup_comment_notif','trg_cleanup_deleted_post_notifs');` → 3행
   - `select pg_get_functiondef('public.notify_send_push()'::regprocedure) like '%new.created_at > old.created_at%';` → `true`
 
-### ⏳ 미실행 — `my_blocked_profiles()` 내가 차단한 사람의 현재 아이디 (2026-10-29 추가)
+### ✅ 반영 완료(2026-10-31 운영·테스트 양쪽, 사용자 실행·확인 쿼리 통과) — `my_blocked_profiles()` 내가 차단한 사람의 현재 아이디 (2026-10-29 추가)
 
 > `supabase/migration-2026-10-29-my-blocked-profiles.sql` (schema.sql `is_blocked_between` 바로 아래 본문과 동일). **운영·테스트 양쪽** SQL Editor에서 실행.
 
