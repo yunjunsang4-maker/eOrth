@@ -130,7 +130,9 @@ const AVA = 34;
 
 const NotiAvatar = ({ n, skinAccent }: { n: Noti; skinAccent: SkinAccent }) => {
   const Icon = CATEGORY_ICON[n.category];
-  const hasActor = n.category === 'follow' || n.category === 'record';
+  // 사람이 보낸 알림(좋아요·댓글·답글·언급·메이트·새 기록)은 모두 '프사 + 작은 아이콘 배지'로 통일(2026-10-30 사용자 결정).
+  // 행위자가 없는 추억 알림만 아이콘 원.
+  const hasActor = n.category !== 'memory';
   return (
     <View style={{ width: AVA, height: AVA }}>
       {hasActor ? (

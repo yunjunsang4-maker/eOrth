@@ -20,7 +20,8 @@ interface ToastProps {
 }
 
 const VISUAL_ICON = { like: HeartIcon, comment: CommentIcon, follow: FriendIcon, record: PinIcon, badge: StarIcon };
-const AVA = 32;
+// 알림 배너 비율은 인스타그램 상단 배너 실측(402pt 폭 기준) — 프사·게시물 사진 44, 높이 ≈68, 좌우 여백 8
+const AVA = 44;
 // 옛 RN Animated 값의 환산 — timing은 RN 기본 easing(inOut(ease))을 명시해야 같다(Reanimated 기본은 inOut(quad)).
 // 스프링은 speed 20·bounciness 6을 RN SpringConfig.fromBouncinessAndSpeed로 바꾼 값(질량 1).
 const SHOW_TIMING = { duration: 180, easing: REasing.inOut(REasing.ease) };
@@ -98,17 +99,25 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
         <View style={{ width: AVA, height: AVA }}>
           <View style={[s.avatarRing, { borderColor: skinAccent.tint(0.35) }, iconOnly && { backgroundColor: skinAccent.tint(0.16) }]}>
             {iconOnly && Icon
-              ? <Icon size={15} color={skinAccent.accent} />
+              ? <Icon size={20} color={skinAccent.accent} />
               : <AuthorAvatar photo={visual?.photo} size={AVA - 2} />}
           </View>
           {Icon && !iconOnly && (
             <View style={[s.catBadge, { backgroundColor: skinAccent.accent }]}>
-              <Icon size={8} color="#FFFFFF" />
+              <Icon size={10} color="#FFFFFF" />
             </View>
           )}
         </View>
       )}
-      <Text style={[s.text, rich && s.textRich]} numberOfLines={2}>{message}</Text>
+      {visual?.title ? (
+        // 윗줄 아이디(굵게) / 아랫줄 알림 내용 — 인스타그램 배너 구조
+        <View style={s.textCol}>
+          <Text style={s.titleRich} numberOfLines={1}>{visual.title}</Text>
+          <Text style={s.bodyRich} numberOfLines={2}>{message}</Text>
+        </View>
+      ) : (
+        <Text style={[s.text, rich && s.textRich]} numberOfLines={2}>{message}</Text>
+      )}
       {visual?.thumb ? <Image source={{ uri: visual.thumb }} style={s.thumb} /> : null}
     </>
   );
@@ -119,7 +128,7 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
         s.toast,
         rich && s.toastRich,
         // 하단 토스트 — 안드로이드 3버튼 내비바(48dp)와 겹치지 않게 인셋 기반 보정 (iOS는 기존 48 유지)
-        isTop ? { top: insets.top + 12 } : { bottom: Platform.OS === 'ios' ? 48 : insets.bottom + 24 },
+        isTop ? { top: insets.top + (rich ? 8 : 12) } : { bottom: Platform.OS === 'ios' ? 48 : insets.bottom + 24 },
         toastStyle,
       ]}
       pointerEvents={onPress || onDismiss ? 'box-none' : 'none'}
@@ -155,17 +164,17 @@ const s = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
-  // 알림 배너 — 알림 화면 카드와 같은 톤(라운드 14 + 얇은 흰 테두리), 좌우로 넓게
+  // 알림 배너 — 알림 화면 카드와 같은 톤(얇은 흰 테두리), 비율은 인스타그램 배너(좌우 8·라운드 16·안쪽 12)
   toastRich: {
-    left: 14,
-    right: 14,
+    left: 8,
+    right: 8,
     alignSelf: 'auto',
     backgroundColor: 'rgba(28,28,40,0.97)',
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   pressable: {
     paddingHorizontal: 20,
@@ -176,13 +185,13 @@ const s = StyleSheet.create({
   pressableRich: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginHorizontal: -12,
-    marginVertical: -10,
+    marginVertical: -12,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
 
   // 아바타(사진 없으면 제작 실루엣) + 카테고리 아이콘 배지 — 알림 화면과 동일 구성
   avatarRing: {
@@ -193,16 +202,19 @@ const s = StyleSheet.create({
   },
   catBadge: {
     position: 'absolute', right: -2, bottom: -2,
-    width: 14, height: 14, borderRadius: 7,
+    width: 18, height: 18, borderRadius: 9,
     borderWidth: 1.5, borderColor: '#1C1C28', // 배너 배경색 링 — 아바타와 분리돼 보이게
     alignItems: 'center', justifyContent: 'center',
   },
-  thumb: { width: 32, height: 32, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.06)' },
+  thumb: { width: AVA, height: AVA, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.06)' },
 
   text: {
     fontSize: 14,
     color: '#FFFFFF',
     fontWeight: '500',
   },
-  textRich: { flex: 1, fontSize: 13, lineHeight: 18 },
+  textRich: { flex: 1, fontSize: 15, lineHeight: 19 },
+  textCol: { flex: 1 },
+  titleRich: { fontSize: 15, lineHeight: 19, color: '#FFFFFF', fontWeight: '700' },
+  bodyRich: { fontSize: 15, lineHeight: 19, color: '#FFFFFF', fontWeight: '400' },
 });

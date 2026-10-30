@@ -19,13 +19,13 @@ const TYPE_MAP: Record<
   AppNotification['type'],
   { key: string; icon?: ToastVisual['icon']; toPost?: boolean }
 > = {
-  like:             { key: 'misc.likeText',            icon: 'like',    toPost: true },
-  comment:          { key: 'misc.commentText',         icon: 'comment', toPost: true },
-  reply:            { key: 'misc.replyText',           icon: 'comment', toPost: true },
-  mention:          { key: 'misc.mentionText',         icon: 'comment', toPost: true },
-  friend_post:      { key: 'misc.friendPostText',      icon: 'record',  toPost: true },
-  neighbor_request: { key: 'misc.neighborRequestText', icon: 'follow' },
-  neighbor_accept:  { key: 'misc.neighborAcceptText',  icon: 'follow' },
+  like:             { key: 'misc.likeBody',            icon: 'like',    toPost: true },
+  comment:          { key: 'misc.commentBody',         icon: 'comment', toPost: true },
+  reply:            { key: 'misc.replyBody',           icon: 'comment', toPost: true },
+  mention:          { key: 'misc.mentionBody',         icon: 'comment', toPost: true },
+  friend_post:      { key: 'misc.friendPostBody',      icon: 'record',  toPost: true },
+  neighbor_request: { key: 'misc.neighborRequestBody', icon: 'follow' },
+  neighbor_accept:  { key: 'misc.neighborAcceptBody',  icon: 'follow' },
 };
 
 export default function NotiToastHost() {
@@ -96,10 +96,12 @@ export default function NotiToastHost() {
             : undefined;
           const visual: ToastVisual = {
             photo: r.actorPhoto || undefined,
+            title: name, // 윗줄 아이디 — 아랫줄은 이름 없는 *Body 문구
             icon: m.icon,
-            thumb: post?.representativePhoto || post?.medias?.[0] || post?.cutPhoto?.previewUri,
+            // 알림 화면 pickThumb와 같은 순서 — 스냅 기록도 사진이 나오게
+            thumb: post?.representativePhoto || post?.medias?.[0] || post?.cutPhoto?.previewUri || post?.snapBackUri || post?.snapFrontUri,
           };
-          push(tr(m.key, { name }), () => {
+          push(tr(m.key), () => {
             const nav = navigationRef.current;
             if (!nav?.isReady()) return;
             // 게시물이 로컬에 있으면 상세로, 없으면 알림 목록으로 (엉뚱한 화면 대신)

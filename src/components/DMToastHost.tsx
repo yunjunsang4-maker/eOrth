@@ -54,8 +54,9 @@ export default function DMToastHost() {
             const name = friend?.name ?? h;
             // 아바타는 visual로 넘긴다 — 문구에 시스템 이모지를 끼워 넣던 방식은
             // 알림 화면에서 걷어낸 규칙(사진 우선, 없으면 제작 실루엣)과 어긋난다
+            // 윗줄 아이디 / 아랫줄 메시지 미리보기(visual.title) — 알림 배너와 같은 두 줄 구조
             pushToast(
-              `${name}: ${previewOf(m, t)}`,
+              previewOf(m, t),
               () => {
                 navigationRef.current?.navigate('DM', {
                   friend: friend
@@ -63,7 +64,7 @@ export default function DMToastHost() {
                     : { name: h, handle: h, emoji: '💬' },
                 });
               },
-              { photo: friend?.photo, icon: 'comment' }
+              { photo: friend?.photo, icon: 'comment', title: name }
             );
           }
         }

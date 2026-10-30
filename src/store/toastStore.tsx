@@ -7,6 +7,8 @@ export interface ToastVisual {
   // 아바타 자리에 제작 별 아이콘을 크게 그린다(Toast.tsx)
   icon?: 'like' | 'comment' | 'follow' | 'record' | 'badge';
   thumb?: string;                                    // 대상 게시물 대표 사진(우측)
+  // 윗줄(굵게) — 행위자 아이디. 주면 배너가 '윗줄 아이디 / 아랫줄 message(알림 내용)' 두 줄 구조가 된다(인스타그램 배너)
+  title?: string;
 }
 
 // 앱내 알림 토스트 1건
