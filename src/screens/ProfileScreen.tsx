@@ -1061,13 +1061,23 @@ function getCardLayout(idx: number): { x: number; y: number; w: number; h: numbe
   return { x, y, w: cardW, h: cardH };
 }
 
+// 카드 비활성 효과(호버 축소·테두리, 탭 스퀴시)의 드라이버 — 안드로이드는 네이티브.
+// JS 드라이버 Animated는 Fabric에서 매 프레임 그 뷰에 setNativeProps를 하고, setNativeProps는 값을 뷰
+// 패밀리의 nativeProps_DEPRECATED에 영구히 남긴다(UIManager.cpp setNativeProps_DEPRECATED). 그 뒤 이 카드가
+// 끌릴 때 형제 카드의 커밋이 부모를 복제하면 부모가 자식을 clone({})으로 입양하는데(YogaLayoutableShadowNode
+// adoptYogaChild), ShadowNode::clone이 그 묵은 transform을 다시 props로 만들어 UpdateProps로 내려보낸다
+// (ShadowNode.cpp clone). 안드로이드는 네이티브 Animated transform을 React 쪽 갱신으로부터 보호하지 않아
+// 끌던 카드가 그 프레임만 원래 슬롯 쪽으로 그려졌다 — 호버 스프링 동안 매 프레임 왔다 갔다(2026-10-30).
+// 네이티브 드라이버는 setNativeProps를 쓰지 않으므로 카드 뷰에 nativeProps가 생기지 않는다. iOS는 기존(JS) 그대로.
+const INACTIVE_NATIVE = IS_ANDROID;
+
 // ─── 인라인 카드 드래그 제스처 래핑 컴포넌트 ───
 interface DraggableCardWrapperProps {
   idx: number;
   activeIdx: number | null;
   // 드롭 대상 표시(호버) 스위치 등록부 — 부모가 상태(setState) 없이 직접 켜고 끈다.
   // 상태로 두면 경계를 넘을 때마다 화면 전체가 리렌더돼 안드로이드에서 끌리는 카드가 깜빡였다(B).
-  hoverSetters: Map<number, (on: boolean) => void>;
+  hoverSetters: Map<number, (on: boolean, instant?: boolean) => void>;
   dragOffset: Animated.ValueXY;
   // 끌리는 카드의 translateY — iOS는 dragOffset.y, 안드로이드는 dragOffset.y + 스크롤 보정(네이티브 합성)
   dragY: Animated.Value | Animated.AnimatedAddition<number>;
@@ -1113,25 +1123,25 @@ function DraggableCardWrapper({
   cbRef.current = { idx, onDragStart, onDragMove, onDragEnd, onPress };
 
   // 탭 스퀴시 — FriendProfile TripCard(LiquidPressable)와 동일한 눌림 효과(강도 0.02).
-  // hoverAnim이 non-native라 같은 노드 transform에 얹으려면 이 값도 non-native로 구동한다.
+  // 비활성 transform(hoverScale·pressX·pressY)은 한 배열이라 셋 다 같은 드라이버여야 한다(위 INACTIVE_NATIVE).
   const SQUISH = 0.02;
   const pressX = useRef(new Animated.Value(1)).current;
   const pressY = useRef(new Animated.Value(1)).current;
   const squishIn = useCallback(() => {
     Animated.parallel([
-      Animated.spring(pressX, { toValue: 1 + SQUISH, tension: 300, friction: 8, useNativeDriver: false }),
-      Animated.spring(pressY, { toValue: 1 - SQUISH, tension: 300, friction: 8, useNativeDriver: false }),
+      Animated.spring(pressX, { toValue: 1 + SQUISH, tension: 300, friction: 8, useNativeDriver: INACTIVE_NATIVE }),
+      Animated.spring(pressY, { toValue: 1 - SQUISH, tension: 300, friction: 8, useNativeDriver: INACTIVE_NATIVE }),
     ]).start();
   }, [pressX, pressY]);
   const squishOut = useCallback(() => {
     Animated.sequence([
       Animated.parallel([
-        Animated.spring(pressX, { toValue: 1 - SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: false }),
-        Animated.spring(pressY, { toValue: 1 + SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: false }),
+        Animated.spring(pressX, { toValue: 1 - SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: INACTIVE_NATIVE }),
+        Animated.spring(pressY, { toValue: 1 + SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: INACTIVE_NATIVE }),
       ]),
       Animated.parallel([
-        Animated.spring(pressX, { toValue: 1, tension: 200, friction: 10, useNativeDriver: false }),
-        Animated.spring(pressY, { toValue: 1, tension: 200, friction: 10, useNativeDriver: false }),
+        Animated.spring(pressX, { toValue: 1, tension: 200, friction: 10, useNativeDriver: INACTIVE_NATIVE }),
+        Animated.spring(pressY, { toValue: 1, tension: 200, friction: 10, useNativeDriver: INACTIVE_NATIVE }),
       ]),
     ]).start();
   }, [pressX, pressY]);
@@ -1211,10 +1221,19 @@ function DraggableCardWrapper({
   // 부모가 hoverSetters로 직접 켜고 끈다(리렌더 없음). 스프링 값·궤적은 예전 상태 기반과 같다.
   const hoverAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const set = (on: boolean) => {
+    const set = (on: boolean, instant?: boolean) => {
+      // instant(안드로이드 드롭): 스프링 없이 바로 끈다. 드롭 커밋에서 이 카드가 활성으로 바뀌면(대표 카드가 낀 이동)
+      // 아직 떼어지지 않은 비활성 네이티브 노드가 도는 스프링으로 활성 transform(rebase)을 덮어쓸 수 있다.
+      // setValue가 아니라 0ms 네이티브 timing — setValue는 도는 스프링을 멈추고, 그 종료 콜백이 JS 값을 멈춘 순간 값으로
+      // 되돌려 재렌더한다(네이티브는 이미 0이라 다시 안 씀) → 빨리 놓으면 테두리·0.95 축소가 남았다.
+      // timing은 종료 콜백이 목표값으로 와서 JS 값·커밋도 0으로 끝난다(dragOffset 초기화와 같은 방식).
+      if (instant) {
+        Animated.timing(hoverAnim, { toValue: on ? 1 : 0, duration: 0, useNativeDriver: INACTIVE_NATIVE }).start();
+        return;
+      }
       Animated.spring(hoverAnim, {
         toValue: on ? 1 : 0,
-        useNativeDriver: false,
+        useNativeDriver: INACTIVE_NATIVE,
         friction: 7,
         tension: 130,
       }).start();
@@ -1245,15 +1264,20 @@ function DraggableCardWrapper({
 
   // 카드 모서리 반경을 그대로 따와 링 오버레이가 카드와 정확히 겹치게 한다
   const cornerRadius = StyleSheet.flatten(style)?.borderRadius ?? 24;
-  const hoverScale = hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] });
+  // 렌더마다 새 노드를 만들면 AnimatedProps가 매번 새로 만들어진다(합성 키 = 노드 정체성) — 안드로이드에선
+  // 그때마다 네이티브 노드 그래프를 새로 만들고 다시 연결한다. 한 번만 만든다(iOS는 동작 같음).
+  const hoverScale = useMemo(
+    () => hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }),
+    [hoverAnim],
+  );
 
   return (
     <Animated.View
       {...panResponder.panHandlers}
       style={[
         style,
-        // 비활성(JS 드라이버: hoverScale·pressX·pressY)과 활성(네이티브 드라이버: dragOffset·dragScale)
-        // transform을 절대 한 배열에 섞지 말 것 — 섞이면 "moved to native" 오류가 난다
+        // 비활성(hoverScale·pressX·pressY — iOS JS 드라이버 / 안드로이드 네이티브)과 활성(네이티브: dragOffset·dragScale)
+        // transform을 절대 한 배열에 섞지 말 것 — iOS에서 섞이면 "moved to native" 오류가 난다
         !isActive && { transform: [{ scale: hoverScale }, { scaleX: pressX }, { scaleY: pressY }] },
         isActive && {
           transform: activeTransform,
@@ -1764,10 +1788,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 상태가 아니라 ref + 카드별 스위치(hoverSetters) — 경계를 넘을 때 화면 전체 리렌더를 없앤다.
   // (리렌더 = 끌리는 카드에 React 커밋 → 안드로이드에서 네이티브 transform이 묵은 값으로 덮여 깜빡임)
   const hoverIdxRef = useRef<number | null>(null);
-  const hoverSetters = useRef(new Map<number, (on: boolean) => void>()).current;
-  const setHover = (hv: number | null) => {
+  const hoverSetters = useRef(new Map<number, (on: boolean, instant?: boolean) => void>()).current;
+  // instant: 끄는 쪽을 스프링 없이 즉시(안드로이드 드롭 — 래퍼의 set 주석 참고)
+  const setHover = (hv: number | null, instant = false) => {
     if (hoverIdxRef.current === hv) return;
-    if (hoverIdxRef.current != null) hoverSetters.get(hoverIdxRef.current)?.(false);
+    if (hoverIdxRef.current != null) hoverSetters.get(hoverIdxRef.current)?.(false, instant);
     hoverIdxRef.current = hv;
     if (hv != null) hoverSetters.get(hv)?.(true);
   };
@@ -2003,7 +2028,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     stopAutoScroll(); // 어떤 경로로 끝나든 루프는 먼저 멈춘다
     if (mergeMode || !dragLiveRef.current) return;
     dragLiveRef.current = false;
-    setHover(null);
+    // 안드로이드: 호버 표시는 즉시 끈다 — 나머지 카드도 이 커밋에서 새 자리로 바로 옮겨진다(iOS는 스프링 그대로)
+    setHover(null, IS_ANDROID);
 
     // 자동 스크롤로 움직인 만큼 보정해 대상 판정
     const sy = dy + scrollYRef.current - dragStartScrollYRef.current;
