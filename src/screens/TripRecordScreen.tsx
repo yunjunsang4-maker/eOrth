@@ -35,6 +35,7 @@ import TimeAgoText from '../components/TimeAgoText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t, i18n } = useTranslation();
@@ -410,9 +411,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     <View style={styles.container}>
       {/* 상단 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+          <HeaderGlassButton back onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityLabel={t('trip.back')}>
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
             {/* 사진첩(앨범) 총 사진 수 — 스크롤 없이 상단에서 바로 확인 */}
@@ -420,9 +421,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               <Text style={styles.headerCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
             )}
           </View>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
+          <HeaderGlassButton onPress={() => setMenuVisible(true)} style={styles.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
             <Text style={styles.menuIcon}>⋯</Text>
-          </TouchableOpacity>
+          </HeaderGlassButton>
         </View>
 
       {/* 본문 + 좋아요/댓글 */}

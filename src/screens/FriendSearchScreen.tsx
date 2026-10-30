@@ -34,6 +34,7 @@ import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
 import { useTravelDna } from '../store/travelDnaStore';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -536,9 +537,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     <View style={s.container}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={handleGoBack} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back style={s.backBtn} onPress={handleGoBack} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={s.headerTitle}>{t('friends.searchTitle')}</Text>
         <View style={s.backBtn} />
       </View>

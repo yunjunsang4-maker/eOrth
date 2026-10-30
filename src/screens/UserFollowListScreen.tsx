@@ -17,6 +17,7 @@ import { useSocialGraph } from '../store/recordStore';
 import { BackChevronIcon } from '../components/icons';
 import DefaultAvatar from '../components/DefaultAvatar';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 const COLORS = {
   bg:         '#0A0A0F',
@@ -59,9 +60,9 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
     <View style={styles.root}>
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 */}
         <View style={styles.headerSpacer} />

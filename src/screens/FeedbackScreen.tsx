@@ -15,6 +15,7 @@ import { BackChevronIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { submitFeedback } from '../services/feedback';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 설정 > 피드백 보내기 — 인앱 폼(Supabase feedback 테이블 저장, 이메일 불필요)
 const MAX_LEN = 1000;
@@ -58,9 +59,9 @@ export default function FeedbackScreen({ navigation }: RootStackScreenProps<'Fee
     <SafeAreaView style={st.safeArea}>
       {/* 상단 헤더 — 설정 화면과 동일 패턴 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
+        <HeaderGlassButton back style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityLabel={t('settings.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={st.headerTitle}>{t('feedback.title')}</Text>
         <View style={st.headerPlaceholder} />
       </View>

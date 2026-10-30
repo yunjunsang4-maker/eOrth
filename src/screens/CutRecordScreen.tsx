@@ -40,6 +40,7 @@ import { CalendarBottomSheet, PillRing } from '../components/record/CalendarBott
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { stageWidthNow } from '../utils/stage';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 const SCREEN_W = stageWidthNow();
 const SCREEN_H = Dimensions.get('window').height;
@@ -358,9 +359,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 헤더 */}
       <View style={st.header}>
         {/* 뒤로가기 — 앱 전 화면 공통 chevron(박스 없음). 이탈 확인은 handleCancel 그대로 */}
-        <TouchableOpacity onPress={handleCancel} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+        <HeaderGlassButton back onPress={handleCancel} style={st.backBtn} accessibilityLabel={t('common.cancel')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         {/* 제목은 헤더 가로 전체를 덮는 절대배치 — '다음'이 알약(minWidth 70)이 되면서 오른쪽 폭이
             뒤로가기(38)보다 커져, space-between으로는 제목이 왼쪽으로 밀린다(BlogRecordScreen과 같은 해법).
             pointerEvents는 <Text>가 아니라 래퍼 <View>의 prop으로 건다 — RN 0.81.5의 Text는

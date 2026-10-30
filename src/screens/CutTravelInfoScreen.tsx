@@ -41,6 +41,7 @@ import {
   LockClosedIcon, LockOpenIcon, OutlineCalendarIcon,
   BackChevronIcon,
 } from '../components/icons';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 디자인 토큰 — BlogRecordScreen의 C와 같은 표(2026-09-24 기록 화면 UI 통일).
 // 강조색(구 보라 고정색 4종 — 네온/딥/바탕/테두리)은 여기서 제거했다 —
@@ -567,9 +568,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       {/* 헤더 */}
       <View style={st.header}>
         {/* 뒤로가기 — 앱 전 화면 공통 chevron(박스 없음) */}
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('common.cancel')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
           그 방어를 <Text>가 아니라 래퍼 <View>의 pointerEvents **prop**으로 건다 —

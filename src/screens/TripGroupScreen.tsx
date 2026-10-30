@@ -20,6 +20,7 @@ import { TrashIcon, BackChevronIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 type RouteParams = {
   TripGroup: { groupId: string };
@@ -97,9 +98,9 @@ export default function TripGroupScreen() {
     return (
       <View style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+          <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('trip.back')}>
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
           <Text style={st.headerTitle}>{t('trip.groupNotFound')}</Text>
           <View style={{ width: 36 }} />
         </View>
@@ -171,13 +172,13 @@ export default function TripGroupScreen() {
     <View style={st.container}>
       {/* 헤더 */}
       <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('trip.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={st.headerTitle} numberOfLines={1}>{group.title}</Text>
-        <TouchableOpacity onPress={() => setMenuVisible(true)} style={st.menuBtn}>
+        <HeaderGlassButton onPress={() => setMenuVisible(true)} style={st.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
           <Text style={st.menuIcon}>⋯</Text>
-        </TouchableOpacity>
+        </HeaderGlassButton>
       </View>
 
       {/* 기록 목록 */}

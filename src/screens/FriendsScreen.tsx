@@ -28,6 +28,7 @@ import { tap, warn } from '../utils/haptics';
 import Toast from '../components/Toast';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 const C = {
   bg: '#0A0A0F',
@@ -285,12 +286,12 @@ export default function FriendsScreen({ navigation }: Props) {
             뒤로가기(40px 고정)와 추가 버튼(텍스트 길이에 따라 가변)은 폭이 달라서,
             space-between만으로는 제목이 남는 공간의 중간에 놓여 중앙에서 밀린다. */}
         <View style={st.headerSideLeft}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+          <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('friends.back')}>
             {/* 텍스트 글리프 '←' 는 Inter에 없어 안드로이드가 시스템 폰트로 폴백하는데,
                 획이 가늘고 기준선이 달라 좌·하로 치우쳤다 → SVG 아이콘으로 교체.
                 시안 통일(블로그 기록 화면)로 화살표 대신 chevron(9×16, 흰 60%)을 쓴다 */}
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
         </View>
         <Text style={st.headerTitle}>{t('friends.title')}</Text>
         <View style={st.headerSideRight}>

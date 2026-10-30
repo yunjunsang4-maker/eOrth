@@ -4,7 +4,6 @@ import {
   View,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Pressable,
   Animated,
   Easing,
@@ -49,6 +48,7 @@ import {
 } from './statsDetailExtras';
 import { buildVisitEvents, yearlyCountsFromEvents, activeYearAverageFromEvents } from '../utils/tripVisitStats';
 import DetailBox from '../components/DetailBox';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // ─── 등장 애니메이션 래퍼 ───
 function FadeSlideView({
@@ -609,9 +609,9 @@ export default function StatsDetailScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={handleBack} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <HeaderGlassButton back onPress={handleBack} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={s.headerTitle}>{content.title}</Text>
       </Animated.View>
 

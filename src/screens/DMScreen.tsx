@@ -43,6 +43,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
 import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { useLocalDayStart } from '../components/TimeAgoText';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 const SW = stageWidthNow();
 const SH = Dimensions.get('window').height;
@@ -834,9 +835,9 @@ export default function DMScreen({ navigation, route }: Props) {
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <TouchableOpacity
           style={st.headerCenter}
           activeOpacity={0.7}

@@ -30,6 +30,7 @@ import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon, BackChevronIco
 import { useEntranceAnimation } from '../components/LiquidEffects';
 import type { TravelRecord } from '../store/recordStore';
 import { useMinuteTick } from '../components/TimeAgoText';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 알림이 가리키는 게시물의 대표 사진 — 어느 기록에 대한 알림인지 한눈에 읽히게.
 // 형식마다 사진이 담기는 자리가 달라 순서대로 훑는다(TripDetail의 pickPhoto와 동일 규칙).
@@ -485,9 +486,9 @@ export default function NotificationScreen({ navigation }: Props) {
     <SafeAreaView style={st.safeArea}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={st.headerTitle}>{t('misc.notifTitle')}</Text>
         {/* 모두 읽음 — 안 읽은 게 있을 때만 노출(자리는 항상 차지해 제목이 안 흔들리게) */}
         <View style={st.headerRight}>

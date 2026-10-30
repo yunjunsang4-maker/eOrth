@@ -39,6 +39,7 @@ import { useNavigation, useRoute, useFocusEffect, useIsFocused, RouteProp } from
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 import DefaultAvatar from '../components/DefaultAvatar';
 import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
 import { useDMData, useDMActions } from '../store/dmStore';
@@ -1980,9 +1981,9 @@ export default function PostDetailScreen() {
     return (
       <View style={s.container}>
         <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
+          <HeaderGlassButton back onPress={() => navigation.goBack()} style={s.backBtn} accessibilityLabel={t('postDetail.back')}>
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
           <Text style={s.headerTitle}>{t('postDetail.postTitle')}</Text>
           <View style={{ width: 38 }} />
         </View>
@@ -2406,9 +2407,9 @@ export default function PostDetailScreen() {
       {/* 헤더 — 구분선은 항상 표시(2026-09-20 시안). 오른쪽 버튼은 blog만, feed·cut은 빈 스페이서. */}
       <View style={[s.header, { paddingTop: insets.top + 8 }]}>
           <View style={s.headerSide}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
+            <HeaderGlassButton back onPress={() => navigation.goBack()} style={s.backBtn} accessibilityLabel={t('postDetail.back')}>
               <BackChevronIcon />
-            </TouchableOpacity>
+            </HeaderGlassButton>
           </View>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
           <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 8 }]}>
@@ -2424,9 +2425,9 @@ export default function PostDetailScreen() {
             )}
             {/* feed·cut의 ⋯는 아래 날짜 알약 행으로 내려갔다 — 헤더 ⋯는 blog·album만 */}
             {!isFeedLayout && !record.isExample && (
-              <TouchableOpacity onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
+              <HeaderGlassButton onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
                 <Text style={s.menuDots}>···</Text>
-              </TouchableOpacity>
+              </HeaderGlassButton>
             )}
           </View>
         </View>

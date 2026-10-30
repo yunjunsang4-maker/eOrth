@@ -82,6 +82,7 @@ import { sweepSignalCaches } from '../services/photoAI/signalCache';
 import { sweepRecoOrphans } from '../utils/recoOrphanSweep';
 import type { RootStackScreenProps } from '../navigation/types';
 import { PillRing } from '../components/record/CalendarBottomSheet';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
 // 사진 수 상한 없음: 기간 내 사진은 전부 스캔한다 (과거엔 maxAssets 상한 도달 시
@@ -1415,14 +1416,13 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           이 화살표가 없으면 출구가 사라진다. 스캔 중(취소 버튼)·결과(하단 바)에는
           각자의 이탈 수단이 있어 초기 화면에서만 보인다. */}
       {fromProfile && !scanning && !scanFinished && (
-        <TouchableOpacity
+        <HeaderGlassButton back
           style={[styles.backBtn, { top: insets.top + 8 }]}
           onPress={leaveImport}
-          accessibilityRole="button"
           accessibilityLabel={t('imports.backToProfile')}
         >
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
       )}
 
       <ScrollView

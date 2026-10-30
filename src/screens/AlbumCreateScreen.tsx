@@ -46,6 +46,7 @@ import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 import { adaptAlbumToPool } from '../services/photoAI/recoSource';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DETECTOR_KEYS } from '../store/persist';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -757,9 +758,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   return (
     <LinearGradient colors={['#0A0A0F', '#100620']} style={st.container}>
       <View style={[st.header, { paddingTop: insets.top + 24 }]}>
-        <TouchableOpacity style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8}>
+        <HeaderGlassButton back style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

@@ -21,6 +21,7 @@ import { fetchCountryVisitors, type CountryVisitor } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 type Props = RootStackScreenProps<'Country'>;
 
@@ -74,9 +75,9 @@ export default function CountryScreen({ navigation, route }: Props) {
     <LinearGradient colors={['#0A0A0F', '#100620']} style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <View style={styles.headerCenter}>
           <Text style={styles.countryFlag}>{country.flag}</Text>
           <Text style={styles.countryName}>{countryLabel(country.name, i18n.language)}</Text>

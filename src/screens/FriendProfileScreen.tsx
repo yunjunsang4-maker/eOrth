@@ -46,6 +46,7 @@ import { COUNTRIES } from '../constants/countries';
 import { profileLink } from '../utils/appLinks';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton, { IOS_GLASS } from '../components/HeaderGlassButton';
 
 // ─── 디자인 토큰 ───
 const COLORS = {
@@ -467,9 +468,10 @@ export default function FriendProfileScreen({
 
   // ⋯ — 지름 32 원 + 흰 점 3개(시안). 메뉴가 열리면 어두운 막 위에 같은 원을 한 번 더 그려 밝게 남긴다
   const moreCircle = (
-    <View style={s.moreCircle}>
+    // iOS 시스템 글래스 버튼(HeaderGlassButton)에서는 자체 원·링 없이 점만 — 유리 원이 배경이다
+    <View style={IOS_GLASS ? s.moreDotsOnly : s.moreCircle}>
       {/* 앱 공용 유리 테두리(좌상·우하 흰색 대각 그라데이션) — PostDetail ⋯ 알약과 같은 링 */}
-      <PillRing width={32} height={32} radius={16} />
+      {!IOS_GLASS && <PillRing width={32} height={32} radius={16} />}
       <View style={s.moreDot} />
       <View style={s.moreDot} />
       <View style={s.moreDot} />
@@ -483,16 +485,16 @@ export default function FriendProfileScreen({
 
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
-        <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         {/* 제목은 좌우 버튼 폭과 무관하게 화면 정중앙 — 절대 배치(버튼 폭만큼 좌우 패딩으로 겹침 방지) */}
         <View style={s.headerTitleWrap} pointerEvents="none">
           <Text style={s.headerTitle} numberOfLines={1}>@{displayUsername}</Text>
         </View>
-        <TouchableOpacity style={[s.headerBtn, s.moreBtnHit]} onPress={() => { setOverlapOpen(false); setMenuVisible((v) => !v); }} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.more')}>
+        <HeaderGlassButton style={[s.headerBtn, s.moreBtnHit]} onPress={() => { setOverlapOpen(false); setMenuVisible((v) => !v); }} activeOpacity={0.7} accessibilityLabel={t('friends.more')}>
           {moreCircle}
-        </TouchableOpacity>
+        </HeaderGlassButton>
       </View>
 
       <ScrollView
@@ -1029,6 +1031,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
   },
   moreDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: COLORS.white },
+  moreDotsOnly: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
 
   // ── 프로필 ──
 

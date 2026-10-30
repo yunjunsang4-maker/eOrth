@@ -96,6 +96,7 @@ import { useLateFontsLoaded, lateFontFamily } from '../constants/lateFonts';
 import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 import { isValidRect } from '../utils/coachRect';
 import { andFitText } from '../utils/fitText';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function SheetCheck() {
@@ -1543,9 +1544,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <View style={st.header}>
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
         {/* 뒤로가기 — 앱 전 화면 공통 chevron(BackChevronIcon, 9×16·흰 60%). 박스·테두리 없음 */}
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={st.backBtn} accessibilityLabel={t('common.cancel')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         {/*
           제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
           그 방어를 <Text>가 아니라 래퍼 <View>의 pointerEvents **prop**으로 건다 —

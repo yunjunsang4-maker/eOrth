@@ -23,6 +23,7 @@ import { SettingsChevronIcon } from '../icons/SettingsIcons';
 import { PillRing } from '../record/CalendarBottomSheet';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { andFitText } from '../../utils/fitText';
+import HeaderGlassButton from '../HeaderGlassButton';
 
 export const SETTINGS_COLORS = {
   bg:         '#0A0A0F',
@@ -140,9 +141,9 @@ export const SettingsHeader = ({ title, onBack, right, backA11yLabel }: {
   return (
     <View style={s.header}>
       {/* 버튼은 40×40(시안 배치), 터치 영역은 hitSlop으로 48×48 — 권장 최소 44 이상 */}
-      <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={onBack} hitSlop={BACK_HIT_SLOP} accessibilityRole="button" accessibilityLabel={backA11yLabel ?? t('settings.back')}>
+      <HeaderGlassButton back style={s.backBtn} activeOpacity={0.7} onPress={onBack} hitSlop={BACK_HIT_SLOP} accessibilityLabel={backA11yLabel ?? t('settings.back')}>
         <BackChevronIcon />
-      </TouchableOpacity>
+      </HeaderGlassButton>
       <Text style={[s.headerTitle, s.headerTitleFlex, { paddingLeft: Math.max(0, rightW - BACK_W) }]} numberOfLines={1}>{title}</Text>
       <View
         style={s.headerSide}

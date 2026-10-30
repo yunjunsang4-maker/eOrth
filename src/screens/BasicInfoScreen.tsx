@@ -51,6 +51,7 @@ import { minimumSignupAge } from '../constants/minimumAge';
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
 import { DEVICE_DEFAULT_HOME_COUNTRY, LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
 import { PillRing } from '../components/record/CalendarBottomSheet';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + 앱 공용 대각 흰색 링(옛 #CECFCD 위→아래 링에서 2026-09-30 통일)
 function GlassButton({ label, onPress, disabled, loading, style }: {
@@ -374,15 +375,14 @@ export default function BasicInfoScreen({ navigation }: Props) {
           showsVerticalScrollIndicator={false}
         >
           {/* 로그인 화면으로 돌아가기 */}
-          <TouchableOpacity
+          <HeaderGlassButton back
             style={styles.backBtn}
             onPress={handleBackToLogin}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
             accessibilityLabel={t('basicInfo.backToLogin')}
           >
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
 
           {/* Header */}
           <View style={styles.header}>

@@ -39,6 +39,7 @@ import { sortFormatModules, type SortOrder } from './tripDetailSort';
 import { classifyRowPhoto, pickRowPhoto, type RowPhotoCategory } from './tripDetailRowPhoto';
 import { analyzePhotos, isPhotoVisionAvailable } from '../../modules/photo-vision';
 import { makeThumbnail } from '../services/photoAI/qualityAssessment';
+import HeaderGlassButton, { IOS_GLASS } from '../components/HeaderGlassButton';
 
 // 형식 행 펼침(LayoutAnimation)은 안드로이드에서 이 플래그가 켜져 있어야 동작한다 (FAQScreen과 동일)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1144,9 +1145,9 @@ export default function TripDetailScreen() {
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]} pointerEvents="box-none">
         {/* 제목 가독성용 딤은 히어로 상단 그라데이션(heroTopDim)이 맡는다 — 헤더 높이에 갇힌 띠가 되지 않게 */}
         <View style={s.headerSide}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtnPlain} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+          <HeaderGlassButton back onPress={() => navigation.goBack()} style={s.backBtnPlain} accessibilityLabel={t('trip.back')}>
             <BackChevronIcon />
-          </TouchableOpacity>
+          </HeaderGlassButton>
         </View>
         <View style={s.headerCenter}>
           {isEditing ? (
@@ -1186,18 +1187,21 @@ export default function TripDetailScreen() {
                 <SparkleIcon size={18} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity style={s.moreBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
+            <HeaderGlassButton style={s.moreBtn} onPress={() => setMenuVisible(true)} accessibilityLabel={t('trip.editMenuA11y')}>
               {/* 앱 공용 링 — 블로그·게시물 상세 알약과 같은 좌상단·우하단 흰색 대각 그라데이션(PillRing diagonal).
                   버튼이 36 고정이라 실측(AutoPillRing) 없이 직접 얹는다. Svg는 View(pointerEvents none)로 감싸 터치 삼킴 방지 */}
+              {/* iOS 시스템 글래스 버튼에서는 링 없이 점만 */}
+              {!IOS_GLASS && (
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <PillRing width={MORE_BTN} height={MORE_BTN} radius={MORE_BTN / 2} diagonal />
-              </View>
+                  <PillRing width={MORE_BTN} height={MORE_BTN} radius={MORE_BTN / 2} diagonal />
+                </View>
+              )}
               <View style={s.moreDots}>
                 <View style={s.moreDot} />
                 <View style={s.moreDot} />
                 <View style={s.moreDot} />
               </View>
-            </TouchableOpacity>
+            </HeaderGlassButton>
           </View>
         )}
       </Animated.View>

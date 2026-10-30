@@ -81,6 +81,7 @@ import {
   WindIcon as SvgWindIcon,
   BackChevronIcon,
 } from '../components/icons';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 if (Platform.OS === 'android') {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1511,9 +1512,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 헤더 */}
       <View style={s.header}>
         {/* 뒤로가기 — 앱 전 화면 공통 chevron(박스 없음) */}
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('common.cancel')}>
+        <HeaderGlassButton back style={s.backBtn} onPress={() => navigation.goBack()} accessibilityLabel={t('common.cancel')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
         {/* ✨ 여행 기억 — 선택한 국가·날짜에 매칭되는 순간 목록 (참고용). 기능 꺼짐이면 폭만 남겨 제목 중앙 정렬 유지 */}
         {TRAVEL_MOMENTS_ENABLED ? (

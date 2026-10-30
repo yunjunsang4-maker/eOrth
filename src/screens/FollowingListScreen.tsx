@@ -17,6 +17,7 @@ import UserActionSheet from '../components/UserActionSheet';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { tap } from '../utils/haptics';
 import type { RootStackScreenProps } from '../navigation/types';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // DM 말풍선 아이콘 — 앱 공용 CommentIcon(CLAUDE.md 아이콘 규칙, 단일 출처)
 function DmBubbleIcon({ size = 17, color = '#A1A1B0' }: { size?: number; color?: string }) {
@@ -77,9 +78,9 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
     <View style={styles.root}>
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+        <HeaderGlassButton back onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityLabel={t('friends.back')}>
           <BackChevronIcon />
-        </TouchableOpacity>
+        </HeaderGlassButton>
         <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 — backBtn 스타일을 쓰면 빈 원이 보인다 */}
         <View style={styles.headerSpacer} />
