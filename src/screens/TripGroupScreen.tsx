@@ -176,7 +176,19 @@ export default function TripGroupScreen() {
           <BackChevronIcon />
         </HeaderGlassButton>
         <Text style={st.headerTitle} numberOfLines={1}>{group.title}</Text>
-        <HeaderGlassButton onPress={() => setMenuVisible(true)} style={st.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
+        <HeaderGlassButton
+          onPress={() => setMenuVisible(true)}
+          style={st.menuBtn}
+          accessibilityLabel={t('postDetail.menuA11y')}
+          // iOS 시스템 메뉴(새 빌드) — 없으면 위 onPress로 아래 기존 메뉴
+          menu={[
+            [
+              { id: 'edit', title: t('comp2.groupEdit'), icon: 'pencil', onPress: openEdit },
+              { id: 'ungroup', title: t('comp2.groupUngroup'), icon: 'lock.open', onPress: handleUngroup },
+            ],
+            [{ id: 'delete', title: t('trip.groupDelete'), icon: 'trash', destructive: true, onPress: handleDelete }],
+          ]}
+        >
           <Text style={st.menuIcon}>⋯</Text>
         </HeaderGlassButton>
       </View>

@@ -421,7 +421,19 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               <Text style={styles.headerCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
             )}
           </View>
-          <HeaderGlassButton onPress={() => setMenuVisible(true)} style={styles.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
+          <HeaderGlassButton
+            onPress={() => setMenuVisible(true)}
+            style={styles.menuBtn}
+            accessibilityLabel={t('postDetail.menuA11y')}
+            // iOS 시스템 메뉴(새 빌드) — 없으면 위 onPress로 아래 기존 메뉴. 항목 조건은 기존 메뉴와 같다
+            menu={[
+              [
+                ...(isAlbum ? [{ id: 'rename', title: t('trip.albumRenameAlbum'), icon: 'character.cursor.ibeam', onPress: () => { setSectionTitleInput(record.content ?? ''); setSectionModal({ mode: 'albumTitle' }); } }] : []),
+                ...(isAlbum && (record.medias?.length ?? 0) > 1 ? [{ id: 'regroup', title: t('trip.albumRegroupTitle'), icon: 'calendar', onPress: handleRegroupByDay }] : []),
+              ],
+              [{ id: 'delete', title: t('trip.deleteAction'), icon: 'trash', destructive: true, onPress: handleDelete }],
+            ]}
+          >
             <Text style={styles.menuIcon}>⋯</Text>
           </HeaderGlassButton>
         </View>

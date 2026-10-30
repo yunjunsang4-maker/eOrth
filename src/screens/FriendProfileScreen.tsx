@@ -405,6 +405,11 @@ export default function FriendProfileScreen({
 
   // 메뉴 아이콘 — 앱 아이콘 세트(게시물 메뉴 PostDetailScreen과 같은 규약: size 16, 일반 흰색 / 위험 빨강)
   const MENU_ICON = 16;
+  // iOS 시스템 메뉴(HeaderGlassButton menu) 아이콘 — SF Symbols 이름. 알림은 '누르면 될 결과'(기존 메뉴와 같은 규칙)
+  const SYSTEM_MENU_ICON: Record<string, string> = {
+    link: 'link', share: 'square.and.arrow.up', notif: notifMuted ? 'bell' : 'bell.slash',
+    block: 'nosign', unblock: 'nosign', report: 'exclamationmark.triangle',
+  };
   const MENU_DANGER_RED = '#FF0138'; // 시안 원색 — 위험 라벨(s.menuItemDanger)과 같은 값
   const MENU_NORMAL = [
     { key: 'link',  icon: <LinkIcon size={MENU_ICON} color={COLORS.white} />,  label: t('friends.copyProfileLink'), onPress: handleCopyLink },
@@ -492,7 +497,17 @@ export default function FriendProfileScreen({
         <View style={s.headerTitleWrap} pointerEvents="none">
           <Text style={s.headerTitle} numberOfLines={1}>@{displayUsername}</Text>
         </View>
-        <HeaderGlassButton style={[s.headerBtn, s.moreBtnHit]} onPress={() => { setOverlapOpen(false); setMenuVisible((v) => !v); }} activeOpacity={0.7} accessibilityLabel={t('friends.more')}>
+        <HeaderGlassButton
+          style={[s.headerBtn, s.moreBtnHit]}
+          onPress={() => { setOverlapOpen(false); setMenuVisible((v) => !v); }}
+          activeOpacity={0.7}
+          accessibilityLabel={t('friends.more')}
+          // iOS 시스템 메뉴(새 빌드) — 같은 MENU_NORMAL·MENU_DANGER 항목을 SF Symbols 아이콘으로
+          menu={[
+            MENU_NORMAL.map((it) => ({ id: it.key, title: it.label, icon: SYSTEM_MENU_ICON[it.key], onPress: it.onPress })),
+            MENU_DANGER.map((it) => ({ id: it.key, title: it.label, icon: SYSTEM_MENU_ICON[it.key], destructive: true, onPress: it.onPress })),
+          ]}
+        >
           {moreCircle}
         </HeaderGlassButton>
       </View>

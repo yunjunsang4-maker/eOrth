@@ -1187,7 +1187,25 @@ export default function TripDetailScreen() {
                 <SparkleIcon size={18} />
               </TouchableOpacity>
             )}
-            <HeaderGlassButton style={s.moreBtn} onPress={() => setMenuVisible(true)} accessibilityLabel={t('trip.editMenuA11y')}>
+            <HeaderGlassButton
+              style={s.moreBtn}
+              onPress={() => setMenuVisible(true)}
+              accessibilityLabel={t('trip.editMenuA11y')}
+              // iOS 시스템 메뉴(새 빌드) — 없으면 위 onPress로 아래 기존 메뉴. 항목·조건은 기존 메뉴와 같다
+              menu={[
+                [
+                  { id: 'add', title: t('comp2.tdAddRecord'), icon: 'plus', onPress: () => setFormatPickerVisible(true) },
+                  { id: 'title', title: t('comp2.tdEditTitle'), icon: 'pencil', onPress: () => {
+                    if (!currentGroup) { Alert.alert(t('trip.noticeTitle'), t('trip.sampleNoTitleEdit')); return; }
+                    setIsEditing(true);
+                  } },
+                  { id: 'thumb', title: t('comp2.tdChangeThumb'), icon: 'photo', onPress: handleChangeThumb },
+                  ...(poolPhotoCount > 0 ? [{ id: 'reroll', title: rerolling ? t('trip.rerollThumbBusy') : t('trip.rerollThumb'), icon: 'shuffle', onPress: handleRerollThumb }] : []),
+                  { id: 'archive', title: t('comp2.tdArchive'), icon: 'archivebox', onPress: handleArchiveCard },
+                ],
+                [{ id: 'delete', title: t('comp2.tdDelete'), icon: 'trash', destructive: true, onPress: handleDeleteCard }],
+              ]}
+            >
               {/* 앱 공용 링 — 블로그·게시물 상세 알약과 같은 좌상단·우하단 흰색 대각 그라데이션(PillRing diagonal).
                   버튼이 36 고정이라 실측(AutoPillRing) 없이 직접 얹는다. Svg는 View(pointerEvents none)로 감싸 터치 삼킴 방지 */}
               {/* iOS 시스템 글래스 버튼에서는 링 없이 점만 */}
