@@ -77,6 +77,7 @@ import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { regionDisplayName } from '../utils/regionLabel';
+import SystemSheet, { NATIVE_SHEET } from '../components/SystemSheet';
 
 /**
  * 폭·높이는 더 이상 모듈 최상위에 박제하지 않는다 — 폴드를 펼치면 스토리 페이저의
@@ -1476,6 +1477,27 @@ function SnapStoryViewer({
       <SvgCircle cx={27.5} cy={14.5} r={3} fill={color} />
     </Svg>
   );
+  // 시트 내용 — iOS 시스템 시트와 기존 Modal 시트가 함께 쓴다
+  const shareSheetBody = (
+    <>            <Text style={shareS.title}>{t('social.friendPickerTitle')}</Text>
+            <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>
+              {shareFriends.map((f) => (
+                <TouchableOpacity key={f.handle} style={shareS.friendRow} activeOpacity={0.7} onPress={() => handleSendToFriend(f)}>
+                  <View style={shareS.friendAvatar}><AuthorAvatar photo={f.photo} size={40} /></View>
+                  <Text style={shareS.friendName}>{f.name}</Text>
+                  <Text style={[shareS.friendSend, { color: skinAccent.accent }]}>{t('postDetail.send')}</Text>
+                </TouchableOpacity>
+              ))}
+              {shareFriends.length === 0 && (
+                <Text style={shareS.empty}>{t('postDetail.shareNoFriends')}</Text>
+              )}
+            </ScrollView>
+            <TouchableOpacity style={shareS.externalBtn} activeOpacity={0.8} onPress={handleShareExternal}>
+              <ShareIcon size={16} color="#FFFFFF" />
+              <Text style={shareS.externalTxt}>{t('postDetail.shareExternal')}</Text>
+            </TouchableOpacity>
+    </>
+  );
   return (
     <View style={storyS.container}>
       <GestureDetector gesture={dismissGesture}>
@@ -1633,32 +1655,23 @@ function SnapStoryViewer({
       </Modal>
 
       {/* 공유 시트 — 메이트 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
-      <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
-          <View style={shareS.sheet}>
-            <View style={shareS.handle} />
-            <Text style={shareS.title}>{t('social.friendPickerTitle')}</Text>
-            <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>
-              {shareFriends.map((f) => (
-                <TouchableOpacity key={f.handle} style={shareS.friendRow} activeOpacity={0.7} onPress={() => handleSendToFriend(f)}>
-                  <View style={shareS.friendAvatar}><AuthorAvatar photo={f.photo} size={40} /></View>
-                  <Text style={shareS.friendName}>{f.name}</Text>
-                  <Text style={[shareS.friendSend, { color: skinAccent.accent }]}>{t('postDetail.send')}</Text>
-                </TouchableOpacity>
-              ))}
-              {shareFriends.length === 0 && (
-                <Text style={shareS.empty}>{t('postDetail.shareNoFriends')}</Text>
-              )}
-            </ScrollView>
-            <TouchableOpacity style={shareS.externalBtn} activeOpacity={0.8} onPress={handleShareExternal}>
-              <ShareIcon size={16} color="#FFFFFF" />
-              <Text style={shareS.externalTxt}>{t('postDetail.shareExternal')}</Text>
-            </TouchableOpacity>
-            <View style={{ height: 24 }} />
+{/* iOS 새 빌드는 시스템 바텀시트(SystemSheet), 옛 빌드·안드로이드는 기존 Modal 시트 */}
+      {NATIVE_SHEET ? (
+        <SystemSheet visible={shareSheetOpen} onClose={() => setShareSheetOpen(false)}>
+          <View style={shareS.systemSheetBody}>{shareSheetBody}</View>
+        </SystemSheet>
+      ) : (
+            <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
+            <View style={shareS.sheet}>
+              <View style={shareS.handle} />
+              {shareSheetBody}
+              <View style={{ height: 24 }} />
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={(reason) => { setReportVisible(false); reportPost(currentSnap.id, reason, currentSnap.remoteId ?? currentSnap.id); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
       {/* 스냅 댓글 신고 — 접수 즉시 시트 목록에서 사라진다(comments 필터의 reportedCommentIds) */}
@@ -2435,6 +2448,33 @@ export default function PostDetailScreen() {
             ],
       ];
 
+  // 시트 내용 — iOS 시스템 시트와 기존 Modal 시트가 함께 쓴다
+  const likersSheetBody = (
+    <>            <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
+            {likersLoading ? (
+              <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 24 }} />
+            ) : likers.length === 0 ? (
+              <Text style={s.commentEmpty}>{t('postDetail.noLikers')}</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+                {likers.map((u) => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={s.likerRow}
+                    activeOpacity={0.7}
+                    onPress={() => { setLikersVisible(false); navigation.navigate('FriendProfile', { userId: u.id, username: u.name, handle: u.handle }); }}
+                  >
+                    <AuthorAvatar photo={u.photo} emoji={u.emoji} size={38} emojiSize={17} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={s.likerName}>{u.name}</Text>
+                      {!!u.handle && <Text style={s.likerHandle}>@{u.handle}</Text>}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+    </>
+  );
   return (
     <View style={s.container}>
       {/* 헤더 — 구분선은 항상 표시(2026-09-20 시안). 오른쪽 버튼은 blog만, feed·cut은 빈 스페이서. */}
@@ -3315,37 +3355,22 @@ export default function PostDetailScreen() {
       />
 
       {/* ── 좋아요한 사람 목록 ── */}
-      <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setLikersVisible(false)}>
-        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)} accessibilityViewIsModal>
-          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[s.likersSheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
-            <View style={s.likersHandle} />
-            <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
-            {likersLoading ? (
-              <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 24 }} />
-            ) : likers.length === 0 ? (
-              <Text style={s.commentEmpty}>{t('postDetail.noLikers')}</Text>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
-                {likers.map((u) => (
-                  <TouchableOpacity
-                    key={u.id}
-                    style={s.likerRow}
-                    activeOpacity={0.7}
-                    onPress={() => { setLikersVisible(false); navigation.navigate('FriendProfile', { userId: u.id, username: u.name, handle: u.handle }); }}
-                  >
-                    <AuthorAvatar photo={u.photo} emoji={u.emoji} size={38} emojiSize={17} />
-                    <View style={{ flex: 1, marginLeft: 10 }}>
-                      <Text style={s.likerName}>{u.name}</Text>
-                      {!!u.handle && <Text style={s.likerHandle}>@{u.handle}</Text>}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+{/* iOS 새 빌드는 시스템 바텀시트(SystemSheet), 옛 빌드·안드로이드는 기존 Modal 시트 */}
+      {NATIVE_SHEET ? (
+        <SystemSheet visible={likersVisible} onClose={() => setLikersVisible(false)} detents={[0.5, 1]}>
+          <View style={s.systemSheetBody}>{likersSheetBody}</View>
+        </SystemSheet>
+      ) : (
+            <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setLikersVisible(false)}>
+          <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)} accessibilityViewIsModal>
+            {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+            <View style={[s.likersSheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
+              <View style={s.likersHandle} />
+              {likersSheetBody}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {/* ── 토스트 ── */}
       {toastMsg !== '' && (
@@ -3368,6 +3393,8 @@ export default function PostDetailScreen() {
 
 // SCREEN_W/SCREEN_H는 useSheets()가 매 렌더의 실측값으로 넘긴다(모듈 최상위 박제 금지).
 const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCREEN_H: number) => StyleSheet.create({
+  // iOS 시스템 시트 안쪽 여백 — 위는 시스템 손잡이 자리
+  systemSheetBody: { flex: 1, paddingHorizontal: 20, paddingTop: 24 },
   container: { flex: 1, backgroundColor: C.bg },
   // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
@@ -4402,6 +4429,8 @@ const makeViewerS = (a: string, tint: (alpha: number) => string) => StyleSheet.c
 
 // ─── 스냅 공유 시트 (메이트 DM 전송 + 외부 공유) 스타일 ───
 const makeShareS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
+  // iOS 시스템 시트 안쪽 여백 — 위는 시스템 손잡이 자리
+  systemSheetBody: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
   sheet: {
     // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경은 전체 폭 유지)
     width: '100%',

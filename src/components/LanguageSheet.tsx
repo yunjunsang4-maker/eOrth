@@ -16,6 +16,7 @@ import { STAGE_MAX_W } from '../utils/stage';
 import { LANGUAGE_LABELS, SELECTABLE_LANGUAGES, type AppLanguage } from '../i18n';
 import { select } from '../utils/haptics';
 import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton, settingsText } from './settings/SettingsUI';
+import SystemSheet, { NATIVE_SHEET } from './SystemSheet';
 
 // 언어 선택 시트 — 설정 화면의 '언어 변경' 행이 연다.
 //
@@ -76,16 +77,9 @@ export default function LanguageSheet({
     onClose();
   };
 
-  return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={styles.overlay}>
-        {/* 배경 탭으로 닫기 */}
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-
-        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-        <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
-          <View style={styles.handle} />
-
+  // 시트 내용 — iOS 시스템 시트(SystemSheet)와 기존 Modal 시트가 함께 쓴다
+  const content = (
+    <>
           {/* 설정 카드 재질(검은 채움·공용 링) 안에 머리글(설정 팝업과 같은 제목 18 ExtraBold·설명 흰 50%) →
               전폭 구분선 → 선택 행(설정 행과 같은 높이 60·선택 시 보라 ✓) */}
           <SettingsCard style={styles.optionsCard}>
@@ -109,6 +103,29 @@ export default function LanguageSheet({
 
           {/* 취소 — 설정 팝업 닫기와 같은 알약(높이 60·모서리 30, 옅은 흰 테두리로 시트 위에서도 윤곽 유지) */}
           <SettingsPillButton label={t('common.cancel')} onPress={onClose} baseRim="rgba(255,255,255,0.15)" />
+    </>
+  );
+
+  // iOS 새 빌드: 시스템 바텀시트(손잡이·배경·딤은 시스템). 옛 빌드·안드로이드는 아래 기존 시트
+  if (NATIVE_SHEET) {
+    return (
+      <SystemSheet visible={visible} onClose={onClose}>
+        <View style={styles.systemSheetBody}>{content}</View>
+      </SystemSheet>
+    );
+  }
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <View style={styles.overlay}>
+        {/* 배경 탭으로 닫기 */}
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
+          <View style={styles.handle} />
+
+          {content}
         </Animated.View>
       </View>
     </Modal>
@@ -121,6 +138,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
+  // iOS 시스템 시트 안쪽 여백 — 기존 시트의 좌우 16을 맞추고, 위는 시스템 손잡이 자리
+  systemSheetBody: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 16, gap: 0 },
   sheet: {
     // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
     width: '100%',

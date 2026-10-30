@@ -11,6 +11,7 @@ import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../utils/stage';
+import SystemSheet, { NATIVE_SHEET } from './SystemSheet';
 
 // 팔로워/팔로잉 목록 ⋯ 메뉴 — 기본 플랫폼 Alert 대신 앱 공통 톤의 박스 시트.
 // (ProfileScreen AvatarActionSheet와 동일한 카드 스타일: #1E1E2E, radius 20, 하단 스프링 등장)
@@ -46,16 +47,9 @@ export default function UserActionSheet({
     }
   }, [visible, translateY]);
 
-  return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={styles.overlay}>
-        {/* 배경 탭으로 닫기 */}
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-
-        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-        <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
-          <View style={styles.handle} />
-
+  // 시트 내용 — iOS 시스템 시트(SystemSheet)와 기존 Modal 시트가 함께 쓴다
+  const content = (
+    <>
           <View style={styles.optionsCard}>
             {/* 대상 표시 */}
             <View style={styles.titleRow}>
@@ -80,6 +74,29 @@ export default function UserActionSheet({
           <TouchableOpacity style={styles.cancelCard} activeOpacity={0.8} onPress={onClose}>
             <Text style={styles.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
+    </>
+  );
+
+  // iOS 새 빌드: 시스템 바텀시트(손잡이·배경·딤은 시스템). 옛 빌드·안드로이드는 아래 기존 시트
+  if (NATIVE_SHEET) {
+    return (
+      <SystemSheet visible={visible} onClose={onClose}>
+        <View style={styles.systemSheetBody}>{content}</View>
+      </SystemSheet>
+    );
+  }
+
+  return (
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <View style={styles.overlay}>
+        {/* 배경 탭으로 닫기 */}
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
+          <View style={styles.handle} />
+
+          {content}
         </Animated.View>
       </View>
     </Modal>
@@ -87,6 +104,8 @@ export default function UserActionSheet({
 }
 
 const styles = StyleSheet.create({
+  // iOS 시스템 시트 안쪽 여백 — 기존 시트의 좌우 여백을 맞추고, 위는 시스템 손잡이 자리
+  systemSheetBody: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 16 },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',

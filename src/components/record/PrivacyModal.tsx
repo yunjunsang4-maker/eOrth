@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { LockClosedIcon as SvgLockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { STAGE_MAX_W } from '../../utils/stage';
+import SystemSheet, { NATIVE_SHEET } from '../SystemSheet';
 
 /**
  * 사진·게시물별 비공개 대상(메이트) 선택 바텀시트 — 피드/블로그/컷 공용.
@@ -70,14 +71,9 @@ export function PrivacyModal({
   const count = selectedFriends.length;
   const allPrivate = allFriends.length > 0 && count === allFriends.length;
 
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={pm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-        <Animated.View style={[pm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 14 }, { transform: [{ translateY }] }]}>
-          <View style={pm.handle} />
-
+  // 시트 내용 — iOS 시스템 시트(SystemSheet)와 기존 Modal 시트가 함께 쓴다
+  const content = (
+    <>
           {/* 헤더 — 아이콘을 accent 배지에 넣어 시트의 시작점을 만든다 */}
           <View style={pm.header}>
             <View style={[pm.headerIcon, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.tint(0.3) }]}>
@@ -159,6 +155,27 @@ export function PrivacyModal({
               </Text>
             </LinearGradient>
           </TouchableOpacity>
+    </>
+  );
+
+  // iOS 새 빌드: 시스템 바텀시트(손잡이·배경·딤은 시스템). 옛 빌드·안드로이드는 아래 기존 시트
+  if (NATIVE_SHEET) {
+    return (
+      <SystemSheet visible={visible} onClose={onClose}>
+        <View style={pm.systemSheetBody}>{content}</View>
+      </SystemSheet>
+    );
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
+      <View style={pm.overlay} accessibilityViewIsModal>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[pm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 14 }, { transform: [{ translateY }] }]}>
+          <View style={pm.handle} />
+
+          {content}
         </Animated.View>
       </View>
     </Modal>
@@ -179,6 +196,8 @@ function CheckBox({ on, accent }: { on: boolean; accent: string }) {
 }
 
 const pm = StyleSheet.create({
+  // iOS 시스템 시트 안쪽 여백 — 기존 시트의 좌우 여백을 맞추고, 위는 시스템 손잡이 자리
+  systemSheetBody: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
