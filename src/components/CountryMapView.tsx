@@ -384,7 +384,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v10';
+var MAP_SCRIPT_VER = 'v11';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -919,8 +919,16 @@ function render(geo){
   // 줌 호스트(변환 없음) > 레이어(제스처 중 CSS transform) > svg — 줌 핸들러 주석 참고
   var host=d3.select('body').append('div').attr('id','map-host').style('width',W+'px').style('height',H+'px');
   zoomHost = host;
-  var layerNode=host.append('div').attr('id','map-layer').node();
-  var svg=d3.select(layerNode).append('svg').attr('width',W).attr('height',H);
+  var layerNode=host.append('div').attr('id','map-layer').style('position','relative').style('width',W+'px').style('height',H+'px').node();
+  // 오버스캔(v11): svg를 사방 M만큼 크게 그려 (-M,-M)에 두고, 내용 g는 translate(M,M)로 되돌린다
+  // (commitZoom) — 화면 좌표·히트 판정·포인터·검색 확대 좌표는 예전과 정확히 같다.
+  // 제스처 중 CSS로 옮기는 비트맵에 뷰포트 밖 M만큼이 이미 그려져 있어, 확대 후 팬할 때 새로 드러나는
+  // 곳이 빈 띠로 나왔다가 커밋에서 따로 채워지던(조각나 늦게 나타남) 현상을 막는다.
+  // M = 짧은 변의 30% → 레이어 면적 ≈ 뷰포트의 2배(390×844 기준 624×1078, dpr3 ≈ 24MB vs 12MB).
+  // 레이어는 제스처 동안만 승격되므로(will-change 토글) 이 메모리도 제스처 동안만 쓴다.
+  var M=Math.round(Math.min(W,H)*0.3);
+  var svg=d3.select(layerNode).append('svg').attr('width',W+2*M).attr('height',H+2*M)
+    .style('position','absolute').style('left',(-M)+'px').style('top',(-M)+'px');
   svgElement = svg;
   // NE 미국 admin-1 데이터는 50주+D.C.뿐이다. 괌은 별도 국가(GUM) 피처라 여기 없고,
   // 호놀룰루는 옛 GADM의 도시 피처였을 뿐 admin-1에는 없다 — 둘 다 인셋 대상에서 제외.
@@ -1011,9 +1019,9 @@ function render(geo){
   // 끝나거나 중단될 때(새 제스처의 interrupt 포함 — 'interrupt.zoom'도 end를 낸다). 그래서 CSS
   // transform이 남는 경로가 없다. 새 제스처의 start는 앞선 end(커밋) 다음에 온다.
   var committedT=d3.zoomIdentity; // g에 마지막으로 커밋한 변환(T0)
-  // ponytail: 고정 임계값(드러난 빈 띠 15%·확대 2배) — 실기기에서 빈 띠·흐림이 거슬리면 낮추고,
-  // 중간 커밋 히치가 잦으면 높일 것. 중간 커밋 1회 비용 = v7의 제스처 1프레임 비용.
-  var GAP_LIMIT=Math.min(W,H)*0.15, MAX_BITMAP_SCALE=2;
+  // ponytail: 고정 값(오버스캔 M 30%·선행 여유 SAFE = M/2·확대 2배) — 실기기에서 빠르게 끌 때 빈 곳이
+  // 보이면 SAFE(또는 M)를 키우고, 중간 커밋 히치가 잦으면 줄일 것. M은 레이어 메모리와 커밋 비용(면적 비례)에 직결.
+  var SAFE=Math.round(M*0.5), MAX_BITMAP_SCALE=2;
   // 그릴 내용의 범위(g 좌표) = 본토 bbox ∪ 인셋 박스. 빈 띠는 '이 범위가 비트맵 밖으로 드러난 폭'으로
   // 잰다 — 뷰포트 기준으로 재면 바다·여백 쪽 팬에도 커밋하고, k0=1만 예외로 두면 k=1에서 끌어 놓은 뒤
   // (translateExtent 없음) 반대로 끌 때 뷰포트 밖에 있던 지도가 손 뗄 때까지 비어 보였다(QA F1).
@@ -1023,31 +1031,33 @@ function render(geo){
     CB[1][0]=Math.max(CB[1][0],grp.b[1][0]); CB[1][1]=Math.max(CB[1][1],grp.b[1][1]);
   });
   function revealedGap(t, tx, ty, s){
-    // 내용 범위의 현재 화면 위치를 뷰포트로 자른 것 — 이 중 비트맵([tx,tx+sW]×[ty,ty+sH]) 밖 최대 폭
-    var x0=Math.max(0,t.applyX(CB[0][0])), y0=Math.max(0,t.applyY(CB[0][1]));
-    var x1=Math.min(W,t.applyX(CB[1][0])), y1=Math.min(H,t.applyY(CB[1][1]));
-    if(!(x1>x0&&y1>y0)) return 0; // 내용이 화면에 없다(NaN 포함) — 드러날 것도 없다
-    return Math.max(tx-x0, ty-y0, x1-(tx+s*W), y1-(ty+s*H));
+    // 내용 범위의 현재 화면 위치를 '뷰포트 + 사방 SAFE'로 자른 것 — 이 중 비트맵 밖으로 나간 최대 폭.
+    // 비트맵 = svg 전체(오버스캔 포함) = 화면 [tx−s·M, tx+s·(W+M)] × [ty−s·M, ty+s·(H+M)].
+    // 양수면 곧(SAFE 안에서) 빈 곳이 드러난다 → 드러나기 전에 커밋해 여백을 다시 확보한다.
+    var x0=Math.max(-SAFE,t.applyX(CB[0][0])), y0=Math.max(-SAFE,t.applyY(CB[0][1]));
+    var x1=Math.min(W+SAFE,t.applyX(CB[1][0])), y1=Math.min(H+SAFE,t.applyY(CB[1][1]));
+    if(!(x1>x0&&y1>y0)) return 0; // 내용이 그 범위에 없다(NaN 포함) — 드러날 것도 없다
+    return Math.max((tx-s*M)-x0, (ty-s*M)-y0, x1-(tx+s*(W+M)), y1-(ty+s*(H+M)));
   }
   function commitZoom(t){
     // g 속성과 CSS를 같은 동기 블록에서 바꿔 같은 프레임에 교체된다 — 깜빡임·튐 없음
     committedT=t;
     applyLod(lodFor(t.k)); // 단계가 바뀔 때만 d 재생성 — 같은 동기 블록이라 같은 프레임에 반영
-    g.attr('transform',t);
+    g.attr('transform','translate('+M+','+M+') '+t); // 오버스캔 보정 — svg가 (-M,-M)에 있으므로
     layerNode.style.transform='';
   }
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
     // will-change는 제스처 동안만 — 레이어를 미리 승격해 첫 프레임부터 비트맵 이동이 되게 하고,
-    // end에서 풀어 뷰포트 크기 합성 레이어 메모리를 돌려준다.
+    // end에서 풀어 합성 레이어 메모리(오버스캔 포함 ≈ 뷰포트 2배)를 돌려준다.
     .on('start',function(){ layerNode.style.willChange='transform'; })
     .on('zoom',function(ev){
       // 프레임마다 path 속성(stroke-width 등)을 쓰지 말 것 — 리페인트가 다시 프레임마다 돈다
       var t=ev.transform, s=t.k/committedT.k;
       var tx=t.x-s*committedT.x, ty=t.y-s*committedT.y;
-      // 중간 커밋: 비트맵은 커밋 시점 뷰포트(W×H)만 담는다(svg 밖은 잘림). 팬·축소로 지도 내용이
-      // 비트맵 밖에서 GAP_LIMIT 넘게 드러나거나(revealedGap), 2배 넘게 늘려 너무 흐려지면 그 자리에서
-      // 한 번 다시 그리고 새 기준으로 이어간다. 초기 identity 상태는 내용 전체가 비트맵 안이라 자연히 0이다.
-      if(s>MAX_BITMAP_SCALE || revealedGap(t,tx,ty,s)>GAP_LIMIT){ commitZoom(t); return; }
+      // 중간 커밋: 비트맵은 커밋 시점 뷰포트 + 사방 오버스캔 M만 담는다. 팬·축소로 지도 내용이 그 밖으로
+      // 드러나기 직전(SAFE 여유 안으로 들어오면 — revealedGap>0)이거나, 2배 넘게 늘려 너무 흐려지면 그 자리에서
+      // 한 번 다시 그리고 새 기준으로 이어간다. 초기 identity 상태는 내용 전체가 비트맵 안이라 자연히 0 이하다.
+      if(s>MAX_BITMAP_SCALE || revealedGap(t,tx,ty,s)>0){ commitZoom(t); return; }
       layerNode.style.transform='translate('+tx+'px,'+ty+'px) scale('+s+')';
     })
     .on('end',function(ev){
