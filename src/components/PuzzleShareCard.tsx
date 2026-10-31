@@ -69,7 +69,8 @@ export default function PuzzleShareCard({ countryCode, countryName, image, total
       if (Platform.OS === 'ios') {
         await Share.share({ url: shot });
       } else {
-        const perm = await MediaLibrary.requestPermissionsAsync();
+        // writeOnly 권한 — 저장만 하는데 읽기까지 요구하면 거부 시 저장 실패로 끝난다(PhotoViewerModal과 동일)
+        const perm = await MediaLibrary.requestPermissionsAsync(true);
         if (!perm.granted) throw new Error('permission');
         await MediaLibrary.saveToLibraryAsync(shot);
         setNotice(t('main.puzzleShareSaved'));

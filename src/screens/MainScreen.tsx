@@ -912,6 +912,9 @@ export default function MainScreen({ navigation, route }: Props) {
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
+    // 퍼즐 범위 조정 오버레이가 떠 있으면 그것만 닫는다(안드로이드 뒤로가기 관례). 시트째 닫으면
+    // puzzleAdjust가 남아 재오픈 시 조정 화면이 튀어나오고, 나라를 옮겼으면 다른 나라에 저장된다.
+    if (puzzleAdjust) { setPuzzleAdjust(null); return; }
     const s = dsSnapshot.current;
     pendingSkin.current = null; // 슬라이드 중 취소 — 아직 적용 안 된 스킨은 버린다
     if (s) {
@@ -941,6 +944,7 @@ export default function MainScreen({ navigation, route }: Props) {
     setEditingCountryColor(null);
     setAddingCountryColor(false);
     setChipMenuFor(null);
+    setPuzzleAdjust(null); // 시트가 닫히는 경로 — 조정 상태가 다음 열기로 새지 않게
     setDisplaySettingsVisible(false);
   };
 
@@ -1428,23 +1432,11 @@ export default function MainScreen({ navigation, route }: Props) {
       const next = prev.filter(hasCountryRecord);
       return next.length === prev.length ? prev : next;
     });
-    // puzzleImages도 taggedRegions와 같은 ISO3 키 체계 — 계정 전환 시 이전 계정 사진이 남거나,
-    // 기록을 다 지운 뒤에도 죽은 URI가 남는 것을 막는다. 원본(puzzleSources)도 같은 규칙.
-    setPuzzleImages(prev => {
-      const remove = Object.keys(prev).filter(k => !hasCountryRecord(k));
-      if (remove.length === 0) return prev;
-      const next = { ...prev };
-      remove.forEach(k => delete next[k]);
-      return next;
-    });
-    setPuzzleSources(prev => {
-      const remove = Object.keys(prev).filter(k => !hasCountryRecord(k));
-      if (remove.length === 0) return prev;
-      const next = { ...prev };
-      remove.forEach(k => delete next[k]);
-      return next;
-    });
-  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setPuzzleImages, setPuzzleSources, setRegionPhotos]);
+    // ⚠️ puzzleImages·puzzleSources는 여기서 기록 기준으로 정리하지 않는다 — 대륙 화면은 기록 없는
+    //    나라도 열려 앨범 사진으로 퍼즐을 고를 수 있어, 다음 기록 변경 때 그 사진이 조용히 지워지고
+    //    Documents/puzzle/ 사본만 고아로 남았다. 지도에 쓰는 크롭본은 우리 사본이라 기록 사진이
+    //    지워져도 죽은 URI가 되지 않고, 계정 전환은 resetSettings(useAccountBoundary)가 둘 다 비운다.
+  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setRegionPhotos]);
 
   // 시트 위치는 공유값 — 핸들 드래그 추종(sheetHandlePan)·열기·닫기가 모두 UI 스레드에서 같은 값을 움직인다.
   // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.

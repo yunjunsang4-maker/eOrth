@@ -786,6 +786,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionDisplayModes({});
     setRegionColors({});
     setPuzzleImages({});
+    setPuzzleSources({}); // 원본도 계정 경계에서 비운다 — 안 비우면 이전 계정 원본이 재조정에 쓰인다
     setRegionPhotos({});
     setTaggedRegions({});
     setDismissedRegionTagChips([]);

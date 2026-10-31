@@ -105,9 +105,15 @@ export default function CountryMapView({
   // 이전 나라들의 data URI(장당 수백 KB)가 세션 내내 누적된다. WebView는 어차피 새 HTML로 리로드된다.
   useEffect(() => { setPhotoCache({}); }, [countryCode]);
   useEffect(() => {
+    // 퍼즐 그림을 맨 앞에 두고 끝나는 즉시 단독 반영한다 — 퍼즐 모드에선 지역 사진이 지도에
+    // 안 쓰이는데(채움 transparent) 맨 뒤에서 일괄 반영을 기다리느라 그림이 늦게 떴다.
+    // 지역 사진은 기존처럼 끝에 한 번에(장당 반영하면 수 MB payload를 매번 postMessage한다).
+    // 퍼즐 그림은 퍼즐 모드에서만 변환한다 — 사진 모드에선 지도에 안 쓰이는데 맨 앞 1024px 변환이
+    // 지역 사진을 늦춘다. 퍼즐 모드에서 한 번 변환한 그림은 photoCache에 남아 토글 왕복에 재변환이 없다.
+    const puzzleTarget = displayMode === 'puzzle' ? puzzleImage : undefined;
     const targets = Array.from(
       new Set(
-        [...recordedRegions.map(r => r.photo), puzzleImage]
+        [puzzleTarget, ...recordedRegions.map(r => r.photo)]
           .filter((u): u is string => needsMaterialize(u) && !photoCache[u as string])
       )
     );
@@ -117,8 +123,9 @@ export default function CountryMapView({
       const updates: Record<string, string> = {};
       for (const uri of targets) {
         // 퍼즐 그림은 지도 전면을 덮으니 1024px, 지역 패턴 채움은 조각 크기라 640px이면 충분
-        const d = await imageToDataUri(uri, uri === puzzleImage ? 1024 : 640, 0.7);
-        if (cancelled) return;
+        const d = await imageToDataUri(uri, uri === puzzleTarget ? 1024 : 640, 0.7);
+        if (cancelled) return; // 이미 단독 반영한 퍼즐 그림은 캐시에 남는다
+        if (d && uri === puzzleTarget) { setPhotoCache(prev => ({ ...prev, [uri]: d })); continue; }
         if (d) updates[uri] = d; // 변환 불가(예: iCloud 오프로드) — 건너뜀 → 색 폴백
       }
       if (!cancelled && Object.keys(updates).length) {
@@ -126,7 +133,7 @@ export default function CountryMapView({
       }
     })();
     return () => { cancelled = true; };
-  }, [recordedRegions, puzzleImage]);
+  }, [recordedRegions, puzzleImage, displayMode]);
 
   // 사진 URI를 data URI 변환본으로 치환한 지역 목록
   // 변환이 필요한데(file://·ph:// 등) 아직(또는 끝내) 변환 못한 사진은 깨진 이미지 대신 색상으로 폴백(photo 제거)
