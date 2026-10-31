@@ -8,6 +8,8 @@ import {
   Platform,
   ScrollView,
   useWindowDimensions,
+  PlatformColor,
+  TouchableHighlight,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,21 +79,50 @@ export default function LanguageSheet({
     onClose();
   };
 
-  // 시트 내용 — iOS 시스템 시트(SystemSheet)와 기존 Modal 시트가 함께 쓴다
+  // 저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant 등)이어도 자기 언어 행은 보여야 한다 —
+  // 없으면 강조도 없고 되돌아올 길도 없다. 현재 언어를 목록에 합쳐 그린다.
+  const langs = SELECTABLE_LANGUAGES.includes(current) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, current];
+
+  // iOS 새 빌드: 시스템 시트 + 안쪽도 iOS 기본 목록(시스템 글꼴·시스템 색·인셋 그룹, 2026-10-31 사용자 결정).
+  // 앱 카드·취소 알약은 섞지 않는다 — 닫기는 내려서·바깥 탭(시스템). 옛 빌드·안드로이드는 아래 기존 시트
+  if (NATIVE_SHEET) {
+    return (
+      <SystemSheet visible={visible} onClose={onClose}>
+        <View style={styles.iosBody}>
+          <Text style={styles.iosTitle}>{t('settings.languageChange')}</Text>
+          <Text style={styles.iosDesc}>{t('settings.languageSelectMsg')}</Text>
+          <ScrollView style={[styles.iosGroup, { maxHeight: optionsMaxH }]} bounces={false} showsVerticalScrollIndicator={false}>
+            {langs.map((lang, i) => (
+              <React.Fragment key={lang}>
+                {i > 0 && <View style={styles.iosSep} />}
+                <TouchableHighlight underlayColor={PlatformColor('systemGray4')} onPress={() => pick(lang)}
+                  accessibilityRole="button" accessibilityState={{ selected: lang === current }}>
+                  <View style={styles.iosRow}>
+                    {/* 표기는 각 언어를 자기 언어로 — 번역하지 않는다(i18n/index.ts 가 단일 출처) */}
+                    <Text style={styles.iosLabel} numberOfLines={1}>{LANGUAGE_LABELS[lang]}</Text>
+                    {lang === current && <Text style={styles.iosCheck}>✓</Text>}
+                  </View>
+                </TouchableHighlight>
+              </React.Fragment>
+            ))}
+          </ScrollView>
+        </View>
+      </SystemSheet>
+    );
+  }
+
+  // 기존 시트 내용 — 설정 카드 재질(검은 채움·공용 링) 안에 머리글(설정 팝업과 같은 제목 18 ExtraBold·설명 흰 50%) →
+  // 전폭 구분선 → 선택 행(설정 행과 같은 높이 60·선택 시 보라 ✓) + 취소 알약
   const content = (
     <>
-          {/* 설정 카드 재질(검은 채움·공용 링) 안에 머리글(설정 팝업과 같은 제목 18 ExtraBold·설명 흰 50%) →
-              전폭 구분선 → 선택 행(설정 행과 같은 높이 60·선택 시 보라 ✓) */}
           <SettingsCard style={styles.optionsCard}>
             <View style={styles.titleRow}>
               <Text style={settingsText.sheetTitle}>{t('settings.languageChange')}</Text>
               <Text style={settingsText.sheetDesc}>{t('settings.languageSelectMsg')}</Text>
             </View>
             <SettingsDivider />
-            {/* 저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant 등)이어도 자기 언어 행은 보여야 한다 —
-                없으면 강조도 없고 되돌아올 길도 없다. 현재 언어를 목록에 합쳐 그린다. */}
             <ScrollView style={{ maxHeight: optionsMaxH }} bounces={false} showsVerticalScrollIndicator={false}>
-            {(SELECTABLE_LANGUAGES.includes(current) ? SELECTABLE_LANGUAGES : [...SELECTABLE_LANGUAGES, current]).map((lang, i) => (
+            {langs.map((lang, i) => (
               <React.Fragment key={lang}>
                 {i > 0 && <SettingsDivider />}
                 {/* 표기는 각 언어를 자기 언어로 — 번역하지 않는다(i18n/index.ts 가 단일 출처) */}
@@ -105,15 +136,6 @@ export default function LanguageSheet({
           <SettingsPillButton label={t('common.cancel')} onPress={onClose} baseRim="rgba(255,255,255,0.15)" />
     </>
   );
-
-  // iOS 새 빌드: 시스템 바텀시트(손잡이·배경·딤은 시스템). 옛 빌드·안드로이드는 아래 기존 시트
-  if (NATIVE_SHEET) {
-    return (
-      <SystemSheet visible={visible} onClose={onClose}>
-        <View style={styles.systemSheetBody}>{content}</View>
-      </SystemSheet>
-    );
-  }
 
   return (
     <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
@@ -138,8 +160,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
-  // iOS 시스템 시트 안쪽 여백 — 기존 시트의 좌우 16을 맞추고, 위는 시스템 손잡이 자리
-  systemSheetBody: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 16, gap: 0 },
+  // iOS 시스템 시트 안쪽 — iOS 기본 목록 치수(제목 17 semibold·행 17·인셋 그룹). PlatformColor는 iOS 다크 시스템 색.
+  // fontFamily를 주지 않아 시스템 글꼴로 그려진다. 체크만 앱 틴트(보라 네온) — iOS 앱 틴트 관례
+  iosBody: { paddingHorizontal: 16, paddingTop: 28, paddingBottom: 24 },
+  iosTitle: { fontSize: 17, fontWeight: '600', textAlign: 'center', color: PlatformColor('label') },
+  iosDesc: { fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 24, color: PlatformColor('secondaryLabel') },
+  iosGroup: { flexGrow: 0, borderRadius: 26, overflow: 'hidden', backgroundColor: PlatformColor('secondarySystemGroupedBackground') },
+  iosRow: { minHeight: 52, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  iosLabel: { flexShrink: 1, fontSize: 17, color: PlatformColor('label') },
+  iosCheck: { fontSize: 17, fontWeight: '600', marginLeft: 12, color: '#BF85FC' },
+  iosSep: { height: StyleSheet.hairlineWidth, marginLeft: 20, backgroundColor: PlatformColor('separator') },
   sheet: {
     // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
     width: '100%',

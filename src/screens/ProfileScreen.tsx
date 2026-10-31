@@ -34,7 +34,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
 import { PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
-import HeaderGlassButton, { IOS_GLASS } from '../components/HeaderGlassButton';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 import DefaultAvatar from '../components/DefaultAvatar';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -2448,9 +2448,12 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               fill="#FFFFFF"
             />
           </Svg>
-          {/* iOS는 시스템 리퀴드 글래스 원형 버튼(HeaderGlassButton), 그 밖은 이전 그대로(LiquidPressable 눌림 효과) */}
-          {(() => {
-            const gear = (
+          {/* 설정 버튼은 iOS도 시스템 글래스 대신 앱 버튼 그대로(사용자 결정 2026-10-31) */}
+          <LiquidPressable
+            style={styles.settingBtn}
+            onPress={() => navigation.navigate('Settings')}
+            intensity={0.12}
+          >
             <Svg width={22} height={22} viewBox="0 0 27 27" fill="none">
               <Path
                 d="M23.6061 14.1787L25.3441 15.7265C25.6651 15.9943 25.8795 16.3682 25.9487 16.7805C26.0178 17.1928 25.937 17.6162 25.721 17.9741L23.6254 21.5542C23.4628 21.8283 23.2306 22.0545 22.9525 22.2099C22.6711 22.3656 22.3551 22.4482 22.0335 22.4502C21.834 22.4514 21.6355 22.4216 21.4452 22.3618L19.2208 21.6273C18.8311 21.8772 18.4261 22.1009 18.0057 22.2983L17.5385 24.5537C17.4521 24.9685 17.2211 25.3392 16.8868 25.5996C16.5482 25.8647 16.1285 26.0046 15.6986 25.9957H11.3594C10.9295 26.0046 10.5098 25.8647 10.1712 25.5996C9.83762 25.3389 9.60735 24.9683 9.5214 24.5537L9.05229 22.2983C8.6374 22.0983 8.23486 21.8735 7.84684 21.6254L5.61474 22.3618C5.42441 22.4216 5.22593 22.4514 5.02643 22.4502C4.70548 22.4479 4.3902 22.3653 4.10937 22.2099C3.83144 22.055 3.59932 21.8295 3.43647 21.5561L1.26589 17.9741C1.04023 17.613 0.954008 17.182 1.02338 16.7618C1.09275 16.3417 1.31295 15.9613 1.64271 15.6919L3.37879 13.498V12.8174L1.64079 11.2696C1.31984 11.0018 1.10539 10.6279 1.03627 10.2156C0.967149 9.80327 1.04792 9.37985 1.26396 9.02197L3.43454 5.44187C3.59713 5.16782 3.82927 4.94163 4.10744 4.78623C4.38828 4.63081 4.70355 4.54819 5.02451 4.54589C5.22221 4.53341 5.42066 4.55157 5.61281 4.59972L7.8007 5.36881C8.19162 5.11886 8.59664 4.89518 9.01576 4.69778L9.48487 2.44244C9.57082 2.02784 9.80109 1.65719 10.1347 1.39648C10.4732 1.13142 10.893 0.991503 11.3228 1.0004H15.6256C16.0554 0.991503 16.4752 1.13142 16.8137 1.39648C17.1502 1.65989 17.3809 2.03097 17.4635 2.44244L17.9326 4.69778C18.3492 4.89646 18.751 5.12078 19.1381 5.37073L21.3721 4.63625C21.6201 4.55559 21.882 4.52727 22.1415 4.55308C22.4009 4.5789 22.6522 4.65829 22.8794 4.78623C23.1582 4.94389 23.3889 5.17077 23.5523 5.43995L25.721 9.02197C25.9497 9.38002 26.0403 9.80906 25.9759 10.229C25.9115 10.649 25.6965 11.0312 25.3711 11.3042L23.6061 12.8078V14.1787Z"
@@ -2463,13 +2466,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 strokeWidth={2}
               />
             </Svg>
-            );
-            return IOS_GLASS ? (
-              <HeaderGlassButton onPress={() => navigation.navigate('Settings')} accessibilityLabel={t('settings.title')}>{gear}</HeaderGlassButton>
-            ) : (
-              <LiquidPressable style={styles.settingBtn} onPress={() => navigation.navigate('Settings')} intensity={0.12}>{gear}</LiquidPressable>
-            );
-          })()}
+          </LiquidPressable>
         </View>
         )}
 

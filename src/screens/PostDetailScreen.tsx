@@ -39,7 +39,7 @@ import { useNavigation, useRoute, useFocusEffect, useIsFocused, RouteProp } from
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle, Defs as SvgDefs, ClipPath as SvgClipPath, G as SvgG } from 'react-native-svg';
 import { CommentIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, WarningIcon, BlockIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon, BackChevronIcon, SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon } from '../components/icons';
-import HeaderGlassButton, { NATIVE_MENU, SystemMenu, type HeaderMenuSection } from '../components/HeaderGlassButton';
+import HeaderGlassButton from '../components/HeaderGlassButton';
 import DefaultAvatar from '../components/DefaultAvatar';
 import { useRecordData, useFeed, useComments, useSocialGraph, useRecordActions, TravelRecord, RecordViewType, PostComment } from '../store/recordStore';
 import { useDMData, useDMActions } from '../store/dmStore';
@@ -2415,39 +2415,6 @@ export default function PostDetailScreen() {
     </Animated.View>
   ) : null;
 
-  // iOS 시스템 메뉴(⋯) 항목 — 아래 '메뉴 모달'과 같은 조건·순서·동작(아이콘은 SF Symbols). 헤더 ⋯와 날짜 줄 ⋯가 함께 쓴다.
-  // 새 빌드에서만 쓰이고(NATIVE_MENU), 옛 빌드·안드로이드는 기존 메뉴 모달 그대로다.
-  const editPost = () => {
-    setMenuVisible(false);
-    if (viewType === 'blog') navigation.navigate('BlogRecord', { record: rawRecord });
-    else if (viewType === 'album') { if (rawRecord) navigation.navigate('TripRecord', { record: rawRecord, viewType: 'album' }); }
-    else navigation.navigate('NewRecord', { record: rawRecord });
-  };
-  const postMenu: HeaderMenuSection[] = isArchived
-    ? [
-        [{ id: 'unarchive', title: t('misc.unarchive'), icon: 'tray.and.arrow.up', onPress: handleUnarchive }],
-        [{ id: 'delete', title: t('postDetail.deleteAction'), icon: 'trash', destructive: true, onPress: handleDelete }],
-      ]
-    : [
-        [
-          { id: 'link', title: t('social.copyLink'), icon: 'link', onPress: handleCopyLink },
-          ...(isMyPost && viewType === 'blog' ? [{ id: 'naver', title: t('postDetail.naverExportTitle'), icon: 'square.and.arrow.up', onPress: handleExportToNaver }] : []),
-          ...(isMyPost ? [
-            record.visibility === 'private'
-              ? { id: 'visibility', title: t('social.makePublic'), icon: 'globe', onPress: handleToggleVisibility }
-              : { id: 'visibility', title: t('social.makePrivate'), icon: 'lock', onPress: handleToggleVisibility },
-            { id: 'archive', title: t('postDetail.archiveAction'), icon: 'archivebox', onPress: handleArchive },
-            { id: 'edit', title: t('postDetail.editAction'), icon: 'pencil', onPress: editPost },
-          ] : []),
-        ],
-        isMyPost
-          ? [{ id: 'delete', title: t('postDetail.deleteAction'), icon: 'trash', destructive: true, onPress: handleDelete }]
-          : [
-              { id: 'report', title: t('social.reportLong'), icon: 'exclamationmark.triangle', destructive: true, onPress: handleReport },
-              { id: 'block', title: t('social.blockTitle'), icon: 'nosign', destructive: true, onPress: handleBlockAuthor },
-            ],
-      ];
-
   // 시트 내용 — iOS 시스템 시트와 기존 Modal 시트가 함께 쓴다
   const likersSheetBody = (
     <>            <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
@@ -2498,7 +2465,7 @@ export default function PostDetailScreen() {
             )}
             {/* feed·cut의 ⋯는 아래 날짜 알약 행으로 내려갔다 — 헤더 ⋯는 blog·album만 */}
             {!isFeedLayout && !record.isExample && (
-              <HeaderGlassButton onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityLabel={t('postDetail.menuA11y')} menu={postMenu}>
+              <HeaderGlassButton onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
                 <Text style={s.menuDots}>···</Text>
               </HeaderGlassButton>
             )}
@@ -2789,18 +2756,8 @@ export default function PostDetailScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-              {/* iOS 새 빌드는 시스템 메뉴(SystemMenu) — 모양은 그대로, 누르면 iOS 메뉴. 그 밖은 기존 메뉴 모달 */}
-              {!record.isExample && NATIVE_MENU && (
-                <SystemMenu menu={postMenu} accessibilityLabel={t('postDetail.menuA11y')}>
-                  <View style={s.morePill}>
-                    <AutoPillRing />
-                    <View style={s.moreDot} />
-                    <View style={s.moreDot} />
-                    <View style={s.moreDot} />
-                  </View>
-                </SystemMenu>
-              )}
-              {!record.isExample && !NATIVE_MENU && (
+              {/* ⋯ 메뉴는 iOS도 시스템 메뉴 대신 기존 메뉴 모달(사용자 결정 2026-10-31 — 시스템 메뉴는 크기를 못 맞춘다) */}
+              {!record.isExample && (
                 <TouchableOpacity
                   ref={moreBtnRef}
                   onPress={openMenuFromPill}

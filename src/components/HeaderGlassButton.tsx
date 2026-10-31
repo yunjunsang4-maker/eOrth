@@ -94,8 +94,11 @@ export function SystemMenu({ menu, style, accessibilityLabel, children }: {
   accessibilityLabel: string;
   children: React.ReactNode;
 }) {
+  // imageColor는 꼭 준다 — 라이브러리 새 아키텍처가 미지정 색을 0(투명)으로 넘겨 SF Symbol이 안 보인다.
+  // 아이콘은 alwaysOriginal로 그려져 destructive 빨강이 자동으로 안 묻으므로 빨강도 직접 준다
   const toAction = (it: HeaderMenuSection[number]): MenuAction => ({
-    id: it.id, title: it.title, image: it.icon, attributes: it.destructive ? { destructive: true } : undefined,
+    id: it.id, title: it.title, image: it.icon, imageColor: it.destructive ? '#FF3B30' : '#FFFFFF',
+    attributes: it.destructive ? { destructive: true } : undefined,
   });
   const sections = menu.filter((sec) => sec.length > 0);
   const actions: MenuAction[] = sections.length === 1
