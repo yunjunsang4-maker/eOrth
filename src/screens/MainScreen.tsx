@@ -2162,6 +2162,11 @@ export default function MainScreen({ navigation, route }: Props) {
                 fill
                 chipBottom={insets.bottom + 96}
                 regionChipBottom={regionNameChipBottom}
+                // 지역명 칩 왼쪽 끝도 진행도 칩과 같은 탭 바 왼쪽 끝 정렬선(2026-11-01 사용자 요청). 진행도·태그 칩이
+                // 없을 때(지역 데이터 없는 나라 등)도 같은 정렬선 — 왼쪽 하단 요소의 왼쪽 끝이 화면마다 달라지지 않게.
+                // regionMapFill은 이 오버레이들과 같은 부모의 absoluteFill이고 CountryMapView 컨테이너에 가로 패딩이
+                // 없어 WebView px = 칩 컨테이너의 left와 같은 좌표다.
+                regionChipLeft={regionProgressLeft}
                 onMessage={handleRegionMessage}
                 recordedRegions={recordedRegions}
                 displayMode={regionGlobalMode}

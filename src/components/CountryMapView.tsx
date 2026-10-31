@@ -38,6 +38,10 @@ interface Props {
       추가하기 칩)가 칩 자리를 가릴 때 칩만 올린다. chipBottom과 달리 HTML을 다시 만들지 않고(리로드 없음)
       지도 중앙 정렬(BOTTOM_INSET)에도 영향이 없다 — 'setChipBottom' 메시지로 런타임에 옮긴다. */
   regionChipBottom?: number;
+  /** 지역명 칩(#region-chip)의 왼쪽 오프셋(px) — 생략하면 7(옛 고정값). 화면 쪽 정렬선(예: 하단 탭 바 왼쪽 끝)에
+      맞출 때 쓴다. regionChipBottom과 같이 HTML을 다시 만들지 않고 'setChipLeft' 메시지로 런타임에 옮긴다.
+      좌표는 WebView 로컬 px = 이 컴포넌트를 담은 부모의 dp(컨테이너에 가로 패딩 없음). */
+  regionChipLeft?: number;
   /** 검색어 — 입력 시 해당 지역/도시가 속한 주로 확대·강조 */
   searchQuery?: string;
   /** 인기명소 강조 — 명소 도시가 속한 주들을 스킨 색 테두리로 강조.
@@ -69,6 +73,7 @@ export default function CountryMapView({
   fill = false,
   chipBottom = 7,
   regionChipBottom,
+  regionChipLeft,
   searchQuery = '',
   showPopular = false,
   puzzleImage,
@@ -192,6 +197,11 @@ export default function CountryMapView({
   useEffect(() => {
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setChipBottom', value: chipBottomNow }));
   }, [chipBottomNow]);
+  // 지역명 칩 왼쪽 — 생략 시 HTML 기본값과 같은 7(복귀도 보낸다)
+  const chipLeftNow = regionChipLeft ?? 7;
+  useEffect(() => {
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'setChipLeft', value: chipLeftNow }));
+  }, [chipLeftNow]);
 
   // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색/인기명소/지역명 칩 위치)
   const sendState = () => {
@@ -202,6 +212,7 @@ export default function CountryMapView({
     wv.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
     // HTML 리로드(나라·언어·스킨 변경) 뒤엔 칩이 chipBottom으로 돌아가 있으므로 ready 때 다시 맞춘다
     wv.postMessage(JSON.stringify({ type: 'setChipBottom', value: chipBottomNow }));
+    wv.postMessage(JSON.stringify({ type: 'setChipLeft', value: chipLeftNow }));
   };
 
   // WebView 가 render 완료 후 보내는 'ready' 를 받으면 현재 상태를 동기화 (500ms 타이머보다 견고)
@@ -384,7 +395,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v11';
+var MAP_SCRIPT_VER = 'v12';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -1327,6 +1338,10 @@ function handleNativeMessage(e){
       // 지역명 칩만 옮긴다 — BOTTOM_INSET(지도·인셋 배치)은 그대로. 비정상값은 무시(칩이 화면 밖으로 가지 않게)
       var cb = Number(msg.value), chip = document.getElementById('region-chip');
       if (chip && isFinite(cb) && cb >= 0) chip.style.bottom = cb + 'px';
+    } else if (msg.type === 'setChipLeft') {
+      // 지역명 칩 왼쪽 끝 — 화면 정렬선(하단 탭 바 왼쪽 끝)에 맞춘다. 비정상값 무시(화면 밖·NaN)
+      var cl = Number(msg.value), chipL = document.getElementById('region-chip');
+      if (chipL && isFinite(cl) && cl >= 0 && cl < window.innerWidth) chipL.style.left = cl + 'px';
     }
   } catch(e) {}
 }
