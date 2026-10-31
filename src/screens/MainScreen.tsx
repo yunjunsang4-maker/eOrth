@@ -28,6 +28,7 @@ import NotificationBadge from '../components/NotificationBadge';
 // iOS 전용 — 네이티브 탭 바에는 CustomTabBar 오버레이가 없어 이 화면이 직접 FAB를 그린다.
 import { RecordFab } from '../components/RecordFab';
 import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT, IOS_SNAP_RIGHT } from '../utils/tabBar';
+import { FAB_SIZE } from '../components/NeonFab';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
 import { stageWidthNow, useStageWidth, clampStageWidth, STAGE_MAX_W } from '../utils/stage';
@@ -190,6 +191,9 @@ function sheetHandlePan(y: SharedValue<number>, start: SharedValue<number>, clos
 const SNAP_BTN = { right: Platform.OS === 'ios' ? IOS_SNAP_RIGHT : 46, size: 60 };
 /** 스냅 버튼 위에 얹는 오버레이가 스냅 바닥에서 더 올라가는 높이 (snapBottom에 더한다) */
 const ABOVE_SNAP_GAP = SNAP_BTN.size + 10;
+/** '방문 지역 추가하기' 칩과 옆 버튼(iOS FAB / Android 스냅) 사이 가로 틈. 코치마크 강조 구멍 여백(MainCoachmark PAD 8)보다
+ *  커야 FAB·스냅 강조 단계에서 칩이 구멍 안으로 비치지 않는다. */
+const FAB_SIDE_GAP = 10;
 
 // ─── 대륙 모드 국가 목록 ─── (src/constants/regionCountries.ts로 이전, 지오 검증 스크립트가 import)
 
@@ -577,7 +581,8 @@ function dropDefaultColored(map: Record<string, string>, defaultColor: string): 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   // 스냅 버튼 바닥(안전영역 포함 절대값) — RecordFab이 그리는 좌표와 같은 훅에서 나온다.
-  const snapBottom = useRecordFabBottom() + SNAP_ABOVE_FAB;
+  const fabBottom = useRecordFabBottom();
+  const snapBottom = fabBottom + SNAP_ABOVE_FAB;
   const { t, i18n } = useTranslation();
   const { records, tripGroups, getCountryPhoto } = useRecordData();
   const { isNeighbor, isNeighborRequested } = useSocialGraph();
@@ -1332,6 +1337,15 @@ export default function MainScreen({ navigation, route }: Props) {
   const showRegionTagChip =
     !!regionCountry && regionCountryRecordCount > 0 && recordedRegions.length === 0
     && !dismissedRegionTagChips.includes(regionCountry);
+  // iOS는 태그 칩이 FAB 가로줄(bottom fabBottom ~ 위로 칩 높이)이라 지도 WebView의 지역명 칩
+  // (#region-chip, left 7·bottom chipBottom=insets.bottom+96)과 세로로 겹쳐 지역명·검색 안내를 가린다.
+  // 태그 칩이 떠 있는 동안만 지역명 칩을 태그 칩 윗변 + 8 위로 올린다(칩이 닫히거나 기록 지역이 생기면
+  // undefined → chipBottom 복귀). 높이는 onLayout 실측 — 문구가 두 줄이면 FAB(56)보다 커진다.
+  // Android는 태그 칩이 스냅 줄(insets.bottom+129~)이라 지역명 칩(~insets.bottom+122)과 안 겹친다.
+  const [regionTagChipH, setRegionTagChipH] = useState(0);
+  const regionNameChipBottom = Platform.OS === 'ios' && showRegionTagChip
+    ? fabBottom + Math.max(regionTagChipH, FAB_SIZE) + 8
+    : undefined;
   const openRegionTagSheet = useCallback(() => {
     if (!regionCountry) return;
     setRegionTagSelection(new Set((taggedRegions[regionCountry] || []).map(t => t.nameEn)));
@@ -1933,6 +1947,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 countryName={ISO3_TO_KO[regionCountry] || ''}
                 fill
                 chipBottom={insets.bottom + 96}
+                regionChipBottom={regionNameChipBottom}
                 onMessage={handleRegionMessage}
                 recordedRegions={recordedRegions}
                 displayMode={regionGlobalMode}
@@ -1946,10 +1961,11 @@ export default function MainScreen({ navigation, route }: Props) {
               />
             </View>
             {/* ── 하단 오버레이 스택 ──
-                진행도와 태그 칩을 각자 absolute로 띄우면 서로를, 그리고 앞 레이어인 스냅 버튼을
-                모른다. 실제로 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
+                진행도와 칩들을 각자 absolute로 띄우면 서로를, 그리고 앞 레이어인 스냅 버튼을
+                모른다. 실제로 '방문 지역 추가하기' 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
                 하나의 스택에 넣고 스냅 버튼 위(ABOVE_SNAP)에 앵커해 겹침을 구조적으로 막는다.
-                아래(스냅 버튼 쪽)부터 진행도 → 칩 순으로 쌓이도록 column-reverse를 쓴다. */}
+                아래(스냅 버튼 쪽)부터 진행도 → 퍼즐 칩 순으로 쌓이도록 column-reverse를 쓴다.
+                '방문 지역 추가하기' 칩은 2026-10-31부터 이 스택이 아니라 iOS FAB 줄 / Android 스냅 줄(아래 별도 블록). */}
             <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: snapBottom + ABOVE_SNAP_GAP }]}>
               {regionProgress && (
                 // 진행도 유리 칩 — 국가·인기명소 칩과 같은 재질(베벨 그라데이션 테두리 + 스킨
@@ -1997,12 +2013,39 @@ export default function MainScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                 </View>
               )}
+            </View>
 
-              {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
-              {showRegionTagChip && (
-                <View style={{ alignSelf: 'center', maxWidth: '92%' }}>
+            {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만.
+                iOS는 기록 추가 FAB 가로줄 FAB 왼쪽, Android는 스냅 버튼 가로줄 스냅 왼쪽(2026-10-31 사용자 확정).
+                FAB·스냅은 이 화면이 아니라 RecordFab(Android: CustomTabBar 오버레이 / iOS: 이 화면 맨 끝)이
+                그리므로 좌표는 utils/tabBar 단일 출처(useRecordFabBottom·SNAP_ABOVE_FAB·IOS_FAB_RIGHT)와
+                FAB_SIZE·SNAP_BTN에서 파생한다. 모두 Stage 컬럼 기준(우측 정렬)이라 폴드·태블릿에서도 버튼 옆에 붙는다.
+                RecordFab 레이어는 root·fabWrap(전폭)까지 box-none이고 형식 버튼은 닫혀 있을 때 none이라,
+                버튼 원 밖인 이 칩(✕ 포함)은 앞 레이어 아래에서도 눌린다.
+                · iOS: FAB는 우측(right IOS_FAB_RIGHT). 컨테이너 bottom = FAB bottom, minHeight = FAB 지름,
+                  세로 가운데 정렬 → 한 줄이면 중심이 FAB 중심과 같고, 두 줄로 FAB보다 커지면 위로만 자라
+                  네이티브 바(FAB 아래 16) 쪽으로 내려가지 않는다.
+                · Android(2026-10-31 사용자 확정 변경): FAB가 아니라 **스냅 버튼** 가로줄, 스냅 왼쪽.
+                  FAB 줄은 FAB가 하단 중앙이라 왼쪽 폭이 ≈138dp뿐이어서 문구가 3~4줄로 길어졌고, 칩 아래쪽이
+                  앞 레이어인 플로팅 탭 바에 가려 FAB 중심에도 못 맞췄다. 스냅 줄은 바 위라 가릴 것이 없다.
+                  같은 패턴: bottom = 스냅 bottom, minHeight = 스냅 지름(60), 세로 가운데 → 칩이 60보다 커지면
+                  위로만 자라 스냅 바닥(=FAB 윗면) 아래로 내려가지 않는다.
+                  가로는 left 16 ~ 스냅 왼쪽 − 틈(right SNAP_BTN.right + 지름 + FAB_SIDE_GAP).
+                  틈 10 > 코치마크 PAD 8이라 스냅 강조 원(반지름 30+8) 안으로 칩이 비치지 않는다. */}
+            {showRegionTagChip && (
+              <View
+                pointerEvents="box-none"
+                onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h !== regionTagChipH) setRegionTagChipH(h); }}
+                style={[
+                  { position: 'absolute', zIndex: 2, left: 16, justifyContent: 'center', alignItems: 'flex-end' },
+                  Platform.OS === 'ios'
+                    ? { right: IOS_FAB_RIGHT + FAB_SIZE + FAB_SIDE_GAP, bottom: fabBottom, minHeight: FAB_SIZE }
+                    : { right: SNAP_BTN.right + SNAP_BTN.size + FAB_SIDE_GAP, bottom: snapBottom, minHeight: SNAP_BTN.size },
+                ]}
+              >
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
-                  <TouchableOpacity activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
+                  {/* flexShrink: 좁은 폭에서 글자가 칩 밖으로 넘치지 않고 줄바꿈되게(행 안의 Text는 기본 shrink 0) */}
+                  <TouchableOpacity style={{ flexShrink: 1 }} activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
                     <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
                       {t('main.regionTagChip', { count: regionCountryRecordCount })}
                     </Text>
@@ -2017,9 +2060,8 @@ export default function MainScreen({ navigation, route }: Props) {
                     <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginLeft: 10, padding: 4 }}>✕</Text>
                   </TouchableOpacity>
                 </View>
-                </View>
-              )}
-            </View>
+              </View>
+            )}
             {/* 퍼즐 완성 공유 카드 — 완성 연출 뒤 지도 위 오버레이 */}
             {puzzleShareVisible && puzzleImage && regionProgress ? (
               <PuzzleShareCard
@@ -3290,7 +3332,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   // 하단 오버레이 스택 — 스냅 버튼 위에 앵커(bottom은 인라인). column-reverse라 JSX에서 먼저
-  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다: 진행도가 버튼 바로 위, 태그 칩이 그 위.
+  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다: 진행도가 버튼 바로 위, 퍼즐 사진 칩이 그 위.
+  // ('방문 지역 추가하기' 태그 칩은 여기서 빠져 iOS FAB 줄 / Android 스냅 줄에 따로 있다 — 렌더부 주석 참고)
   regionBottomStack: {
     position: 'absolute',
     left: 0,

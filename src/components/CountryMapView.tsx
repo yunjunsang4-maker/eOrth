@@ -34,6 +34,10 @@ interface Props {
   fill?: boolean;
   /** 지역명 칩의 하단 오프셋(px) — 지도가 탭 바 뒤까지 채워질 때 칩을 위로 올리는 용도 */
   chipBottom?: number;
+  /** 지역명 칩(#region-chip)만의 하단 오프셋(px) — 생략하면 chipBottom. 지도 위 RN 오버레이(예: 방문 지역
+      추가하기 칩)가 칩 자리를 가릴 때 칩만 올린다. chipBottom과 달리 HTML을 다시 만들지 않고(리로드 없음)
+      지도 중앙 정렬(BOTTOM_INSET)에도 영향이 없다 — 'setChipBottom' 메시지로 런타임에 옮긴다. */
+  regionChipBottom?: number;
   /** 검색어 — 입력 시 해당 지역/도시가 속한 주로 확대·강조 */
   searchQuery?: string;
   /** 인기명소 강조 — 명소 도시가 속한 주들을 스킨 색 테두리로 강조.
@@ -64,6 +68,7 @@ export default function CountryMapView({
   height: heightProp,
   fill = false,
   chipBottom = 7,
+  regionChipBottom,
   searchQuery = '',
   showPopular = false,
   puzzleImage,
@@ -182,13 +187,21 @@ export default function CountryMapView({
     webViewRef.current?.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
   }, [showPopular]);
 
-  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색/인기명소)
+  // 지역명 칩 위치 — chipBottom(HTML에 박힘)과 다를 때만 의미가 있지만, 복귀(같은 값)도 보내야 하므로 항상 보낸다
+  const chipBottomNow = regionChipBottom ?? chipBottom;
+  useEffect(() => {
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'setChipBottom', value: chipBottomNow }));
+  }, [chipBottomNow]);
+
+  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색/인기명소/지역명 칩 위치)
   const sendState = () => {
     const wv = webViewRef.current;
     if (!wv) return;
     wv.postMessage(payload);
     wv.postMessage(JSON.stringify({ type: 'searchRegion', query: searchQuery }));
     wv.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
+    // HTML 리로드(나라·언어·스킨 변경) 뒤엔 칩이 chipBottom으로 돌아가 있으므로 ready 때 다시 맞춘다
+    wv.postMessage(JSON.stringify({ type: 'setChipBottom', value: chipBottomNow }));
   };
 
   // WebView 가 render 완료 후 보내는 'ready' 를 받으면 현재 상태를 동기화 (500ms 타이머보다 견고)
@@ -346,6 +359,10 @@ function buildHTML(code: string, countryName: string = '', chipBottom: number = 
    첫 확대(핀치)부터 d3.zoom이 바로 받게 한다. user-select/callout도 첫 터치 지연 방지. */
 html,body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 svg{touch-action:none;display:block}
+/* 줌 구조(v8): #map-host(d3.zoom 리스너, 변환 없음) > #map-layer(제스처 중 CSS transform) > svg.
+   리스너를 변환되는 요소에 붙이면 d3.pointer가 그 변환을 포함한 좌표를 읽어 제스처가 튄다 — render() 주석 참고. */
+#map-host{touch-action:none;overflow:hidden}
+#map-layer{transform-origin:0 0}
 body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1B0;font-size:14px;gap:12px;pointer-events:none}
 .spinner{width:28px;height:28px;border:3px solid #2E2E3B;border-top-color:rgb(${accentRgb.join(',')});border-radius:50%;animation:spin .8s linear infinite}
@@ -367,7 +384,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v7';
+var MAP_SCRIPT_VER = 'v8';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -408,6 +425,10 @@ var insetBoxes = [];
 // ── 검색(지역/도시 → 주 확대·강조) ──
 var searchedRegion = null;   // 강조할 주의 NAME_1 (영문)
 var zoomBehavior = null;     // d3.zoom 인스턴스 (render 에서 할당)
+// d3.zoom 상태(__zoom)는 svg가 아니라 zoomHost(#map-host) 노드에 붙는다 — zoomTransform·
+// transition().call(zoomBehavior.transform) 은 반드시 zoomHost 기준으로 할 것(svgElement로 하면
+// 리스너 없는 노드의 identity를 읽거나, 지도가 안 움직이는 전환이 된다).
+var zoomHost = null;         // d3 selection — #map-host
 var maxZoom = 15;
 
 // 도시/명소명 → 속한 주(NAME_1) 매핑. 키는 영문(normEn)·한글 모두 허용.
@@ -481,7 +502,7 @@ function resolveProvince(query){
 
 // 해당 주로 부드럽게 확대 (inset 전용 주는 확대 생략, 강조만)
 function zoomToProvince(prov){
-  if(!projectionPath || !zoomBehavior || !svgElement) return;
+  if(!projectionPath || !zoomBehavior || !zoomHost) return;
   var feat=null;
   for(var i=0;i<(mainFeatures||[]).length;i++){
     if(mainFeatures[i].properties.NAME_1===prov){feat=mainFeatures[i];break;}
@@ -496,7 +517,7 @@ function zoomToProvince(prov){
   if(!isFinite(dx)||!isFinite(dy)||!W||!H||dx<=0||dy<=0){return;}
   var scale=Math.max(1.2, Math.min(maxZoom, 0.55/Math.max(dx/W, dy/H)));
   var tx=W/2-scale*cx, ty=H/2-scale*cy;
-  svgElement.transition().duration(650).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+  zoomHost.transition().duration(650).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
 }
 
 // 좌표가 속한 주(province) 찾기 — 도시 피처면 상위 주로 환원
@@ -543,7 +564,7 @@ function doSearch(query){
   var q=(query||'').trim();
   if(q.length===0){
     searchedRegion=null;
-    if(zoomBehavior&&svgElement){svgElement.transition().duration(450).call(zoomBehavior.transform, d3.zoomIdentity);}
+    if(zoomBehavior&&zoomHost){zoomHost.transition().duration(450).call(zoomBehavior.transform, d3.zoomIdentity);}
     setRegionChip('');
     updateMap();
     return;
@@ -669,7 +690,7 @@ function emphWidth(d){
 // 현재 확대 배율(k). zoom 그룹 transform이 stroke도 k배 확대하므로, 화면상 선 두께를
 // 일정하게(확대할수록 지역 대비 얇게) 유지하려면 stroke-width를 base/k 로 준다.
 // (vector-effect:non-scaling-stroke 와 함께 쓰면 stroke-width 값이 화면 px 기준이 된다)
-function curK(){ try{ return svgElement ? d3.zoomTransform(svgElement.node()).k : 1; }catch(e){ return 1; } }
+function curK(){ try{ return zoomHost ? d3.zoomTransform(zoomHost.node()).k : 1; }catch(e){ return 1; } }
 // 배율 k에서의 경계선 두께 — k^0.25로 아주 완만하게만 얇아지고(직접 /k는 고배율에서 실처럼 사라짐)
 // 원래 두께의 75%를 하한으로 둬 확대해도 구분선이 또렷하게 보이게 한다.
 function scaledStroke(d,k){ var base=emphWidth(d); if(!base) return 0; return Math.max(base/Math.pow(k,0.25), base*0.75); }
@@ -756,7 +777,11 @@ function drawGroup(parent, features, pathGen, cls){
 }
 function render(geo){
   var W=window.innerWidth,H=window.innerHeight,PAD=24;
-  var svg=d3.select('body').append('svg').attr('width',W).attr('height',H);
+  // 줌 호스트(변환 없음) > 레이어(제스처 중 CSS transform) > svg — 줌 핸들러 주석 참고
+  var host=d3.select('body').append('div').attr('id','map-host').style('width',W+'px').style('height',H+'px');
+  zoomHost = host;
+  var layerNode=host.append('div').attr('id','map-layer').node();
+  var svg=d3.select(layerNode).append('svg').attr('width',W).attr('height',H);
   svgElement = svg;
   // NE 미국 admin-1 데이터는 50주+D.C.뿐이다. 괌은 별도 국가(GUM) 피처라 여기 없고,
   // 호놀룰루는 옛 GADM의 도시 피처였을 뿐 admin-1에는 없다 — 둘 다 인셋 대상에서 제외.
@@ -805,7 +830,12 @@ function render(geo){
       // 연속 구간(-26°..+26° 부근)으로 만든 뒤 맞춘다. 하와이는 안 넘으니 회전 불필요.
       var ip=d3.geoMercator();
       if(box.name==='Alaska') ip.rotate([154,0]);
-      ip.fitExtent([[box.x+4,box.y+4],[box.x+box.w-4,box.y+box.h-4]],fc);
+      // 위쪽은 라벨 띠(LABEL_H)만큼 비우고 맞춘다 — 예전엔 box.y+4부터 채워 지도 윗부분이
+      // box.y+14 기준선의 이름 라벨(10px)과 겹쳤다. 라벨 글리프는 대략 y+5..y+17이라 20이면
+      // 3px 여유. 퍼즐 그룹 bbox(b)는 박스 전체 그대로 — cover-fit 그림이 박스를 덮고 조각은
+      // mask(같은 ipath)로 오려지므로 지도가 박스 안에서 내려와도 정렬은 그대로다.
+      var LABEL_H=20;
+      ip.fitExtent([[box.x+4,box.y+LABEL_H],[box.x+box.w-4,box.y+box.h-4]],fc);
       var ipath=d3.geoPath().projection(ip);
       // inset-bg 클래스: 퍼즐 모드에선 fill을 투명으로 바꿔 아래 pz-layer 그림이 비치게 한다
       g.append('rect').attr('class','inset-bg').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
@@ -829,21 +859,68 @@ function render(geo){
     // 정점이 성긴 국가만 상한을 소폭 낮춘다(하한 10 ~ 상한 18).
     maxZoom=Math.max(10, Math.min(18, Math.round(density/12)));
   })();
+  // ── 줌: 제스처 중엔 CSS transform(합성 레이어 비트맵 이동·스케일), 끝나면 SVG transform 1회 커밋 ──
+  // 렉 원인(v7까지): 제스처 프레임마다 g의 transform '속성'을 바꿨다. SVG 속성 변경은 g 아래 전 경로를
+  // 매 프레임 다시 래스터화한다 — 전 지역 path의 non-scaling-stroke(화면공간 stroke 재계산)·
+  // geometricPrecision, 퍼즐 mask(전 지역 path)+1024px image, 사진 pattern, 그레인 pattern까지 전부.
+  // 지금은 #map-layer(div)를 CSS transform으로 움직여 이미 그린 비트맵을 GPU가 옮기고 늘리기만 한다.
+  // 대가: 제스처 중에는 확대분만큼 흐리고 선 두께도 같이 늘었다 줄며, end에서 선명하게 다시 그려진다.
+  // 상대 변환: 커밋된 T0(k0,x0,y0) → 현재 T(k,x,y) = translate(x−s·x0, y−s·y0) scale(s), s=k/k0, origin 0 0.
+  // ⚠️ zoom 리스너는 변환되지 않는 host에 붙인다. d3.pointer는 SVG 요소면 getScreenCTM()을 쓰는데 이것이
+  //    그 요소에 걸린 CSS transform까지 포함한다 — svg나 레이어에 붙이면 포인터 좌표가 레이어 변환만큼
+  //    왜곡돼 핀치가 튀거나 발산한다. host는 div라 getBoundingClientRect 기준이고 변환이 없다.
+  // 'end'는 d3-zoom이 start와 짝으로 보장한다: 손가락 떼기·touchcancel·휠 150ms 후, 그리고 전환이
+  // 끝나거나 중단될 때(새 제스처의 interrupt 포함 — 'interrupt.zoom'도 end를 낸다). 그래서 CSS
+  // transform이 남는 경로가 없다. 새 제스처의 start는 앞선 end(커밋) 다음에 온다.
+  var committedT=d3.zoomIdentity; // g에 마지막으로 커밋한 변환(T0)
+  // ponytail: 고정 임계값(드러난 빈 띠 15%·확대 2배) — 실기기에서 빈 띠·흐림이 거슬리면 낮추고,
+  // 중간 커밋 히치가 잦으면 높일 것. 중간 커밋 1회 비용 = v7의 제스처 1프레임 비용.
+  var GAP_LIMIT=Math.min(W,H)*0.15, MAX_BITMAP_SCALE=2;
+  // 그릴 내용의 범위(g 좌표) = 본토 bbox ∪ 인셋 박스. 빈 띠는 '이 범위가 비트맵 밖으로 드러난 폭'으로
+  // 잰다 — 뷰포트 기준으로 재면 바다·여백 쪽 팬에도 커밋하고, k0=1만 예외로 두면 k=1에서 끌어 놓은 뒤
+  // (translateExtent 없음) 반대로 끌 때 뷰포트 밖에 있던 지도가 손 뗄 때까지 비어 보였다(QA F1).
+  var CB=[[Infinity,Infinity],[-Infinity,-Infinity]];
+  puzzleGroups.forEach(function(grp){
+    CB[0][0]=Math.min(CB[0][0],grp.b[0][0]); CB[0][1]=Math.min(CB[0][1],grp.b[0][1]);
+    CB[1][0]=Math.max(CB[1][0],grp.b[1][0]); CB[1][1]=Math.max(CB[1][1],grp.b[1][1]);
+  });
+  function revealedGap(t, tx, ty, s){
+    // 내용 범위의 현재 화면 위치를 뷰포트로 자른 것 — 이 중 비트맵([tx,tx+sW]×[ty,ty+sH]) 밖 최대 폭
+    var x0=Math.max(0,t.applyX(CB[0][0])), y0=Math.max(0,t.applyY(CB[0][1]));
+    var x1=Math.min(W,t.applyX(CB[1][0])), y1=Math.min(H,t.applyY(CB[1][1]));
+    if(!(x1>x0&&y1>y0)) return 0; // 내용이 화면에 없다(NaN 포함) — 드러날 것도 없다
+    return Math.max(tx-x0, ty-y0, x1-(tx+s*W), y1-(ty+s*H));
+  }
+  function commitZoom(t){
+    // g 속성과 CSS를 같은 동기 블록에서 바꿔 같은 프레임에 교체된다 — 깜빡임·튐 없음
+    committedT=t;
+    g.attr('transform',t);
+    layerNode.style.transform='';
+  }
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
+    // will-change는 제스처 동안만 — 레이어를 미리 승격해 첫 프레임부터 비트맵 이동이 되게 하고,
+    // end에서 풀어 뷰포트 크기 합성 레이어 메모리를 돌려준다.
+    .on('start',function(){ layerNode.style.willChange='transform'; })
     .on('zoom',function(ev){
-      // 제스처 중에는 transform만 — 프레임마다 전 지역 path에 stroke-width를 다시 쓰면
-      // attr 변경이 path를 무효화해 패턴 채움(퍼즐 이미지)까지 통째로 리페인트된다(핀치 렉).
-      // 두께는 non-scaling-stroke가 제스처 동안 화면 px 기준으로 유지해 준다.
-      g.attr('transform',ev.transform);
+      // 프레임마다 path 속성(stroke-width 등)을 쓰지 말 것 — 리페인트가 다시 프레임마다 돈다
+      var t=ev.transform, s=t.k/committedT.k;
+      var tx=t.x-s*committedT.x, ty=t.y-s*committedT.y;
+      // 중간 커밋: 비트맵은 커밋 시점 뷰포트(W×H)만 담는다(svg 밖은 잘림). 팬·축소로 지도 내용이
+      // 비트맵 밖에서 GAP_LIMIT 넘게 드러나거나(revealedGap), 2배 넘게 늘려 너무 흐려지면 그 자리에서
+      // 한 번 다시 그리고 새 기준으로 이어간다. 초기 identity 상태는 내용 전체가 비트맵 안이라 자연히 0이다.
+      if(s>MAX_BITMAP_SCALE || revealedGap(t,tx,ty,s)>GAP_LIMIT){ commitZoom(t); return; }
+      layerNode.style.transform='translate('+tx+'px,'+ty+'px) scale('+s+')';
     })
     .on('end',function(ev){
-      // 배율별 미세 보정(base/k^0.25, 하한 75%)은 제스처가 끝난 뒤 한 번만
+      commitZoom(ev.transform);
+      layerNode.style.willChange='';
+      // 배율별 미세 보정(base/k^0.25, 하한 75%)은 제스처가 끝난 뒤 한 번만 — 커밋과 같은 프레임
       var k=ev.transform.k;
       g.selectAll('path.region-stroke').attr('stroke-width',function(d){return scaledStroke(d,k);});
     });
-  svg.call(zoomBehavior);
-  // warm-up — zoom 내부 상태를 미리 초기화해 첫 실제 제스처가 씹히지 않게 한다
-  svg.call(zoomBehavior.transform, d3.zoomIdentity);
+  host.call(zoomBehavior);
+  // warm-up — zoom 내부 상태를 미리 초기화해 첫 실제 제스처가 씹히지 않게 한다(start·zoom·end 동기 발생 → identity 커밋)
+  host.call(zoomBehavior.transform, d3.zoomIdentity);
 
   setRegionChip('');
   dbgChip('지도 ' + MAP_SCRIPT_VER); // 임시 진단 — 이 표시가 없으면 옛 스크립트가 돌고 있는 것
@@ -1123,6 +1200,10 @@ function handleNativeMessage(e){
     } else if (msg.type === 'setPopular') {
       showPopular = !!msg.value;
       updateMap();
+    } else if (msg.type === 'setChipBottom') {
+      // 지역명 칩만 옮긴다 — BOTTOM_INSET(지도·인셋 배치)은 그대로. 비정상값은 무시(칩이 화면 밖으로 가지 않게)
+      var cb = Number(msg.value), chip = document.getElementById('region-chip');
+      if (chip && isFinite(cb) && cb >= 0) chip.style.bottom = cb + 'px';
     }
   } catch(e) {}
 }
