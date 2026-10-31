@@ -1909,36 +1909,25 @@ export default function MainScreen({ navigation, route }: Props) {
               style={styles.regionChipsRow}
               contentContainerStyle={styles.regionChipsContent}
             >
-              {/* 국가 표시 칩 — 메뉴탭바 배경 테두리(흰색/검은색 베벨) 그라데이션 + 스킨 어두운 배경 */}
-              <LinearGradient
-                colors={['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0.15, y: 1 }}
-                style={styles.regionChipBorder}
+              {/* 국가 표시 칩 — 앱 공용 대각 흰색 링(AutoPillRing) + 스킨 어두운 배경. 링 → 글자 순.
+                  옛 LinearGradient 베벨 래퍼(2026-10-31 통일로 제거)와 바깥 크기 30·radius 15 동일 */}
+              <TouchableOpacity
+                style={[styles.regionChip, { backgroundColor: skinChipBg }]}
+                activeOpacity={0.8}
+                onPress={() => setRegionSearch('')}
               >
-                <TouchableOpacity
-                  style={[styles.regionChipInner, { backgroundColor: skinChipBg }]}
-                  activeOpacity={0.8}
-                  onPress={() => setRegionSearch('')}
-                >
-                  <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
-                </TouchableOpacity>
-              </LinearGradient>
-              {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
-              <LinearGradient
-                colors={popularActive ? skinAccent.btnGradient : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
-                start={{ x: 0, y: 0 }}
-                end={popularActive ? { x: 1, y: 1 } : { x: 0.15, y: 1 }}
-                style={styles.popularChipBorder}
+                <AutoPillRing />
+                <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
+              </TouchableOpacity>
+              {/* 인기명소 모아보기 — 비활성: 공용 링 / 활성: 흰 실선 링(표시 설정 '국가 추가' 칩과 같은 토글 관례, dsm.chipActiveRing) */}
+              <TouchableOpacity
+                style={[styles.regionChip, { backgroundColor: skinChipBg }]}
+                activeOpacity={0.8}
+                onPress={() => setPopularActive((v) => !v)}
               >
-                <TouchableOpacity
-                  style={[styles.popularChipInner, { backgroundColor: skinChipBg }]}
-                  activeOpacity={0.8}
-                  onPress={() => setPopularActive((v) => !v)}
-                >
-                  <Text style={styles.regionChipText}>{t('main.popularSpots')}</Text>
-                </TouchableOpacity>
-              </LinearGradient>
+                {popularActive ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
+                <Text style={styles.regionChipText}>{t('main.popularSpots')}</Text>
+              </TouchableOpacity>
             </ScrollView>
 
             {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
@@ -1969,32 +1958,27 @@ export default function MainScreen({ navigation, route }: Props) {
                 '방문 지역 추가하기' 칩은 2026-10-31부터 이 스택이 아니라 iOS FAB 줄 / Android 스냅 줄(아래 별도 블록). */}
             <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: snapBottom + ABOVE_SNAP_GAP }]}>
               {regionProgress && (
-                // 진행도 유리 칩 — 국가·인기명소 칩과 같은 재질(베벨 그라데이션 테두리 + 스킨
+                // 진행도 유리 칩 — 국가·인기명소 칩과 같은 재질(공용 대각 흰색 링 + 스킨
                 // 어두운 배경). 맨 텍스트만 떠 있던 것을 지도 위 오버레이 재질로 통일하고,
                 // 얇은 스킨 그라데이션 바가 방문 비율만큼 차오른다(값 변경 시 애니메이션).
+                // 링은 AutoPillRing(반지름 = 실측 높이/2)이라 배경도 알약(borderRadius 999 → 높이/2로 clamp)이어야 곡선이 겹친다.
                 <View pointerEvents="none" style={{ alignSelf: 'flex-end', marginRight: SNAP_BTN.right }}>
-                  <LinearGradient
-                    colors={['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0.15, y: 1 }}
-                    style={styles.regionChipBorder}
-                  >
-                    <View style={[styles.regionProgressInner, { backgroundColor: skinChipBg }]}>
-                      <Text style={styles.regionProgressText}>
-                        <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
-                        {t('main.regionProgressOf', { total: regionProgress.total })}
-                      </Text>
-                      <View style={styles.regionProgressTrack}>
-                        <Reanimated.View style={[{ height: '100%' }, regionBarStyle]}>
-                          <LinearGradient
-                            colors={skinAccent.btnGradient}
-                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                            style={{ flex: 1 }}
-                          />
-                        </Reanimated.View>
-                      </View>
+                  <View style={[styles.regionProgressInner, { backgroundColor: skinChipBg }]}>
+                    <AutoPillRing />
+                    <Text style={styles.regionProgressText}>
+                      <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                      {t('main.regionProgressOf', { total: regionProgress.total })}
+                    </Text>
+                    <View style={styles.regionProgressTrack}>
+                      <Reanimated.View style={[{ height: '100%' }, regionBarStyle]}>
+                        <LinearGradient
+                          colors={skinAccent.btnGradient}
+                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                          style={{ flex: 1 }}
+                        />
+                      </Reanimated.View>
                     </View>
-                  </LinearGradient>
+                  </View>
                 </View>
               )}
 
@@ -3311,31 +3295,13 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingHorizontal: 16,
   },
-  regionChipBorder: {
-    borderRadius: 15.5,
-    padding: 1,
-  },
-  regionChipInner: {
-    height: 28,
-    borderRadius: 14.5,
-    // 불투명이어야 테두리 그라데이션이 배경(가운데)으로 비치지 않음
-    // (#751AAD 30%가 다크 배경 위에 깔린 색과 동일)
-    backgroundColor: '#2A0F3E',
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // ── 인기명소 칩 그라데이션 테두리. LinearGradient 래퍼 + 1px 패딩으로 구현
-  popularChipBorder: {
-    borderRadius: 15.5,
-    padding: 1,
-  },
-  popularChipInner: {
-    height: 28,
-    borderRadius: 14.5,
-    // 불투명이어야 그라데이션이 가운데로 비치지 않음 (#751AAD 30%가 다크 배경 위에 깔린 색)
-    backgroundColor: '#2A0F3E',
-    paddingHorizontal: 16,
+  // 국가·인기명소 칩 공용 — 테두리는 AutoPillRing(borderWidth·overflow hidden 금지: 링이 1px 밀리거나 잘린다).
+  // 옛 LinearGradient 래퍼(padding 1) + 안쪽(h28·r14.5·좌우 16)과 바깥 치수가 같도록 h30·r15·좌우 17.
+  regionChip: {
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#2A0F3E', // 인라인 skinChipBg가 덮는다
+    paddingHorizontal: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -3355,11 +3321,12 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     fontFamily: Typography.fontFamily.medium,
   },
-  // 진행도 유리 칩 내부 — 국가 칩(regionChipInner)과 같은 규격, 세로로 텍스트+바 2줄
+  // 진행도 유리 칩 — 국가 칩(regionChip)과 같은 재질, 세로로 텍스트+바 2줄.
+  // 링(AutoPillRing)이 알약 반지름(높이/2)으로 그리므로 배경도 알약. 패딩은 옛 베벨 래퍼의 1px 몫을 더해 바깥 크기 유지.
   regionProgressInner: {
-    borderRadius: 14.5,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 7,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
