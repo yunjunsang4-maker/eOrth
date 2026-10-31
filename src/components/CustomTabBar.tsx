@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useStageWidth } from '../utils/stage';
-import { TAB_BAR_H, TAB_BAR_GAP } from '../utils/tabBar';
+import { TAB_BAR_H, TAB_BAR_GAP, BAR_W_GLOBE, BAR_W_OTHER, BAR_SIDE_MIN } from '../utils/tabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
@@ -51,13 +51,12 @@ const PILL_FILL = 'rgba(117, 26, 173, 0.3)'; // 활성 알약 본체 채움 (30%
 // 옛 값에 남아 다시 갈라진다 — 실제로 그렇게 갈라져 하단 콘텐츠가 바에 먹혔다.
 const BAR_H = TAB_BAR_H;   // 컨테이너 높이
 const BAR_R = 31.5;        // 높이의 절반 = 완전 둥근형
-const BAR_W_GLOBE = 323;   // Globe 활성 시 컨테이너 폭
-const BAR_W_OTHER = 348;   // 나머지 활성 시 컨테이너 폭
-// 좁은 화면에서 남길 최소 좌우 여백. 위 폭은 시안 기준 고정값이라 화면이 이보다 좁으면
+// 컨테이너 폭 BAR_W_GLOBE(323, Globe 활성)·BAR_W_OTHER(348, 나머지)와 최소 좌우 여백 BAR_SIDE_MIN(16)은
+// 2026-11-01부터 utils/tabBar.ts가 단일 출처다(대륙 지도 진행도 칩이 바 왼쪽 끝 androidTabBarLeft에 맞춘다).
+// 최소 여백이 필요한 이유: 위 폭은 시안 기준 고정값이라 화면이 이보다 좁으면
 // 그대로 쓸 수 없다 — 예전엔 left 만 Math.max(16) 로 막아서 폭은 348 그대로였고,
 // 그 결과 320pt('확대 표시' 설정)에서 오른쪽 44pt 가 화면 밖으로 나가 마지막 탭이
 // 잘리고 눌리지도 않았다(360pt mini 에서도 4pt 넘침). 이제 폭 자체를 줄인다.
-const BAR_SIDE_MIN = 16;
 
 const PILL_H = 36;         // 가로 알약 높이
 const H_COLLAPSED_W = 48;  // 비활성(아이콘만) 폭

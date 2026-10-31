@@ -26,6 +26,23 @@ export const TAB_BAR_H = 63;
 /** 탭 바 컨테이너를 안전영역 위로 띄우는 간격(`bottom: insets.bottom + 이 값`). */
 export const TAB_BAR_GAP = 24;
 
+/** Android 플로팅 탭 바(CustomTabBar) 컨테이너 폭 — 지구본(MainTab) 활성 시 / 나머지 활성 시. 시안 기준 고정값. */
+export const BAR_W_GLOBE = 323;
+export const BAR_W_OTHER = 348;
+/** 좁은 화면에서 탭 바 양옆에 남길 최소 여백. 폭이 Stage − 2×이 값보다 크면 폭 자체를 줄인다(CustomTabBar 주석 참고). */
+export const BAR_SIDE_MIN = 16;
+
+/**
+ * Android 플로팅 탭 바의 왼쪽 끝 x (Stage 컬럼 좌표) — CustomTabBar가 그리는 식과 같은 식이다
+ * (`w = min(barW, stageW − 2·BAR_SIDE_MIN)`, `left = (stageW − w) / 2`). 바 옆에 정렬할 오버레이
+ * (대륙 지도 진행도 칩 등)가 쓴다 — 2026-11-01 상수를 CustomTabBar에서 여기로 올려 단일 출처로 맞췄다.
+ * ⚠️ 탭 전환 중에는 바 폭이 260ms 동안 애니메이션된다. 이 값은 정착 후(=globeActive에 맞는 폭) 기준이다.
+ */
+export function androidTabBarLeft(stageW: number, globeActive: boolean): number {
+  const w = Math.min(globeActive ? BAR_W_GLOBE : BAR_W_OTHER, stageW - BAR_SIDE_MIN * 2);
+  return (stageW - w) / 2;
+}
+
 /** 네이티브 바 윗면과 콘텐츠 사이에 두는 최소 숨구멍. 플로팅 바(24)만큼 띄울 필요는 없다. */
 const NATIVE_TAB_BAR_GAP = 8;
 

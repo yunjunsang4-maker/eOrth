@@ -21,8 +21,6 @@ const esES: DeepPartial<typeof es> = {
   main: {
     // agregar → añadir
     favoriteAddA11y: 'Añadir {{country}} a favoritos',
-    regionTagChip_one: '{{count}} registro aquí · Añadir regiones visitadas',
-    regionTagChip_other: '{{count}} registros aquí · Añadir regiones visitadas',
     coachGlobeDesc: 'Los países que visitaste se iluminan. Toca un país para añadir o ver sus registros.',
     coachFabTitle: 'Añadir registro +',
     coachFabDesc: 'Añade un registro nuevo en el formato que prefieras: feed, blog, tira, álbum y más.',

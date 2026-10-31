@@ -18,7 +18,7 @@ import {
 import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, cancelAnimation, Easing as REasing, type SharedValue } from 'react-native-reanimated';
+import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, cancelAnimation, Easing as REasing, type SharedValue, LinearTransition, FadeIn, LayoutAnimationConfig } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
@@ -27,7 +27,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 // iOS 전용 — 네이티브 탭 바에는 CustomTabBar 오버레이가 없어 이 화면이 직접 FAB를 그린다.
 import { RecordFab } from '../components/RecordFab';
-import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT, IOS_SNAP_RIGHT } from '../utils/tabBar';
+import { useRecordFabBottom, SNAP_ABOVE_FAB, IOS_FAB_RIGHT, IOS_SNAP_RIGHT, androidTabBarLeft } from '../utils/tabBar';
 import { FAB_SIZE } from '../components/NeonFab';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
@@ -52,7 +52,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image as ExpoImage } from 'expo-image';
 import { success, tap } from '../utils/haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon, GalleryIcon, PlusIcon } from '../components/icons';
+import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon, GalleryIcon, PlusIcon, BackChevronIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { getGlobeSkinTheme, getGlassBgHue, GLOBE_SKINS } from '../constants/globeSkins';
 import { getSkinAccent } from '../constants/skinTheme';
@@ -77,6 +77,7 @@ import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { useProfileSettings, useHomeSettings, useGlobeSettings, useSkinSettings, usePrefSettings, useSettingsActions, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions, ISO2_TO_GEO } from '../constants/homeRegions';
+import { regionMajorCities, regionCitiesMatch } from '../data/regionMajorCities';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
 import type { RegionGlobalMode } from '../utils/regionModeMigration';
 import { regionNameByCode, totalRegionCount, visitedRegionCount } from '../utils/regionGeoLookup';
@@ -91,6 +92,8 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
+import { pickCountryCards, replaceCountryRegions, liveCardRegions, type TripCardRegion } from '../utils/cardRegions';
+import { TripCard, type TripCardData } from '../components/profile/ProfileVisuals';
 
 const width = stageWidthNow();
 const height = Dimensions.get('window').height;
@@ -139,6 +142,37 @@ const COUNTRY_SHEET_MAX_H = height * 0.65;
 const SHEET_SPRING = { stiffness: 302.6, damping: 37, mass: 1 };
 // 시트 닫기 300ms — RN timing 기본 easing(inOut(ease))을 명시(Reanimated 기본은 inOut(quad))
 const SHEET_CLOSE_TIMING = { duration: 300, easing: REasing.inOut(REasing.ease) };
+
+/**
+ * 딤 페이드 + 시트만 슬라이드하는 Modal 시트 — 방문 지역 시트·전체 국가 목록 시트 공용(2026-11-01).
+ * Modal animationType="slide"는 Modal 안의 딤까지 시트와 함께 밀어 올려 "검은 그림자가 따라온다"(사용자 보고).
+ * 쓰는 쪽: Modal animationType="none" + 딤 Animated.View(opacity = overlayOpacity) + 시트 Reanimated.View(sheetStyle,
+ * onLayout = onSheetLayout — 닫힐 때 그 실측 높이만큼 내려야 화면 밖으로 사라진다).
+ * · open: visible=true → 화면 밖(높이 전체)에서 스프링으로 올라온다. 직전 닫힘 위치에서 출발하면 시트가 살짝 보인 채로 뜬다.
+ * · close: 딤 페이드아웃 + 시트 내림, **끝까지 내려갔을 때만** visible=false. 닫히는 중에 open이 불리면 닫힘이 취소돼
+ *   해제되지 않는다(완료 콜백의 finished). 내용(단계·검색어)은 여기서 초기화하지 않는다 — 내려가는 동안 유지.
+ * 같은 화면 국가 시트(openCountrySheet/closeCountrySheet)와 같은 값(SHEET_SPRING·SHEET_CLOSE_TIMING·280/220ms).
+ */
+function useFadeSlideSheet(setVisible: (v: boolean) => void) {
+  const y = useSharedValue(height);
+  const hRef = useRef(height);
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const sheetStyle = useAnimatedStyle(() => ({ transform: [{ translateY: y.value }] }));
+  const open = useCallback(() => {
+    setVisible(true);
+    y.value = height;
+    y.value = withSpring(0, SHEET_SPRING);
+    Animated.timing(overlayOpacity, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  }, [setVisible, y, overlayOpacity]);
+  const close = useCallback(() => {
+    Animated.timing(overlayOpacity, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    y.value = withTiming(hRef.current, SHEET_CLOSE_TIMING, (finished) => {
+      if (finished) runOnJS(setVisible)(false);
+    });
+  }, [setVisible, y, overlayOpacity]);
+  const onSheetLayout = useCallback((e: LayoutChangeEvent) => { hRef.current = e.nativeEvent.layout.height; }, []);
+  return { sheetStyle, overlayOpacity, open, close, onSheetLayout };
+}
 
 // 시트 핸들을 끌어 닫기 — 여행 시트·국가 시트 공용. 옛 PanResponder를 RNGH로 옮겨 추종이 UI 스레드에서 돈다.
 // - 획득: 옛 onStartShouldSet=true(핸들 터치 즉시)에 맞춰 minDistance(0) — 첫 이동에서 바로 잡는다.
@@ -194,6 +228,23 @@ const ABOVE_SNAP_GAP = SNAP_BTN.size + 10;
 /** '방문 지역 추가하기' 칩과 옆 버튼(iOS FAB / Android 스냅) 사이 가로 틈. 코치마크 강조 구멍 여백(MainCoachmark PAD 8)보다
  *  커야 FAB·스냅 강조 단계에서 칩이 구멍 안으로 비치지 않는다. */
 const FAB_SIDE_GAP = 10;
+// 대륙 지도 진행도 칩의 left — 하단 탭 바 왼쪽 끝에 맞춘다(2026-11-01 사용자 요청, 플랫폼별).
+// · iOS 26+(네이티브 UITabBar 리퀴드 글래스 플로팅 캡슐): 캡슐 왼쪽 끝. JS로 캡슐 프레임을 못 잰다.
+//   ponytail: 실측값 아님 — utils/tabBar IOS_STACK_CENTER_RIGHT(72, 프로필 아이콘 중심 실측)에서 '캡슐 좌우 대칭 +
+//   4탭 균등 분할'을 가정해 402pt 기준으로 역산한 값(m + (402−2m)/8 = 72 → m ≈ 29). 실기기 스크린샷으로 캡슐 왼쪽 끝을
+//   재서 이 숫자 하나만 고칠 것. 기기 폭마다 캡슐 여백이 다르면(현재는 72도 폭 무관 상수) 그때 폭 함수로 바꾼다.
+//   좌표계: iPhone은 창 폭 ≤ 480이라 Stage 컬럼 = 창(gutter 0) — 네이티브 바(창 기준)와 같은 좌표다.
+// · iOS 26 미만(클래식 전폭 탭 바): 탭 바 왼쪽 끝 = 0이라 맞출 가장자리가 없다. 칩을 화면 끝에 붙이지 않고
+//   앱 공통 화면 여백 16을 유지한다(전폭 바의 첫 탭 아이콘도 안쪽에 있어, 0에 붙이면 바와도 정렬돼 보이지 않는다).
+// · Android(CustomTabBar 플로팅 알약): utils/tabBar androidTabBarLeft(Stage 폭, 지구본 활성) — CustomTabBar와 같은
+//   상수·식(단일 출처). 대륙 지도는 MainTab(지구본 탭) 화면이라 바는 지구본 활성 폭(323)이다. Stage 폭이 창 크기에
+//   따라 바뀌므로 렌더 중(useStageWidth)에 계산한다 — 아래 상수는 iOS 몫만.
+const IOS_TABBAR_CAPSULE_LEFT = 29;
+const IOS_FLOATING_TABBAR = Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 26;
+const IOS_REGION_PROGRESS_LEFT = IOS_FLOATING_TABBAR ? IOS_TABBAR_CAPSULE_LEFT : 16;
+// 방문 지역 시트 ①단계의 '기타' 항목 id — 카드에 안 묶인 기록·옛 나라 단위 태그(taggedRegions). 카드 id는
+// `grp-…`라 겹치지 않는다.
+const REGION_TAG_LOOSE = '__loose__';
 
 // ─── 대륙 모드 국가 목록 ─── (src/constants/regionCountries.ts로 이전, 지오 검증 스크립트가 import)
 
@@ -586,7 +637,7 @@ export default function MainScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
   const { records, tripGroups, getCountryPhoto } = useRecordData();
   const { isNeighbor, isNeighborRequested } = useSocialGraph();
-  const { requestNeighbor } = useRecordActions();
+  const { requestNeighbor, updateTripGroup } = useRecordActions();
   // 기록의 지역/국가명 현지화 — 한국어가 아니면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
   // 한글 국가명 → 영어. MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
   // (판정이 "en인가"가 아닌 "ko인가"인 이유는 utils/langKind.ts 주석 — ja도 영문 국가명을 본다)
@@ -972,6 +1023,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 국가 선택 그리드는 7개+돋보기만 노출 — 전체 목록(26개국)은 검색 시트에서 (사용자 확정 디자인)
   const [countryPickerVisible, setCountryPickerVisible] = useState(false);
   const [countryPickerSearch, setCountryPickerSearch] = useState('');
+  // 전체 국가 목록 시트(돋보기) — 딤 페이드 + 시트 슬라이드(방문 지역 시트와 같은 공용 훅). 닫기 경로(바깥 탭·국가 선택·
+  // 안드로이드 뒤로) 모두 countryPicker.close → 끝까지 내려간 뒤 해제. 검색어는 열 때 비운다(닫히는 동안 목록 유지).
+  const countryPicker = useFadeSlideSheet(setCountryPickerVisible);
   // 대륙(국가 지역) 화면 검색/필터
   const [regionSearch, setRegionSearch] = useState('');
   // "인기명소 모아보기" — 누르면 명소 도시가 속한 주들을 강조 (도시 폴리곤은 NE에 없어 주 단위)
@@ -1062,6 +1116,9 @@ export default function MainScreen({ navigation, route }: Props) {
   const skinAccent = getSkinAccent(globeSkin);
   // 대륙 칩(국가표시·인기명소) 내부 배경 — 스킨 강조색을 어둡게 깐 불투명색(기존 #2A0F3E 대체)
   const skinChipBg = `rgb(${Math.round(skinAccent.rgb[0] * 0.22)},${Math.round(skinAccent.rgb[1] * 0.22)},${Math.round(skinAccent.rgb[2] * 0.22)})`;
+  // 대륙 지도 FAB/스냅 줄의 두 칩(진행도·방문 지역 태그) 공용 규격 — 높이 34 한 줄 알약 + 스킨 배경.
+  // 테두리는 각 칩이 AutoPillRing으로 그린다(부모에 borderWidth·overflow hidden 금지 — 링이 밀리거나 잘린다).
+  const regionRowChip = { flexDirection: 'row', alignItems: 'center', height: 34, borderRadius: 17, backgroundColor: skinChipBg } as const;
   // ── 국가 선택 그리드 7칸 (2026-08-23 즐겨찾기 도입) ──
   // 즐겨찾기(사용자가 별을 켠 '순서')가 앞을 채우고, 모자란 만큼 REGION_COUNTRIES 기본
   // 순서로 보충한다(이미 즐겨찾기에 든 나라는 중복 제외). 즐겨찾기가 하나도 없으면 결과가
@@ -1111,22 +1168,20 @@ export default function MainScreen({ navigation, route }: Props) {
     if (!countryKo) return [];
 
     const regionsMap = new Map<string, { name: string; nameEn: string; key: string; photo?: string }>();
+    const matchCountry = (r: TravelRecord) =>
+      r.viewType !== 'snap' && (r.countryName === countryKo || !!r.countries?.some(c => c.name === countryKo));
+    // 기록 한 건이 이 나라 지도에 쓸 사진 — 국가별 대표 > (대표국이면) 대표사진 > 네컷 미리보기 > 첫 미디어
+    const photoOf = (r: TravelRecord): string | undefined =>
+      r.perCountryData?.[countryKo]?.representativePhoto
+      || (r.countryName === countryKo ? r.representativePhoto : undefined)
+      || (r.viewType === 'cut' ? r.cutPhoto?.previewUri : undefined)
+      || (r.medias && r.medias.length > 0 ? r.medias[0] : undefined);
 
     // 실제 기록(store)에서 이 국가의 기록된 지역 수집
     records.forEach(r => {
-      if (r.viewType === 'snap') return; // 스냅만 기록된 지역은 대륙(지역) 활성화 제외
-      const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
-      if (matchCountry && r.regionNameEn) {
-        let photo: string | undefined;
-        if (r.perCountryData?.[countryKo]?.representativePhoto) {
-          photo = r.perCountryData[countryKo].representativePhoto;
-        } else if (r.countryName === countryKo && r.representativePhoto) {
-          photo = r.representativePhoto;
-        } else if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
-          photo = r.cutPhoto.previewUri;
-        } else if (r.medias && r.medias.length > 0) {
-          photo = r.medias[0];
-        }
+      // 스냅만 기록된 지역은 대륙(지역) 활성화 제외(matchCountry가 거른다)
+      if (matchCountry(r) && r.regionNameEn) {
+        const photo = photoOf(r);
 
         // 지도 매칭 키는 코드(CODE) — 26개국 기록은 마이그레이션돼 이미 코드이고(멱등 통과),
         // 한국 국내 기록은 시/도 프리셋 어휘('Seoul' 등)로 저장되므로 여기서 코드(KR-11)로 해석한다.
@@ -1144,21 +1199,54 @@ export default function MainScreen({ navigation, route }: Props) {
       }
     });
 
-    // 소급 태깅 지역 병합 — 기록 유래 지역이 우선, 태그는 nameEn 미중복분만 추가.
+    // 여행 카드에 연결한 방문 지역 병합(2026-11-01) — 기록 유래 지역이 우선, nameEn 미중복분만.
+    // 사진은 **그 카드의** 사진: 대표 기록이 이 나라 기록이면 그 기록 사진, 아니면(다국가 카드의 다른 나라
+    // 표지) 이 나라 멤버 기록 중 첫 사진. 나라 전체 폴백보다 "그 여행"의 사진이 그 지역에 맞다. 없으면 아래
+    // 옛 태그와 같은 나라 폴백 → 그래도 없으면 색 모드.
+    // ⚠️ 카드의 coverUri(표지 오버라이드)는 쓰지 않는다 — 다른 기기에서 동기화된 카드는 그 기기의 로컬 경로라
+    //    이 기기에 파일이 없다(tripState 직렬화 주석). 지도는 이모지 폴백이 없어 빈 사진이 된다.
+    let countryPhotoMemo: string | null = null; // 지연 계산(카드·태그 지역이 없으면 안 돈다)
+    const countryPhoto = () => {
+      if (countryPhotoMemo === null) {
+        countryPhotoMemo = '';
+        for (const r of records) {
+          if (!matchCountry(r)) continue;
+          const ph = photoOf(r);
+          if (ph) { countryPhotoMemo = ph; break; }
+        }
+      }
+      return countryPhotoMemo || undefined;
+    };
+    const recById = new Map(records.map(r => [r.id, r]));
+    // 시트 ①단계와 **같은 판정**(pickCountryCards)의 카드만 — 시트에 안 뜨는 카드의 지역을 지도에 그리면
+    // 지울 방법이 없는 지역이 된다(다국가 카드에서 이 나라 기록만 지움·다른 나라 분할 카드로 흡수, QA F1).
+    pickCountryCards(tripGroups, records, countryKo).cards.forEach(g => {
+      const mine = g.visitedRegions?.filter(v => v.iso3 === regionCountry);
+      if (!mine || mine.length === 0) return;
+      const cover = recById.get(g.coverRecordId);
+      let photo = cover && matchCountry(cover) ? photoOf(cover) : undefined;
+      if (!photo) {
+        for (const id of g.records) {
+          const r = recById.get(id);
+          if (r && matchCountry(r)) { photo = photoOf(r); if (photo) break; }
+        }
+      }
+      mine.forEach(v => {
+        if (regionsMap.has(v.nameEn)) return;
+        const key = `${regionCountry}|${v.nameEn}`;
+        regionsMap.set(v.nameEn, {
+          name: regionNameByCode(regionCountry, v.nameEn, i18n.language) || v.name || v.nameEn,
+          nameEn: v.nameEn,
+          key,
+          photo: regionPhotos[key] || photo || countryPhoto(),
+        });
+      });
+    });
+
+    // 옛 소급 태깅(나라 단위 taggedRegions) 병합 — 지우지 않고 계속 반영(호환). 새 저장은 카드로 간다.
     // 태그 지역의 사진은 이 국가 기록의 대표사진 폴백(없으면 undefined → 색 모드).
     const tagged = taggedRegions[regionCountry] || [];
     if (tagged.length > 0) {
-      let countryPhoto: string | undefined;
-      for (const r of records) {
-        if (r.viewType === 'snap') continue;
-        const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
-        if (!matchCountry) continue;
-        countryPhoto = r.perCountryData?.[countryKo]?.representativePhoto
-          || (r.countryName === countryKo ? r.representativePhoto : undefined)
-          || (r.viewType === 'cut' ? r.cutPhoto?.previewUri : undefined)
-          || (r.medias && r.medias.length > 0 ? r.medias[0] : undefined);
-        if (countryPhoto) break;
-      }
       tagged.forEach(tr => {
         if (regionsMap.has(tr.nameEn)) return;
         const key = `${regionCountry}|${tr.nameEn}`;
@@ -1166,13 +1254,13 @@ export default function MainScreen({ navigation, route }: Props) {
           name: tr.name,
           nameEn: tr.nameEn,
           key,
-          photo: regionPhotos[key] || countryPhoto,
+          photo: regionPhotos[key] || countryPhoto(),
         });
       });
     }
 
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, taggedRegions, regionPhotos, i18n.language]);
+  }, [records, tripGroups, regionCountry, taggedRegions, regionPhotos, i18n.language]);
 
   // 대륙 모드 진행도 — "47곳 중 5곳". 방문 지역만 있고 전체 수가 없으면 수집의 감각이 안 생긴다.
   // 분자는 지오에 실제로 있는 코드만 센다(오래된 코드가 섞여 분모를 넘는 것을 막는다).
@@ -1306,9 +1394,16 @@ export default function MainScreen({ navigation, route }: Props) {
   }, [setRegionPhotos, t]);
 
   // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
+  // 2026-11-01 2단계로 변경(사용자 확정): ① 이 나라의 여행 카드 선택 → ② 그 카드의 지역 선택 → 저장.
+  // 저장처는 카드(TripGroup.visitedRegions — 어느 여행에서 간 지역인지 남고 카드별로 다시 고친다).
+  // 카드에 안 묶인 기록과 옛 나라 단위 태그(taggedRegions[ISO3])는 '기타' 항목 하나로 모아 예전처럼
+  // taggedRegions에 저장한다 — 옛 데이터를 고치거나 지울 수 있는 유일한 경로라 남긴다.
+  // 두 단계는 같은 Modal 안의 화면 전환이다(Modal 중첩 금지 — 피커 뒤 Modal 터치 먹통 사고).
   const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
   const [regionTagSearch, setRegionTagSearch] = useState('');
   const [regionTagSelection, setRegionTagSelection] = useState<Set<string>>(new Set());
+  // ②단계에서 지역을 고르는 대상 — 카드 id 또는 REGION_TAG_LOOSE('기타'). null이면 ①단계(카드 목록)
+  const [regionTagCardId, setRegionTagCardId] = useState<string | null>(null);
   // 선택 가능한 지역 목록 (평탄 배열)
   const regionTagOptions = useMemo(
     () => (regionCountry ? getCountryRegionOptions(regionCountry) : []),
@@ -1344,40 +1439,165 @@ export default function MainScreen({ navigation, route }: Props) {
   // 보통 FAB(56)가 높이를 정하지만, 실측으로 두면 칩 모양이 바뀌어도 따로 고칠 필요가 없다.
   // Android는 태그 칩이 스냅 줄(insets.bottom+129~)이라 지역명 칩(~insets.bottom+122)과 안 겹친다.
   const [regionTagChipH, setRegionTagChipH] = useState(0);
-  const regionNameChipBottom = Platform.OS === 'ios' && showRegionTagChip
+  // 칩 가로 중앙 정렬의 폭 상한(Stage 컬럼 좌표 — RecordFab의 FAB·스냅 right와 같은 기준).
+  // 중심 cx에서 ① 같은 줄 버튼 왼쪽 끝 − FAB_SIDE_GAP(10 > 코치마크 PAD 8 — 강조 구멍 안으로 안 비침)까지,
+  // ② 왼쪽 여백 16까지 중 가까운 쪽을 반폭으로 삼아 대칭으로 제한한다(중앙 유지).
+  // 예) iPhone 402pt: FAB 왼쪽 402−44−56=302 → 반폭 min(185, 302−10−201=91) → 182.
+  //     Galaxy S21+ 384dp: 스냅 왼쪽 384−46−60=278 → 반폭 min(176, 278−10−192=76) → 152.
+  // 같은 줄 왼쪽의 진행도 칩은 태그 칩이 떠 있는 동안 숨겨서(사용자 결정 2026-11-01) 둘은 동시에 보이지 않는다 —
+  // 진행도 칩 폭은 여기서 고려하지 않는다.
+  const stageW = useStageWidth();
+  // 진행도 칩 left — 탭 바 왼쪽 끝(모듈 상단 IOS_TABBAR_CAPSULE_LEFT 주석). MainScreen = MainTab이라 지구본 활성 폭.
+  const regionProgressLeft = Platform.OS === 'android' ? androidTabBarLeft(stageW, true) : IOS_REGION_PROGRESS_LEFT;
+  const regionTagChipMaxW = useMemo(() => {
+    const btnLeft = Platform.OS === 'ios'
+      ? stageW - IOS_FAB_RIGHT - FAB_SIZE
+      : stageW - SNAP_BTN.right - SNAP_BTN.size;
+    const cx = stageW / 2;
+    return Math.max(0, 2 * Math.min(cx - 16, btnLeft - FAB_SIDE_GAP - cx));
+  }, [stageW]);
+  // 진행도 칩도 2026-11-01부터 iOS FAB 줄 왼쪽(left 16)이라 지역명 칩(left 7)과 겹친다 — 둘 중 하나라도 보이면 올린다.
+  // 두 칩 줄은 같은 컨테이너 규격(bottom fabBottom, minHeight FAB_SIZE)이라 높이는 max(실측, FAB 지름) 하나로 충분하다.
+  const regionNameChipBottom = Platform.OS === 'ios' && (showRegionTagChip || !!regionProgress)
     ? fabBottom + Math.max(regionTagChipH, FAB_SIZE) + 8
     : undefined;
+  // ①단계 목록 — 프로필 여행 카드와 같은 모양(TripCard)으로 그릴 데이터.
+  // ⚠️ 시트 열림 여부로 거르지 않는다 — 거르면 닫히는 순간 빈 배열이 돼, 내려가는 애니메이션 동안 ①단계는
+  //    '기록 없음' 문구로, ②단계는 부제가 regionTagSub로 바뀌어 깜빡였다(QA F3). 계산은 이 나라 기록·카드
+  //    한 바퀴라 가볍고, 단계 초기화는 열 때(openRegionTagSheet) 한다.
+  // 카드 데이터 매핑은 ProfileScreen mappedThumbnails와 같은 규칙(국기 중복 제거·날짜 YYYY.MM·표지 폴백).
+  // 보관 기록은 거르지 않는다 — 지도 활성화·칩 기록 수가 보관 여부와 무관해서 같은 기준으로 둔다.
+  const regionTagItems = useMemo(() => {
+    if (!regionCountry) return [];
+    const countryKo = ISO3_TO_KO[regionCountry];
+    if (!countryKo) return [];
+    const { cards, looseRecordIds } = pickCountryCards(tripGroups, records, countryKo);
+    const recById = new Map(records.map(r => [r.id, r]));
+    const badgeRecords = (list: TravelRecord[]) =>
+      list.filter(r => !r.isImportCover).map(r => ({ id: r.id, viewType: r.viewType || 'feed' }));
+    const items: { data: TripCardData; tagged: number }[] = cards.map(g => {
+      const members = g.records.map(id => recById.get(id)).filter((r): r is TravelRecord => !!r);
+      const first = members[0];
+      const coverRec = members.find(r => r.id === g.coverRecordId) ?? first;
+      const flag = g.countryFlag || first?.countryFlag || '';
+      const date = g.date ?? first?.date;
+      return {
+        data: {
+          id: g.id,
+          emoji: first?.user.emoji || '🗼',
+          title: flag && g.title.startsWith(flag) ? g.title.slice(flag.length).trim() : g.title,
+          countryFlag: flag,
+          date: date ? date.slice(0, 7) : '',
+          coverUri: g.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0],
+          records: badgeRecords(members),
+        },
+        tagged: g.visitedRegions?.filter(v => v.iso3 === regionCountry).length ?? 0,
+      };
+    });
+    const legacyCount = taggedRegions[regionCountry]?.length ?? 0;
+    if (looseRecordIds.length > 0 || legacyCount > 0) {
+      const loose = looseRecordIds.map(id => recById.get(id)).filter((r): r is TravelRecord => !!r);
+      const flagRec = records.find(r => r.countryName === countryKo && !!r.countryFlag);
+      items.push({
+        data: {
+          id: REGION_TAG_LOOSE,
+          emoji: '📍',
+          title: t('main.regionTagLooseTitle'),
+          countryFlag: flagRec?.countryFlag || '',
+          date: '',
+          coverUri: loose[0] ? (loose[0].representativePhoto ?? loose[0].medias?.[0]) : undefined,
+          records: badgeRecords(loose),
+        },
+        tagged: legacyCount,
+      });
+    }
+    return items;
+  }, [regionCountry, tripGroups, records, taggedRegions, t]);
+  const regionTagCurrent = regionTagCardId ? regionTagItems.find(it => it.data.id === regionTagCardId) : undefined;
+
+  // 시트 열기·닫기 애니메이션 — 같은 화면 국가 시트(openCountrySheet/closeCountrySheet)와 같은 패턴.
+  // 예전엔 Modal animationType="slide"라 딤 배경(Modal 안)까지 시트와 함께 아래에서 밀려 올라와
+  // "검은 그림자가 따라온다"(사용자 보고). 이제 Modal은 animationType="none"이고 딤은 제자리 페이드(RN Animated,
+  // 네이티브 드라이버), 시트만 translateY(Reanimated)로 올라온다. Modal 해제(visible=false)는 시트가 끝까지
+  // 내려간 뒤에만 — 바깥 탭·저장·안드로이드 뒤로가기(①단계) 모든 닫기 경로가 closeRegionTagSheet를 탄다.
+  const regionTagSheet = useFadeSlideSheet(setRegionTagSheetVisible);
   const openRegionTagSheet = useCallback(() => {
     if (!regionCountry) return;
-    setRegionTagSelection(new Set((taggedRegions[regionCountry] || []).map(t => t.nameEn)));
+    setRegionTagCardId(null); // 항상 ①단계(카드 목록)부터
     setRegionTagSearch('');
-    setRegionTagSheetVisible(true);
-  }, [regionCountry, taggedRegions]);
-  const saveRegionTags = useCallback(() => {
+    regionTagSheet.open();
+  }, [regionCountry, regionTagSheet.open]);
+  // 단계·목록은 닫을 때 초기화하지 않는다 — 내려가는 동안 마지막 내용 유지(QA F3). 초기화는 열 때.
+  const closeRegionTagSheet = regionTagSheet.close;
+  // ① → ②: 고른 카드(또는 '기타')의 기존 선택을 체크된 상태로 연다
+  const pickRegionTagCard = useCallback((id: string) => {
     if (!regionCountry) return;
-    const all = regionTagOptions;
-    const list: TaggedRegion[] = all
-      .filter(o => regionTagSelection.has(o.nameEn))
-      .map(o => ({ name: o.name, nameEn: o.nameEn }));
-    setTaggedRegions(prev => {
-      const next = { ...prev };
-      if (list.length === 0) delete next[regionCountry];
-      else next[regionCountry] = list;
-      return next;
+    const current = id === REGION_TAG_LOOSE
+      ? (taggedRegions[regionCountry] || []).map(tr => tr.nameEn)
+      : (tripGroups.find(g => g.id === id)?.visitedRegions || []).filter(v => v.iso3 === regionCountry).map(v => v.nameEn);
+    setRegionTagSelection(new Set(current));
+    setRegionTagSearch('');
+    setRegionTagCardId(id);
+  }, [regionCountry, taggedRegions, tripGroups]);
+  // ② → ①: 저장하지 않은 선택은 버린다(다시 고르면 저장된 값으로 다시 연다)
+  const backToRegionTagCards = useCallback(() => {
+    setRegionTagCardId(null);
+    setRegionTagSearch('');
+  }, []);
+  const saveRegionTags = useCallback(() => {
+    if (!regionCountry || !regionTagCardId) return;
+    const picked = regionTagOptions.filter(o => regionTagSelection.has(o.nameEn));
+    if (regionTagCardId === REGION_TAG_LOOSE) {
+      // '기타' — 예전 나라 단위 저장 그대로
+      const list: TaggedRegion[] = picked.map(o => ({ name: o.name, nameEn: o.nameEn }));
+      setTaggedRegions(prev => {
+        const next = { ...prev };
+        if (list.length === 0) delete next[regionCountry];
+        else next[regionCountry] = list;
+        return next;
+      });
+    } else {
+      const g = tripGroups.find(x => x.id === regionTagCardId);
+      if (g) {
+        const list: TripCardRegion[] = picked.map(o => ({ iso3: regionCountry, nameEn: o.nameEn, name: o.name }));
+        const next = replaceCountryRegions(g.visitedRegions, regionCountry, list);
+        // 안 바뀌었으면 카드를 건드리지 않는다 — 건드리면 같은 내용으로 서버 업로드가 한 번 더 나간다
+        if (JSON.stringify(next) !== JSON.stringify(g.visitedRegions)) updateTripGroup(g.id, { visitedRegions: next });
+      }
+      // 시트가 열린 사이 동기화로 카드가 사라졌으면(다른 기기에서 삭제) 저장할 곳이 없다 — 닫기만 한다
+    }
+    closeRegionTagSheet();
+  }, [regionCountry, regionTagCardId, regionTagOptions, regionTagSelection, setTaggedRegions, tripGroups, updateTripGroup, closeRegionTagSheet]);
+  // ②단계 목록 행 — 지역명 + 괄호 속 주요 도시(`경상북도 (경주·안동)` / `Kanagawa Prefecture (Yokohama·Kamakura)`).
+  // 도·주 이름만으로는 여행객이 어딘지 모른다(사용자 요구 2026-11-01). 도시는 data/regionMajorCities.
+  // 이름은 지도와 같은 규칙(regionNameByCode: 한국어=NL_NAME_1, 그 외=NAME_1)으로 맞추고, 도시도 같은 언어로 붙인다.
+  // 비한국어는 표시명 기준으로 다시 정렬한다(getCountryRegionOptions는 한글 가나다순이라 영문이 뒤섞여 보인다).
+  // regionTagOptions 자체의 순서는 건드리지 않는다 — 저장(saveRegionTags)이 그 순서로 목록을 만든다.
+  const regionTagIsKo = isKoreanLang(i18n.language);
+  const regionTagRows = useMemo(() => {
+    const rows = regionTagOptions.map(o => {
+      const c = regionMajorCities(o.nameEn);
+      return {
+        ...o,
+        label: regionTagIsKo ? o.name : (o.latin || o.name),
+        cities: c ? (regionTagIsKo ? c.ko : c.en).join('·') : '',
+      };
     });
-    setRegionTagSheetVisible(false);
-  }, [regionCountry, regionTagOptions, regionTagSelection, setTaggedRegions]);
-  // 시트 내 검색 필터 (한글명·영문명·코드 모두 매칭)
+    if (!regionTagIsKo) rows.sort((a, b) => a.label.localeCompare(b.label));
+    return rows;
+  }, [regionTagOptions, regionTagIsKo]);
+  // 시트 내 검색 필터 (한글명·영문명·코드·주요 도시 모두 매칭 — '경주' → 경상북도)
   // nameEn은 이제 저장 키인 코드('JP-14')라 영문 검색에 쓸 수 없다 — 영문명은 latin(NAME_1)이다.
-  // latin을 빼면 "kanagawa"로 아무것도 안 나온다.
-  const regionTagFilter = useCallback((list: { name: string; nameEn: string; latin?: string }[]) => {
+  // latin을 빼면 "kanagawa"로 아무것도 안 나온다. 도시는 표시 언어와 무관하게 한글·영문 둘 다 본다.
+  const regionTagFilter = useCallback(<T extends { name: string; nameEn: string; latin?: string }>(list: T[]) => {
     const q = regionTagSearch.trim();
     if (!q) return list;
     const ql = q.toLowerCase();
     return list.filter(o =>
       o.name.includes(q)
       || o.nameEn.toLowerCase().includes(ql)
-      || (o.latin || '').toLowerCase().includes(ql));
+      || (o.latin || '').toLowerCase().includes(ql)
+      || regionCitiesMatch(o.nameEn, q));
   }, [regionTagSearch]);
 
   // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거
@@ -1405,6 +1625,10 @@ export default function MainScreen({ navigation, route }: Props) {
     // 소급 태깅 지역의 색/모드 설정도 유효 — 태그가 살아있는 동안 지역별 설정이 지워지지 않게 포함
     // (taggedRegions의 키가 곧 ISO3 — nameEn은 이미 코드지만 멱등 해석으로 구 표기도 함께 받는다)
     Object.entries(taggedRegions).forEach(([iso3, list]) => list.forEach(tr => addRegionVocab(iso3, tr.nameEn)));
+    // 카드에 연결한 방문 지역도 유효 — 빼면 카드로 태깅한 지역에 지정한 사진·색이 다음 기록 변경 때 지워진다.
+    // 단 지도에 실제로 그리는 것과 같은 판정(liveCardRegions = 시트 후보 카드의 지역)만 — 그 나라 기록이 사라진
+    // 카드의 지역은 옛 태그처럼 지역 설정도 정리된다(QA F1). 카드 데이터 자체는 지우지 않는다(cardRegions 주석).
+    liveCardRegions(tripGroups, records, ISO3_TO_KO).forEach(v => addRegionVocab(v.iso3, v.nameEn));
     const prune = <T,>(obj: Record<string, T>, valid: Set<string>): Record<string, T> => {
       const remove = Object.keys(obj).filter(k => !valid.has(k));
       if (remove.length === 0) return obj;
@@ -1451,7 +1675,7 @@ export default function MainScreen({ navigation, route }: Props) {
     //    나라도 열려 앨범 사진으로 퍼즐을 고를 수 있어, 다음 기록 변경 때 그 사진이 조용히 지워지고
     //    Documents/puzzle/ 사본만 고아로 남았다. 지도에 쓰는 크롭본은 우리 사본이라 기록 사진이
     //    지워져도 죽은 URI가 되지 않고, 계정 전환은 resetSettings(useAccountBoundary)가 둘 다 비운다.
-  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setRegionPhotos]);
+  }, [records, tripGroups, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setRegionPhotos]);
 
   // 시트 위치는 공유값 — 핸들 드래그 추종(sheetHandlePan)·열기·닫기가 모두 UI 스레드에서 같은 값을 움직인다.
   // 오버레이 페이드는 터치와 무관해 RN Animated(네이티브 드라이버) 그대로 둔다.
@@ -1954,34 +2178,11 @@ export default function MainScreen({ navigation, route }: Props) {
                 진행도와 칩들을 각자 absolute로 띄우면 서로를, 그리고 앞 레이어인 스냅 버튼을
                 모른다. 실제로 '방문 지역 추가하기' 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
                 하나의 스택에 넣고 스냅 버튼 위(ABOVE_SNAP)에 앵커해 겹침을 구조적으로 막는다.
-                아래(스냅 버튼 쪽)부터 진행도 → 퍼즐 칩 순으로 쌓이도록 column-reverse를 쓴다.
-                '방문 지역 추가하기' 칩은 2026-10-31부터 이 스택이 아니라 iOS FAB 줄 / Android 스냅 줄(아래 별도 블록). */}
+                아래(스냅 버튼 쪽)부터 쌓이도록 column-reverse를 쓴다.
+                '방문 지역 추가하기' 칩은 2026-10-31부터, 진행도 칩은 2026-11-01부터 이 스택이 아니라
+                iOS FAB 줄 / Android 스냅 줄(아래 별도 블록). 남은 퍼즐 칩은 스택 바닥(스냅 윗면 + 10)으로 내려온다 —
+                두 칩 줄(FAB·스냅 줄)보다 위라 세로로 겹치지 않는다. */}
             <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: snapBottom + ABOVE_SNAP_GAP }]}>
-              {regionProgress && (
-                // 진행도 유리 칩 — 국가·인기명소 칩과 같은 재질(공용 대각 흰색 링 + 스킨
-                // 어두운 배경). 맨 텍스트만 떠 있던 것을 지도 위 오버레이 재질로 통일하고,
-                // 얇은 스킨 그라데이션 바가 방문 비율만큼 차오른다(값 변경 시 애니메이션).
-                // 링은 AutoPillRing(반지름 = 실측 높이/2)이라 배경도 알약(borderRadius 999 → 높이/2로 clamp)이어야 곡선이 겹친다.
-                <View pointerEvents="none" style={{ alignSelf: 'flex-end', marginRight: SNAP_BTN.right }}>
-                  <View style={[styles.regionProgressInner, { backgroundColor: skinChipBg }]}>
-                    <AutoPillRing />
-                    <Text style={styles.regionProgressText}>
-                      <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
-                      {t('main.regionProgressOf', { total: regionProgress.total })}
-                    </Text>
-                    <View style={styles.regionProgressTrack}>
-                      <Reanimated.View style={[{ height: '100%' }, regionBarStyle]}>
-                        <LinearGradient
-                          colors={skinAccent.btnGradient}
-                          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                          style={{ flex: 1 }}
-                        />
-                      </Reanimated.View>
-                    </View>
-                  </View>
-                </View>
-              )}
-
               {/* 퍼즐 사진 선택 유도 칩 — 퍼즐 모드인데 사진이 없으면 지도가 사진 모드처럼
                   보이고, 안내는 표시 설정 시트 안에만 있어 발견이 안 됐다. 지도 위에서 바로
                   시트로 보낸다(지역 데이터 미수록 국가는 퍼즐 대상이 아니라 숨김). */}
@@ -2015,30 +2216,75 @@ export default function MainScreen({ navigation, route }: Props) {
                   앞 레이어인 플로팅 탭 바에 가려 FAB 중심에도 못 맞췄다. 스냅 줄은 바 위라 가릴 것이 없다.
                   같은 패턴: bottom = 스냅 bottom, minHeight = 스냅 지름(60), 세로 가운데 → 한 줄 칩(≈36)이라
                   스냅 중심선에 맞는다(커져도 위로만 자라 스냅 바닥(=FAB 윗면) 아래로 내려가지 않는다).
-                  가로는 left 16 ~ 스냅 왼쪽 − 틈(right SNAP_BTN.right + 지름 + FAB_SIDE_GAP).
+                  (가로 배치는 아래 2026-11-01 중앙 정렬 주석이 대체 — 예전엔 left 16 ~ 스냅 왼쪽 − 틈의 오른쪽 정렬)
                   틈 10 > 코치마크 PAD 8이라 스냅 강조 원(반지름 30+8) 안으로 칩이 비치지 않는다. */}
+            {/* 진행도 칩 — 2026-11-01 사용자 요청: 태그 칩과 **같은 가로줄**(iOS FAB 줄 / Android 스냅 줄 — 안드 FAB 줄은
+                앞 레이어 탭 바에 가려 태그 칩과 같은 이유로 스냅 줄), **왼쪽 정렬**(left 16, Stage 컬럼 좌표), 크기·재질은
+                태그 칩과 통일(regionRowChip: 높이 34 한 줄·글자 12·좌 패딩 13·알약·AutoPillRing·스킨 배경).
+                진행 바는 칩 **안쪽 하단 2px**로 옮겼다 — 텍스트 오른쪽 짧은 바는 칩을 ≈44 넓혀 같은 줄 중앙 태그 칩의
+                폭(중심 대칭 상한)을 그만큼 깎는다. 하단 바는 가로를 더 쓰지 않는다. 숫자 강조색·바 애니메이션(regionBarStyle) 유지.
+                세로: 컨테이너 bottom = 버튼 bottom, minHeight = 버튼 지름, 가운데 정렬 → 버튼 중심선(태그 칩과 같은 규칙).
+                터치 없는 표시용(pointerEvents none).
+                ⚠️ 태그 칩('방문 지역이 있어요')이 떠 있는 동안은 숨긴다(사용자 결정 2026-11-01) — 방문 0곳이라 정보가 적고,
+                같은 줄 중앙 태그 칩의 폭을 깎지 않게. 태그 칩이 사라지면(지역 1곳 이상·✕ 닫음) 같은 줄·같은 높이(34)·
+                같은 세로 중심으로 왼쪽에 나타나 위치가 튀지 않는다. */}
+            {regionProgress && !showRegionTagChip && (
+              <View
+                pointerEvents="none"
+                style={[
+                  { position: 'absolute', zIndex: 2, left: regionProgressLeft, justifyContent: 'center', alignItems: 'flex-start' },
+                  Platform.OS === 'ios'
+                    ? { bottom: fabBottom, minHeight: FAB_SIZE }
+                    : { bottom: snapBottom, minHeight: SNAP_BTN.size },
+                ]}
+              >
+                <View style={[regionRowChip, { paddingHorizontal: 13, paddingBottom: 2 }]}>
+                  <AutoPillRing />
+                  <Text style={styles.regionProgressText} numberOfLines={1} {...andFitText}>
+                    <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                    {t('main.regionProgressOf', { total: regionProgress.total })}
+                  </Text>
+                  <View style={styles.regionProgressTrack}>
+                    <Reanimated.View style={[{ height: '100%' }, regionBarStyle]}>
+                      <LinearGradient
+                        colors={skinAccent.btnGradient}
+                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                        style={{ flex: 1 }}
+                      />
+                    </Reanimated.View>
+                  </View>
+                </View>
+              </View>
+            )}
+            {/* 2026-11-01 사용자 확정: 가로는 **화면(Stage 컬럼) 중앙**. 세로 줄(iOS FAB 줄 / Android 스냅 줄)과
+                세로 가운데 맞춤은 위 설명 그대로. 컨테이너가 컬럼 전폭(left/right 0, box-none — 버튼 위를 덮어도
+                터치는 통과)이고 칩은 alignItems center. 같은 줄 버튼과 겹치지 않게 칩 maxWidth를 **중심 대칭**으로
+                제한한다(regionTagChipMaxW) — 넘치면 문구가 한 줄 자동 축소(하한 0.82), 그래도 넘치면 말줄임. */}
             {showRegionTagChip && (
               <View
                 pointerEvents="box-none"
                 onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h !== regionTagChipH) setRegionTagChipH(h); }}
                 style={[
-                  { position: 'absolute', zIndex: 2, left: 16, justifyContent: 'center', alignItems: 'flex-end' },
+                  { position: 'absolute', zIndex: 2, left: 0, right: 0, justifyContent: 'center', alignItems: 'center' },
                   Platform.OS === 'ios'
-                    ? { right: IOS_FAB_RIGHT + FAB_SIZE + FAB_SIDE_GAP, bottom: fabBottom, minHeight: FAB_SIZE }
-                    : { right: SNAP_BTN.right + SNAP_BTN.size + FAB_SIDE_GAP, bottom: snapBottom, minHeight: SNAP_BTN.size },
+                    ? { bottom: fabBottom, minHeight: FAB_SIZE }
+                    : { bottom: snapBottom, minHeight: SNAP_BTN.size },
                 ]}
               >
-                {/* 칩 높이 = 행에서 가장 큰 ✕칸(12pt 줄높이 ≈14.5~16 + padding 6) + 세로 패딩 12 + 테두리 2
-                    ≈ 34.5(iOS)~36(Android) — FAB(56)·스냅(60)보다 작아 컨테이너 세로 가운데 정렬로 버튼 중심선에
-                    맞는다. borderRadius 18 ≥ 높이/2라 알약 모양 유지. */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 12, paddingRight: 6, paddingVertical: 6 }}>
+                {/* 칩 높이 34 고정(regionRowChip) — FAB(56)·스냅(60)보다 작아 컨테이너 세로 가운데 정렬로 버튼 중심선에
+                    맞는다. borderRadius 17 = 높이/2라 알약(AutoPillRing 반지름과 같은 곡선). */}
+                {/* 2026-11-01 진행도 칩과 규격 통일 — 테두리를 borderWidth 1에서 공용 대각 링(AutoPillRing)으로(국가·인기명소·
+                    진행도 칩과 같은 재질, 5b3a7bd). 링 부모엔 borderWidth·overflow hidden 금지라 테두리 1px 몫을 패딩에 더했다
+                    (12→13, 6→7) — 바깥 크기 그대로. 높이는 34 고정(옛 실측 ≈34.5~36)이라 두 칩 높이가 플랫폼 무관하게 같다. */}
+                <View style={[regionRowChip, { paddingLeft: 13, paddingRight: 7, maxWidth: regionTagChipMaxW }]}>
+                  <AutoPillRing />
                   {/* flexShrink: 남은 폭이 문구보다 좁을 때 칩 밖으로 넘치지 않고 이 칸이 줄어들게(행 안의 요소는
                       기본 shrink 0). 문구는 한 줄 고정 + 자동 축소(하한 0.82) — 줄바꿈으로 칩이 버튼보다 커져
                       중심이 어긋나던 것을 막는다. iOS는 아래 세 prop이, Android는 andFitText가 같은 값에
                       배율 상한(MAX_FONT_SCALE)까지 준다(스프레드가 뒤라 안드는 andFitText 값이 최종). */}
                   <TouchableOpacity style={{ flexShrink: 1 }} activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
                     <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} {...andFitText}>
-                      {t('main.regionTagChip', { count: regionCountryRecordCount })}
+                      {t('main.regionTagChip')}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -2064,21 +2310,90 @@ export default function MainScreen({ navigation, route }: Props) {
                 onClose={() => setPuzzleShareVisible(false)}
               />
             ) : null}
-            {/* 방문 지역 선택 시트 (소급 태깅) */}
-            <Modal visible={regionTagSheetVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
+            {/* 방문 지역 선택 시트 (소급 태깅) — ① 여행 카드 선택 → ② 그 카드의 지역 선택. 한 Modal 안의 단계 전환이다.
+                안드로이드 하드웨어 뒤로가기(onRequestClose)는 ②에서 ①로, ①에서 닫기. 배경 탭은 어느 단계든 닫기.
+                animationType="none" — 딤은 페이드, 시트만 슬라이드(closeRegionTagSheet 주석). */}
+            <Modal visible={regionTagSheetVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={() => (regionTagCardId ? backToRegionTagCards() : closeRegionTagSheet())}>
               {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
               <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
-                <TouchableOpacity
-                  style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
-                  activeOpacity={1}
-                  onPress={() => setRegionTagSheetVisible(false)}
-                />
-                {/* width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다 */}
-                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 16, paddingBottom: insets.bottom + 16, maxHeight: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
+                {/* 딤 — 제자리 페이드. 탭하면 닫힘 애니메이션 */}
+                <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: regionTagSheet.overlayOpacity }]}>
+                  <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeRegionTagSheet} />
+                </Animated.View>
+                {/* width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+                    단계 전환(①카드 ↔ ②지역) 때 시트 높이가 한 프레임에 툭 바뀌던 것을 부드럽게(사용자 요청) — 두 겹으로 나눴다.
+                    · 바깥(투명, 78% 고정 높이, 아래 정렬, box-none): 열기·닫기 translateY만 담당(기존 동작 그대로).
+                    · 안쪽(배경 있는 실제 시트): Reanimated 레이아웃 트랜지션(LinearTransition)으로 크기·위치 변화를 UI 스레드에서
+                      보간한다. 바깥이 고정 높이 + 아래 정렬이라 높이가 바뀌면 안쪽의 originY와 height가 함께 움직여
+                      **아래 변은 그대로, 위 변만** 미끄러진다(바깥이 자동 높이면 바깥이 먼저 툭 바뀌어 위 변이 튄다).
+                    · 같은 뷰에 transform 애니메이션과 layout 트랜지션을 섞지 않으려고 겹을 나눴다.
+                    · RN LayoutAnimation은 쓰지 않는다(안드로이드 카드 드래그 깜빡임 사고 — 전역 다음 커밋에 걸린다).
+                    · 높이를 실측해 공유값으로 보간하는 방식은 새 단계가 첫 프레임에 새 높이로 그려진 뒤에야 onLayout이 와서
+                      한 프레임 튐을 못 막는다 — 레이아웃 트랜지션은 커밋된 프레임을 받아 그 전에 보간을 시작한다.
+                    · 부작용(의도): ②단계 검색으로 목록 길이가 바뀔 때·키보드로 가용 높이가 바뀔 때도 같은 보간이 걸린다.
+                    닫힘 거리는 안쪽 실측 높이 — 바깥을 그만큼 내리면 안쪽이 화면 밖으로 사라진다. */}
+                <Reanimated.View
+                  pointerEvents="box-none"
+                  style={[{ height: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', justifyContent: 'flex-end' }, regionTagSheet.sheetStyle]}
+                >
+                <Reanimated.View
+                  layout={LinearTransition.duration(260).easing(REasing.inOut(REasing.ease))}
+                  style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 16, paddingBottom: insets.bottom + 16, flexShrink: 1, overflow: 'hidden' }}
+                  onLayout={regionTagSheet.onSheetLayout}
+                >
                   <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
-                  <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
+                  {/* 단계 내용은 짧은 페이드인(180ms)으로 바뀐다 — 높이 보간과 같이 돌아 '툭' 바뀌는 느낌을 지운다.
+                      skipEntering: Modal이 처음 열릴 때(이 설정과 내용이 함께 마운트)는 페이드를 건너뛴다 — 열기 동작 불변.
+                      단계 래퍼는 flexShrink 1 — 78%를 넘는 내용에서 안쪽 ScrollView가 줄어들어 스크롤되게(예전 구조와 같은 효과). */}
+                  <LayoutAnimationConfig skipEntering>
+                  {!regionTagCardId ? (
+                  <Reanimated.View key="cards" entering={FadeIn.duration(180)} style={{ flexShrink: 1 }}>
+                  {/* ① 여행 카드 선택 — 프로필 여행 카드(TripCard 그리드)와 같은 모양. 시트 내용 폭(스테이지 − 32)이
+                      프로필 그리드 폭과 같아 2열(THUMB_WIDTH × 2 + 간격 12)이 그대로 맞는다. */}
+                  <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagPickTitle')}</Text>
                   <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
-                    {t('main.regionTagSub', { country: ISO3_TO_KO[regionCountry] || '' })}
+                    {t('main.regionTagPickSub')}
+                  </Text>
+                  {regionTagItems.length === 0 ? (
+                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 28 }}>{t('main.regionTagNoCards')}</Text>
+                  ) : (
+                    <ScrollView style={{ flexGrow: 0 }} showsVerticalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 4 }}>
+                        {regionTagItems.map(it => (
+                          <View key={it.data.id}>
+                            <TripCard trip={it.data} onPress={() => pickRegionTagCard(it.data.id)} />
+                            {/* 이미 연결한 지역 수 — 카드별로 다시 고칠 수 있다는 단서. 터치는 카드로 통과 */}
+                            {it.tagged > 0 && (
+                              <View pointerEvents="none" style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(10,10,15,0.72)', borderRadius: 11, borderWidth: 1, borderColor: skinAccent.accent, paddingHorizontal: 8, paddingVertical: 3 }}>
+                                <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>✓ {it.tagged}</Text>
+                              </View>
+                            )}
+                          </View>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  )}
+                  </Reanimated.View>
+                  ) : (
+                  <Reanimated.View key="regions" entering={FadeIn.duration(180)} style={{ flexShrink: 1 }}>
+                  {/* ② 지역 선택 — 기존 지역 선택 UI 그대로. 왼쪽 위 ‹ 로 ①단계 */}
+                  <View style={{ justifyContent: 'center' }}>
+                    <TouchableOpacity
+                      style={{ position: 'absolute', left: 0, zIndex: 1, padding: 4 }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      onPress={backToRegionTagCards}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('main.regionTagBackA11y')}
+                    >
+                      <BackChevronIcon size={18} opacity={0.9} />
+                    </TouchableOpacity>
+                    <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center', marginHorizontal: 32 }}>{t('main.regionTagTitle')}</Text>
+                  </View>
+                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12, marginHorizontal: 24 }} numberOfLines={1}>
+                    {regionTagCardId === REGION_TAG_LOOSE || !regionTagCurrent
+                      ? t('main.regionTagSub', { country: ISO3_TO_KO[regionCountry] || '' })
+                      : `${regionTagCurrent.data.countryFlag} ${regionTagCurrent.data.title}`.trim()}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 }}>
                     <SearchLineIcon size={18} color="#A9A9A9" />
@@ -2092,7 +2407,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   </View>
                   <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                     {([
-                      ['main.regionTagProvinces', regionTagFilter(regionTagOptions)],
+                      ['main.regionTagProvinces', regionTagFilter(regionTagRows)],
                     ] as const).map(([labelKey, list]) => (
                       list.length === 0 ? null : (
                         <View key={labelKey}>
@@ -2113,7 +2428,14 @@ export default function MainScreen({ navigation, route }: Props) {
                                 <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel ? skinAccent.accent : 'rgba(255,255,255,0.3)', backgroundColor: sel ? skinAccent.accent : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                                   {sel && <Text style={{ color: '#0A0A0F', fontSize: 13, fontWeight: '800' }}>✓</Text>}
                                 </View>
-                                <Text style={{ color: '#FFFFFF', fontSize: 15 }}>{o.name}</Text>
+                                {/* 도시 괄호는 흐린 색으로 이어 붙인 한 Text — 행 폭은 화면 폭이라 andFitText(고정폭 칸용
+                                    한 줄 고정·축소)를 쓰지 않고 flex:1로 줄바꿈시킨다. 긴 이름('가르브슈라르다베니흐센 지방
+                                    (케니트라)')을 한 줄에 우겨넣으면 안드로이드 한글 폭에서 글자가 너무 작아진다.
+                                    체크 원은 행 alignItems:'center'라 두 줄이 돼도 가운데에 남는다. */}
+                                <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 15 }}>
+                                  {o.label}
+                                  {!!o.cities && <Text style={{ color: '#A1A1B0', fontSize: 13 }}>{` (${o.cities})`}</Text>}
+                                </Text>
                               </TouchableOpacity>
                             );
                           })}
@@ -2126,7 +2448,11 @@ export default function MainScreen({ navigation, route }: Props) {
                       <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('main.regionTagSave', { count: regionTagSelection.size })}</Text>
                     </LinearGradient>
                   </TouchableOpacity>
-                </View>
+                  </Reanimated.View>
+                  )}
+                  </LayoutAnimationConfig>
+                </Reanimated.View>
+                </Reanimated.View>
               </KeyboardAvoidingView>
             </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
@@ -2181,7 +2507,7 @@ export default function MainScreen({ navigation, route }: Props) {
               <TouchableOpacity
                 style={[styles.countryGridItem, styles.countryGridSearchItem]}
                 activeOpacity={0.7}
-                onPress={() => { setCountryPickerSearch(''); setCountryPickerVisible(true); }}
+                onPress={() => { setCountryPickerSearch(''); countryPicker.open(); }}
                 accessibilityRole="button"
                 accessibilityLabel={t('main.selectCountry')}
               >
@@ -2191,17 +2517,26 @@ export default function MainScreen({ navigation, route }: Props) {
           </View>
         )}
 
-        {/* ── 전체 국가 목록 시트 (돋보기) ── */}
+        {/* ── 전체 국가 목록 시트 (돋보기) ──
+            2026-11-01: animationType="none" + 딤 제자리 페이드 + 시트만 슬라이드(useFadeSlideSheet — 방문 지역 시트와 공용).
+            예전엔 slide라 Modal 안의 딤(rgba 0.6)이 시트와 함께 밀려 올라왔다("검은 그림자", 사용자 보고).
+            디자인도 방문 지역 시트와 같은 시각 언어로(시트·핸들·제목/부제·검색 입력·행 구분선). */}
         <Modal
           visible={countryPickerVisible}
           transparent statusBarTranslucent navigationBarTranslucent
-          animationType="slide"
-          onRequestClose={() => setCountryPickerVisible(false)}
+          animationType="none"
+          onRequestClose={countryPicker.close}
         >
           {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.countryPickerOverlay} accessibilityViewIsModal>
-            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCountryPickerVisible(false)} />
-            <View style={styles.countryPickerSheet}>
+            {/* 딤 — 제자리 페이드. 탭하면 닫힘 애니메이션 */}
+            <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: countryPicker.overlayOpacity }]}>
+              <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={countryPicker.close} />
+            </Animated.View>
+            <Reanimated.View
+              style={[styles.countryPickerSheet, { paddingBottom: insets.bottom + 16 }, countryPicker.sheetStyle]}
+              onLayout={countryPicker.onSheetLayout}
+            >
               <View style={styles.countryPickerHandle} />
               <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
               {/* 별 사용법 안내. 7개를 넘기면 같은 자리에서 "앞 7개만 나온다"로 바뀐다 —
@@ -2210,13 +2545,17 @@ export default function MainScreen({ navigation, route }: Props) {
               <Text style={styles.countryPickerHint}>
                 {regionFavoriteCodes.length > 7 ? t('main.favoriteGridLimit') : t('main.favoriteHint')}
               </Text>
-              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={styles.countryPickerInput}
-                placeholder={t('main.countrySearchPh')}
-                placeholderTextColor="#5a5a68"
-                value={countryPickerSearch}
-                onChangeText={setCountryPickerSearch}
-              />
+              {/* 검색 입력 — 방문 지역 시트와 같은 모양(돋보기 아이콘 + 채움 #22222E, 테두리 없음) */}
+              <View style={styles.countryPickerInputRow}>
+                <SearchLineIcon size={18} color="#A9A9A9" />
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+                  style={styles.countryPickerInput}
+                  placeholder={t('main.countrySearchPh')}
+                  placeholderTextColor="#7A7A88"
+                  value={countryPickerSearch}
+                  onChangeText={setCountryPickerSearch}
+                />
+              </View>
               <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
                 {REGION_COUNTRIES
                   .filter(c => { const q = countryPickerSearch.trim(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q.toLowerCase()); })
@@ -2230,7 +2569,7 @@ export default function MainScreen({ navigation, route }: Props) {
                           style={styles.countryPickerRowMain}
                           activeOpacity={0.7}
                           onPress={() => {
-                            setCountryPickerVisible(false);
+                            countryPicker.close(); // 닫힘 애니메이션 중 아래 지도가 그 나라로 바뀐다
                             setRegionCountry(c.code); setRegionSearch('');
                           }}
                         >
@@ -2253,8 +2592,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     );
                   })}
               </ScrollView>
-              <View style={{ height: insets.bottom + 16 }} />
-            </View>
+            </Reanimated.View>
           </KeyboardAvoidingView>
         </Modal>
       </View>
@@ -2613,42 +2951,12 @@ export default function MainScreen({ navigation, route }: Props) {
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
             <SheetBackdrop pointerEvents="none" />
-            {/* 스킨 팝업(지구본 모드)은 앱 공용 알약 링(흰색 대각 그라데이션)으로 통일. 대륙 모드는 아래 Figma 테두리 유지 */}
-            {viewMode === 'globe' && (
-              // 카드는 선이 길어 흰색이 진해 보인다 — 불투명도로만 낮춤(사용자 요청)
-              <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
-                <PillRing width={Math.round(DS_CARD_W)} height={Math.round(DS_CARD_H)} radius={29} strokeWidth={1.7} diagonal cornerPx={120} />
-              </View>
-            )}
-            {viewMode !== 'globe' && (<>
-            {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬
-                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다.
-                 이 Svg는 카드 전면(DS_CARD_W×DS_CARD_H)을 덮으므로 안 감싸면 카드 안 터치가 전부 먹힌다) */}
-            <View
-              style={{ position: 'absolute', top: 0, left: 0, width: DS_CARD_W, height: DS_CARD_H }}
-              pointerEvents="none"
-            >
-            <Svg
-              width={DS_CARD_W}
-              height={DS_CARD_H}
-              viewBox="0 0 325 569"
-              preserveAspectRatio="none"
-            >
-              <SvgDefs>
-                <SvgLinearGradient id="dsBorder0" x1="32" y1="18.9326" x2="284.107" y2="511.12" gradientUnits="userSpaceOnUse">
-                  <SvgStop stopColor="#666666" />
-                  <SvgStop offset="1" stopColor="#666666" stopOpacity="0" />
-                </SvgLinearGradient>
-                <SvgLinearGradient id="dsBorder1" x1="316.5" y1="553.5" x2="173.5" y2="380.5" gradientUnits="userSpaceOnUse">
-                  <SvgStop stopColor="#FFFFFF" />
-                  <SvgStop offset="1" stopColor="#999999" stopOpacity="0" />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder0)" strokeWidth={1.7} />
-              <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder1)" strokeOpacity={0.5} strokeWidth={1.7} />
-            </Svg>
+            {/* 카드 테두리 = 앱 공용 알약 링(흰색 대각 그라데이션) — 지구본·대륙 공용(대륙의 옛 Figma 2겹 SVG는 2026-11-01 통일로 폐기).
+                카드는 선이 길어 흰색이 진해 보인다 — 불투명도로만 낮춤(사용자 요청).
+                PillRing은 스스로 pointerEvents none View로 감싸므로 카드 안 터치를 삼키지 않는다 */}
+            <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
+              <PillRing width={Math.round(DS_CARD_W)} height={Math.round(DS_CARD_H)} radius={29} strokeWidth={1.7} diagonal cornerPx={120} />
             </View>
-            </>)}
 
             {viewMode === 'globe' ? (
               <>
@@ -2924,38 +3232,42 @@ export default function MainScreen({ navigation, route }: Props) {
                 <Text style={styles.dsTitle}>{t('main.regionDisplayTitle')}</Text>
                 <Text style={styles.dsSub}>{t('main.regionDisplaySub')}</Text>
 
-                {/* 대륙 글로벌 모드 — 지역별 사진 / 퍼즐 (색 단독 모드는 2026-08-06 폐지) */}
-                <View style={styles.dsColorSection}>
-                  <Text style={styles.dsColorLabel}>{t('main.globalDefault')}</Text>
-                  <View style={styles.dsSection}>
-                    <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode !== 'puzzle' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
-                      activeOpacity={0.7}
-                      onPress={() => setRegionGlobalMode('photo')}
-                    >
-                      <GalleryIcon size={24} color={regionGlobalMode !== 'puzzle' ? '#FFFFFF' : '#A1A1B0'} />
-                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'puzzle' && styles.dsOptionTextActive]}>{t('main.regionPhotoMode')}</Text>
-                      {regionGlobalMode !== 'puzzle' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode === 'puzzle' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
-                      activeOpacity={0.7}
-                      onPress={() => setRegionGlobalMode('puzzle')}
-                    >
-                      <PuzzlePieceIcon size={24} color={regionGlobalMode === 'puzzle' ? '#FFFFFF' : '#A1A1B0'} />
-                      <Text style={[styles.dsOptionText, regionGlobalMode === 'puzzle' && styles.dsOptionTextActive]}>{t('main.puzzle')}</Text>
-                      {regionGlobalMode === 'puzzle' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
-                    </TouchableOpacity>
-                  </View>
+                {/* 대륙 글로벌 모드 — 지역별 사진 / 퍼즐 (색 단독 모드는 2026-08-06 폐지).
+                    지구본 모드와 같은 어휘(2026-11-01 통일): 칩(dsm.chip) + 선택 = 흰 실선(chipActiveRing) /
+                    비선택 = 공용 대각 링(AutoPillRing) — '국가 추가' 토글·기본 색상 알약과 같은 선택 관례.
+                    즉시 확정(dsSnapshot 밖) 규칙은 그대로 — setRegionGlobalMode 직접 호출 */}
+                <Text style={[dsm.sectionLabel, { marginTop: 6 }]}>{t('main.globalDefault')}</Text>
+                <View style={dsm.chipWrap}>
+                  {([
+                    { mode: 'photo', label: t('main.regionPhotoMode'), Icon: GalleryIcon },
+                    { mode: 'puzzle', label: t('main.puzzle'), Icon: PuzzlePieceIcon },
+                  ] as const).map(({ mode, label, Icon }) => {
+                    const active = mode === 'puzzle' ? regionGlobalMode === 'puzzle' : regionGlobalMode !== 'puzzle';
+                    return (
+                      <TouchableOpacity
+                        key={mode}
+                        style={dsm.chip}
+                        activeOpacity={0.7}
+                        onPress={() => setRegionGlobalMode(mode)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: active }}
+                      >
+                        {active ? <View style={dsm.chipActiveRing} pointerEvents="none" /> : <AutoPillRing />}
+                        {/* RNSVG가 터치를 삼키지 않도록 View(pointerEvents none)로 감싼다 */}
+                        <View pointerEvents="none"><Icon size={14} color="#FFFFFF" /></View>
+                        <Text style={dsm.chipText} numberOfLines={1}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 {/* 퍼즐 그림 선택 — 사용자 사진 전용(기본 아트 폐지): 이 나라 기록 사진 / 앨범 */}
                 {regionGlobalMode === 'puzzle' && (
-                  <View style={styles.dsColorSection}>
-                    <Text style={styles.dsColorLabel}>{t('main.puzzleImageLabel')}</Text>
+                  <View>
+                    <Text style={[dsm.sectionLabel, { marginTop: 24 }]}>{t('main.puzzleImageLabel')}</Text>
                     {/* 그림을 아직 안 골랐으면 지도에 퍼즐이 그려지지 않는다 — 그 이유를 밝힌다 */}
                     {!puzzleImage && (
-                      <Text style={{ color: '#A1A1B0', fontSize: 12, marginBottom: 6 }} {...andFitText}>{t('main.puzzleNeedPhoto')}</Text>
+                      <Text style={[dsm.hint, { marginBottom: 8 }]} {...andFitText}>{t('main.puzzleNeedPhoto')}</Text>
                     )}
                     {/* 실루엣 미리보기 — 현재 그림이 나라 모양으로 잘린 모습 */}
                     {puzzleImage && puzzlePreview ? (
@@ -2997,8 +3309,10 @@ export default function MainScreen({ navigation, route }: Props) {
                               source={{ uri }}
                               cachePolicy="memory-disk"
                               transition={0}
-                              style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: selected ? skinAccent.accent : 'transparent' }}
+                              style={[dsm.thumb, selected && dsm.swatchActive]}
                             />
+                            {/* 기본 색상 알약과 같은 선택 관례 — 선택 = 흰 실선(swatchActive), 비선택 = 공용 대각 링(형제 층) */}
+                            {!selected && <PillRing width={56} height={56} radius={12} diagonal />}
                             {/* 현재 그림 제거 — 해제하면 퍼즐이 안 그려지는 '사진 선택 안내' 상태로 복귀 */}
                             {selected && (
                               <TouchableOpacity
@@ -3018,13 +3332,16 @@ export default function MainScreen({ navigation, route }: Props) {
                           </TouchableOpacity>
                         );
                       })}
+                      {/* 앨범에서 고르기 — 칩과 같은 재질(흰 10% + 공용 대각 링, borderWidth 금지: 링이 1px 밀림) */}
                       <TouchableOpacity
                         activeOpacity={0.8}
                         onPress={pickPuzzleImage}
-                        style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#3E3155', alignItems: 'center', justifyContent: 'center' }}
+                        style={[dsm.thumb, dsm.thumbAdd]}
                       >
-                        <Text style={{ color: '#A1A1B0', fontSize: 20 }}>＋</Text>
-                        <Text style={{ color: '#A1A1B0', fontSize: 9 }} {...andFitText}>{t('main.puzzleFromAlbum')}</Text>
+                        <PillRing width={56} height={56} radius={12} diagonal />
+                        {/* RNSVG가 터치를 삼키지 않도록 View(pointerEvents none)로 감싼다 */}
+                        <View pointerEvents="none"><PlusIcon size={14} color="#FFFFFF" /></View>
+                        <Text style={[dsm.chipText, { fontSize: 10 }]} {...andFitText}>{t('main.puzzleFromAlbum')}</Text>
                       </TouchableOpacity>
                     </ScrollView>
                   </View>
@@ -3034,59 +3351,62 @@ export default function MainScreen({ navigation, route }: Props) {
                     그림 한 장이라 지역별 사진이 쓰이지 않는다(목록이 있으면 "지정했는데
                     적용이 안 된다"는 오해를 부른다) */}
                 {regionGlobalMode !== 'puzzle' && (
-                <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
-                    {/* 방문 지역 소급 태깅 편집 — 표시 설정을 유지·닫고 태깅 시트를 연다 */}
+                <View style={[dsm.listWrap, { maxHeight: 300 }]}>
+                  <View style={dsm.sectionHeadRow}>
+                    <Text style={[dsm.sectionLabel, { marginBottom: 0, flexShrink: 1 }]} numberOfLines={1}>{t('main.perRegion')}</Text>
+                    {/* 방문 지역 소급 태깅 편집 — 표시 설정을 유지·닫고 태깅 시트를 연다.
+                        링크 글자(스킨 강조색) 대신 '국가 추가' 칩과 같은 액션 칩으로(2026-11-01 통일) */}
                     <TouchableOpacity
+                      style={[dsm.chip, { flexShrink: 1 }]}
                       activeOpacity={0.7}
                       onPress={() => { confirmDisplaySettings(); setTimeout(openRegionTagSheet, 300); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
                     >
-                      <Text style={{ color: skinAccent.accent, fontSize: 13, fontWeight: '600' }}>{t('main.regionTagEdit')} ›</Text>
+                      <AutoPillRing />
+                      <Text style={dsm.chipText} {...andFitText} numberOfLines={1}>{t('main.regionTagEdit')} ›</Text>
                     </TouchableOpacity>
                   </View>
                   {recordedRegions.length === 0 ? (
-                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }} {...andFitText}>
+                    <Text style={dsm.emptyHint} {...andFitText}>
                       {t('main.noRecordedRegions')}
                     </Text>
                   ) : (
                     <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       {recordedRegions.map(r => (
-                        <View key={r.key} style={{ marginBottom: 8 }}>
-                          <View style={styles.dsCountryRow}>
-                            {/* 현재 이 지역에 실제로 쓰이는 사진(수동 지정 > 기록 대표사진) 미리보기 */}
-                            {r.photo ? (
-                              <ExpoImage
-                                source={{ uri: r.photo }}
-                                cachePolicy="memory-disk"
-                                transition={0}
-                                style={{ width: 28, height: 28, borderRadius: 6 }}
-                              />
-                            ) : (
-                              <View style={[styles.dsCountryDot, { width: 28, height: 28, borderRadius: 6, backgroundColor: '#2E2E3B' }]} />
-                            )}
-                            <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
-                            {/* 수동 지정이 있을 때만 — 지우면 기록 대표사진 자동 선정으로 복귀 */}
-                            {!!regionPhotos[r.key] && (
-                              <TouchableOpacity
-                                activeOpacity={0.7}
-                                onPress={() => setRegionPhotos(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              >
-                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }} {...andFitText}>{t('main.reset')}</Text>
-                              </TouchableOpacity>
-                            )}
+                        <View key={r.key} style={dsm.regionRow}>
+                          {/* 현재 이 지역에 실제로 쓰이는 사진(수동 지정 > 기록 대표사진) 미리보기 */}
+                          {r.photo ? (
+                            <ExpoImage
+                              source={{ uri: r.photo }}
+                              cachePolicy="memory-disk"
+                              transition={0}
+                              style={dsm.regionThumb}
+                            />
+                          ) : (
+                            <View style={[dsm.regionThumb, dsm.regionThumbEmpty]} />
+                          )}
+                          <Text style={dsm.regionName} numberOfLines={1}>{r.name}</Text>
+                          {/* 수동 지정이 있을 때만 — 지우면 기록 대표사진 자동 선정으로 복귀 */}
+                          {!!regionPhotos[r.key] && (
                             <TouchableOpacity
                               activeOpacity={0.7}
-                              onPress={() => pickRegionPhoto(r.key)}
+                              onPress={() => setRegionPhotos(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                              accessibilityRole="button"
-                              accessibilityLabel={t('main.photo')}
                             >
-                              <GalleryIcon size={18} color={skinAccent.accent} />
+                              <Text style={{ color: '#A1A1B0', fontSize: 12, fontWeight: '600', marginRight: 10 }} {...andFitText}>{t('main.reset')}</Text>
                             </TouchableOpacity>
-                          </View>
+                          )}
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            onPress={() => pickRegionPhoto(r.key)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('main.photo')}
+                          >
+                            {/* RNSVG가 터치를 삼키지 않도록 View(pointerEvents none)로 감싼다 */}
+                            <View pointerEvents="none"><GalleryIcon size={18} color="rgba(255,255,255,0.7)" /></View>
+                          </TouchableOpacity>
                         </View>
                       ))}
                     </ScrollView>
@@ -3097,17 +3417,15 @@ export default function MainScreen({ navigation, route }: Props) {
             )}
 
             <TouchableOpacity
-              // 지구본 모드는 시안(2026-09-28)의 넓은 어두운 유리 알약. 대륙 모드는 기존 스킨 딥 컬러 유지
-              style={viewMode === 'globe' ? [dsm.confirmBtn, dsm.confirmBtnGlass] : [dsm.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
+              // 시안(2026-09-28)의 넓은 어두운 유리 알약 — 지구본·대륙 공용(대륙의 스킨 딥 컬러 버튼은 2026-11-01 통일로 폐기)
+              style={[dsm.confirmBtn, dsm.confirmBtnGlass]}
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >
               {/* 카드 테두리와 같은 링(대각 흰색·120px·불투명도 0.5). 폭은 카드 폭 - 좌우 18(시안 비율)로 고정 계산 */}
-              {viewMode === 'globe' && (
-                <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
-                  <PillRing width={Math.round(DS_CARD_W * (289 / 325))} height={52} radius={12} diagonal cornerPx={120} />
-                </View>
-              )}
+              <View style={[StyleSheet.absoluteFill, { opacity: 0.5 }]} pointerEvents="none">
+                <PillRing width={Math.round(DS_CARD_W * (289 / 325))} height={52} radius={12} diagonal cornerPx={120} />
+              </View>
               <Text style={dsm.confirmText} {...andFitText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
@@ -3203,6 +3521,16 @@ const dsm = StyleSheet.create({
   chipMenuDivider: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.35)' },
   chipText: { color: '#fff', fontSize: 13, fontWeight: '700', includeFontPadding: false, flexShrink: 1 },
   subPanel: { marginTop: 12 },
+  // ── 대륙 모드 전용(2026-11-01 지구본 어휘로 통일 — 옛 styles.ds* 옵션 카드·행 대체)
+  hint: { color: '#A1A1B0', fontSize: 12, fontWeight: '600' },
+  // 퍼즐 그림 후보·'앨범' 타일 — 반경은 링(PillRing radius 12)과 같아야 곡선이 겹친다
+  thumb: { width: 56, height: 56, borderRadius: 12 },
+  thumbAdd: { backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center', gap: 3 },
+  sectionHeadRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 24, marginBottom: 12 },
+  regionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 2 },
+  regionThumb: { width: 28, height: 28, borderRadius: 8 },
+  regionThumbEmpty: { backgroundColor: 'rgba(255,255,255,0.1)' },
+  regionName: { color: '#fff', fontSize: 13, fontWeight: '700', flex: 1 },
   confirmBtn: { height: 49, borderRadius: 15, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
   // 시안: 좌우 18(카드 패딩 29보다 넓음)·높이 52·r12·어두운 유리
   confirmBtnGlass: {
@@ -3306,8 +3634,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   // 하단 오버레이 스택 — 스냅 버튼 위에 앵커(bottom은 인라인). column-reverse라 JSX에서 먼저
-  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다: 진행도가 버튼 바로 위, 퍼즐 사진 칩이 그 위.
-  // ('방문 지역 추가하기' 태그 칩은 여기서 빠져 iOS FAB 줄 / Android 스냅 줄에 따로 있다 — 렌더부 주석 참고)
+  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다. 지금은 퍼즐 사진 칩 하나뿐(스냅 윗면 + 10).
+  // (태그 칩·진행도 칩은 여기서 빠져 iOS FAB 줄 / Android 스냅 줄에 따로 있다 — 렌더부 주석 참고)
   regionBottomStack: {
     position: 'absolute',
     left: 0,
@@ -3321,21 +3649,16 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     fontFamily: Typography.fontFamily.medium,
   },
-  // 진행도 유리 칩 — 국가 칩(regionChip)과 같은 재질, 세로로 텍스트+바 2줄.
-  // 링(AutoPillRing)이 알약 반지름(높이/2)으로 그리므로 배경도 알약. 패딩은 옛 베벨 래퍼의 1px 몫을 더해 바깥 크기 유지.
-  regionProgressInner: {
-    borderRadius: 999,
-    paddingHorizontal: 15,
-    paddingVertical: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  // 진행도 바 트랙 — 얇은 흰색 트랙 위에 스킨 그라데이션이 방문 비율만큼 차오른다
+  // 진행도 바 트랙 — 얇은 흰색 트랙 위에 스킨 그라데이션이 방문 비율만큼 차오른다.
+  // 2026-11-01 진행도 칩이 한 줄 34 높이(태그 칩 규격)가 되며 칩 **안쪽 하단**(좌우 패딩 13 안, 바닥 5)으로 옮겼다.
+  // 칩(부모)이 아니라 트랙 자신이 overflow hidden이라 링(AutoPillRing) 규칙과 충돌하지 않는다.
   regionProgressTrack: {
-    width: 84,
-    height: 3,
-    borderRadius: 1.5,
+    position: 'absolute',
+    left: 13,
+    right: 13,
+    bottom: 5,
+    height: 2,
+    borderRadius: 1,
     backgroundColor: 'rgba(255,255,255,0.12)',
     overflow: 'hidden',
   },
@@ -3769,38 +4092,40 @@ const styles = StyleSheet.create({
     minHeight: 76,
   },
   // 전체 국가 목록 시트
-  countryPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // 전체 국가 목록 시트 — 2026-11-01 방문 지역 시트와 같은 시각 언어로 통일(시트 #15151F·라운드 24·핸들 44 반투명 흰색·
+  // 제목 17·부제 13 #A1A1B0·검색 입력 #22222E + 돋보기·행 구분선 hairline). 딤은 Modal 안 Animated.View(페이드)라
+  // 오버레이 자체는 배경 없이 레이아웃만 맡는다.
+  countryPickerOverlay: { flex: 1, justifyContent: 'flex-end' },
   countryPickerSheet: {
-    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 countryPickerOverlay는 전체 폭 유지)
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤은 전체 폭 유지). paddingBottom(안전영역)은 인라인.
     width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
-    backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    borderTopWidth: 1, borderColor: '#2E2E3B', paddingHorizontal: 16, paddingTop: 10,
+    backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 16, paddingTop: 14,
   },
-  countryPickerHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2E2E3B', alignSelf: 'center', marginBottom: 12 },
-  countryPickerTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
-  countryPickerInput: {
-    backgroundColor: '#211b2e', borderWidth: 1, borderColor: '#2E2E3B', borderRadius: 12,
-    color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 8,
-  },
-  countryPickerHint: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', marginTop: -4, marginBottom: 10 },
+  countryPickerHandle: { width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 },
+  countryPickerTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' },
+  countryPickerInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 },
+  countryPickerInput: { flex: 1, color: '#FFFFFF', fontSize: 14, paddingVertical: 10, marginLeft: 8 },
+  countryPickerHint: { color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 },
   // 래퍼는 테두리만 그리고 터치는 받지 않는다. 세로 패딩·gap을 여기 두면 안 된다 —
   // 그 자리는 어느 Touchable에도 속하지 않는 죽은 공간이 되고, alignItems:'center'는
   // flex:1 자식을 교차축(세로)으로 늘리지 않아 행 위아래 12px 띠가 통째로 먹통이 된다.
   // (2026-08-23 QA F-1: 54px 전체 탭 → 가운데 30px만. 'stretch' + 자식이 패딩을 갖는 형태로 복원)
   countryPickerRow: {
     flexDirection: 'row', alignItems: 'stretch',
-    borderBottomWidth: 1, borderBottomColor: '#1A1A26',
+    // 방문 지역 시트 행과 같은 구분선(hairline 흰 7%)
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)',
   },
   // 행 좌측(국기+이름) — 지도 진입 터치. 세로 패딩을 '터치를 받는 쪽'인 여기가 들고 있어야
   // 예전(TouchableOpacity가 countryPickerRow를 직접 달던 시절)과 같은 54px가 전부 탭된다
-  countryPickerRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  countryPickerRowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 11 },
   // 즐겨찾기 별 — 행 탭과 맞붙는 우측 전용 터치 영역. gap 없이 붙여 사각지대를 없앤다.
   // 실폭 44dp를 '레이아웃'으로 확보한다 — hitSlop은 부모 경계를 넘는 쪽이 안드로이드에서
   // 무효라 믿을 수 없고, 안쪽으로 늘리면 행 탭 영역을 도로 잠식한다(QA F-4).
   // 세로는 stretch로 행 높이(54px) 전체를 받는다.
   countryPickerStarBtn: { width: 44, alignItems: 'center', justifyContent: 'center' },
   countryPickerFlag: { fontSize: 24 },
-  countryPickerName: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  countryPickerName: { color: '#FFFFFF', fontSize: 15 }, // 방문 지역 시트 행 글자와 같게(굵기 기본)
 
   globeSettingsBtn: {
     position: 'absolute',
@@ -3871,68 +4196,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 18,
     lineHeight: 18,
-  },
-  dsSection: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  dsOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
-    minWidth: 80,
-  },
-  dsOptionActive: {
-    borderColor: '#BF85FC',
-    backgroundColor: 'rgba(191,133,252,0.1)',
-  },
-  dsOptionText: {
-    color: '#A1A1B0',
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
-  },
-  dsOptionTextActive: {
-    color: '#fff',
-  },
-  dsCheck: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#BF85FC',
-  },
-  dsColorSection: {
-    marginBottom: 16,
-  },
-  dsColorLabel: {
-    color: '#A1A1B0',
-    fontSize: 13,
-    marginBottom: 10,
-  },
-  dsCountryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    gap: 10,
-  },
-  dsCountryDot: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-  },
-  dsCountryName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
   },
 });

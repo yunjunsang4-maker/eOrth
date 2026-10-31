@@ -25,6 +25,8 @@ import { getMyUserId } from './profile';
 // 데이터 초기화에서만 쓴다(clearTripState 안). 방향은 tripState → appState 한쪽뿐이라
 // 순환 import가 아니다 — appState는 supabase·profile·withTimeout만 import한다.
 import { clearStateFlags } from './appState';
+// 순수 유틸(React·네트워크 없음) — 순환 아님
+import { sanitizeCardRegions, type TripCardRegion } from '../utils/cardRegions';
 
 export interface TripStateBackup {
   groups: Array<{
@@ -39,6 +41,9 @@ export interface TripStateBackup {
     date?: string;
     regionName?: string;
     stay?: { type: string; status: string; startedAt: string; endedAt?: string; lastActiveAt: number };
+    // 카드에 연결한 방문 지역(2026-11-01). 옛 앱 payload에는 없다 — mergeTripCards의 visitedRegions 규칙 참조.
+    // ⚠️ 서버 스키마 변경 불필요: user_trip_cards.data·user_trip_state.data가 jsonb라 키가 하나 늘 뿐이다.
+    visitedRegions?: TripCardRegion[];
   }>;
   session: { groups: Record<string, string>; lastActiveAt: number } | null;
 }
@@ -62,6 +67,7 @@ export interface SerializableTripGroup {
   date?: string;
   regionName?: string;
   stay?: TripCardPayload['stay'];
+  visitedRegions?: TripCardRegion[];
 }
 
 /**
@@ -105,6 +111,9 @@ export function serializeTripCard(
     stay: s
       ? { type: s.type, status: s.status, startedAt: s.startedAt, endedAt: s.endedAt, lastActiveAt: s.lastActiveAt }
       : undefined,
+    // 맨 뒤에 둔다 — 지역이 없는 카드는 undefined라 JSON에서 빠져, 이 필드 도입 전과 지문이 같다
+    // (기존 카드 전량이 '변경됨'으로 잡혀 재업로드되지 않는다). 원소도 stay처럼 키 순서를 다시 만든다.
+    visitedRegions: sanitizeCardRegions(g.visitedRegions),
   };
 }
 
@@ -127,6 +136,7 @@ export function tripCardJson(p: TripCardPayload): string {
         date: p.date,
         regionName: p.regionName,
         stay: p.stay,
+        visitedRegions: p.visitedRegions,
       },
       (id) => id, // 이미 서버 형태(remoteId 변환 완료) — 다시 변환하지 않는다
     ),

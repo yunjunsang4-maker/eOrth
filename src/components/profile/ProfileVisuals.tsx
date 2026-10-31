@@ -4,12 +4,11 @@
  * (ProfileScreen의 인라인 정의를 그대로 옮긴 것)
  */
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform, type StyleProp, type ViewStyle, type ImageSourcePropType } from 'react-native';
 import { Text } from '../../ui/Text';
 // 재진입마다 다시 디코딩되지 않도록 캐시가 있는 expo-image 사용 (ProfileScreen과 동일)
 import { Image } from 'expo-image';
 import TripCoverImage from '../TripCoverImage';
-import type { ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -177,13 +176,30 @@ export interface TripCardData {
   records: { id: string; viewType: string }[];
 }
 
+// ─── 여행 카드 하단 정보 바 재질 — ProfileScreen의 CardInfoBar와 같은 정책 ───
+// 안드로이드 dimezisBlurView(실험 기능)가 이 바를 하얗게 띄웠다(2026-10-16 사용자 신고 — ProfileScreen은 그때 고침).
+// 이 공용 카드(FriendProfile·대륙 지도 방문 지역 시트)에도 같은 구조가 남아 있어 맞췄다. iOS는 기존 블러 그대로.
+// 매트색 rgba(14,14,17,0.6) — 블러 없이도 흰 글자가 읽히게(ProfileScreen.tsx CardInfoBar와 같은 값).
+const CardInfoBar = ({ intensity, style, children }: { intensity: number; style: StyleProp<ViewStyle>; children: React.ReactNode }) =>
+  Platform.OS === 'android' ? (
+    <View style={[style, { backgroundColor: 'rgba(14,14,17,0.6)' }]}>{children}</View>
+  ) : (
+    <BlurView intensity={intensity} tint="dark" experimentalBlurMethod="dimezisBlurView" style={style}>
+      {children}
+    </BlurView>
+  );
+
 // ─── 여행 카드 (메인/그리드) ───
 export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: boolean; onPress?: () => void }) => {
   const grad = TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)'];
   const glowColor = grad[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7';
   return (
     <LiquidPressable onPress={onPress} style={main ? thumbSt.mainCard : thumbSt.gridCard} intensity={0.02}>
-      <LiquidCardGlow width={main ? SCREEN_WIDTH : THUMB_WIDTH} height={main ? 320 : 260} color={glowColor} opacity={main ? 0.34 : 0.3} />
+      {/* 출렁이는 글로우 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만
+          무효화한다 — ProfileScreen 카드와 같은 규칙). iOS는 항상 그대로. */}
+      {!(Platform.OS === 'android' && trip.coverUri) && (
+        <LiquidCardGlow width={main ? SCREEN_WIDTH : THUMB_WIDTH} height={main ? 320 : 260} color={glowColor} opacity={main ? 0.34 : 0.3} />
+      )}
       <LinearGradient colors={grad} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
       {trip.coverUri ? (
         <>
@@ -196,7 +212,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
           <Text style={main ? thumbSt.mainEmoji : thumbSt.gridEmoji}>{trip.emoji}</Text>
         </View>
       )}
-      <BlurView intensity={main ? 48 : 44} tint="dark" experimentalBlurMethod="dimezisBlurView" style={main ? thumbSt.mainInfoBar : thumbSt.gridInfoBar}>
+      <CardInfoBar intensity={main ? 48 : 44} style={main ? thumbSt.mainInfoBar : thumbSt.gridInfoBar}>
         {main ? (
           <>
             <View style={{ flex: 1 }}>
@@ -216,7 +232,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
             </View>
           </>
         )}
-      </BlurView>
+      </CardInfoBar>
     </LiquidPressable>
   );
 };

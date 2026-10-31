@@ -222,8 +222,7 @@ const fr: WithPlurals<typeof ko> = {
     puzzleShareAction: 'Partager',
     puzzleShareSaved: 'Enregistré dans Photos',
     puzzleShareFailed: 'Le partage a échoué',
-    regionTagChip_one: '{{count}} carnet ici · Ajouter des régions visitées',
-    regionTagChip_other: '{{count}} carnets ici · Ajouter des régions visitées',
+    regionTagChip: 'Vous avez des régions visitées',
     regionTagDismissA11y: 'Fermer la suggestion de régions visitées',
     regionTagTitle: 'Choisissez les régions visitées',
     // 여기도 전치사 회피 구조다(위 recordFormatPromptCountry 주석 참고)
@@ -234,6 +233,12 @@ const fr: WithPlurals<typeof ko> = {
     regionTagSave_one: 'Enregistrer ({{count}} région)',
     regionTagSave_other: 'Enregistrer ({{count}} régions)',
     regionTagEdit: 'Modifier les régions visitées',
+    // 「carte」는 이 화면에서 '지도(carte des continents)'와 겹쳐 여행 카드를 「fiche de voyage」로 적었다 — 검수 확인
+    regionTagPickTitle: 'Choisissez une fiche de voyage',
+    regionTagPickSub: 'Choisissez la fiche de voyage à laquelle associer les régions visitées',
+    regionTagLooseTitle: 'Autres régions visitées',
+    regionTagBackA11y: 'Revenir aux fiches de voyage',
+    regionTagNoCards: 'Aucun carnet pour ce pays.',
     coachGlobeTitle: 'Globe de voyage',
     coachGlobeDesc: 'Les pays que vous avez visités s’illuminent. Appuyez sur un pays pour ajouter ou voir ses carnets.',
     coachToggleTitle: 'Globe · continents',

@@ -13,6 +13,8 @@
  * `services/tripState.ts`의 `TripCardPayload`·`ServerTripCardRef`와 문자 그대로 같다.
  */
 
+import { sanitizeCardRegions, type TripCardRegion } from './cardRegions';
+
 /** 체류(장기체류) 메타 — recordStore의 `TripGroupStayMeta`가 구조적으로 들어맞는다 */
 export interface TripCardStay {
   type: string;
@@ -41,6 +43,8 @@ export interface MergeableTripCard {
   date?: string;
   regionName?: string;
   stay?: TripCardStay;
+  /** 카드에 연결한 방문 지역(utils/cardRegions). 없으면 "모름", []이면 "전부 지움" */
+  visitedRegions?: TripCardRegion[];
   /**
    * 이 로컬 사본이 마지막으로 맞춰둔 서버 `user_trip_cards.updated_at`(ms).
    * 서버 값이 이보다 크면 **다른 기기가 고친 것**이다.
@@ -70,6 +74,8 @@ export interface ServerTripCardData {
   date?: string;
   regionName?: string;
   stay?: TripCardStay;
+  /** 옛 앱이 올린 payload에는 키 자체가 없다 — 병합 규칙 참조 */
+  visitedRegions?: TripCardRegion[];
 }
 
 /** 본문까지 받은 카드 1장 (`fetchTripCards` 결과) */
@@ -198,6 +204,11 @@ const isLocalUri = (u: unknown): u is string =>
  *   ⚠️ 파일이 실제로 존재하는지는 순수 함수가 알 수 없다. 없으면 카드가 이모지 그라데이션
  *      폴백으로 그려지는데, 그건 이 기능 이전부터의 동작이다.
  *
+ * · `visitedRegions` — **서버에 배열이 있을 때만 서버본**, 키가 없으면 로컬 유지.
+ *   다른 스칼라와 달리 "없음 = 지웠다"로 읽지 않는 이유: 이 필드를 모르는 **옛 앱**이 같은 카드를 고쳐
+ *   올리면 payload에서 키가 통째로 빠진다. 그걸 삭제로 받으면 사용자가 연결한 지역이 조용히 사라진다.
+ *   새 앱은 지역을 전부 지울 때 `[]`를 실어 보내므로(cardRegions.replaceCountryRegions) 삭제는 그대로 전파된다.
+ *
  * · `createdAt` — **로컬 유지.** 프로필 카드 정렬 기준이라 동기화 때마다 흔들리면 안 된다.
  *
  * · `serverUpdatedAt` — 서버 값으로 갱신(없으면 로컬 값 유지 — 퇴행 방지).
@@ -261,6 +272,7 @@ export function mergeServerCard<T extends MergeableTripCard>(
     date: d.date,
     regionName: d.regionName,
     stay: d.stay,
+    visitedRegions: Array.isArray(d.visitedRegions) ? sanitizeCardRegions(d.visitedRegions) : local.visitedRegions,
     coverUri: isLocalUri(local.coverUri) ? local.coverUri : d.coverUri,
     createdAt: local.createdAt,
     serverUpdatedAt:
@@ -312,6 +324,7 @@ export function toLocalTripCard(
     date: d.date,
     regionName: d.regionName,
     stay: d.stay,
+    visitedRegions: sanitizeCardRegions(d.visitedRegions),
     serverUpdatedAt: typeof server.updatedAt === 'number' ? server.updatedAt : undefined,
   };
 }

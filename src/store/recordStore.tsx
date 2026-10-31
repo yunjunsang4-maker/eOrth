@@ -30,6 +30,7 @@ import {
   type ServerTripCardRef,
 } from '../services/tripState';
 import { classifyServerCards, mergeServerCard, toLocalTripCard } from '../utils/mergeTripCards';
+import { sanitizeCardRegions, type TripCardRegion } from '../utils/cardRegions';
 import {
   probeStateFlags,
   fetchStateFlags,
@@ -248,6 +249,10 @@ export interface TripGroup {
   // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
   regionName?: string;
   stay?: TripGroupStayMeta; // 있으면 체류 카드
+  // 이 카드(여행)에서 방문한 대륙 지도 지역 — 대륙 지도 칩/표시 설정의 '방문 지역' 2단계 시트가 쓴다
+  // (utils/cardRegions). 다국가 카드라 원소마다 국가(iso3)를 적는다. 서버 payload에 실려 기기 간 왕복한다.
+  // undefined = 지정한 적 없음, [] = 지정했다가 전부 지움(동기화로 '지웠다'를 전파하려고 구분한다).
+  visitedRegions?: TripCardRegion[];
   // 이 로컬 사본이 마지막으로 맞춰둔 서버 `user_trip_cards.updated_at`(ms) — 카드 '수정 전파'의 기준선.
   // 서버 값이 이보다 크면 다른 기기가 고친 것이므로 본문을 받아 병합한다(utils/mergeTripCards).
   // 없으면 "기준선 없음"이고 stale로 치지 않는다 — 치면 첫 동기화에서 전 카드를 다시 받는다.
@@ -2095,9 +2100,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           if (!seen.has(rid)) { seen.add(rid); added.push(rid); }
         }
       }
+      // 카드에 연결한 방문 지역도 합친다 — 대표 카드 값만 남기면 흡수된 카드의 지역이 조용히 사라진다.
+      // 어느 쪽에도 없으면 undefined 그대로(합쳤다고 빈 [] 필드가 생겨 업로드되지 않게).
+      const regionLists = [target, ...ids.map((sid) => prev.find((g) => g.id === sid))]
+        .map((g) => g?.visitedRegions)
+        .filter((v): v is TripCardRegion[] => Array.isArray(v));
+      const visitedRegions = regionLists.length > 0 ? sanitizeCardRegions(regionLists.flat()) : target.visitedRegions;
       return prev
         .filter((g) => !ids.includes(g.id))
-        .map((g) => (g.id === targetId ? { ...g, records: [...g.records, ...added] } : g));
+        .map((g) => (g.id === targetId ? { ...g, records: [...g.records, ...added], visitedRegions } : g));
     });
     // 여행 세션이 source 카드를 가리키고 있었으면 병합된 카드로 넘겨 다음 기록이 합류하게 한다
     setTripSession((prev) => {
@@ -2572,6 +2583,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       //    stale(병합)은 심지 않는다 — 병합 결과는 서버 사본과 다를 수 있고(로컬 전용 멤버·
       //    로컬 coverUri), 그 차이는 **서버로 올라가야 한다.**
       for (const s of addSeeds) lastPushedRef.current.set(s.cardId, s.json);
+      // 이 필드를 모르는 옛 앱이 카드를 고쳐 올리면 서버 payload에서 visitedRegions 키가 빠진다.
+      // 병합은 로컬 지역을 지키지만(mergeServerCard 규칙), 병합 결과의 지문이 이 기기가 마지막으로 올린
+      // 지문과 같으면 push diff가 '안 바뀜'으로 보고 다시 안 올린다 → 서버(=새로 설치한 기기)에는 지역이 빠진 채로 남는다.
+      // 그 카드만 지문을 지워 다음 push가 지역을 되올리게 한다. 서버에 배열이 있는 일반 경우는 건드리지 않는다
+      // (모든 stale 병합을 되올리면 두 기기가 서로를 계속 stale로 만드는 에코가 된다).
+      for (const r of staleRows) {
+        const local = tripGroupsRef.current.find((g) => g.id === r.cardId);
+        if (local?.visitedRegions !== undefined && !Array.isArray(r.data.visitedRegions)) {
+          lastPushedRef.current.delete(r.cardId);
+        }
+      }
       setTripCardsPulled(true); // 병합과 같은 틱이라 한 커밋 — 소급 effect는 병합된 멤버로 판정한다
       return 'ok';
     } catch {

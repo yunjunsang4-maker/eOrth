@@ -394,5 +394,30 @@ eq(mergeServerCard(card({ id: 'grp-A', records: ['rec-MINE'], serverUpdatedAt: 1
 eq(mergeServerCard(card({ id: 'grp-A', coverUri: 'file:///me/a.jpg' }), srv('grp-A', { coverUri: 'https://cdn/z.jpg' }), identity, allKnown).coverUri,
   'file:///me/a.jpg', '반증: coverUri는 항상 서버본이 아니다(로컬 파일이 이긴다)');
 
+// ─────────────────────────────────────────────
+// visitedRegions(카드에 연결한 방문 지역, 2026-11-01) — 옛 앱의 키 누락을 삭제로 읽지 않는다
+// ─────────────────────────────────────────────
+const RG = [{ iso3: 'JPN', nameEn: 'JP-13', name: '도쿄도' }];
+const RG2 = [{ iso3: 'JPN', nameEn: 'JP-27', name: '오사카부' }];
+
+eq(mergeServerCard(card({ id: 'grp-A', visitedRegions: RG }), srv('grp-A', { title: '옛 앱이 고친 제목' }), identity, allKnown).visitedRegions,
+  RG, 'visitedRegions: 서버 payload에 키가 없으면(옛 앱이 올림) 로컬 지역을 지킨다');
+eq(mergeServerCard(card({ id: 'grp-A', visitedRegions: RG }), srv('grp-A', { visitedRegions: [] }), identity, allKnown).visitedRegions,
+  [], 'visitedRegions: 서버가 [](다른 새 앱 기기에서 전부 지움)면 지운 것이 전파된다');
+eq(mergeServerCard(card({ id: 'grp-A', visitedRegions: RG }), srv('grp-A', { visitedRegions: RG2 }), identity, allKnown).visitedRegions,
+  RG2, 'visitedRegions: 서버에 배열이 있으면 다른 스칼라처럼 서버본 채택');
+eq(mergeServerCard(card({ id: 'grp-A' }), srv('grp-A', {}), identity, allKnown).visitedRegions,
+  undefined, 'visitedRegions: 양쪽 다 없으면 undefined(필드가 생겨 지문이 바뀌지 않는다)');
+eq(mergeServerCard(card({ id: 'grp-A' }), srv('grp-A', { visitedRegions: [{ name: '도쿄도', nameEn: 'JP-13', iso3: 'JPN' }, { iso3: 'JPN' }] as never }), identity, allKnown).visitedRegions,
+  RG, 'visitedRegions: 서버본은 정규화(키 순서 고정·깨진 원소 제거)해서 받는다');
+eq(toLocalTripCard(srv('grp-N', { visitedRegions: RG }), identity)?.visitedRegions,
+  RG, 'toLocalTripCard: 새 카드는 서버 지역을 그대로 받는다');
+eq(toLocalTripCard(srv('grp-N', {}), identity)?.visitedRegions,
+  undefined, 'toLocalTripCard: 지역 키가 없으면 undefined');
+
+// 반증 H: visitedRegions를 다른 스칼라처럼 "없으면 지웠다"로 짰다면 undefined가 나와 실패한다
+eq(mergeServerCard(card({ id: 'grp-A', visitedRegions: RG, serverUpdatedAt: 1 }), srv('grp-A', {}, 2), identity, allKnown).visitedRegions?.length,
+  1, '반증: 키 누락을 삭제로 읽는 구현이면 옛 앱이 카드를 고칠 때마다 지역이 사라진다');
+
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

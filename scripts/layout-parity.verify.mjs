@@ -819,7 +819,7 @@ const SVG_WRAP = new Map([
   ['src/screens/EditProfileScreen.tsx', 1],
   ['src/screens/FriendProfileScreen.tsx', 1],
   ['src/screens/introVisuals.tsx', 3],
-  ['src/screens/MainScreen.tsx', 2],
+  ['src/screens/MainScreen.tsx', 1], // 2026-11-01 대륙 표시 설정 옛 Figma 테두리 Svg(+래퍼) 제거 → PillRing(자체 래퍼)
   ['src/screens/ProfileScreen.tsx', 2],
   ['src/screens/ProfileTicketScreen.tsx', 1],
   ['src/screens/SnapRecordScreen.tsx', 3],
