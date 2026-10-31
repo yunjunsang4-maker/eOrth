@@ -54,11 +54,13 @@ const LOGOUT_FILL = '#23090E';
 
 /** 카드 배경 + 공용 링 — 부모(overflow:hidden + borderRadius) 안에 깔고 콘텐츠는 형제로 위에 올린다.
  *  링은 폭·높이를 숫자로 받아야 해서(안드로이드 RNSVG `%` 갱신 함정) 실측해 넘긴다. */
-const CardSurface = ({ radius, fill = CARD_FILL, baseRim }: {
+const CardSurface = ({ radius, fill = CARD_FILL, baseRim, noRing }: {
   radius: number;
   fill?: string;
   /** 공용 링 아래 깔 1px 단색 테두리 — 같은 채움 위에 놓인 버튼처럼 링의 투명 구간에서 윤곽이 사라질 때만 */
   baseRim?: string;
+  /** 공용 링 생략 — 채움만으로 배경과 구분되는 버튼(차단 해제) */
+  noRing?: boolean;
 }) => {
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
@@ -72,7 +74,7 @@ const CardSurface = ({ radius, fill = CARD_FILL, baseRim }: {
     >
       {/* 단색 테두리는 형제 View로 — 컨테이너에 borderWidth를 주면 absolute 자식(링)이 테두리 안쪽 기준으로 1px 밀린다 */}
       {baseRim ? <View style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 1, borderColor: baseRim }]} /> : null}
-      <PillRing width={size.w} height={size.h} radius={radius} />
+      {noRing ? null : <PillRing width={size.w} height={size.h} radius={radius} />}
     </View>
   );
 };
@@ -331,7 +333,7 @@ export const SettingsOptionRow = ({ label, onPress, selected, left, right, dange
 
 /** 알약 버튼 — 높이 60·모서리 30(compact = 36·18, 행 안에 들어가는 작은 버튼). 배경은 터치러블 밖 형제로 깔아
  *  눌림 중에도 채움이 흐려지지 않는다. */
-export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, baseRim, disabled, compact, style }: {
+export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, baseRim, noRing, disabled, compact, style }: {
   label: string;
   onPress: () => void;
   /** danger = 로그아웃·계정 삭제·차단 해제(빨강 10% 채움 + 빨간 글자) */
@@ -339,6 +341,8 @@ export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, bas
   icon?: React.ReactNode;
   /** 같은 채움의 카드 위에 놓일 때(팝업) 링 투명 구간에서 윤곽이 사라지지 않게 까는 1px 테두리 색 */
   baseRim?: string;
+  /** 공용 그라데이션 링 생략 — 채움색이 배경과 달라 테두리가 필요 없는 버튼(차단 해제) */
+  noRing?: boolean;
   /** 눌리지 않음 + 흐리게(0.4) — 입력 조건 미충족·제출 중 */
   disabled?: boolean;
   /** 목록 행·배너 안에 들어가는 작은 알약(높이 36). 폭은 글자에 맞춘다 */
@@ -346,7 +350,7 @@ export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, bas
   style?: StyleProp<ViewStyle>;
 }) => (
   <View style={[s.pillBtn, compact && s.pillBtnCompact, disabled && s.pillDisabled, style]}>
-    <CardSurface radius={compact ? 18 : 30} fill={tone === 'danger' ? LOGOUT_FILL : CARD_FILL} baseRim={baseRim} />
+    <CardSurface radius={compact ? 18 : 30} fill={tone === 'danger' ? LOGOUT_FILL : CARD_FILL} baseRim={baseRim} noRing={noRing} />
     <TouchableOpacity
       style={[s.pillInner, compact && s.pillInnerCompact]}
       activeOpacity={0.7}

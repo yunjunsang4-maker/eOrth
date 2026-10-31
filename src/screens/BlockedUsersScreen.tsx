@@ -75,7 +75,8 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         ) : (
           <>
             <Text style={settingsText.groupLabel}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
-            <SettingsCard baseRim={COLORS.line}>
+            {/* 모서리 32 = 행 높이(64)의 절반 → 양옆이 완전한 반원(알약) */}
+            <SettingsCard radius={32} baseRim={COLORS.line}>
               {blockedUsers.map((user, idx) => (
                 // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
                 <React.Fragment key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`}>
@@ -89,13 +90,14 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
                       <Text style={st.handle} numberOfLines={1}>{displayHandle(user) ? `@${displayHandle(user)}` : user.name}</Text>
                       <Text style={st.blockedDate}>{t('friends.blockedOn', { date: formatDate(user.blockedAt) })}</Text>
                     </View>
-                    {/* 차단 해제 = 위험 동작 → 로그아웃과 같은 danger 알약(행 안이라 compact) */}
+                    {/* 차단 해제 = 위험 동작 → 로그아웃과 같은 danger 알약(행 안이라 compact).
+                        danger 채움이 배경과 달라 윤곽선(baseRim)·그라데이션 링 없이 둔다 */}
                     <SettingsPillButton
                       compact
+                      noRing
                       tone="danger"
                       label={t('friends.unblockShort')}
                       onPress={() => setConfirmTarget(user)}
-                      baseRim={COLORS.line}
                     />
                   </View>
                   {idx < blockedUsers.length - 1 && <SettingsDivider />}
@@ -115,7 +117,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         closeLabel={t('common.cancel')}
         onClose={closeConfirm}
       >
-        <SettingsPillButton tone="danger" label={t('friends.unblock')} onPress={confirmUnblock} baseRim={COLORS.line} style={st.confirmPill} />
+        <SettingsPillButton tone="danger" noRing label={t('friends.unblock')} onPress={confirmUnblock} style={st.confirmPill} />
       </SettingsModal>
     </SafeAreaView>
   );
