@@ -127,7 +127,7 @@ export default function CountryMapView({
     (async () => {
       const updates: Record<string, string> = {};
       for (const uri of targets) {
-        // 퍼즐 그림은 지도 전면을 덮으니 1024px, 지역 패턴 채움은 조각 크기라 640px이면 충분
+        // 퍼즐 그림은 지도 전면을 덮으니 1024px, 지역 사진(사진 레이어 image)은 조각 크기라 640px이면 충분
         const d = await imageToDataUri(uri, uri === puzzleTarget ? 1024 : 640, 0.7);
         if (cancelled) return; // 이미 단독 반영한 퍼즐 그림은 캐시에 남는다
         if (d && uri === puzzleTarget) { setPhotoCache(prev => ({ ...prev, [uri]: d })); continue; }
@@ -384,7 +384,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v9';
+var MAP_SCRIPT_VER = 'v10';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -405,10 +405,10 @@ var puzzleComplete = false;      // RN(regionProgress)이 계산해 내려주는
 var puzzlePrevComplete = null;   // null=첫 수신(기준선만 설정, 연출 없음 — 남발 방지)
 var prevMatchedCodes = [];       // 직전 매칭 CODE 목록 — '마지막 조각' 글로우 대상 계산용
 var puzzleGroups = [];           // 그림을 깔 그룹(본토/인셋)의 {key, proj(투영 — LOD 생성기는 lodGen(proj, curLod)), feats, b(원본 bbox)} — render()가 채운다
-// 지역별 사진 패턴 세대 관리 — 사진이 바뀌면 rev를 올려 패턴 id(=fill 값)가 바뀌게 한다
-// (WebKit은 pattern 내부 변경을 리페인트하지 않는다 — updateMap 주석 참고)
+// 지역별 사진 세대 — 사진이 바뀌면 rev를 올리고, 사진 레이어는 (CODE, rev)가 달라진 칸만 image 노드를
+// 새로 만든다(updatePhotoLayer). 같은 노드의 href만 바꾸지 않는 이유: 예전 패턴 시절 WebKit이 내부
+// 변경을 리페인트하지 않던 전례가 있어, 노드 교체로 어떤 엔진에서든 확실히 다시 그리게 한다.
 var patRevs = {};      // nameEn → { photo, rev }
-var patIdByCode = {};  // nameEn → 현재 패턴 id (updateMap마다 재계산, getFill이 참조)
 var defaultColor = '#BF85FC';
 var BOTTOM_INSET = ${chipBottom}; // 하단 탭 바 가림 높이 — 투영을 보이는 영역 기준으로 중앙 정렬
 function setRegionChip(name){var c=document.getElementById('region-chip');if(!c)return;if(name){c.textContent=name;c.style.display='flex';}else{c.style.display='none';}}
@@ -635,17 +635,12 @@ function getFill(d){
   if(displayMode==='puzzle'&&puzzleImage){
     return 'transparent';
   }
-  // 사진 모드: 방문 지역은 사진 패턴만 깐다. 사진이 없거나(변환 전·실패 포함) 패턴이
-  // 아직 없으면 단색 활성화 없이 기본 바탕 그대로 — 색 활성화는 퍼즐 도입으로 폐지됐고,
-  // 방문 표시는 emphStroke의 보라 경계선이 담당한다.
-  if(active&&active.photo){
-    // 패턴 id는 세대 접미사가 붙어 updateMap이 계산한 표에서 찾는다(문자열 조립 금지 —
-    // 사진 교체 시 id가 바뀌는 것이 WebKit 리페인트를 강제하는 핵심이다)
-    var pid=patIdByCode[active.nameEn||code];
-    if(pid) return 'url(#'+pid+')';
-  }
-  if(n===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
-  return '#191920'; // 미방문·사진 없는 방문 지역 공통 바탕
+  // 사진 모드(v10): 바탕(#191920)과 방문 사진은 path 아래의 사진 레이어(ph-grp)가 그린다 —
+  // updatePhotoLayer 주석 참고. path는 투명이고 히트 판정·테두리만 맡는다. 사진이 없거나
+  // (변환 전·실패 포함) 미방문이면 레이어의 바탕이 보이고, 방문 표시는 emphStroke의 보라 경계선이 담당한다.
+  // 검색 강조 채움은 사진이 없는 지역에만(v9 패턴 시절과 같은 우선순위 — 사진이 있으면 사진이 보인다).
+  if(!(active&&active.photo) && n===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
+  return 'transparent';
 }
 // 이 지역에 기록이 있으면 그 기록 반환. (도시 피처는 상위 주로 흡수돼 데이터에 없다)
 function activeRecordFor(code){
@@ -781,6 +776,7 @@ function featArea(f){
 // 면적 큰 지역부터 그려, 작은 지역(브레멘 같은 enclave·도시)이 위에 와서 가려지지 않게 한다.
 function drawGroup(parent, features, proj, cls){
   var feats=features.slice().sort(function(a,b){return featArea(b)-featArea(a);});
+  drawPhotoSlots(parent, feats, proj, cls); // 사진 레이어 — 이 그룹의 지역 path 바로 아래
   var fillSel=parent.selectAll('path.fill-'+cls).data(feats).enter().append('path')
     .attr('class','fill-'+cls+' region-stroke').attr('d',lodGen(proj, curLod))
     .attr('fill',regionFill)
@@ -792,6 +788,55 @@ function drawGroup(parent, features, proj, cls){
     .style('cursor','pointer').style('pointer-events','auto').on('click',onRegionClick);
   lodTargets.push({sel:fillSel, proj:proj});
   return {fill:fillSel};
+}
+
+// ── 사진 레이어(v10) — 지역별 <pattern> 채움 대신 지역마다 <image> + clipPath ──
+// 패턴 채움은 커밋(재래스터화)마다 지역 bbox × 배율 크기의 패턴 타일을 다시 그려 확대할수록 무거웠다
+// (USA 사진 30장 CPU 래스터 실측 — 측정값은 _workspace 보고 참고). 퍼즐 레이어(image + mask)와 같은 발상으로,
+// 사진은 일반 image 노드라 화면에 보이는 픽셀만큼만 그린다.
+// 구조: 그룹(본토·인셋)마다 지역 path 바로 아래에 g.ph-grp, 그 안에 지역마다 g.ph-slot을 면적 큰 순
+// (drawGroup과 같은 순서)으로 둔다. 칸 = clipPath(지역 모양) + 바탕 path(#191920) + [사진 image].
+// 바탕과 사진이 같은 순서로 섞여 쌓이므로 월경지가 어느 쪽이 방문이든 맞게 보인다 — 큰 지역의 사진은
+// 그 안의 작은 미방문 지역 바탕에, 큰 미방문 지역의 바탕은 그 안의 작은 방문 지역 사진에 덮인다.
+// (지역 path에 불투명 바탕을 두면 면적 큰 이웃의 채움이 아래 레이어의 월경지 사진을 덮는다 — 퍼즐 주석의 월경지 역방향)
+// clip·바탕 path의 d는 LOD 캐시를 공유하고(lodTargets 등록 → applyLod가 함께 교체), 사진 위치(bbox)는
+// 원본 투영 기준이라 LOD 단계가 바뀌어도 크롭이 튀지 않는다. 사진은 bbox 전체에 slice로 깔리므로
+// 예전 패턴(objectBoundingBox 1×1, slice)과 같은 크롭이다(bbox 차이는 LOD 오차 ≤0.5px 이내).
+function drawPhotoSlots(parent, feats, proj, cls){
+  var gen=lodGen(proj, curLod), ob=d3.geoPath(proj);
+  var phg=parent.append('g').attr('class','ph-grp').style('pointer-events','none');
+  phg.selectAll('g.ph-slot').data(feats).enter().append('g').attr('class','ph-slot').each(function(f){
+    f.__bb=ob.bounds(f); // 원본 bbox — 사진 크롭 기준
+    f.__phc='phc-'+(cls+'-'+(f.properties.CODE||'')).replace(/[^a-zA-Z0-9-]/g,'');
+    var slot=d3.select(this);
+    slot.append('clipPath').attr('id',f.__phc).append('path').datum(f).attr('d',gen);
+    slot.append('path').attr('class','ph-bg').datum(f).attr('d',gen).attr('fill','#191920');
+  });
+  lodTargets.push({sel:phg.selectAll('path'), proj:proj});
+}
+// 퍼즐 모드(그림 있음)에선 레이어를 숨기고(노드는 유지 — 토글 왕복에 재디코드 없음), 아니면
+// 사진이 바뀐 칸만 고친다: 사진 있음 → 바탕 숨기고 image(clip)·없음 → image 제거, 바탕 표시.
+function updatePhotoLayer(){
+  if(!gElement) return;
+  var on=!(displayMode==='puzzle'&&puzzleImage);
+  gElement.selectAll('g.ph-grp').style('display', on ? null : 'none');
+  if(!on) return;
+  gElement.selectAll('g.ph-slot').each(function(f){
+    var code=f.properties.CODE||'';
+    var a=activeRecordFor(code), photo=(a&&a.photo)||null;
+    var key=photo ? code+'-r'+((patRevs[code]||{}).rev||0) : '';
+    if(this.__phKey===key) return;
+    this.__phKey=key;
+    var slot=d3.select(this);
+    slot.select('image').remove();
+    slot.select('path.ph-bg').style('display', photo ? 'none' : null);
+    if(!photo) return;
+    var b=f.__bb;
+    slot.append('image').attr('href',photo).attr('xlink:href',photo)
+      .attr('x',b[0][0]).attr('y',b[0][1]).attr('width',b[1][0]-b[0][0]).attr('height',b[1][1]-b[0][1])
+      .attr('preserveAspectRatio','xMidYMid slice')
+      .attr('clip-path','url(#'+f.__phc+')');
+  });
 }
 
 // ── 격자 스냅 LOD(v9) ──
@@ -1117,46 +1162,16 @@ function ensurePuzzleLayers(){
 function updateMap() {
   if (!svgElement) return;
 
-  // 지역별 사진 패턴(pat-*) — 사진이 바뀌면 '패턴 id 자체'를 바꾼다(세대 접미사).
-  // WebKit(iOS)은 <pattern> 내부 변경(자식 교체·image href 교체)이 소비자 path를
-  // 리페인트하지 않는 오랜 결함이 있어, 같은 id로 내용만 갈아끼우면 사진 변경이 지도에
-  // 반영되지 않았다. fill 속성값이 바뀌면(url(#...-r1)) 어떤 엔진이든 페인트 서버를
-  // 재해석하므로 확실하다. 사진이 안 바뀐 지역은 id가 그대로라 리페인트 비용도 없다.
-  var defs = svgElement.select('defs.region-defs');
-  if (defs.empty()) defs = svgElement.append('defs').attr('class','region-defs');
   ensurePuzzleLayers();
 
-  patIdByCode = {};
-  var wantPat = {}; // patId → 사진 URI
+  // 사진 세대 갱신 — 사진이 바뀐 지역만 rev를 올린다(사진 레이어가 이 값으로 바뀐 칸을 찾는다)
   recordedRegions.forEach(function(r) {
     if (!r.photo) return;
     var st = patRevs[r.nameEn];
-    if (!st) { st = patRevs[r.nameEn] = { photo: r.photo, rev: 0 }; }
+    if (!st) { patRevs[r.nameEn] = { photo: r.photo, rev: 0 }; }
     else if (st.photo !== r.photo) { st.photo = r.photo; st.rev++; }
-    var id = 'pat-' + r.nameEn.replace(/[^a-zA-Z0-9]/g, '') + '-r' + st.rev;
-    patIdByCode[r.nameEn] = id;
-    wantPat[id] = r.photo;
   });
-  // 사진이 사라졌거나 세대가 지난 패턴 제거
-  defs.selectAll('pattern').each(function() {
-    var id = this.getAttribute('id');
-    if (!wantPat[id]) d3.select(this).remove();
-  });
-  // 없는 패턴만 생성 — 한번 만든 id의 내용은 불변이라 내부 갱신이 필요 없다
-  Object.keys(wantPat).forEach(function(id) {
-    if (!defs.select('pattern#' + id).empty()) return;
-    var pat = defs.append('pattern')
-      .attr('id', id)
-      .attr('patternContentUnits', 'objectBoundingBox')
-      .attr('width', 1)
-      .attr('height', 1);
-    pat.append('image')
-      .attr('href', wantPat[id])
-      .attr('xlink:href', wantPat[id])
-      .attr('preserveAspectRatio', 'xMidYMid slice')
-      .attr('width', 1)
-      .attr('height', 1);
-  });
+  updatePhotoLayer();
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
   // stroke-width는 현재 확대 배율을 반영(curStrokeWidth) — 확대 상태에서 재렌더 시 선이 다시 두꺼워지지 않게
