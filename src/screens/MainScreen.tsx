@@ -1340,7 +1340,8 @@ export default function MainScreen({ navigation, route }: Props) {
   // iOS는 태그 칩이 FAB 가로줄(bottom fabBottom ~ 위로 칩 높이)이라 지도 WebView의 지역명 칩
   // (#region-chip, left 7·bottom chipBottom=insets.bottom+96)과 세로로 겹쳐 지역명·검색 안내를 가린다.
   // 태그 칩이 떠 있는 동안만 지역명 칩을 태그 칩 윗변 + 8 위로 올린다(칩이 닫히거나 기록 지역이 생기면
-  // undefined → chipBottom 복귀). 높이는 onLayout 실측 — 문구가 두 줄이면 FAB(56)보다 커진다.
+  // undefined → chipBottom 복귀). 높이는 onLayout 실측(컨테이너 = max(칩, FAB 지름)) — 칩은 한 줄 고정이라
+  // 보통 FAB(56)가 높이를 정하지만, 실측으로 두면 칩 모양이 바뀌어도 따로 고칠 필요가 없다.
   // Android는 태그 칩이 스냅 줄(insets.bottom+129~)이라 지역명 칩(~insets.bottom+122)과 안 겹친다.
   const [regionTagChipH, setRegionTagChipH] = useState(0);
   const regionNameChipBottom = Platform.OS === 'ios' && showRegionTagChip
@@ -2023,13 +2024,13 @@ export default function MainScreen({ navigation, route }: Props) {
                 RecordFab 레이어는 root·fabWrap(전폭)까지 box-none이고 형식 버튼은 닫혀 있을 때 none이라,
                 버튼 원 밖인 이 칩(✕ 포함)은 앞 레이어 아래에서도 눌린다.
                 · iOS: FAB는 우측(right IOS_FAB_RIGHT). 컨테이너 bottom = FAB bottom, minHeight = FAB 지름,
-                  세로 가운데 정렬 → 한 줄이면 중심이 FAB 중심과 같고, 두 줄로 FAB보다 커지면 위로만 자라
-                  네이티브 바(FAB 아래 16) 쪽으로 내려가지 않는다.
+                  세로 가운데 정렬 → 칩은 한 줄 고정(자동 축소)이라 높이 ≈35 < 56, 중심이 FAB 중심과 같다.
+                  (혹시 칩이 FAB보다 커져도 위로만 자라 네이티브 바(FAB 아래 16) 쪽으로 내려가지 않는 구조는 유지)
                 · Android(2026-10-31 사용자 확정 변경): FAB가 아니라 **스냅 버튼** 가로줄, 스냅 왼쪽.
                   FAB 줄은 FAB가 하단 중앙이라 왼쪽 폭이 ≈138dp뿐이어서 문구가 3~4줄로 길어졌고, 칩 아래쪽이
                   앞 레이어인 플로팅 탭 바에 가려 FAB 중심에도 못 맞췄다. 스냅 줄은 바 위라 가릴 것이 없다.
-                  같은 패턴: bottom = 스냅 bottom, minHeight = 스냅 지름(60), 세로 가운데 → 칩이 60보다 커지면
-                  위로만 자라 스냅 바닥(=FAB 윗면) 아래로 내려가지 않는다.
+                  같은 패턴: bottom = 스냅 bottom, minHeight = 스냅 지름(60), 세로 가운데 → 한 줄 칩(≈36)이라
+                  스냅 중심선에 맞는다(커져도 위로만 자라 스냅 바닥(=FAB 윗면) 아래로 내려가지 않는다).
                   가로는 left 16 ~ 스냅 왼쪽 − 틈(right SNAP_BTN.right + 지름 + FAB_SIDE_GAP).
                   틈 10 > 코치마크 PAD 8이라 스냅 강조 원(반지름 30+8) 안으로 칩이 비치지 않는다. */}
             {showRegionTagChip && (
@@ -2043,21 +2044,28 @@ export default function MainScreen({ navigation, route }: Props) {
                     : { right: SNAP_BTN.right + SNAP_BTN.size + FAB_SIDE_GAP, bottom: snapBottom, minHeight: SNAP_BTN.size },
                 ]}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
-                  {/* flexShrink: 좁은 폭에서 글자가 칩 밖으로 넘치지 않고 줄바꿈되게(행 안의 Text는 기본 shrink 0) */}
+                {/* 칩 높이 = 행에서 가장 큰 ✕칸(12pt 줄높이 ≈14.5~16 + padding 6) + 세로 패딩 12 + 테두리 2
+                    ≈ 34.5(iOS)~36(Android) — FAB(56)·스냅(60)보다 작아 컨테이너 세로 가운데 정렬로 버튼 중심선에
+                    맞는다. borderRadius 18 ≥ 높이/2라 알약 모양 유지. */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 12, paddingRight: 6, paddingVertical: 6 }}>
+                  {/* flexShrink: 남은 폭이 문구보다 좁을 때 칩 밖으로 넘치지 않고 이 칸이 줄어들게(행 안의 요소는
+                      기본 shrink 0). 문구는 한 줄 고정 + 자동 축소(하한 0.82) — 줄바꿈으로 칩이 버튼보다 커져
+                      중심이 어긋나던 것을 막는다. iOS는 아래 세 prop이, Android는 andFitText가 같은 값에
+                      배율 상한(MAX_FONT_SCALE)까지 준다(스프레드가 뒤라 안드는 andFitText 값이 최종). */}
                   <TouchableOpacity style={{ flexShrink: 1 }} activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} {...andFitText}>
                       {t('main.regionTagChip', { count: regionCountryRecordCount })}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                    // 글자·패딩을 줄인 만큼 터치 영역을 hitSlop으로 보정 — ✕ 본체 ≈ 13×21에 상하 12·좌 6·우 14 → 약 33×45
+                    hitSlop={{ top: 12, bottom: 12, left: 6, right: 14 }}
                     onPress={() => setDismissedRegionTagChips(prev => (regionCountry && !prev.includes(regionCountry) ? [...prev, regionCountry] : prev))}
                     accessibilityRole="button"
                     accessibilityLabel={t('main.regionTagDismissA11y')}
                   >
-                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginLeft: 10, padding: 4 }}>✕</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginLeft: 6, padding: 3 }}>✕</Text>
                   </TouchableOpacity>
                 </View>
               </View>

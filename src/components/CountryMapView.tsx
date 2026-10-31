@@ -384,7 +384,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v8';
+var MAP_SCRIPT_VER = 'v9';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -404,7 +404,7 @@ var puzzleImage = null;          // 퍼즐 원본 그림 (data URI/file://)
 var puzzleComplete = false;      // RN(regionProgress)이 계산해 내려주는 완성 여부
 var puzzlePrevComplete = null;   // null=첫 수신(기준선만 설정, 연출 없음 — 남발 방지)
 var prevMatchedCodes = [];       // 직전 매칭 CODE 목록 — '마지막 조각' 글로우 대상 계산용
-var puzzleGroups = [];           // 그림을 깔 그룹(본토/인셋)의 {key, gen(경로 생성기), feats, b(bbox)} — render()가 채운다
+var puzzleGroups = [];           // 그림을 깔 그룹(본토/인셋)의 {key, proj(투영 — LOD 생성기는 lodGen(proj, curLod)), feats, b(원본 bbox)} — render()가 채운다
 // 지역별 사진 패턴 세대 관리 — 사진이 바뀌면 rev를 올려 패턴 id(=fill 값)가 바뀌게 한다
 // (WebKit은 pattern 내부 변경을 리페인트하지 않는다 — updateMap 주석 참고)
 var patRevs = {};      // nameEn → { photo, rev }
@@ -429,6 +429,10 @@ var zoomBehavior = null;     // d3.zoom 인스턴스 (render 에서 할당)
 // transition().call(zoomBehavior.transform) 은 반드시 zoomHost 기준으로 할 것(svgElement로 하면
 // 리스너 없는 노드의 identity를 읽거나, 지도가 안 움직이는 전환이 된다).
 var zoomHost = null;         // d3 selection — #map-host
+// LOD(v9) 상태 — 아래 '격자 스냅 LOD' 주석 참고. ⚠️ 여기(boot 호출 전)에 선언해야 한다: iOS는 boot()가
+// 스크립트 실행 중 동기로 render까지 가므로, 뒤쪽에 var로 두면 호이스팅만 되고 값이 undefined인 채로 그려진다.
+var curLod = 1;
+var lodTargets = []; // {sel, proj} — 지역 채움·외곽선. 퍼즐 레이어 path는 puzzleGroups 기준으로 따로 갱신
 var maxZoom = 15;
 
 // 도시/명소명 → 속한 주(NAME_1) 매핑. 키는 영문(normEn)·한글 모두 허용.
@@ -725,29 +729,42 @@ function onRegionClick(ev,d){
 // 내부 경계는 전부 정확히 2회 등장, 어긋난 내부 변 0%). 그래서 변 등장 횟수만 세면
 // 내부/외곽이 정확히 갈린다: 2회 = 내부 경계, 1회 = 바다·국경 쪽 외곽.
 function outlineGeom(features){
-  var cnt={}, segs=[];
+  var cnt={}, segs=[], ringId=0;
   features.forEach(function(f){
     var polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
     polys.forEach(function(poly){ poly.forEach(function(ring){
+      ringId++;
       for(var i=0;i<ring.length-1;i++){
         var a=ring[i], b=ring[i+1];
         var ka=a[0]+','+a[1], kb=b[0]+','+b[1];
         var k=ka<kb?ka+'|'+kb:kb+'|'+ka;
         cnt[k]=(cnt[k]||0)+1;
-        segs.push([a,b,k]);
+        segs.push([a,b,k,ringId]);
       }
     });});
   });
-  var lines=[];
-  for(var i=0;i<segs.length;i++){ if(cnt[segs[i][2]]===1) lines.push([segs[i][0],segs[i][1]]); }
+  // 같은 링에서 이어지는 외곽 변은 한 폴리라인으로 잇는다(v9). 변마다 따로 'M'을 찍으면 subpath가
+  // 수천 개(미국 4,091개)가 되고 subpath마다 둥근 끝(linecap) 처리가 붙어 래스터가 무거웠다.
+  // 이어 그리면 둥근 이음(linejoin)이 같은 모양을 내므로 겉보기는 같다.
+  var lines=[], cur=null, curRing=0;
+  for(var i=0;i<segs.length;i++){
+    var s=segs[i];
+    if(cnt[s[2]]!==1){ cur=null; continue; }
+    if(cur && s[3]===curRing && cur[cur.length-1]===s[0]) cur.push(s[1]);
+    else { cur=[s[0],s[1]]; lines.push(cur); curRing=s[3]; }
+  }
   return {type:'MultiLineString',coordinates:lines};
 }
 // 외곽선 패스 — 지역 채움·내부 경계선 위에 상수 두께(화면 px)로 그려 나라 실루엣을 세운다.
 // 내부 경계(0.35px)보다 확실히 두껍게, 색은 내부선(#3E3155)과 같은 계열의 한 단계 밝은 톤 —
 // 이질감 없이 윤곽만 서게 한다. 탭 히트는 지역 path가 담당하므로 포인터는 통과시킨다.
-function drawOutline(parent, features, pathGen){
-  parent.append('path').attr('class','country-outline')
-    .attr('d', pathGen(outlineGeom(features)))
+// 외곽선 기하는 원본 좌표로 추출해 datum에 두고, d는 LOD 생성기로 그린다(지역 경계와 같은 격자 → 정합).
+function drawOutline(parent, features, proj){
+  var sel=parent.append('path').attr('class','country-outline')
+    .datum(outlineGeom(features))
+    .attr('d', lodGen(proj, curLod));
+  lodTargets.push({sel:sel, proj:proj});
+  sel
     .attr('fill','none').attr('stroke',LINE_OUTLINE).attr('stroke-width',1.6)
     .style('vector-effect','non-scaling-stroke')
     .attr('stroke-linejoin','round').attr('stroke-linecap','round')
@@ -762,10 +779,10 @@ function featArea(f){
 }
 // 한 그룹(메인/인셋) 렌더: 채움 + 스케일 경계 스트로크(어긋난 경계 합침). {fill} 반환
 // 면적 큰 지역부터 그려, 작은 지역(브레멘 같은 enclave·도시)이 위에 와서 가려지지 않게 한다.
-function drawGroup(parent, features, pathGen, cls){
+function drawGroup(parent, features, proj, cls){
   var feats=features.slice().sort(function(a,b){return featArea(b)-featArea(a);});
   var fillSel=parent.selectAll('path.fill-'+cls).data(feats).enter().append('path')
-    .attr('class','fill-'+cls+' region-stroke').attr('d',pathGen)
+    .attr('class','fill-'+cls+' region-stroke').attr('d',lodGen(proj, curLod))
     .attr('fill',regionFill)
     .attr('stroke',emphStroke).attr('stroke-width',curStrokeWidth)
     // 확대해도 선이 두꺼워지지 않게 — transform scale과 무관하게 stroke를 화면 px 기준으로 렌더
@@ -773,7 +790,84 @@ function drawGroup(parent, features, pathGen, cls){
     .attr('stroke-linejoin','round').attr('stroke-linecap','round')
     .attr('shape-rendering','geometricPrecision')
     .style('cursor','pointer').style('pointer-events','auto').on('click',onRegionClick);
+  lodTargets.push({sel:fillSel, proj:proj});
   return {fill:fillSel};
+}
+
+// ── 격자 스냅 LOD(v9) ──
+// 투영 뒤 화면 좌표를 LOD 격자(g 좌표 0.35/kL = 배율 kL에서 화면 0.35px)에 반올림하고 연속 중복점을
+// 지운다. 이웃 지역의 공유 정점은 같은 격자점으로 가므로 경계 틈·겹침이 생기지 않는다 —
+// Douglas-Peucker 같은 비위상 단순화는 이웃이 서로 다르게 깎여 틈이 나므로 쓰지 말 것.
+// 같은 입력 좌표는 같은 반올림 결과가 되므로(결정적) 공유 정점은 이웃끼리 정확히 같은 점이다.
+// 단계는 커밋 때만 바뀐다(lodFor: k ≤ 2·kL). 배율 k에서 화면 격자 = 0.35·k/kL ≤ 0.7px → 반올림 오차는
+// 대각선으로도 ≤ 0.7·√2/2 ≈ 0.495px(0.5/kL이면 축당 0.5라도 대각선 0.71px — 실측 후 0.35로 낮췄다).
+// 원본(스냅 없는) 생성기는 계산 전용으로 남긴다: projectionPath(검색 확대 bounds)·fitExtent·
+// 퍼즐 그룹 bbox(b)는 원본 기준이고, 히트 판정은 그려진(스냅) path가 하며 provinceAt은 경위도 원본이다.
+function lodFor(k){ return k<=2 ? 1 : (k<=8 ? 4 : 16); }
+// 스트림 래퍼: 링 단위로 모아 스냅·중복 제거 후 내보낸다. 서로 다른 점이 다각형 링 3개·선 2개 미만이면
+// 버린다(이 배율에서 1px도 안 되는 섬 — 그려도 안 보이고 탭도 불가).
+function snapStream(out, step){
+  var inPoly=false, ring=null;
+  return {
+    point:function(x,y){
+      x=Math.round(x/step)*step; y=Math.round(y/step)*step;
+      if(!ring){ out.point(x,y); return; }
+      var n=ring.length;
+      if(n && ring[n-2]===x && ring[n-1]===y) return;
+      ring.push(x,y);
+    },
+    lineStart:function(){ ring=[]; },
+    lineEnd:function(){
+      var r=ring, n=r.length; ring=null;
+      // 다각형 링은 d3가 닫는 점을 빼고 보내지만, 스냅 후 끝점이 시작점과 겹칠 수 있다 — 중복 제거
+      while(inPoly && n>=4 && r[0]===r[n-2] && r[1]===r[n-1]) n-=2;
+      if(n/2 < (inPoly?3:2)) return;
+      out.lineStart(); for(var i=0;i<n;i+=2) out.point(r[i],r[i+1]); out.lineEnd();
+    },
+    polygonStart:function(){ inPoly=true; out.polygonStart(); },
+    polygonEnd:function(){ inPoly=false; out.polygonEnd(); },
+    sphere:function(){ out.sphere(); }
+  };
+}
+// 반환값은 d3 attr 콜백(datum → d 문자열). 결과를 datum에 단계별로 캐시한다 — 지역 채움·실루엣·마스크가
+// 같은 피처를 세 번 그리고, 단계 왕복(확대↔축소)도 잦아 매번 투영하면 전환 1회가 수백 ms였다(6x 스로틀 실측).
+// datum은 피처(또는 외곽선 기하)이고 한 투영(본토/인셋)에만 속하므로 투영별로 키를 나눌 필요가 없다.
+function lodGen(proj, kL){
+  var step=0.35/kL, gen=d3.geoPath({stream:function(s){ return proj.stream(snapStream(s, step)); }});
+  return function(d){
+    var c=d.__lod||(d.__lod={});
+    return c[kL]!==undefined ? c[kL] : (c[kL]=gen(d)||'');
+  };
+}
+// 커밋 시점에만 호출 — 단계가 바뀔 때 지역 채움·외곽선·퍼즐 실루엣/마스크 path의 d를 다시 만든다.
+// 커밋은 어차피 전체 재래스터화 시점이라 추가 페인트가 없다(추가 비용은 d 교체 JS뿐 — 캐시는
+// warmLod가 렌더 직후 유휴 시간에 미리 채워 둔다).
+function applyLod(kL){
+  if(kL===curLod) return;
+  curLod=kL;
+  lodTargets.forEach(function(t){ t.sel.attr('d', lodGen(t.proj, kL)); });
+  if(!gElement) return;
+  var layer=gElement.select('g.pz-layer');
+  if(layer.empty()) return;
+  puzzleGroups.forEach(function(grp){
+    var gen=lodGen(grp.proj, kL);
+    layer.selectAll('path.pz-sil-'+grp.key).attr('d', gen);
+    layer.select('#pzm-sharp-'+grp.key).selectAll('path').attr('d', gen);
+  });
+}
+// 다른 단계(4·16)의 d 캐시를 렌더 직후 유휴 시간에 8ms 조각으로 미리 채운다 — 첫 확대 커밋에서
+// 단계가 바뀔 때 투영 JS가 몰리지 않게. 다 못 채운 채 확대해도 applyLod가 그 자리에서 계산한다.
+function warmLod(){
+  var jobs=[];
+  [4,16].forEach(function(kL){
+    lodTargets.forEach(function(t){ var gen=lodGen(t.proj,kL); t.sel.each(function(d){ jobs.push(function(){ gen(d); }); }); });
+  });
+  var i=0;
+  (function step(){
+    var t0=Date.now();
+    while(i<jobs.length && Date.now()-t0<8) jobs[i++]();
+    if(i<jobs.length) setTimeout(step, 16);
+  })();
 }
 function render(geo){
   var W=window.innerWidth,H=window.innerHeight,PAD=24;
@@ -802,11 +896,11 @@ function render(geo){
   var g=svg.append('g');
   gElement = g;
   // 퍼즐 레이어 대상 그룹 등록 — 그림·클립을 updateMap의 ensurePuzzleLayers가 여기서 만든다
-  puzzleGroups=[{key:'m', gen:path, feats:mainFeatures, b:path.bounds(mainGeo)}];
+  puzzleGroups=[{key:'m', proj:proj, feats:mainFeatures, b:path.bounds(mainGeo)}];
   // 메인 지도 — 채움 + 스케일 경계 스트로크(어긋난 인접 경계를 하나로 합침)
-  var mainGrp=drawGroup(g, mainFeatures, path, 'm');
+  var mainGrp=drawGroup(g, mainFeatures, proj, 'm');
   pathElements=mainGrp.fill;
-  drawOutline(g, mainFeatures, path); // 나라 외곽선 — 지역 채움 위, 강조 피처 아래
+  drawOutline(g, mainFeatures, proj); // 나라 외곽선 — 지역 채움 위, 강조 피처 아래
   reorderEmph(); // 초기 렌더에도 강조 피처 z-순서 적용
 
   if(COUNTRY_CODE==='USA'&&insetFeatures.length>0){
@@ -833,19 +927,18 @@ function render(geo){
       // 위쪽은 라벨 띠(LABEL_H)만큼 비우고 맞춘다 — 예전엔 box.y+4부터 채워 지도 윗부분이
       // box.y+14 기준선의 이름 라벨(10px)과 겹쳤다. 라벨 글리프는 대략 y+5..y+17이라 20이면
       // 3px 여유. 퍼즐 그룹 bbox(b)는 박스 전체 그대로 — cover-fit 그림이 박스를 덮고 조각은
-      // mask(같은 ipath)로 오려지므로 지도가 박스 안에서 내려와도 정렬은 그대로다.
+      // mask(같은 ip 투영·같은 LOD 생성기)로 오려지므로 지도가 박스 안에서 내려와도 정렬은 그대로다.
       var LABEL_H=20;
       ip.fitExtent([[box.x+4,box.y+LABEL_H],[box.x+box.w-4,box.y+box.h-4]],fc);
-      var ipath=d3.geoPath().projection(ip);
       // inset-bg 클래스: 퍼즐 모드에선 fill을 투명으로 바꿔 아래 pz-layer 그림이 비치게 한다
       g.append('rect').attr('class','inset-bg').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
         .attr('rx',6).attr('fill','#191920').attr('stroke',LINE_BASE).attr('stroke-width',0.8);
       g.append('text').attr('x',box.x+box.w/2).attr('y',box.y+14).attr('text-anchor','middle')
         .attr('fill','#A1A1B0').attr('font-size','10px').text(dispRegion(feat[0].properties)); // 인셋(알래스카·하와이) 라벨 — 표시 전용
-      var grp=drawGroup(g, feat, ipath, box.name);
+      var grp=drawGroup(g, feat, ip, box.name);
       insetPathElements[box.name]=grp.fill;
-      drawOutline(g, feat, ipath); // 인셋(알래스카·하와이)도 같은 규칙 — 피처 하나면 전체 경계가 외곽선
-      puzzleGroups.push({key:box.name, gen:ipath, feats:feat, b:[[box.x,box.y],[box.x+box.w,box.y+box.h]]});
+      drawOutline(g, feat, ip); // 인셋(알래스카·하와이)도 같은 규칙 — 피처 하나면 전체 경계가 외곽선
+      puzzleGroups.push({key:box.name, proj:ip, feats:feat, b:[[box.x,box.y],[box.x+box.w,box.y+box.h]]});
     });
   }
   // 확대 상한 — 지역 경계 데이터 해상도(지역당 정점 수)에 맞춰 자동 설정.
@@ -894,6 +987,7 @@ function render(geo){
   function commitZoom(t){
     // g 속성과 CSS를 같은 동기 블록에서 바꿔 같은 프레임에 교체된다 — 깜빡임·튐 없음
     committedT=t;
+    applyLod(lodFor(t.k)); // 단계가 바뀔 때만 d 재생성 — 같은 동기 블록이라 같은 프레임에 반영
     g.attr('transform',t);
     layerNode.style.transform='';
   }
@@ -927,6 +1021,7 @@ function render(geo){
   updateMap();
   // RN 에 준비 완료 알림 → 현재 기록/검색 상태를 받아옴
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));}
+  setTimeout(warmLod, 300); // 첫 페인트·ready 동기화 뒤로 미룬다
 }
 
 // ── 퍼즐 레이어 — 그림은 지역별 패턴 채움이 아니라 <image> 1장 + mask로 그린다 ──
@@ -981,6 +1076,8 @@ function ensurePuzzleLayers(){
     layer.selectAll('*').remove();
     if(grainTileUri===null) grainTileUri=makeGrainTile();
     if(grainTileUri){
+      // 그레인 fill은 덮는 픽셀 수에 비례하는 비용이다(확대 커밋에서 단색 대비 +15~18ms, CPU 래스터 실측).
+      // 타일을 배율에 맞춰 줄여도 비용은 같았다(v9 실험) — 줄이려면 그레인을 빼는 디자인 결정이 필요하다.
       layer.append('defs').append('pattern').attr('id','pz-grain')
         .attr('patternUnits','userSpaceOnUse').attr('width',64).attr('height',64)
         .append('image').attr('href',grainTileUri).attr('xlink:href',grainTileUri)
@@ -990,9 +1087,10 @@ function ensurePuzzleLayers(){
     puzzleGroups.forEach(function(grp){
       var bx=grp.b[0][0], by=grp.b[0][1], bw=grp.b[1][0]-bx, bh=grp.b[1][1]-by;
       if(bw<=0||bh<=0) return;
+      var gen=lodGen(grp.proj, curLod); // 지역 채움과 같은 LOD 생성기 — 조각 경계가 지역 경계와 정확히 겹친다
       // ① 실루엣 배경 — 미방문 지역이 '빈' 상태로 보이는 층. 그레인 타일 패턴(실패 시 단색).
       grp.feats.forEach(function(f){
-        layer.append('path').attr('d', grp.gen(f)).attr('fill',emptyFill);
+        layer.append('path').attr('class','pz-sil pz-sil-'+grp.key).datum(f).attr('d', gen).attr('fill',emptyFill);
       });
       // ② 방문 마스크
       var mask=layer.append('mask').attr('id','pzm-sharp-'+grp.key)
@@ -1000,7 +1098,7 @@ function ensurePuzzleLayers(){
         .attr('maskUnits','userSpaceOnUse')
         .attr('x',bx).attr('y',by).attr('width',bw).attr('height',bh);
       grp.feats.slice().sort(function(a,b){return featArea(b)-featArea(a);}).forEach(function(f){
-        mask.append('path').attr('d', grp.gen(f)).datum(f).attr('fill','#000000');
+        mask.append('path').datum(f).attr('d', gen).attr('fill','#000000');
       });
       layer.append('image')
         .attr('href',puzzleImage).attr('xlink:href',puzzleImage)
