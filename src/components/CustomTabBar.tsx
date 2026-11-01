@@ -572,6 +572,14 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     const onPress = () => {
       const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
       if (!isFocused && !event.defaultPrevented) {
+        // 즉시 반응(2026-11-01 탭 바 지연 진단 ②): 알약을 navigate '전에' UI 스레드 withTiming으로 목표 탭에 건다.
+        // 예전엔 state.index useEffect에서야 시작해, 새 화면 마운트·재렌더가 실린 그 커밋이 끝날 때까지 바가 멈춰 있었다.
+        // 그 useEffect는 같은 목적지로 한 번 더 걸지만 목표값이 같아 겹침이 없다(settleTo 주석과 같은 이유).
+        // preventDefault·이미 포커스된 탭은 여기까지 오지 않으므로 되돌릴 일이 없다(goToTab과 같은 판정 순서).
+        // onPressIn으로 당기지 않은 이유: 가로 스와이프(PanResponder)가 터치를 가로채면 onPress 없이 끝나는데,
+        // Pressability의 pressOut 지연(최소 130ms) 때문에 '취소됐다'를 확실히 알고 되돌리는 경로가 깔끔하지 않다.
+        settleTo(index);
+        // 탭 전환 햅틱은 의도적으로 없음(eorth-haptics-system)
         navigation.navigate(route.name);
       }
     };

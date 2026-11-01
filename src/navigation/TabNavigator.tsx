@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import MainScreen from '../screens/MainScreen';
@@ -45,10 +46,63 @@ const TAB_ICONS = {
 const ACTIVE_TINT = '#FFFFFF';
 const INACTIVE_TINT = '#9DB2CE';
 
+// 안드로이드 탭 미리 마운트(2026-11-01 탭 바 지연 진단 ①).
+// bottom-tabs는 lazy 기본값이 true라 Stats·Social·Profile을 처음 누르는 그 렌더 패스에서 화면 전체를 마운트한다
+// (화면당 수백 ms 추정 — 그동안 탭 바도 멈춘다). iOS처럼 lazy:false로 두면 콜드 스타트에 세 화면 마운트가
+// 지구본 첫 렌더와 겹친다. 그래서 지구본 탭에 머무는 동안, 시작 뒤 잠시 기다렸다가 유휴 시점에 한 탭씩
+// navigation.preload로 마운트한다(React Navigation 7 — BottomTabView가 preloadedRouteKeys를 렌더 조건에 넣는다).
+// 미리 마운트된 탭은 STATE_INACTIVE라 창에 붙지 않아(UI 스레드 측정·그리기 없음) 비용은 JS 마운트·뷰 생성뿐이다.
+//  · 지구본 탭에서만 한다 — 다른 탭에서 작업 중(소셜 빠른공유 드래그 등)일 때 새 화면 마운트 effect
+//    (setTabBarHidden(false) 등 전역 신호)가 끼어들지 않게. 떠나면 멈추고 돌아오면 남은 탭부터 이어간다.
+//  · 튜토리얼 중엔 하지 않는다 — 코치마크 애니메이션·측정과 JS를 다투지 않게.
+//  · 이미 가 본 탭을 다시 preload해도 무해하다(이미 마운트돼 있어 렌더 조건만 하나 더 참이 된다).
+// ponytail: 지구본 '준비' 신호(GlobeView 내부 globeReady)는 밖으로 나오지 않아 고정 지연으로 대신한다.
+//           느린 기기에서 지구본 부팅과 겹치면 PRELOAD_START_MS를 늘리거나 globeReady를 노출해 그 뒤로 미룰 것.
+const PRELOAD_START_MS = 3000; // 지구본 탭 진입(=앱 진입) 뒤 첫 탭까지 — 지구본 WebView 부팅·첫 페이로드 주입 뒤로
+const PRELOAD_GAP_MS = 1000;   // 탭 사이 — 한 번에 몰아 마운트하면 그 사이 누른 탭이 JS 큐에서 밀린다
+const PRELOAD_IDLE_TIMEOUT_MS = 2000; // 유휴가 끝내 안 오면(계속 바쁨) 이 시간 뒤엔 그냥 한다
+
+function AndroidTabPreloader({ state, navigation }: { state: any; navigation: any }) {
+  const coachActive = useCoachActive();
+  // 'Main' 스택 라우트 자체의 포커스 — 위에 스택 화면(온보딩 ImportComplete·상세·딥링크 화면 등)이 덮고 있으면 false.
+  // 이 컴포넌트는 tabBar로 렌더돼 탭별 NavigationProvider 바깥, 즉 Main 라우트의 NavigationProvider 안이라
+  // IsFocusedContext가 Main 라우트 값이다(@react-navigation/core NavigationProvider.tsx). 덮인 채로 마운트하면
+  // ① 온보딩에선 곧 Main이 새 key로 reset돼 전부 버려지고 ② 체류 종료 Alert가 덮은 화면 위에 뜬다(QA F1).
+  const mainFocused = useIsFocused();
+  const onGlobe = state.routes[state.index]?.name === 'MainTab';
+  const [done, setDone] = React.useState<string[]>([]);
+  // params가 있는 탭은 건너뛴다 — 이미 navigate로 간(=마운트된) 탭이고, PRELOAD는 params 없이 오면 그 탭의
+  // params를 undefined로 덮어써 openBadgeList 같은 1회성 파라미터와 경합한다(TabRouter PRELOAD, QA F3).
+  const next = state.routes.find((r: any) => r.name !== 'MainTab' && r.params == null && !done.includes(r.name))?.name as string | undefined;
+
+  React.useEffect(() => {
+    if (!mainFocused || !onGlobe || coachActive || !next) return;
+    let idleId: number | null = null;
+    const timer = setTimeout(() => {
+      idleId = requestIdleCallback(() => {
+        idleId = null;
+        navigation.preload(next);
+        setDone((d) => [...d, next]);
+      }, { timeout: PRELOAD_IDLE_TIMEOUT_MS });
+    }, done.length === 0 ? PRELOAD_START_MS : PRELOAD_GAP_MS);
+    return () => {
+      clearTimeout(timer);
+      if (idleId != null) cancelIdleCallback(idleId);
+    };
+  }, [mainFocused, onGlobe, coachActive, next, done.length, navigation]);
+
+  return null;
+}
+
 function AndroidTabNavigator() {
   return (
     <Tab.Navigator
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={(props) => (
+        <>
+          <CustomTabBar {...props} />
+          <AndroidTabPreloader state={props.state} navigation={props.navigation} />
+        </>
+      )}
       screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="MainTab" component={MainScreen} />

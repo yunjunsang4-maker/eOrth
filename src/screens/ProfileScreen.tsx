@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { warn } from '../utils/haptics';
 import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 // 프로필은 탭을 오갈 때마다 같은 사진을 다시 그린다. RN Image는 화면을 벗어나면
 // 디코딩 결과를 잃어 재진입 때마다 늦게 뜨므로, 메모리·디스크 캐시가 있는 expo-image를 쓴다.
 import { Image } from 'expo-image';
@@ -1662,8 +1662,12 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
 
   // 튜토리얼 중에는 탭 바도 함께 어둡게 처리되도록 전역 신호 동기화.
+  // ⚠️ 내 튜토리얼이 떠 있을 때만 신호를 잡는다. 예전처럼 마운트 때 setCoachActive(false)를 부르면,
+  // 안드로이드가 지구본 탭에서 이 화면을 미리 마운트(TabNavigator AndroidTabPreloader)하는 순간
+  // 메인 튜토리얼이 켜 둔 신호를 꺼 버려 탭 바 딤·차단과 FAB 강조가 풀린다(전역 단일 bool이라 덮어쓴다).
   useEffect(() => {
-    setCoachActive(coachVisible);
+    if (!coachVisible) return;
+    setCoachActive(true);
     return () => setCoachActive(false);
   }, [coachVisible]);
 
@@ -2136,21 +2140,25 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 반드시 네이티브 드라이버 — JS 드라이버로 무한 루프를 돌리면 프로필 탭에 머무는 내내
   // JS 스레드를 60fps로 점유한다(MainCoachmark의 링 맥동과 같은 이유).
   const dnaPulse = useRef(new Animated.Value(0)).current;
-  const dnaFocused = useIsFocused();
-  useEffect(() => {
-    // 완료됐거나 이 화면을 보고 있지 않으면 루프를 멈추고 정지 상태(불투명도 1 / scale 1 = 값 0)로.
-    // 프로필 탭은 첫 진입 후 앱이 끝날 때까지 마운트된 채 남으므로(unmountOnBlur/freezeOnBlur 없음)
-    // 포커스로 끊지 않으면 다른 탭에 있는 내내 900ms 루프가 영구히 돈다.
-    if (dnaComplete || !dnaFocused) { dnaPulse.setValue(0); return; }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(dnaPulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(dnaPulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => { loop.stop(); dnaPulse.setValue(0); };
-  }, [dnaComplete, dnaFocused, dnaPulse]);
+  // 포커스는 useIsFocused(상태)로 읽지 않는다 — 그러면 탭에 들어오고 나갈 때마다 이 화면 본체 전체가
+  // 다시 렌더되고, 그 렌더가 탭 전환과 같은 커밋에 실려 안드로이드 탭 바 반응을 늦췄다(2026-11-01 진단 ③).
+  // useFocusEffect는 포커스 때 실행·blur 때 정리만 하므로 루프만 켜고 끈다(본체 재렌더 0).
+  useFocusEffect(
+    useCallback(() => {
+      // 완료됐으면 정지 상태(불투명도 1 / scale 1 = 값 0). 보고 있지 않을 때는 아래 정리 함수가 멈춘다.
+      // 프로필 탭은 첫 진입 후 앱이 끝날 때까지 마운트된 채 남으므로(unmountOnBlur/freezeOnBlur 없음)
+      // 포커스로 끊지 않으면 다른 탭에 있는 내내 900ms 루프가 영구히 돈다.
+      if (dnaComplete) { dnaPulse.setValue(0); return; }
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(dnaPulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+          Animated.timing(dnaPulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => { loop.stop(); dnaPulse.setValue(0); };
+    }, [dnaComplete, dnaPulse])
+  );
 
   const [staySheetVisible, setStaySheetVisible] = useState(false);
   const stayActive = activeStayGroup?.stay?.status === 'active';
