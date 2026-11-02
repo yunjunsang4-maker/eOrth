@@ -2434,10 +2434,12 @@ export default function MainScreen({ navigation, route }: Props) {
               </KeyboardAvoidingView>
             </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
+            {/* hitSlop bottom 0 — 검색바가 '<' 왼쪽 끝(x 17)까지 넓어져(regionSearchWrap) 바로 아래(y≈58.5~)에 있다.
+                bottom 12면 터치 영역(~y 68)이 검색바 왼쪽 위 띠를 덮어 입력창 탭이 뒤로가기로 먹혔다. */}
             <TouchableOpacity
               style={styles.regionBackBtn}
               activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 12, bottom: 0, left: 12, right: 12 }}
               onPress={() => { setRegionCountry(null); setRegionSearch(''); }}
               accessibilityRole="button"
               accessibilityLabel={t('main.backToCountryA11y')}
@@ -3555,9 +3557,10 @@ const styles = StyleSheet.create({
     zIndex: 2,
     height: 36,
     marginTop: 16,
-    // 우상단 표시 설정 버튼(right:16 + 폭 36 = 52)과 겹치지 않는 64를 양쪽에 — 비대칭(24/64)로
-    // 두면 바가 왼쪽으로 쏠려 보인다. 화면 중앙 정렬이 우선이라 폭을 조금 내준다.
-    marginHorizontal: 64,
+    // 윗줄(토글 줄) 뒤로가기 '<' 글리프 왼쪽 끝 ~ 지구본 버튼 오른쪽 끝까지(2026-11-02 사용자 요청).
+    // 둘 다 헤더 세로선(로고 'e' 왼쪽 끝 17 / 알림 종 오른쪽 끝 21)에 맞춰 둠 — regionBackBtn·globeSettingsBtn 주석 참고.
+    marginLeft: 17,
+    marginRight: 21,
     borderRadius: 23,
     backgroundColor: 'rgba(255,255,255,0.1)',
     flexDirection: 'row',
@@ -3997,12 +4000,14 @@ const styles = StyleSheet.create({
     zIndex: 5,
   },
   // ── 대륙 모드 - 뒤로가기
+  // '<' 글리프 왼쪽 끝을 헤더 로고 'e' 왼쪽 끝(실측 x 17)에 맞춤(2026-11-02 사용자 요청).
+  // 글리프 끝 = left + padding 8 + 글리프 안쪽 ≈0.7(iOS 실측: left 16일 때 끝 24.7) → left 8이면 ≈16.7.
   regionBackBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
     top: 12,
-    left: 16,
+    left: 8,
     zIndex: 10,
     padding: 8,
   },
@@ -4096,10 +4101,12 @@ const styles = StyleSheet.create({
   countryPickerFlag: { fontSize: 24 },
   countryPickerName: { color: '#FFFFFF', fontSize: 15 }, // 방문 지역 시트 행 글자와 같게(굵기 기본)
 
+  // 오른쪽 끝을 헤더 알림 종 글리프 오른쪽 끝(실측 화면 오른쪽에서 21)에 맞춤(2026-11-02 사용자 요청).
+  // 지구본·대륙 모드 공용 — 모드를 바꿔도 버튼이 튀지 않게 같이 옮긴다.
   globeSettingsBtn: {
     position: 'absolute',
     top: 12,
-    right: 16,
+    right: 21,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -4121,7 +4128,7 @@ const styles = StyleSheet.create({
   globeColorBtn: {
     position: 'absolute',
     top: 12,
-    right: 62,
+    right: 67, // globeSettingsBtn right 21 + 폭 36 + 틈 10
     width: 36,
     height: 36,
     borderRadius: 18,
