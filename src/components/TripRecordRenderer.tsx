@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Image,
@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import PhotoViewerModal from './PhotoViewerModal';
 import AlbumTimeline from './AlbumTimeline';
+import { effectiveMediaTimes } from '../utils/albumSections';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -173,6 +174,12 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   // order는 연 시점 스냅샷: 뷰어가 떠 있는 동안 medias가 바뀌는 건 삭제뿐이고, 삭제는 뷰어를 닫는다.
   const [viewer, setViewer] = useState<{ order: number[]; at: number } | null>(null);
   const medias = record.medias ?? [];
+  // 업로드 캐시 역매핑까지 더한 촬영시각 — medias가 서버 URL로 바뀌어도 로컬 키 시각이 맞게 붙는다.
+  // 재분석 대상(albumReanalyze)도 같은 함수를 써서 '날짜 미상'·버튼 노출·대상이 어긋나지 않는다.
+  const mediaTimes = useMemo(
+    () => effectiveMediaTimes({ mediaTimes: record.mediaTimes, uploadedMediaUrls: record.uploadedMediaUrls }),
+    [record.mediaTimes, record.uploadedMediaUrls],
+  );
   const toGlobal = (fn?: (index: number) => void) =>
     fn && viewer ? (i: number) => { const g = viewer.order[i]; if (g != null) fn(g); } : undefined;
 
@@ -204,7 +211,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
         <View style={styles.albumTimelineWrap}>
           <AlbumTimeline
             medias={medias}
-            mediaTimes={record.mediaTimes}
+            mediaTimes={mediaTimes}
             width={SCREEN_W}
             onPressPhoto={(gi, order) => setViewer({ order, at: Math.max(0, order.indexOf(gi)) })}
             selecting={selecting}

@@ -149,7 +149,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     reanalyzingRef.current = true;
     setReanalyzing(true);
     try {
-      const { times, tried, found } = await findMissingPhotoTimes(record);
+      const { times, tried, found, reasons } = await findMissingPhotoTimes(record);
       if (found > 0) {
         const { record: cur, updateRecord: update } = latestRef.current;
         const merged = { ...(cur.mediaTimes ?? {}) };
@@ -165,7 +165,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       const missed = tried - found;
       const lines = [
         ...(found > 0 ? [t('comp.albumReanalyzeFound', { count: found })] : []),
-        ...(missed > 0 ? [t('comp.albumReanalyzeMissed', { count: missed }), t('comp.albumReanalyzeMissedWhy')] : []),
+        ...(missed > 0 ? [t('comp.albumReanalyzeMissed', { count: missed })] : []),
+        // 못 찾은 이유 — 0이 아닌 것만 한 줄씩. 권한 제한이면 설정 안내를 덧붙인다
+        ...(reasons.remote > 0 ? [t('comp.albumReasonRemote', { count: reasons.remote })] : []),
+        ...(reasons.permissionLimited > 0 ? [t('comp.albumReasonPermission', { count: reasons.permissionLimited })] : []),
+        ...(reasons.fileMissing > 0 ? [t('comp.albumReasonFileMissing', { count: reasons.fileMissing })] : []),
+        ...(reasons.noExif > 0 ? [t('comp.albumReasonNoExif', { count: reasons.noExif })] : []),
+        ...(reasons.permissionLimited > 0 ? ['', t('comp.albumReasonLimitedHint')] : []),
       ];
       Alert.alert(t('comp.albumReanalyze'), lines.join('\n'));
     } catch {

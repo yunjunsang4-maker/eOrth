@@ -93,6 +93,33 @@ export function remapUriKeys<T>(
 }
 
 /**
+ * 화면·재분석이 함께 쓰는 '실효' 촬영시각 맵 — mediaTimes + 업로드 캐시 역매핑.
+ * 작성 기기에서도 medias가 서버 URL로 통째 바뀌는 경로가 있다(mergeMyRecords.pickUriList: 서버본과 장수가
+ * 다를 때). 그때 mediaTimes 키는 로컬 file:// 경로로 남아 하나도 안 맞는다. uploadedMediaUrls(로컬 → 업로드 URL)
+ * 쌍으로 mediaTimes[로컬]을 원격 키로도 보여 준다.
+ * - 원격 키에 유효한 시각이 이미 있으면 덮지 않는다(0·음수 같은 무효 값만 채운다).
+ * - 더할 것이 없으면 입력 객체를 그대로 돌려준다 — useMemo 의존값이 매 렌더 바뀌지 않게.
+ * 내 타임라인(TripRecordRenderer)·버튼 노출(AlbumTimeline undated)·재분석 대상(albumReanalyze)이 모두
+ * 이 함수를 거쳐야 셋이 어긋나지 않는다.
+ */
+export function effectiveMediaTimes(rec: {
+  mediaTimes?: Record<string, number>;
+  uploadedMediaUrls?: Record<string, string>;
+}): Record<string, number> | undefined {
+  const t = rec.mediaTimes;
+  const up = rec.uploadedMediaUrls;
+  if (!t || !up) return t;
+  const valid = (v: unknown) => typeof v === 'number' && v > 0;
+  let out: Record<string, number> | undefined;
+  for (const [local, remote] of Object.entries(up)) {
+    if (!remote || !valid(t[local]) || valid((out ?? t)[remote])) continue;
+    out ??= { ...t };
+    out[remote] = t[local];
+  }
+  return out ?? t;
+}
+
+/**
  * expo-image-picker asset.exif → 촬영시각(ms). 없거나 못 읽으면 undefined(타임라인 '날짜 미상'으로 간다).
  * 두 플랫폼 모두 최상위 키로 온다: iOS는 picker가 {Exif}를 최상위로 펼치고 {TIFF}도 병합한다
  * (expo-image-picker ImageUtils.swift readExifFrom), Android는 DateTime 3종 태그만 최상위로 준다.

@@ -2093,7 +2093,12 @@ const ko = {
     albumNoDatesHint: '촬영 날짜가 없는 사진이에요',
     albumReanalyzeFound: '{{count}}장의 날짜를 찾았어요.',
     albumReanalyzeMissed: '{{count}}장은 찾지 못했어요.',
-    albumReanalyzeMissedWhy: '기기 사진첩에서 지워졌거나 날짜 정보가 없는 사진이에요.',
+    // 못 찾은 이유별 한 줄(0인 이유는 안 보인다)
+    albumReasonRemote: '· 서버에서 받은 사진이라 확인할 수 없음 {{count}}장',
+    albumReasonPermission: '· 사진 접근 권한이 제한돼 확인 못 함 {{count}}장',
+    albumReasonFileMissing: '· 사진 파일을 열 수 없음 {{count}}장',
+    albumReasonNoExif: '· 사진에 날짜 정보가 없음 {{count}}장',
+    albumReasonLimitedHint: "설정에서 사진 '전체 접근'을 허용하면 더 찾을 수 있어요.",
     albumMakeSections: '섹션으로 정리',
     albumSectionEmpty: '이 섹션에 사진이 없어요 — 사진을 길게 눌러 옮기거나 ＋로 추가하세요',
     noCut: '네컷 사진이 없습니다',

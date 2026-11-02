@@ -330,13 +330,21 @@ export function mergeServerUpdate<T extends MergeableRecord>(local: T, server: T
   // liked      — 내 좋아요는 로컬 낙관 갱신이 진실에 가깝다(서버 왕복 중일 수 있다).
   // uploadedMediaUrls / albumUploadQuality — 이 기기의 업로드 캐시·화질 기록. 서버 data에는
   //              애초에 실리지 않으며(사진첩은 발행 시 제거), 잃으면 사진첩 전 장을 재업로드한다.
-  // mediaAssetIds / mediaTimes — 이 기기 사진첩의 assetId·촬영시각 참조. 다른 기기에서는 무의미.
+  // mediaAssetIds — 이 기기 사진첩의 assetId 참조. 서버본과 합치면 안 된다: 안드로이드 assetId는 기기마다
+  //              따로 매기는 일련번호라 다른 기기 값이 섞이면, 불러오기·사진 추가의 중복 판정
+  //              (Object.values(mediaAssetIds))이 이 기기의 엉뚱한 사진을 '이미 담음'으로 거른다.
   // tripGroupId / tripGroupOrder — 여행 카드 id는 기기 로컬 id 공간이다. 서버본 값은 남의 카드 id다.
   // snapViewed — 열람 여부는 뷰어(이 기기) 상태다.
   for (const k of [
     'isMyPost', 'liked', 'uploadedMediaUrls', 'albumUploadQuality',
-    'mediaAssetIds', 'mediaTimes', 'tripGroupId', 'tripGroupOrder', 'snapViewed',
+    'mediaAssetIds', 'tripGroupId', 'tripGroupOrder', 'snapViewed',
   ]) keepLocal(k);
+  // mediaTimes — 합집합(같은 키는 로컬 우선). 서버 사본은 원격 URL 키(posts.ts remapUriKeys, 5bdeeef~)라
+  //   로컬 file:// 키와 겹치지 않는다. 로컬 값만 지키면 아래 pickUriList가 medias를 서버 URL로 통째 바꿀 때
+  //   (장수 불일치) 키가 하나도 안 맞아 작성 기기에서도 타임라인이 전부 '날짜 미상'이 됐다.
+  const lt = (local as unknown as { mediaTimes?: Record<string, number> }).mediaTimes;
+  const st = (server as unknown as { mediaTimes?: Record<string, number> }).mediaTimes;
+  if (lt || st) out.mediaTimes = { ...(st ?? {}), ...(lt ?? {}) };
 
   // ── 2) 미디어 — 위 ★ 규칙(로컬 파일 승리, 단 자리 대응이 성립할 때만) ──
   // medias의 자리가 갈아치워졌으면 거기서 고른 대표사진·대표원본도 함께 서버본으로 간다.

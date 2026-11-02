@@ -1,7 +1,7 @@
 /**
  * albumSections 검증 — npx tsx src/utils/albumSections.verify.ts
  */
-import { buildAlbumTimeline, MOMENT_GAP_MS, removePhotosAt, remapUriKeys, exifTakenAt } from './albumSections';
+import { buildAlbumTimeline, MOMENT_GAP_MS, removePhotosAt, remapUriKeys, exifTakenAt, effectiveMediaTimes } from './albumSections';
 
 let pass = 0, fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
@@ -118,6 +118,37 @@ eq('exif blank OTO → OffsetTime', exifTakenAt({ DateTimeOriginal: '2026:05:06 
 eq('exif undefined', exifTakenAt(undefined), undefined);
 eq('exif null', exifTakenAt(null), undefined);
 eq('exif empty', exifTakenAt({}), undefined);
+
+// ── effectiveMediaTimes — medias가 서버 URL로 바뀌고 mediaTimes는 로컬 키로 남은 기록 복구 ──
+{
+  const up = { 'file:///d/0.jpg': 'https://cdn/0.jpg', 'file:///d/1.jpg': 'https://cdn/1.jpg' };
+  const t = { 'file:///d/0.jpg': T0, 'file:///d/1.jpg': T0 + 60000 };
+  const eff = effectiveMediaTimes({ mediaTimes: t, uploadedMediaUrls: up });
+  eq('effective: 로컬 키 시각을 원격 키로도', eff, { ...t, 'https://cdn/0.jpg': T0, 'https://cdn/1.jpg': T0 + 60000 });
+  eq('effective: 입력 변형 없음', Object.keys(t).length, 2);
+  // 실제 증상 재현: medias=원격, mediaTimes=로컬 키 → 그대로면 전부 날짜 미상, effective면 날짜로 묶임
+  const medias = ['https://cdn/0.jpg', 'https://cdn/1.jpg'];
+  eq('증상 재현: mediaTimes 그대로면 전부 미상', buildAlbumTimeline(medias, t).undated, [0, 1]);
+  eq('복구: effective면 미상 0장', buildAlbumTimeline(medias, eff).undated, []);
+  eq('복구: 같은 날 한 그룹', buildAlbumTimeline(medias, eff).days.length, 1);
+}
+// 원격 키에 유효한 시각이 이미 있으면 덮지 않는다(서버 사본이 가진 값 우선)
+eq('effective: 원격 키 기존 값 유지',
+  effectiveMediaTimes({ mediaTimes: { 'file:///a': T0, 'https://cdn/a': T0 + 5 }, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } })?.['https://cdn/a'],
+  T0 + 5);
+// 원격 키 값이 무효(0)면 로컬 값으로 채운다
+eq('effective: 원격 키 무효값(0)은 채움',
+  effectiveMediaTimes({ mediaTimes: { 'file:///a': T0, 'https://cdn/a': 0 }, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } })?.['https://cdn/a'],
+  T0);
+// 더할 게 없으면 같은 객체(참조 동일) — useMemo 의존값 안정
+{
+  const t = { 'https://cdn/a': T0 };
+  eq('effective: 더할 것 없으면 같은 객체', effectiveMediaTimes({ mediaTimes: t, uploadedMediaUrls: { 'file:///x': 'https://cdn/x' } }) === t, true);
+  eq('effective: 업로드 캐시 없으면 같은 객체', effectiveMediaTimes({ mediaTimes: t }) === t, true);
+}
+eq('effective: mediaTimes 없음 → undefined', effectiveMediaTimes({ uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }), undefined);
+eq('effective: 로컬 시각이 무효면 옮기지 않음',
+  effectiveMediaTimes({ mediaTimes: { 'file:///a': 0 }, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }), { 'file:///a': 0 });
 
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

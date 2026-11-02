@@ -390,6 +390,43 @@ eq(
   eq(out.tripGroupId, 'trip-local-9', '여행 카드 id는 로컬 id 공간 — 서버본 값은 남의 카드 id다');
 }
 
+// 30-1) mediaTimes는 합집합(로컬 우선), mediaAssetIds는 로컬만 — 장수가 달라 medias가 서버 URL로 통째 바뀌어도
+//       서버 사본의 원격 키 시각이 살아 있어야 작성 기기 타임라인이 '날짜 미상'으로 무너지지 않는다
+{
+  const out = mergeServerUpdate(
+    {
+      id: 'l', remoteId: 'r1',
+      medias: ['file:///a.jpg', 'file:///b.jpg'],
+      mediaTimes: { 'file:///a.jpg': 100, 'https://cdn/a.jpg': 111 },
+      mediaAssetIds: { 'file:///a.jpg': 'asset-local' },
+    } as FullRec & { mediaTimes: Record<string, number> },
+    {
+      id: 'r1', remoteId: 'r1',
+      medias: ['https://cdn/a.jpg', 'https://cdn/b.jpg', 'https://cdn/c.jpg'],
+      mediaTimes: { 'https://cdn/a.jpg': 999, 'https://cdn/b.jpg': 200, 'https://cdn/c.jpg': 300 },
+      mediaAssetIds: { 'https://cdn/a.jpg': 'asset-other-device' },
+    } as FullRec & { mediaTimes: Record<string, number> }
+  ) as FullRec & { mediaTimes?: Record<string, number> };
+  eq(out.medias, ['https://cdn/a.jpg', 'https://cdn/b.jpg', 'https://cdn/c.jpg'], '(전제) 장수가 달라 medias는 서버본 통째');
+  eq(
+    out.mediaTimes,
+    { 'https://cdn/a.jpg': 111, 'https://cdn/b.jpg': 200, 'https://cdn/c.jpg': 300, 'file:///a.jpg': 100 },
+    'mediaTimes: 서버 원격 키 + 로컬 키 공존, 같은 키(https://cdn/a.jpg)는 로컬 값 우선'
+  );
+  eq(out.mediaAssetIds, { 'file:///a.jpg': 'asset-local' }, 'mediaAssetIds는 로컬만 — 다른 기기 assetId가 섞이면 중복 판정이 오염된다');
+}
+// 30-2) 한쪽에만 있으면 그쪽 값, 둘 다 없으면 키를 만들지 않는다
+eq(
+  (mergeServerUpdate({ id: 'l', remoteId: 'r1' } as FullRec, { id: 'r1', remoteId: 'r1', mediaTimes: { 'https://cdn/a.jpg': 5 } } as FullRec & { mediaTimes: Record<string, number> }) as { mediaTimes?: unknown }).mediaTimes,
+  { 'https://cdn/a.jpg': 5 },
+  'mediaTimes: 로컬에 없으면 서버 원격 키 시각을 받는다'
+);
+eq(
+  'mediaTimes' in mergeServerUpdate({ id: 'l', remoteId: 'r1' } as FullRec, { id: 'r1', remoteId: 'r1' } as FullRec),
+  false,
+  'mediaTimes: 둘 다 없으면 키를 만들지 않는다'
+);
+
 // 31) 중첩 구조 ① 네컷(cutPhoto) — 4장·미리보기·프레임 사진이 각각 판정된다
 {
   const out = mergeServerUpdate(
