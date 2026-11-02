@@ -12,12 +12,12 @@ import { useSocialGraph, useRecordActions, type BlockedUser } from '../store/rec
 import { fetchMyBlockedHandles } from '../services/social';
 import { BlockIcon } from '../components/icons';
 import DefaultAvatar from '../components/DefaultAvatar';
+import { PillRing } from '../components/record/CalendarBottomSheet';
 import {
   SETTINGS_COLORS,
   SettingsHeader,
   SettingsCard,
   SettingsDivider,
-  SettingsEmptyState,
   SettingsModal,
   SettingsPillButton,
   settingsText,
@@ -63,16 +63,27 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
     <SafeAreaView style={st.safeArea}>
       <SettingsHeader title={t('friends.blockedTitle')} onBack={() => navigation.goBack()} backA11yLabel={t('friends.back')} />
 
+      {blockedUsers.length === 0 ? (
+        // 빈 상태 — 2026-11-02 시안: 회색 금지 표식(원 84) + 흰 제목 + 설명 속 ⋯는 작은 원 아이콘. 세로 가운데보다 조금 위
+        <View style={st.emptyWrap}>
+          <BlockIcon size={92} color="#9CA3AF" />
+          <Text style={st.emptyTitle}>{t('friends.noBlocked')}</Text>
+          <Text style={st.emptyDesc}>
+            {t('friends.noBlockedDesc').split('···').map((part, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && (
+                  <View style={st.moreDotWrap}>
+                    <PillRing width={16} height={16} radius={8} />
+                    <View style={st.moreDot} /><View style={st.moreDot} /><View style={st.moreDot} />
+                  </View>
+                )}
+                {part}
+              </React.Fragment>
+            ))}
+          </Text>
+        </View>
+      ) : (
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
-        {blockedUsers.length === 0 ? (
-          <SettingsEmptyState
-            // 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다
-            icon={<BlockIcon size={48} />}
-            title={t('friends.noBlocked')}
-            desc={t('friends.noBlockedDesc')}
-            style={st.empty}
-          />
-        ) : (
           <>
             <Text style={settingsText.groupLabel}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
             {/* 모서리 32 = 행 높이(64)의 절반 → 양옆이 완전한 반원(알약) */}
@@ -105,9 +116,9 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
               ))}
             </SettingsCard>
           </>
-        )}
         <View style={{ height: 40 }} />
       </ScrollView>
+      )}
 
       {/* 차단 해제 재확인 — 하단 알약(취소) 위에 빨간 해제 알약 */}
       <SettingsModal
@@ -137,10 +148,24 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     paddingHorizontal: 16,
   },
 
-  // 빈 상태
-  empty: {
-    paddingTop: 80,
+  // 빈 상태 — 가운데 정렬 후 paddingBottom만큼 위로(시안: 묶음 중심이 본문 중심보다 ~60 위)
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 120,
   },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 20 },
+  emptyDesc: { fontSize: 14, lineHeight: 21, color: COLORS.text50, textAlign: 'center', marginTop: 8 },
+  // 설명 속 ⋯ — 게시물 ⋯ 알약처럼 흰 12% 원 + 대각 링 + 흰 점 3개(인라인 뷰라 글자 기준선에 맞춰 살짝 내림)
+  moreDotWrap: {
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1.5,
+    transform: [{ translateY: 3 }],
+  },
+  moreDot: { width: 2, height: 2, borderRadius: 1, backgroundColor: COLORS.white },
 
   // 사용자 행 — 설정 행과 같은 좌 20 / 우 19, 아바타 44 + 위아래 10
   userRow: {

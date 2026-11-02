@@ -30,6 +30,14 @@ import {
   StarIcon,
   LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
+import Svg, { Path } from 'react-native-svg';
+
+// 지구본 스킨 팝업 선택 체크 — 2026-11-02 시안(Vector.png 17×14, #AC6FFF 가는 체크)
+const SkinCheckIcon = () => (
+  <Svg width={17} height={14} viewBox="0 0 17 14" fill="none">
+    <Path d="M1 7.6L4.6 12.4L16.2 0.9" stroke="#AC6FFF" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
 // 행 아이콘·꺾쇠·돋보기·로그아웃 — 피그마 시안 원본 SVG를 옮긴 화면 전용 아이콘
 import {
   SettingsProfileIcon,
@@ -890,6 +898,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   label={t(s.labelKey)}
                   // 잠긴 스킨은 체크 대신 자물쇠만(예전과 같이 둘 중 하나)
                   selected={!locked && globeSkin === s.id}
+                  checkIcon={<SkinCheckIcon />}
                   left={<LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />}
                   right={locked ? <SvgLockClosedIcon size={14} color="#A1A1B0" /> : undefined}
                   onPress={() => {

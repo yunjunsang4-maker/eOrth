@@ -289,6 +289,40 @@ export const SettingsSnapIcon = () => (
   </Svg>
 );
 
+// ─── 알림 설정 2차(2026-11-02) — 위와 같이 1x PNG를 보고 다시 그린 것(원본 SVG 아님) ───
+
+// eOrth/Vector.png — 체류 중 여행 카드 제안(카드: 사진 칸·제목 줄·점선이 뚫린 구멍)
+export const SettingsStayTripIcon = () => (
+  <Svg width={24} height={18} viewBox="0 0 24 18" fill="none">
+    <Path
+      fillRule="evenodd"
+      d="M2.6 0H21.4A2.6 2.6 0 0 1 24 2.6V15.4A2.6 2.6 0 0 1 21.4 18H2.6A2.6 2.6 0 0 1 0 15.4V2.6A2.6 2.6 0 0 1 2.6 0ZM3.4 4.4H6.6Q7.4 4.4 7.4 5.2V6.8Q7.4 7.6 6.6 7.6H3.4Q3 7.6 3 7.2V4.8Q3 4.4 3.4 4.4ZM3.6 9.2H11.6Q12.2 9.2 12.2 9.9Q12.2 10.6 11.6 10.6H3.6Q3 10.6 3 9.9Q3 9.2 3.6 9.2ZM3.6 12.2H5.4Q6 12.2 6 12.9Q6 13.6 5.4 13.6H3.6Q3 13.6 3 12.9Q3 12.2 3.6 12.2ZM7.8 12.2H9.6Q10.2 12.2 10.2 12.9Q10.2 13.6 9.6 13.6H7.8Q7.2 13.6 7.2 12.9Q7.2 12.2 7.8 12.2ZM12.6 12.2H14.4Q15 12.2 15 12.9Q15 13.6 14.4 13.6H12.6Q12 13.6 12 12.9Q12 12.2 12.6 12.2ZM16.8 12.2H18.6Q19.2 12.2 19.2 12.9Q19.2 13.6 18.6 13.6H16.8Q16.2 13.6 16.2 12.9Q16.2 12.2 16.8 12.2Z"
+      fill="white"
+    />
+  </Svg>
+);
+
+// eOrth/Vector-1.png — 마케팅(확성기: 몸통 + 오른쪽 나팔 + 아래 손잡이)
+export const SettingsMarketingIcon = () => (
+  <Svg width={19} height={20} viewBox="0 0 19 20" fill="none">
+    <Path d="M2.4 4.4H10.2L17.2 0.2Q18.6 -0.4 18.6 1.1V16.8Q18.6 18.3 17.3 17.6L10.6 13.4H2.4Q0 13.4 0 11V6.8Q0 4.4 2.4 4.4Z" fill="white" />
+    <Path d="M4.2 13.2H8.7L9.4 19.1Q9.4 19.9 8.6 19.9H6.1Q5.4 19.9 5.3 19.2Z" fill="white" />
+  </Svg>
+);
+
+// eOrth/andrsrxn_calendar-days.png — 추억 리마인드(달력: 채운 머리·고리 구멍·윤곽 몸통·날짜 점 5개)
+export const SettingsMemoryIcon = () => (
+  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+    <Path
+      fillRule="evenodd"
+      d="M5.6 2.6H18.4A3.4 3.4 0 0 1 21.8 6V19A3.4 3.4 0 0 1 18.4 22.4H5.6A3.4 3.4 0 0 1 2.2 19V6A3.4 3.4 0 0 1 5.6 2.6ZM3.7 9.8H20.3V19A1.9 1.9 0 0 1 18.4 20.9H5.6A1.9 1.9 0 0 1 3.7 19ZM6 5.6a1 1 0 1 0 2 0a1 1 0 1 0 -2 0ZM16 5.6a1 1 0 1 0 2 0a1 1 0 1 0 -2 0Z"
+      fill="white"
+    />
+    <Path d="M7 0.8H8.4V3.6H7ZM15.6 0.8H17V3.6H15.6Z" fill="white" />
+    <Path d="M6 11.4H7.9V13.4H6ZM10.4 11.4H12.3V13.4H10.4ZM14.9 11.4H16.8V13.4H14.9ZM6 15.4H7.9V17.4H6ZM10.4 15.4H12.3V17.4H10.4Z" fill="white" />
+  </Svg>
+);
+
 // logout.svg
 export const SettingsLogoutIcon = () => (
   <Svg width={23} height={21} viewBox="0 0 23 21" fill="none">

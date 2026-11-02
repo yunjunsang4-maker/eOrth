@@ -305,7 +305,7 @@ export const SettingGroup = ({
 export const SettingsDivider = () => <View style={s.itemDivider} />;
 
 /** 팝업 선택 목록 행 — 설정 행과 같은 치수(높이 60·좌 20/우 19·라벨 14 흰색). 선택되면 오른쪽 끝에 보라 ✓. */
-export const SettingsOptionRow = ({ label, onPress, selected, left, right, danger }: {
+export const SettingsOptionRow = ({ label, onPress, selected, left, right, danger, checkIcon }: {
   label: string;
   onPress: () => void;
   /** 삭제·차단·신고 같은 위험 행 — 라벨 빨강(디자인 토큰) */
@@ -316,6 +316,8 @@ export const SettingsOptionRow = ({ label, onPress, selected, left, right, dange
   left?: React.ReactNode;
   /** 라벨 뒤·체크 앞 부속물(잠금·미리보기·'변경' 등) */
   right?: React.ReactNode;
+  /** 선택 표시를 ✓ 글자 대신 이 요소로(스킨 팝업 시안 체크 등). 생략 = ✓ */
+  checkIcon?: React.ReactNode;
 }) => (
   <TouchableOpacity
     style={[s.settingItem, s.optionRow]}
@@ -327,7 +329,7 @@ export const SettingsOptionRow = ({ label, onPress, selected, left, right, dange
     {left}
     <Text style={[s.settingLabel, s.optionLabel, danger && { color: COLORS.red }]} numberOfLines={1}>{label}</Text>
     {right}
-    {selected ? <Text style={s.optionCheck}>✓</Text> : null}
+    {selected ? (checkIcon ?? <Text style={s.optionCheck}>✓</Text>) : null}
   </TouchableOpacity>
 );
 

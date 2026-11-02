@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
-import { CalendarIcon, MegaphoneIcon, BackpackIcon, SparkleIcon } from '../components/icons';
+import { SparkleIcon } from '../components/icons';
 // 2026-11 시안 아이콘(흰 채움) — 시안에 없는 줄(체류 중 여행·추억·마케팅·여행 기억)은 기존 팔레트 아이콘 유지
 import {
   SettingsNotifIcon,
@@ -20,6 +20,9 @@ import {
   SettingsArrivalIcon,
   SettingsSnapIcon,
   SettingsHomeRegionIcon,
+  SettingsStayTripIcon,
+  SettingsMemoryIcon,
+  SettingsMarketingIcon,
 } from '../components/icons/SettingsIcons';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
@@ -194,13 +197,13 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
     sub({ icon: <SettingsHomeRegionIcon />, label: t('notifSettings.returnLabel'), description: t('notifSettings.returnDesc'), toggle: returnDetect, onToggle: (v) => setNotifPref('returnDetect', v) }),
     // 이 줄만 위치 권한이 필요 없다 — 최근 사진에서 체류국 밖 여행을 찾는다
     // 아이콘은 이모지(🧳) 대신 앱 팔레트 아이콘 — 다른 행과 같은 크기·스킨색 점
-    sub({ icon: <BackpackIcon size={20} />, label: t('notifSettings.stayTripLabel'), description: t('notifSettings.stayTripDesc'), toggle: stayTripSuggest, onToggle: (v) => setNotifPref('stayTripSuggest', v) }),
+    sub({ icon: <SettingsStayTripIcon />, label: t('notifSettings.stayTripLabel'), description: t('notifSettings.stayTripDesc'), toggle: stayTripSuggest, onToggle: (v) => setNotifPref('stayTripSuggest', v) }),
   ];
   const memoryItems: SettingItem[] = [
-    sub({ icon: <CalendarIcon size={20} />, label: t('notifSettings.memoryLabel'), description: t('notifSettings.memoryDesc'), toggle: memoryRemind, onToggle: (v) => setNotifPref('memoryRemind', v) }),
+    sub({ icon: <SettingsMemoryIcon />, label: t('notifSettings.memoryLabel'), description: t('notifSettings.memoryDesc'), toggle: memoryRemind, onToggle: (v) => setNotifPref('memoryRemind', v) }),
   ];
   const marketingItems: SettingItem[] = [
-    sub({ icon: <MegaphoneIcon size={20} />, label: t('notifSettings.marketingLabel'), description: t('notifSettings.marketingDesc'), toggle: marketing, onToggle: (v) => setNotifPref('marketing', v) }),
+    sub({ icon: <SettingsMarketingIcon />, label: t('notifSettings.marketingLabel'), description: t('notifSettings.marketingDesc'), toggle: marketing, onToggle: (v) => setNotifPref('marketing', v) }),
   ];
 
   return (
