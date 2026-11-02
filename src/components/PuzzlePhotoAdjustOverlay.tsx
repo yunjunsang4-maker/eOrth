@@ -83,11 +83,11 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
   let frameH = frameW / aspect;
   if (frameH > maxH) { frameH = maxH; frameW = frameH * aspect; }
 
-  // 실루엣 패스 — 오버레이는 가이드라 ~4천 점으로 감량(원본 수만 점을 그대로 그리면 무겁다)
+  // 실루엣 패스 — 0.5px 미만 점만 감량(countryShape.buildSilhouettePaths)
   // evenodd: 바깥 사각형 + 나라 링들 → 나라 밖만 어둡게(안은 홀수-짝수로 뚫린다)
   const { dimPath, linePath } = useMemo(() => {
     if (!shape) return { dimPath: '', linePath: '' };
-    return buildSilhouettePaths(shape, frameW, frameH, 4000);
+    return buildSilhouettePaths(shape, frameW, frameH);
   }, [shape, frameW, frameH]);
 
   // 사진 비율 (cover 기준 크기 계산용)

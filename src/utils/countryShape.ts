@@ -64,24 +64,30 @@ export function buildCountryShape(countryCode: string): CountryShape | null {
  * 실루엣 SVG 패스 — 프레임(frameW×frameH)에 맞춰 스케일한 링 패스.
  * - linePath: 나라 링들(테두리 선·클립 패스 공용 — 클립은 evenodd 규칙으로 쓴다)
  * - dimPath: 바깥 사각형 + 링 → evenodd로 나라 밖만 어둡게 덮는 딤 패스
- * maxPts: 가이드/미리보기 용도라 점을 감량한다(원본 수만 점을 그대로 그리면 무겁다)
+ * 감량: 직전에 남긴 점에서 0.5px 미만인 점만 버린다(화면에서 안 보이는 점만 뺀다).
+ *   예전엔 점 수 상한(maxPts)에 맞춰 i += step으로 일률 솎았는데, 지역마다 따로 솎이다 보니
+ *   이웃 지역 경계가 서로 다른 점으로 잘려 꼭짓점이 빠진 모서리(미국 와이오밍·콜로라도·유타 등)와
+ *   주 사이에 빈 틈이 뚫렸다(2026-11-02 사용자 보고, 미리보기 폭에서 미국 실루엣의 1.6%가 빔 → 0.25%).
+ *   ponytail: 점 수 상한이 없다 — 미리보기 폭(≈300px)에서 미국 ≈5천·캐나다 ≈1.2만 점. 세 호출부 모두
+ *   useMemo로 한 번 그리는 정적 Svg라 감당 가능. 무거워지면 지역 간 공유 경계를 한 번만 감량하는 방식으로.
  */
 export function buildSilhouettePaths(
   shape: CountryShape,
   frameW: number,
   frameH: number,
-  maxPts: number = 4000,
 ): { linePath: string; dimPath: string } {
   const k = frameW / shape.dx;
-  const step = Math.max(1, Math.ceil(shape.total / maxPts));
+  const tol = 0.5 / k; // 0.5px를 투영계 단위로
   let d = '';
   for (const ring of shape.rings) {
     let seg = '';
     let n = 0;
-    for (let i = 0; i < ring.length; i += step) {
-      const x = ((ring[i][0] - shape.minX) * k).toFixed(1);
-      const y = ((ring[i][1] - shape.minY) * k).toFixed(1);
-      seg += (n === 0 ? 'M' : 'L') + x + ' ' + y;
+    let lx = 0, ly = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const [px, py] = ring[i];
+      if (n > 0 && Math.hypot(px - lx, py - ly) < tol) continue;
+      lx = px; ly = py;
+      seg += (n === 0 ? 'M' : 'L') + ((px - shape.minX) * k).toFixed(1) + ' ' + ((py - shape.minY) * k).toFixed(1);
       n++;
     }
     if (n >= 3) d += seg + 'Z';

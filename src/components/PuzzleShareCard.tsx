@@ -49,7 +49,7 @@ export default function PuzzleShareCard({ countryCode, countryName, image, total
   const fitW = shape ? Math.min(artW, artH * (shape.dx / shape.dy)) : artW;
   const { linePath } = useMemo(() => {
     if (!shape) return { linePath: '' };
-    return buildSilhouettePaths(shape, fitW, fitW * (shape.dy / shape.dx), 3000);
+    return buildSilhouettePaths(shape, fitW, fitW * (shape.dy / shape.dx));
   }, [shape, fitW]);
 
   // 등장 애니메이션 — 완성 연출의 여운을 받아 살짝 떠오르는 정도로만

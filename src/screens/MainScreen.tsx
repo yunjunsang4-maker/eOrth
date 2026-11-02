@@ -1306,7 +1306,7 @@ export default function MainScreen({ navigation, route }: Props) {
     const maxH = 150;
     let w = maxW, h = w * (shape.dy / shape.dx);
     if (h > maxH) { h = maxH; w = h * (shape.dx / shape.dy); }
-    return { w, h, ...buildSilhouettePaths(shape, w, h, 3000) };
+    return { w, h, ...buildSilhouettePaths(shape, w, h) };
   }, [regionCountry, puzzleImage]);
 
   // 퍼즐 범위 조정 오버레이 — 후보/앨범에서 사진을 고르면 열리고, 여기서 나라 실루엣을
@@ -3253,7 +3253,9 @@ export default function MainScreen({ navigation, route }: Props) {
                         <Svg width={puzzlePreview.w} height={puzzlePreview.h}>
                           <SvgDefs>
                             <SvgClipPath id="pz-preview-clip">
-                              <SvgPath d={puzzlePreview.linePath} clipRule="evenodd" />
+                              {/* nonzero: 지역 링끼리 데이터상 살짝 겹치는 띠가 evenodd면 실선 틈으로 뚫렸다(미국 주 경계).
+                                  바깥 링은 전부 같은 방향·구멍 링은 반대 방향이라 nonzero여도 구멍은 그대로 뚫린다. */}
+                              <SvgPath d={puzzlePreview.linePath} clipRule="nonzero" />
                             </SvgClipPath>
                           </SvgDefs>
                           <SvgImage
