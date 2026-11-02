@@ -1992,7 +1992,10 @@ export default function MainScreen({ navigation, route }: Props) {
 
       {/* ── 전체화면 우주배경 (별·글로우) — 모든 콘텐츠 뒤, 터치 통과 ── */}
       {/* 우주가스 색을 스킨에 맞춤 — 주 블롭=스킨 강조색, 보조(파랑) 블롭=스킨 그라데이션 보조색(aurora는 기존 파랑 유지) */}
-      <SpaceBackdrop glow={skinAccent.accent} glow2={getGlobeSkinTheme(globeSkin)?.gradTo ?? '#1E3AFF'} />
+      {/* 나라 지도(대륙 모드 + 나라 선택)일 때는 끈다 — 지도 배경(#0A0B0F)과 헤더 영역을 같은 검은색으로 */}
+      {!(viewMode === 'region' && regionCountry) && (
+        <SpaceBackdrop glow={skinAccent.accent} glow2={getGlobeSkinTheme(globeSkin)?.gradTo ?? '#1E3AFF'} />
+      )}
 
       {/* 튜토리얼용 숨김 앵커 — 탭 바 오버레이의 스냅 버튼(RecordFab)과 동일한 절대 제약.
           코치마크가 이 위치를 측정해 스냅 버튼을 정확히 강조한다(보이지 않음·터치 통과). */}
@@ -4002,11 +4005,12 @@ const styles = StyleSheet.create({
   // ── 대륙 모드 - 뒤로가기
   // '<' 글리프 왼쪽 끝을 헤더 로고 'e' 왼쪽 끝(실측 x 17)에 맞춤(2026-11-02 사용자 요청).
   // 글리프 끝 = left + padding 8 + 글리프 안쪽 ≈0.7(iOS 실측: left 16일 때 끝 24.7) → left 8이면 ≈16.7.
+  // 세로 중심은 지구본/대륙 토글 중심(modeToggleWrap padding 6 + TRACK_H 30.49/2 ≈ 21.25)에 맞춤 — 높이 44(16+28) → top -0.75.
   regionBackBtn: {
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    top: 12,
+    top: -0.75,
     left: 8,
     zIndex: 10,
     padding: 8,
@@ -4103,9 +4107,10 @@ const styles = StyleSheet.create({
 
   // 오른쪽 끝을 헤더 알림 종 글리프 오른쪽 끝(실측 화면 오른쪽에서 21)에 맞춤(2026-11-02 사용자 요청).
   // 지구본·대륙 모드 공용 — 모드를 바꿔도 버튼이 튀지 않게 같이 옮긴다.
+  // 세로 중심 = 지구본/대륙 토글 중심 ≈21.25(regionBackBtn 주석 참고) → 높이 36이면 top 3.25. globeColorBtn도 같은 줄.
   globeSettingsBtn: {
     position: 'absolute',
-    top: 12,
+    top: 3.25,
     right: 21,
     width: 36,
     height: 36,
@@ -4127,7 +4132,7 @@ const styles = StyleSheet.create({
   // 활성화 색 변경 버튼 — 형태 전환 버튼(right:16) 왼쪽에 나란히 (36 + 10 gap)
   globeColorBtn: {
     position: 'absolute',
-    top: 12,
+    top: 3.25,
     right: 67, // globeSettingsBtn right 21 + 폭 36 + 틈 10
     width: 36,
     height: 36,
