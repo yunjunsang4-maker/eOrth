@@ -23,6 +23,7 @@ import Toast from '../components/Toast';
 import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
 import RequirementList from '../components/RequirementList';
+import { andFitText } from '../utils/fitText';
 import {
   SETTINGS_COLORS,
   SettingsHeader,
@@ -393,14 +394,30 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
             </SettingsField>
           </View>
 
-          {/* 저장 버튼 (하단 대형) — 설정 알약. 바뀐 게 없거나 저장 중이면 잠기고 흐려진다 */}
-          <SettingsPillButton
-            label={saving ? t('editProfile.checking') : t('editProfile.saveLarge')}
-            onPress={handleSave}
-            disabled={saving || !isDirty}
-            baseRim={COLORS.line}
-            style={s.saveLargeBtn}
-          />
+          {/* 저장 버튼 (하단 대형) — 2026-11 시안: 바뀐 게 있으면 보라 채움, 없으면 설정 알약(유리) 그대로 잠김.
+              저장 중엔 보라를 유지한 채 잠기고 흐려진다 */}
+          {isDirty ? (
+            <TouchableOpacity
+              style={[s.saveLargeBtn, s.saveActive, saving && s.saveActiveBusy]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={saving ? { disabled: true } : undefined}
+            >
+              <Text style={s.saveActiveText} {...andFitText}>
+                {saving ? t('editProfile.checking') : t('editProfile.saveLarge')}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <SettingsPillButton
+              label={t('editProfile.saveLarge')}
+              onPress={handleSave}
+              disabled
+              baseRim={COLORS.line}
+              style={[s.saveLargeBtn, s.saveIdle]}
+            />
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
       {/* 토스트 문구는 showToast(msg)가 넘긴 값을 그대로 쓴다(고정 문구 하드코딩 제거) */}
@@ -521,6 +538,24 @@ const s = StyleSheet.create({
   // 하단 저장 알약 — 소개 칸과 54 간격(시안, fieldGroup 20 + 34)
   saveLargeBtn: {
     marginTop: 34,
+  },
+  // 비활성 — 시안은 흐리지 않은 유리 알약(공용 disabled 0.4를 덮는다). 보라가 아니라는 것만으로 잠김이 읽힌다
+  saveIdle: {
+    opacity: 1,
+  },
+  // 활성 — 보라 채움(시안 #7C3AED), 공용 알약과 같은 높이 60·모서리 30
+  saveActive: {
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveActiveBusy: { opacity: 0.6 },
+  saveActiveText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   // 아이디 변경 잠금(2주) — 칸 전체를 흐리게
   fieldLocked: {
