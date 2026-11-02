@@ -29,7 +29,6 @@ const esES: DeepPartial<typeof es> = {
     puzzleImageLabel: 'Imagen del puzle',
     puzzleNeedPhoto: 'Elige una foto para llenar el puzle',
     puzzleAdjustTitle: 'Ajustar el área del puzle',
-    puzzlePickChip: 'Elegir foto del puzle',
     puzzleShareTitle: '¡Puzle completo!',
   },
 };

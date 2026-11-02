@@ -198,7 +198,6 @@ const zhHant: DeepPartial<typeof ko> = {
     puzzleFromAlbum: '相簿',
     puzzleAdjustTitle: '調整拼圖範圍',
     puzzleAdjustHint: '拖曳移動、雙指自由縮放，把要放進地圖的部分對好（點兩下回到最初）',
-    puzzlePickChip: '選擇拼圖照片',
     puzzleShareTitle: '拼圖完成！',
     puzzleShareCount: '{{total}} 個地區全部填滿了',
     puzzleShareAction: '分享',

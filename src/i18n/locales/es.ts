@@ -215,7 +215,6 @@ const es: WithPlurals<typeof ko> = {
     puzzleFromAlbum: 'Álbum',
     puzzleAdjustTitle: 'Ajustar el área del rompecabezas',
     puzzleAdjustHint: 'Arrastra para mover y pellizca para acercar o alejar hasta que la foto encaje en el mapa (doble toque para reiniciar)',
-    puzzlePickChip: 'Elegir foto del rompecabezas',
     puzzleShareTitle: '¡Rompecabezas completo!',
     puzzleShareCount: 'Llenaste las {{total}} regiones',
     puzzleShareAction: 'Compartir',

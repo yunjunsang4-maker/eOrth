@@ -216,7 +216,6 @@ const fr: WithPlurals<typeof ko> = {
     puzzleFromAlbum: 'Album',
     puzzleAdjustTitle: 'Ajuster la zone du puzzle',
     puzzleAdjustHint: 'Faites glisser pour déplacer et pincez pour zoomer, jusqu’à ce que la photo s’ajuste à la carte (appuyez deux fois pour réinitialiser)',
-    puzzlePickChip: 'Choisir la photo du puzzle',
     puzzleShareTitle: 'Puzzle terminé\u00A0!',
     puzzleShareCount: 'Vous avez rempli les {{total}} régions',
     puzzleShareAction: 'Partager',

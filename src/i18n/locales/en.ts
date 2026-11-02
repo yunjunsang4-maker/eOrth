@@ -708,7 +708,6 @@ const en = {
     puzzleFromAlbum: 'Album',
     puzzleAdjustTitle: 'Adjust puzzle area',
     puzzleAdjustHint: 'Drag to move and pinch to zoom freely, so the photo fits the map the way you want (double-tap to reset)',
-    puzzlePickChip: 'Pick a puzzle photo',
     puzzleShareTitle: 'Puzzle complete!',
     puzzleShareCount: 'All {{total}} regions filled',
     puzzleShareAction: 'Share',

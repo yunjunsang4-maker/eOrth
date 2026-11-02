@@ -199,7 +199,6 @@ const ja: DeepPartial<typeof ko> = {
     puzzleFromAlbum: 'アルバム',
     puzzleAdjustTitle: 'パズルの範囲を調整',
     puzzleAdjustHint: 'ドラッグで移動、2本指で自由に拡大・縮小して、地図に入れる部分を合わせてください（ダブルタップで最初に戻る）',
-    puzzlePickChip: 'パズルの写真を選ぶ',
     puzzleShareTitle: 'パズル完成！',
     puzzleShareCount: '{{total}}か所の地域をすべて埋めました',
     puzzleShareAction: 'シェアする',

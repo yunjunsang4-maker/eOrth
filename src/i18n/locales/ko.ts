@@ -723,7 +723,6 @@ const ko = {
     puzzleFromAlbum: '앨범',
     puzzleAdjustTitle: '퍼즐 범위 조정',
     puzzleAdjustHint: '드래그로 이동, 두 손가락으로 자유롭게 확대·축소해 지도에 담길 부분을 맞춰 주세요 (더블탭: 처음으로)',
-    puzzlePickChip: '퍼즐 사진 고르기',
     puzzleShareTitle: '퍼즐 완성!',
     puzzleShareCount: '{{total}}개 지역을 모두 채웠어요',
     puzzleShareAction: '공유하기',
