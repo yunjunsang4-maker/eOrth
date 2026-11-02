@@ -77,6 +77,7 @@ const APP_LOGO = require('../../assets/example-avatar.webp'); // 소셜 예시 �
 import { blocksToPlainText } from '../types/blogBlocks';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
+import SystemSheet, { NATIVE_SHEET } from '../components/SystemSheet';
 import Toast from '../components/Toast';
 import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
 import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
@@ -849,6 +850,22 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
+      {/* iOS 새 빌드: 게시물 상세 ⋯(PostDetail MenuSheet)와 같은 시스템 시트·같은 행(2026-11-02). 옛 빌드·안드로이드는 아래 기존 시트 */}
+      {NATIVE_SHEET ? (
+        <SystemSheet visible={menuVisible} onClose={() => setMenuVisible(false)}>
+          <View style={ss.menuSystemBody}>
+            {menuOptions.map((opt, i) => (
+              <React.Fragment key={opt.key}>
+                {i > 0 && <View style={ss.menuSystemDivider} />}
+                <TouchableOpacity style={ss.menuSystemRow} activeOpacity={0.7} onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}>
+                  {opt.icon}
+                  <Text style={[ss.menuSystemText, opt.danger && { color: '#FF3B30' }]}>{opt.label}</Text>
+                </TouchableOpacity>
+              </React.Fragment>
+            ))}
+          </View>
+        </SystemSheet>
+      ) : (
       <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
         <View style={{ flex: 1 }}>
           <Animated.View
@@ -882,6 +899,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
           </Animated.View>
         </View>
       </Modal>
+      )}
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
@@ -2385,6 +2403,11 @@ const ss = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 12,
   },
+  // iOS 시스템 시트 안 ⋯ 메뉴 — PostDetail MenuSheet(menuSheetS.systemBody·s.menuItem)와 같은 값
+  menuSystemBody: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
+  menuSystemRow: { flexDirection: 'row', alignItems: 'center', height: 52, paddingHorizontal: 4, gap: 12 },
+  menuSystemText: { fontSize: 15, color: '#FFFFFF', fontWeight: '600' },
+  menuSystemDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

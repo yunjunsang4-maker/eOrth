@@ -58,7 +58,7 @@ import AuthorAvatar from '../components/AuthorAvatar';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
 import { applyMention, ensureReplyPrefix, findActiveMention } from '../utils/mentions';
-import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 import { tap, warn } from '../utils/haptics';
 import TimeAgoText from '../components/TimeAgoText';
 import { validSpans, pickStyle, layoutRuns } from '../utils/richText';
@@ -210,6 +210,43 @@ export const AutoPillRing = ({ radius }: { radius?: number } = {}) => {
     </View>
   );
 };
+
+// ─── ⋯ 메뉴 바텀시트(2026-11-02) — 스냅 뷰어·블로그/앨범 상세가 같이 쓴다 ───
+// iOS 새 빌드: 시스템 시트(손잡이·배경·딤은 시스템). 옛 빌드·안드로이드: 아래에서 올라오는 Modal 시트.
+const MenuSheet = ({ visible, onClose, bottomInset, children }: {
+  visible: boolean; onClose: () => void; bottomInset: number; children: React.ReactNode;
+}) => {
+  if (NATIVE_SHEET) {
+    return (
+      <SystemSheet visible={visible} onClose={onClose}>
+        <View style={menuSheetS.systemBody}>{children}</View>
+      </SystemSheet>
+    );
+  }
+  return (
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <View style={menuSheetS.overlay} accessibilityViewIsModal>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <View style={[menuSheetS.sheet, { paddingBottom: Platform.OS === 'ios' ? 28 : bottomInset + 12 }]}>
+          <View style={menuSheetS.handle} />
+          {children}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+const menuSheetS = StyleSheet.create({
+  systemBody: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경은 전체 폭 유지) — 공유 시트(shareS.sheet)와 같은 룩
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
+    backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 12,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 8 },
+});
 
 // ─── 별점 링 배지 (시안 ring.svg + star.svg) ───
 // ring.svg의 C자는 **오른쪽**이 열려 있다. 90° 돌려 열린 쪽을 아래로 보내고 그 틈에 별을 놓는다.
@@ -791,7 +828,6 @@ function SnapStoryViewer({
   // 스토리 페이지 폭·높이 — 폭은 Stage(클램프), 높이는 실제 창. 스크롤 오프셋 계산에 들어간다.
   const SCREEN_W = useStageWidth();
   // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 오른쪽 끝에 붙는다 — 레터박스만큼 안쪽으로
-  const stageGutter = useStageGutter();
   const { height: SCREEN_H } = useWindowDimensions();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
@@ -1622,37 +1658,32 @@ function SnapStoryViewer({
         </View>
       </Reanimated.View>
 
-      {/* 메뉴 모달 */}
-      <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={[s.menuOverlay, { paddingRight: 20 + stageGutter }]} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
-          <View style={s.menuCard}>
-            <AutoPillRing radius={10} />
+      {/* ⋯ 메뉴 — 바텀시트(2026-11-02). iOS 새 빌드는 SystemSheet, 옛 빌드·안드로이드는 Modal 시트 */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)} bottomInset={insets.bottom}>
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
-              <LinkIcon size={13} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
+              <LinkIcon size={18} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             {isMyPost ? (
               <><View style={s.menuDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
-                <ArchiveIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
+                <ArchiveIcon size={18} color="#fff" /><Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
               </TouchableOpacity>
               <View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                <TrashIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
+                <TrashIcon size={18} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
               </TouchableOpacity></>
             ) : (
               <><View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={() => { setMenuVisible(false); setReportVisible(true); }} activeOpacity={0.7}>
                 {/* 스냅 변형 — 아이콘·크기는 본문 메뉴와 동일(링크 13·신고 14·차단 14) */}
-                <WarningIcon size={14} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
+                <WarningIcon size={18} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
               </TouchableOpacity>
               <View style={s.menuDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
-                <BlockIcon size={14} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
+                <BlockIcon size={18} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
               </TouchableOpacity></>
             )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      </MenuSheet>
 
       {/* 공유 시트 — 메이트 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
 {/* iOS 새 빌드는 시스템 바텀시트(SystemSheet), 옛 빌드·안드로이드는 기존 Modal 시트 */}
@@ -1712,7 +1743,6 @@ export default function PostDetailScreen() {
   // 네컷 미리보기 크기 계산용 — 폭은 Stage(클램프), 높이는 실제 창.
   const SCREEN_W = useStageWidth();
   // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 오른쪽 끝에 붙는다 — 레터박스만큼 안쪽으로
-  const stageGutter = useStageGutter();
   const { height: SCREEN_H, width: winW } = useWindowDimensions(); // winW: Modal(창 좌표) 안 팝오버 배치용
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
@@ -1958,9 +1988,6 @@ export default function PostDetailScreen() {
   // ⋯ 메뉴 카드 위치. blog는 헤더의 ⋯를 쓰므로 앵커 없음(=110 고정),
   // feed·cut은 날짜 알약 행으로 내려간 ⋯ 버튼의 아래쪽 y를 눌린 시점에 실측해 넣는다
   // (스타일에 110을 박아 두면 카드가 화면 위쪽 엉뚱한 곳에 뜬다).
-  const [menuAnchorY, setMenuAnchorY] = useState<number | null>(null);
-  const [menuCardH, setMenuCardH] = useState(0); // 카드 실측 높이 (0 = 아직 못 쟀음 → 추정치 사용)
-  const moreBtnRef = useRef<View>(null);
 
   // ── 아래 훅들은 원래 early return(!record) 뒤에 있었다(2026-09-29 이동) ──
   // record가 있다가 없어지면(삭제·숨김) 또는 없다가 생기면(딥링크 진입 후 피드 로드) 훅 개수가
@@ -2164,32 +2191,6 @@ export default function PostDetailScreen() {
   const isMyPost = record?.isMyPost === true;
   // 보관된 게시물이면 상세 ⋯ 메뉴를 '보관 해제 / 삭제'만 노출한다
   const isArchived = !!record?.id && archivedIds.includes(record.id);
-
-  // 날짜 알약 행의 ⋯ — 버튼이 실제로 어디 있는지 재서 메뉴 카드를 그 아래에 붙인다.
-  // measureInWindow는 비동기라 콜백 안에서 열어야 한다(먼저 열면 첫 프레임이 옛 위치로 그려진다).
-  // ⚠️ 저장하는 건 '최종 paddingTop'이 아니라 **앵커 y**다 — 카드 높이는 onLayout으로 나중에
-  //    도착하므로, 최종값을 굳혀 두면 실측이 와도 위치가 안 고쳐진다(렌더에서 매번 다시 계산).
-  const openMenuFromPill = () => {
-    const node = moreBtnRef.current;
-    // 레포 선례(MainCoachmark.tsx:158, BlogRecordScreen.tsx:1527)와 같은 가드 —
-    // ref가 있어도 measureInWindow가 없는 노드(플래튼된 뷰)가 있다.
-    if (!node || typeof node.measureInWindow !== 'function') { setMenuAnchorY(null); setMenuVisible(true); return; }
-    node.measureInWindow((_x, y, _w, h) => {
-      if (typeof y !== 'number' || typeof h !== 'number') { setMenuAnchorY(null); setMenuVisible(true); return; }
-      setMenuAnchorY(y + h);
-      setMenuVisible(true);
-    });
-  };
-
-  // 메뉴 카드 높이 — 실측(onLayout)이 오기 전 첫 프레임은 **렌더 조건과 같은 술어로** 센 항목 수로 추정한다.
-  // 예전엔 320을 박아 뒀는데, 항목이 4개뿐인 타인 글에서도 320을 빼는 바람에 클램프가 거의 항상
-  // 발동해 카드가 버튼보다 위에 떴다. 카드가 버튼 위로 올라가는 건 버튼이 화면 하단일 때만이어야 한다.
-  // 공통 행은 '링크 복사' 1개뿐이다 — 공유 행은 2026-09-20 시안에서 빠졌다(액션 행과 중복).
-  const menuItemCount = isArchived ? 2 : isMyPost ? 5 + (viewType === 'blog' ? 1 : 0) : 3; // 타인 글은 링크·신고·차단 3개 고정(네이버 내보내기는 내 글만)
-  const menuCardEstH = menuItemCount * 28 + (menuItemCount - 1) * 1; // 행 28 × n + 구분선 1 × (n-1). 시안 SVG 130×88 = 3행(28×3+2)
-  const menuPaddingTop = menuAnchorY == null
-    ? 110 // blog 헤더 ⋯ (앵커 없음) — 기존 값 유지
-    : Math.max(0, Math.min(menuAnchorY + 6, SCREEN_H - (menuCardH || menuCardEstH) - insets.bottom - 8));
 
   // 입력바 높이 = paddingTop 8 + 아바타 42 + paddingBottom. 그라데이션 136에서 이걸 뺀 만큼이
   // 래퍼 밖으로 넘칠 양이고, 그 값을 래퍼가 paddingTop으로 품는다(아래 렌더 주석 참조).
@@ -2465,7 +2466,7 @@ export default function PostDetailScreen() {
             )}
             {/* feed·cut의 ⋯는 아래 날짜 알약 행으로 내려갔다 — 헤더 ⋯는 blog·album만 */}
             {!isFeedLayout && !record.isExample && (
-              <HeaderGlassButton onPress={() => { setMenuAnchorY(null); setMenuVisible(true); }} style={s.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
+              <HeaderGlassButton onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityLabel={t('postDetail.menuA11y')}>
                 <Text style={s.menuDots}>···</Text>
               </HeaderGlassButton>
             )}
@@ -2756,11 +2757,10 @@ export default function PostDetailScreen() {
                   </TouchableOpacity>
                 )}
               </View>
-              {/* ⋯ 메뉴는 iOS도 시스템 메뉴 대신 기존 메뉴 모달(사용자 결정 2026-10-31 — 시스템 메뉴는 크기를 못 맞춘다) */}
+              {/* ⋯ 메뉴는 UIMenu 대신 앱 바텀시트(MenuSheet) — 2026-10-31 시스템 메뉴 철회, 2026-11-02 시트로 */}
               {!record.isExample && (
                 <TouchableOpacity
-                  ref={moreBtnRef}
-                  onPress={openMenuFromPill}
+                  onPress={() => setMenuVisible(true)}
                   style={s.morePill}
                   accessibilityRole="button"
                   accessibilityLabel={t('postDetail.menuA11y')}
@@ -3105,39 +3105,18 @@ export default function PostDetailScreen() {
       </KeyboardAvoidingView>
 
 
-      {/* ── 메뉴 모달 ── */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent navigationBarTranslucent
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <TouchableOpacity
-          style={[s.menuOverlay, { paddingRight: 20 + stageGutter, paddingTop: menuPaddingTop }]}
-          accessibilityViewIsModal
-          activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
-        >
-          <View
-            style={s.menuCard}
-            onLayout={(e) => {
-              // 실측 높이가 오면 추정치를 대체한다 — 같은 값으로 setState 하면 무한 루프라 1px 여유를 둔다
-              const h = e.nativeEvent.layout.height;
-              if (h > 0 && Math.abs(h - menuCardH) > 1) setMenuCardH(h);
-            }}
-          >
-            <AutoPillRing radius={10} />
+      {/* ── ⋯ 메뉴 — 바텀시트(2026-11-02). 헤더 ⋯·날짜 줄 ⋯ 둘 다 여기로 ── */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)} bottomInset={insets.bottom}>
             {isArchived ? (
               /* 보관된 게시물 — 보관 해제 / 삭제만 노출 */
               <>
                 <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={14} color="#fff" />
+                  <ArchiveIcon size={18} color="#fff" />
                   <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                  <TrashIcon size={14} color="#FF3B30" />
+                  <TrashIcon size={18} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
                 </TouchableOpacity>
               </>
@@ -3145,7 +3124,7 @@ export default function PostDetailScreen() {
             <>
             {/* 공통 메뉴 — 공유 행은 뺐다. 액션 행에 종이비행기 공유가 이미 있어 중복이었다(2026-09-20 시안) */}
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
-              <LinkIcon size={13} color="#fff" />
+              <LinkIcon size={18} color="#fff" />
               <Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
 
@@ -3153,8 +3132,8 @@ export default function PostDetailScreen() {
               <>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleExportToNaver} activeOpacity={0.7}>
-                  <View style={{ width: 14, height: 14, borderRadius: 3, backgroundColor: '#03C75A', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '900' }}>N</Text>
+                  <View style={{ width: 18, height: 18, borderRadius: 4, backgroundColor: '#03C75A', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>N</Text>
                   </View>
                   <Text style={s.menuItemText}>{t('postDetail.naverExportTitle')}</Text>
                 </TouchableOpacity>
@@ -3166,13 +3145,13 @@ export default function PostDetailScreen() {
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleToggleVisibility} activeOpacity={0.7}>
                   {record.visibility === 'private'
-                    ? <GlobeIcon size={14} color="#fff" />
-                    : <LockClosedIcon size={14} color="#fff" />}
+                    ? <GlobeIcon size={18} color="#fff" />
+                    : <LockClosedIcon size={18} color="#fff" />}
                   <Text style={s.menuItemText}>{t(record.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <ArchiveIcon size={14} color="#fff" />
+                  <ArchiveIcon size={18} color="#fff" />
                   <Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -3187,12 +3166,12 @@ export default function PostDetailScreen() {
                     navigation.navigate('NewRecord', { record: rawRecord });
                   }
                 }} activeOpacity={0.7}>
-                  <PencilIcon size={14} color="#fff" />
+                  <PencilIcon size={18} color="#fff" />
                   <Text style={s.menuItemText}>{t('postDetail.editAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                  <TrashIcon size={14} color="#FF3B30" />
+                  <TrashIcon size={18} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
                 </TouchableOpacity>
               </>
@@ -3201,22 +3180,20 @@ export default function PostDetailScreen() {
                 {/* 타인 글 — 시안 3행: 링크 복사 / 신고하기 / 차단하기 */}
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleReport} activeOpacity={0.7}>
-                  <WarningIcon size={14} color="#FF3B30" />
+                  <WarningIcon size={18} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
                 {/* 수정 6: 타인 게시물 차단 — SocialScreen과 동일 패턴. 아이콘은 사람이 아니라 금지 표식(BlockIcon) */}
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
-                  <BlockIcon size={14} color="#FF3B30" />
+                  <BlockIcon size={18} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
                 </TouchableOpacity>
               </>
             )}
             </>
             )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      </MenuSheet>
 
       {/* ── 신고 모달 ── */}
       <ReportModal
@@ -3709,23 +3686,12 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
     zIndex: 5,
   },
 
-  // ── 메뉴 모달 ──
-  menuOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-start', alignItems: 'flex-end',
-    paddingTop: 110, paddingRight: 20,
-  },
-  // ⋯ 메뉴 카드 — 2026-09-20 시안 SVG "Rectangle 240652657"(130×88, rx 10, 흰 10%, 테두리 없음). 그림자는 반투명이라 뺐다
-  menuCard: {
-    minWidth: 130, backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10, // overflow:'hidden' 금지 — AutoPillRing(대각 그라데이션 링)이 잘린다. 행 배경이 없어 클립이 필요 없다
-  },
-  // 행 높이 28 — 시안 88 ÷ 3행. 터치 최소치(44)보다 작지만 시안 우선(menuCardEstH도 같은 28을 쓴다)
+  // ── ⋯ 메뉴 바텀시트 행(MenuSheet 안) — 2026-11-02 팝업 카드(행 28)에서 시트 행(52)으로 ──
   menuItem: {
     flexDirection: 'row', alignItems: 'center',
-    height: 28, paddingLeft: 12, paddingRight: 12, gap: 8,
+    height: 52, paddingHorizontal: 4, gap: 12,
   },
-  menuItemText: { fontSize: 13, color: C.white, fontWeight: '600' },
+  menuItemText: { fontSize: 15, color: C.white, fontWeight: '600' },
   menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
   // 예전엔 6px 두꺼운 띠였는데 시안이 모든 행 사이를 같은 1px로 쓴다 → menuDivider와 같은 값.
   // 마크업의 '섹션 경계' 의미만 남기려고 이름은 유지한다.
