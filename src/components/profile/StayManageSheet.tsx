@@ -1,4 +1,4 @@
-// 프로필 위치 표시("○○ 체류 중")를 탭하면 뜨는 체류 관리 시트 — 카드 보기 / 체류 종료
+// 프로필 위치 표시("○○ 체류 중")를 탭하면 뜨는 체류 관리 시트 — (일시정지면) 체류 재개 / 카드 보기 / 체류 종료
 import React from 'react';
 import { Modal, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '../../ui/Text';
@@ -7,14 +7,21 @@ import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../../utils/stage';
 import SystemSheet, { NATIVE_SHEET } from '../SystemSheet';
 
-export function StayManageSheet({ visible, onEnd, onOpenCard, onClose }: {
-  visible: boolean; onEnd: () => void; onOpenCard: () => void; onClose: () => void;
+export function StayManageSheet({ visible, paused, onResume, onEnd, onOpenCard, onClose }: {
+  visible: boolean; paused?: boolean; onResume?: () => void; onEnd: () => void; onOpenCard: () => void; onClose: () => void;
 }) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   // 시트 내용 — iOS 시스템 시트(SystemSheet)와 기존 Modal 시트가 함께 쓴다
   const content = (
-    <>          <TouchableOpacity style={s.row} onPress={onOpenCard} activeOpacity={0.8}>
+    <>
+          {/* 일시정지(귀국·제3국 감지·감지 꺼짐 등) 체류를 손으로 되살리는 유일한 수단 — 맨 위 */}
+          {paused && onResume && (
+            <TouchableOpacity style={s.row} onPress={onResume} activeOpacity={0.8}>
+              <Text style={s.txt}>{t('stay.resume')}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={s.row} onPress={onOpenCard} activeOpacity={0.8}>
             <Text style={s.txt}>{t('stay.openCard')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.row} onPress={onEnd} activeOpacity={0.8}>

@@ -60,9 +60,10 @@ export default function SnapDetector() {
   const { snapEnabled, arrivalDetect, notifPrefs } = useNotifSettings();
   const { activeStayGroup } = useActiveStay();
 
-  // 진행 중(active) 체류국 ISO2 코드 — 체류국은 해외로 치지 않는다
+  // 진행 중·일시정지(active/paused) 체류국 ISO2 코드 — 체류국은 해외로 치지 않는다.
+  // paused 포함: 일시정지 중 체류국으로 복귀해도 '해외 도착'으로 스냅을 권하지 않는다(ArrivalNotifier와 동일).
   const stayCountryCode = useMemo(() => {
-    if (activeStayGroup?.stay?.status !== 'active') return null;
+    if (!activeStayGroup?.stay || activeStayGroup.stay.status === 'ended') return null;
     const name = activeStayGroup.countryName;
     if (!name) return null;
     return COUNTRIES.find((c) => c.name === name)?.term.split(' ')[0].toUpperCase() ?? null;

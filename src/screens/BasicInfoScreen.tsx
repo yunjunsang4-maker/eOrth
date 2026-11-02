@@ -254,6 +254,10 @@ export default function BasicInfoScreen({ navigation }: Props) {
     // 나라를 바꾸면 이전 지역이 함께 정리된다 — 이 화면이 따로 비울 필요가 없다.
     setHomeCountryCode(codeOf(c));
     setSelectedCountry(c);
+    // 거주국은 장기체류 대상이 아니다 — 체류국을 먼저 고른 뒤 거주국을 그 나라로 바꾸면 선택을 비운다
+    // (체류국 목록은 이미 거주국을 뺀다; startStay도 거주국이면 무시한다). 위치 자동 입력은 await 뒤에
+    // 이 함수를 부르므로 낡은 stayCountry를 읽지 않게 함수형 갱신으로 비교한다.
+    setStayCountry((s) => (s && codeOf(s) === codeOf(c) ? null : s));
 
     // 연령 확인 체크는 여기서 건드리지 않는다 — ageConfirmed 가 confirmedAge === minAge
     // 파생값이라 기준 나이가 달라지면 저절로 풀린다(위 선언부 주석 참고).

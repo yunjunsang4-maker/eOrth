@@ -23,10 +23,12 @@ import {
   Linking,
   LayoutAnimation,
   UIManager,
+  AppState,
 } from 'react-native';
 import { AndroidDesignText, Text, TextInput } from '../ui/Text';
 import type { ImageSourcePropType, StyleProp, ViewStyle, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -2111,27 +2113,45 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const lateFonts = useLateFontsLoaded();
   const nameFontStyle = handleFontStyle(isPremium ? handleFont : null, lateFonts);
 
-  // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
+  // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 앱 실행 시 + 포그라운드 복귀마다.
   // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 도착 감지를 꺼진 것으로 표시하므로
   // 실제 동작도 일치시키고, 꺼질 때는 '여행 중' 표시를 거주국으로 되돌린다.
+  // 감지 실패(countryCode null)는 둘로 나눈다:
+  //  · 위치 권한 없음(영구) → 거주국으로. 안 그러면 권한을 끈 뒤 '여행 중' 표시가 고착된다.
+  //  · 그 외(오프라인 역지오코딩 실패·측위 실패 등 일시적) → 기존 값 유지. 거주국으로 덮으면
+  //    recordStore 도착 감지 effect가 '귀국'으로 읽어 체류를 일시정지하고 여행 세션을 끊는다.
   useEffect(() => {
     if (!arrivalDetect || !notifPrefs.master) {
       setCurrentVisitedCountryCode(homeCountryCode);
       return;
     }
     let cancelled = false;
-    (async () => {
+    let lastAt = 0; // 포그라운드 연타로 위치 조회가 난타되지 않게 최소 간격만 둔다
+    const check = async () => {
+      const now = Date.now();
+      if (now - lastAt < 60 * 1000) return;
+      lastAt = now;
       const { countryCode } = await detectCurrentCountry();
       if (cancelled) return;
-      setCurrentVisitedCountryCode(countryCode ? countryCode.toUpperCase() : homeCountryCode);
-    })();
-    return () => { cancelled = true; };
+      if (countryCode) {
+        setCurrentVisitedCountryCode(countryCode.toUpperCase());
+        return;
+      }
+      const perm = await Location.getForegroundPermissionsAsync().catch(() => null);
+      // OS 위치 서비스 자체가 꺼진 것도 영구 상태로 친다 — 권한은 granted라 위 판정만으론 못 잡는다
+      const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (cancelled) return;
+      if ((perm && perm.status !== 'granted') || !servicesOn) setCurrentVisitedCountryCode(homeCountryCode);
+    };
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
+    check(); // 앱 실행(마운트) 시 1회
+    return () => { cancelled = true; sub.remove(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
   const { records, tripGroups, archivedIds, stayPromptCountry } = useRecordData();
   const { activeStayGroup } = useActiveStay();
-  const { mergeTripGroups, refreshNeighbors, refreshMyPostCounts, syncMyRecords, startStay, endStay, setStayPromptCountry } = useRecordActions();
+  const { mergeTripGroups, refreshNeighbors, refreshMyPostCounts, syncMyRecords, startStay, endStay, resumeStay, setStayPromptCountry } = useRecordActions();
   // 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사)
   const { label: dnaLabel, isComplete: dnaComplete } = useTravelDna();
   // 미완료일 때만 칩을 은은하게 맥동시켜 검사를 유도한다 — 온보딩에서 축약 설문을 뺐으므로
@@ -2542,7 +2562,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             <Text style={[styles.userName, nameFontStyle]}>{profileName}</Text>
             <View style={[styles.statusRow, Platform.OS === 'android' && styles.statusRowWrap]}>
               {/* 거주국·체류국 — 길어지면 먼저 줄어들어 오른쪽 DNA 칩이 밀려나지 않게 한다 */}
-              <TouchableOpacity style={styles.locationTap} disabled={!stayActive} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
+              {/* 일시정지 체류도 탭 가능 — 시트에서 재개할 수 있어야 한다(표시는 거주국/여행 중 그대로) */}
+              <TouchableOpacity style={styles.locationTap} disabled={!activeStayGroup} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
                 <Text style={styles.userLocation} numberOfLines={1}>
                   {(() => {
                     const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
@@ -2808,6 +2829,12 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       {/* 체류 관리 시트 — 위치 표시 탭 */}
       <StayManageSheet
         visible={staySheetVisible}
+        paused={activeStayGroup?.stay?.status === 'paused'}
+        onResume={() => {
+          setStaySheetVisible(false);
+          // 재개 토스트(stay.resumeToast)는 resumeStay가 낸다 — 도착 감지 재개와 같은 경로
+          if (activeStayGroup) resumeStay(activeStayGroup.id);
+        }}
         onOpenCard={() => {
           setStaySheetVisible(false);
           const thumb = displayTrips.find((tr) => tr.id === activeStayGroup?.id);

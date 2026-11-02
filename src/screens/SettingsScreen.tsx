@@ -261,7 +261,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
   const { records } = useRecordData();
   const { activeStayGroup } = useActiveStay();
-  const { startStay, endStay } = useRecordActions();
+  const { startStay, endStay, resumeStay } = useRecordActions();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
   const [fontModalVisible, setFontModalVisible] = useState(false);
@@ -302,6 +302,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     setCountrySearch(''); setPendingCountryCode(null); setCountryStep('pick'); setCountryModalVisible(false);
   };
   const confirmCountryChange = () => {
+    // 거주국은 장기체류 대상이 아니다 — 진행 중/일시정지 체류국을 거주국으로 삼으면 그 체류를 먼저 끝낸다
+    // (안 끝내면 체류국=거주국이 되어 귀국·일시정지 판정이 뒤엉킨다). 주의 단계에 안내 한 줄이 뜬다.
+    if (pendingCountryCode && stayEndsOnChange && activeStayGroup) endStay(activeStayGroup.id);
     if (pendingCountryCode) setHomeCountryCode(pendingCountryCode);
     closeCountryModal();
   };
@@ -323,6 +326,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     () => (pendingCountryCode ? COUNTRIES.find((c) => countryCodeOf(c) === pendingCountryCode) ?? null : null),
     [pendingCountryCode],
   );
+  // 바꿀 거주국이 진행 중/일시정지 체류국이면 확인 시 그 체류가 종료된다(activeStayGroup은 ended 제외)
+  const stayEndsOnChange = !!activeStayGroup && !!pendingCountry && activeStayGroup.countryName === pendingCountry.name;
 
   // 거주 국가 팝업 목록 — 거주국을 맨 앞으로(COUNTRIES는 '한국인의 여행 빈도순'이라 해외 사용자는 자기 나라가
   // 한참 아래였다), 한글 이름과 term(코드+영문명) 양쪽으로 검색 — 'kr'·'korea'·'대한'이 모두 걸린다(CountryPickerModal과 같은 규칙)
@@ -422,11 +427,16 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const handleStayPress = () => {
     if (activeStayGroup) {
       warn(); // 되돌릴 수 없는 동작을 묻는 중
+      const paused = activeStayGroup.stay?.status === 'paused';
       Alert.alert(
-        t('stay.alreadyActiveTitle'),
-        t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
+        t(paused ? 'stay.pausedTitle' : 'stay.alreadyActiveTitle'),
+        t(paused ? 'stay.pausedMsg' : 'stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
         [
           { text: t('common.cancel'), style: 'cancel' },
+          // 일시정지 체류는 여기서도 재개할 수 있다(재개 토스트는 resumeStay가 낸다)
+          ...(activeStayGroup.stay?.status === 'paused'
+            ? [{ text: t('stay.resume'), onPress: () => resumeStay(activeStayGroup.id) }]
+            : []),
           { text: t('stay.endStay'), style: 'destructive', onPress: () => endStay(activeStayGroup.id) },
         ],
       );
@@ -721,6 +731,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               <Text style={st.residenceChangeText}>{pendingCountry?.flag ?? ''}</Text>
               <Text style={[st.residenceChangeText, st.residenceChangeTo]}>{pendingCountry?.name ?? pendingCountryCode}</Text>
             </View>
+            {stayEndsOnChange && (
+              <Text style={st.residenceStayNote}>{t('stay.homeEndsStay', { country: activeStayGroup?.countryName ?? '' })}</Text>
+            )}
             <SettingsPillButton label={t('common.confirm')} onPress={confirmCountryChange} style={st.residenceConfirmBtn} />
           </>
         ) : (
@@ -1004,6 +1017,7 @@ const st = StyleSheet.create({
   residenceChangeArrow: { fontSize: 16, color: COLORS.text50, marginHorizontal: 4 },
   residenceChangeTo: { color: COLORS.label },
   residenceConfirmBtn: { marginTop: 20 },
+  residenceStayNote: { marginTop: 12, fontSize: 13, lineHeight: 19, color: COLORS.text50, textAlign: 'center' },
   helpLineDot: { fontSize: 13, lineHeight: 19, color: COLORS.text50 },
   helpLineText: { flex: 1, fontSize: 13, lineHeight: 19, color: COLORS.text50 },
 });

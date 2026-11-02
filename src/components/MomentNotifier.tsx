@@ -29,9 +29,9 @@ export default function MomentNotifier() {
   const checkingRef = useRef(false); // check() 병렬 실행 방지
   const armedRef = useRef(false); // 도착 순간 1회 건너뛴 뒤 게시 준비됨(도착 알림과 겹침 방지)
 
-  // 진행 중 체류국은 해외로 치지 않는다 (SnapDetector와 동일 규칙)
+  // 진행 중·일시정지 체류국은 해외로 치지 않는다 (SnapDetector와 동일 규칙)
   const stayCountryCode = useMemo(() => {
-    if (activeStayGroup?.stay?.status !== 'active') return null;
+    if (!activeStayGroup?.stay || activeStayGroup.stay.status === 'ended') return null;
     return countryNameToCode(activeStayGroup.countryName);
   }, [activeStayGroup]);
 

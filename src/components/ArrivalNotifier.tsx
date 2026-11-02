@@ -52,9 +52,10 @@ export default function ArrivalNotifier() {
   const { arrivalDetect, notifPrefs } = useNotifSettings();
   const { activeStayGroup } = useActiveStay();
 
-  // 진행 중 체류국은 해외로 치지 않는다 (다른 감지기와 동일 규칙)
+  // 진행 중·일시정지 체류국은 해외로 치지 않는다 (다른 감지기와 동일 규칙 — ReturnDetector만 예외로 active 전용).
+  // paused도 포함하는 이유: 제3국 여행·귀국 뒤 체류국으로 돌아온 것을 '도착'으로 알리지 않기 위해서다.
   const stayCountryCode = useMemo(() => {
-    if (activeStayGroup?.stay?.status !== 'active') return null;
+    if (!activeStayGroup?.stay || activeStayGroup.stay.status === 'ended') return null;
     return countryNameToCode(activeStayGroup.countryName);
   }, [activeStayGroup]);
 

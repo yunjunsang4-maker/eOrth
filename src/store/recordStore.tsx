@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { AppState, View } from 'react-native';
+import { Alert, AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import { findWronglyImportedKpRecords } from '../utils/kpImportCleanup';
 import { pickRetroDailySnapIds, shouldRunRetroDaily, pickStrayDailySnapIds, pickCardsEmptiedByDetach, restoreRetroDailyDone, planRetroDetach } from '../utils/snapStrip';
@@ -55,7 +55,7 @@ import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
 import type { PhotoFrame } from '../utils/photoFrame';
 import type { StayType, StayStatus } from '../utils/stayMachine';
-import { decideOnVisitedChange, type StaySnapshot } from '../utils/stayMachine';
+import { decideOnVisitedChange, stayCoversDate, isAmbiguousForPausedStay, type StaySnapshot } from '../utils/stayMachine';
 import {
   requestNeighbor as apiRequestNeighbor,
   cancelNeighborRequest as apiCancelNeighborRequest,
@@ -231,7 +231,8 @@ export interface TripGroupStayMeta {
   status: StayStatus;
   startedAt: string;    // YYYY.MM.DD (체류 시작일)
   endedAt?: string;     // 종료일 (미종료면 없음)
-  lastActiveAt: number; // 마지막으로 체류국에 있던 시각(ms) — 60일 넛지 판정용
+  lastActiveAt: number; // 마지막으로 체류국에 있던 시각(ms) — 시작·재개·체류국 실시간 기록·일시정지(떠남 감지) 때 now로 갱신.
+                        // 60일 넛지(shouldNudgeEnd)·일시정지 뒤 애매 기록 판정(isAmbiguousForPausedStay)이 쓴다
 }
 
 export interface TripGroup {
@@ -416,6 +417,8 @@ interface RecordContextType {
   activeStayGroup: TripGroup | null;
   startStay: (countryName: string, type: StayType) => void;
   endStay: (groupId: string) => void;
+  // 일시정지 체류 수동 재개(프로필·설정) — 도착 감지의 체류국 복귀 재개와 같은 처리
+  resumeStay: (groupId: string) => void;
   absorbIntoStay: (recordId: string, recDate?: string) => void;
   // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
   stayPromptCountry: string | null;
@@ -750,6 +753,73 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return start - REALTIME_MARGIN_MS <= now && now <= end + REALTIME_MARGIN_MS;
   };
 
+  // ─── 일시정지 체류의 애매한 기록 — 사용자에게 묻기(QA F1) ───
+  // 호출 시점에 기록은 이미 원래 경로(날짜 매칭/세션)로 다른 카드에 붙어 있다. 답에 따라:
+  //  · [체류 기록이에요] → 그 카드들에서 떼어(detachRecordsFromTripGroups — 비는 카드는 폐기되고, 이번 실행에
+  //    만든 카드라 서버에 올라갔다면 push diff의 `gone`이 tombstone한다) 체류 카드로 옮긴다. 기록이 '지금'을
+  //    포함하면 체류도 재개한다. lastActiveAt은 기록 마지막 날로 당겨 올린다 — 사용자가 그날까지 체류국에
+  //    있었다고 확인했으니, 같은 기간의 다음 회고 기록에서 같은 질문이 반복되지 않게.
+  //  · [아니요, 체류는 끝났어요] → endStay(되돌릴 수 없다 — 그래서 질문 자체를 '체류가 아직 진행 중인가'로 묻고
+  //    종료를 문구에 밝힌다, QA M2). 기록은 날짜 매칭 결과에 그대로 남는다. ended가 되면 다시 묻지 않는다.
+  //  · 답할 때 체류가 이미 ended(다른 기기 종료 pull·넛지 종료 등)거나 지워졌으면 둘 다 아무것도 안 한다(QA L1) —
+  //    ended 체류 카드에 기간 밖 기록을 넣거나, endStay를 다시 불러 endedAt을 재계산하지 않게.
+  // 큐(ref): 한 번에 여러 기록이 저장돼도(같은 틱 연속 addRecord) 질문은 하나, 답은 대기 중인 기록 전부에 적용한다.
+  // 질문이 떠 있는 동안 생긴 애매 기록도 여기에 합류한다. 동시 체류는 1개라 체류 id가 다를 일은 없지만,
+  // 다르면 그 기록은 묻지 않고 날짜 매칭 결과에 그대로 둔다.
+  // Alert는 한 박자 늦게 띄운다 — 저장 직후 작성 화면이 닫히는(goBack) 전환과 겹치면 iOS에서 present가 씹힐 수 있고,
+  // 같은 틱의 연속 저장이 먼저 큐에 다 들어오게 하려는 것이다.
+  // 액션은 latestActionsRef로 부른다 — 답은 나중에 오므로 이 렌더의 클로저(낡은 records)를 쓰지 않는다.
+  const pausedStayAskRef = useRef<{ stayId: string; recIds: string[] } | null>(null);
+  const askPausedStay = (stayG: TripGroup, recId: string) => {
+    const q = pausedStayAskRef.current;
+    if (q) {
+      if (q.stayId === stayG.id && !q.recIds.includes(recId)) q.recIds.push(recId);
+      return;
+    }
+    pausedStayAskRef.current = { stayId: stayG.id, recIds: [recId] };
+    const country = stayG.countryName ?? '';
+    const take = () => { const cur = pausedStayAskRef.current; pausedStayAskRef.current = null; return cur; };
+    // 답 시점에 아직 살아 있는(ended 아님) 체류 카드 — 없으면 답은 no-op
+    const liveStay = (stayId: string) =>
+      tripGroupsRef.current.find((g) => g.id === stayId && !!g.stay && g.stay.status !== 'ended');
+    const moveToStay = () => {
+      const cur = take();
+      if (!cur) return;
+      const stay = liveStay(cur.stayId);
+      // 질문 사이에 지워진 기록은 옮기지 않는다(유령 id 방지). 체류 카드가 사라졌거나 ended면 기록은 지금 카드에 둔다.
+      const recs = cur.recIds
+        .map((id) => recordsLiveRef.current.find((r) => r.id === id))
+        .filter(Boolean) as TravelRecord[];
+      if (!stay || recs.length === 0) return;
+      const ids = recs.map((r) => r.id);
+      detachRecordsFromTripGroups(ids);
+      const lastDay = Math.max(...recs.map((r) => parseRecDate(r.endDate) ?? parseRecDate(r.startDate) ?? parseRecDate(r.date) ?? 0));
+      const grow = (list: TripGroup[]) => list.map((g) =>
+        g.id === cur.stayId && g.stay
+          ? { ...g, records: [...g.records, ...ids.filter((id) => !g.records.includes(id))], coverRecordId: g.coverRecordId || ids[0],
+              stay: { ...g.stay, lastActiveAt: Math.max(g.stay.lastActiveAt, lastDay) } }
+          : g);
+      setTripGroups((prev) => grow(prev));
+      tripGroupsRef.current = grow(tripGroupsRef.current);
+      if (recs.some((r) => coversNow(r))) latestActionsRef.current.resumeStay(cur.stayId);
+    };
+    const separateTrip = () => {
+      const cur = take();
+      if (cur && liveStay(cur.stayId)) latestActionsRef.current.endStay(cur.stayId);
+    };
+    setTimeout(() => {
+      Alert.alert(
+        i18n.t('stay.askPausedTitle', { country }),
+        i18n.t('stay.askPausedMsg', { country }),
+        [
+          { text: i18n.t('stay.askPausedStay'), onPress: moveToStay },
+          { text: i18n.t('stay.askPausedTrip'), onPress: separateTrip },
+        ],
+        { cancelable: false }, // 안드로이드 뒤로·바깥 탭으로 닫히면 큐가 영영 안 비어 이후 질문이 막힌다
+      );
+    }, 600);
+  };
+
   // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우).
   // 국내(거주국가) 기록은 지역(시/도)까지 같아야 같은 카드 — "제주 여행"과
   // 서울 일상 기록이 시기가 가깝다고 한 카드로 묶이는 것 방지.
@@ -759,7 +829,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   //    `tripGroupsRef.current`로 읽는다. 대신 mutate할 때마다 ref도 동기 갱신해야 한다 —
   //    연속 호출(drainPendingLinks 루프)이 앞선 호출의 결과를 못 보면 같은 카드를 두 장 만든다.
   //    같은 이유로 `detachRecordsFromTripGroups`도 ref를 함께 민다(그 함수 주석 참고).
-  const linkByDate = (rec: TravelRecord): string | null => {
+  //
+  // opts.askPausedStay: 일시정지 체류의 애매한 기록(isAmbiguousForPausedStay)이면 사용자에게 묻는다.
+  //   사용자가 방금 저장한 기록 경로(linkRecordToTrip의 회고 분기, 예약 발행 effect 제외)만 켠다. drainPendingLinks(다른 기기 기록
+  //   편입)는 끈다 — 남의 기기에서 쓴 기록으로 이 기기에 질문을 띄우지 않고, 체류에 붙이지 않은 채 날짜 매칭만 한다.
+  const linkByDate = (rec: TravelRecord, opts?: { askPausedStay?: boolean }): string | null => {
     // 일상(거주지) 스냅은 여행이 아니다 — 카드에 넣지 않는다. 가드가 여기 있어야 하는 이유:
     // linkRecordToTrip뿐 아니라 drainPendingLinks(다른 기기에서 받은 기록의 편입)도 이 함수를
     // 직접 부른다. linkRecordToTrip에만 두면 기기 B가 A의 일상 스냅으로 카드를 만들어 A로 역류시킨다(QA F1).
@@ -774,7 +848,41 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ? (normalizeHomeRegion(homeCountryCode, rec.regionName)?.name ?? rec.regionName ?? null)
       : null;
 
+    // 체류 기간 안의 체류국 기록 → 체류 카드 (아래 7일 근접 매칭보다 먼저).
+    // 회고 작성·다른 기기에서 받은 기록은 linkRecordToTrip의 실시간 체류 합류를 타지 않는데,
+    // 아래 매칭은 멤버 0개 카드(갓 시작한 체류)를 건너뛰고 멤버와 7일 넘게 떨어지면 새 카드를 만들어
+    // 체류 기간이 여행 카드 여러 장으로 쪼개진다. ended 체류도 기간 안이면 대상(종료 후 회고 작성).
+    // lastActiveAt·startedAt은 건드리지 않는다 — 과거 날짜 기록은 '지금 체류국에 있다'는 신호가 아니고,
+    // 기간 판정이 이미 startedAt 안쪽만 받는다(시작일 당기기는 실시간 합류·absorbIntoStay의 몫).
+    let ambiguousStayId: string | null = null;
+    if (!isDomestic) {
+      const nowMs = Date.now();
+      const stayG = tripGroupsRef.current.find(
+        (g) => !!g.stay && g.countryName === country && stayCoversDate(g.stay, recStart, nowMs)
+      );
+      if (stayG && !isAmbiguousForPausedStay(stayG.stay!, recStart, nowMs)) {
+        if (!stayG.records.includes(rec.id)) {
+          const grow = (list: TripGroup[]) => list.map((g) =>
+            g.id === stayG.id ? { ...g, records: [...g.records, rec.id], coverRecordId: g.coverRecordId || rec.id } : g);
+          setTripGroups((prev) => grow(prev));
+          tripGroupsRef.current = grow(tripGroupsRef.current);
+        }
+        return stayG.id;
+      }
+      // 일시정지 체류 + 마지막 체류 활동일 이후 기록 = 애매(QA F1: 7월 귀국 후 방치된 일본 체류가 11월에 쓴
+      // "10월 오사카" 회고를 흡수). 체류 카드에 조용히 붙이지 않고 아래 날짜 매칭으로 보낸 뒤 묻는다.
+      if (stayG) {
+        ambiguousStayId = stayG.id;
+        if (opts?.askPausedStay) askPausedStay(stayG, rec.id);
+      }
+    }
+
     const match = tripGroupsRef.current.find((g) => {
+      // 애매해서 비켜 간 체류 카드는 7일 근접으로도 붙이지 않는다 — 체류 멤버와 날짜가 가까우면 여기서 도로 흡수된다
+      if (g.id === ambiguousStayId) return false;
+      // 국내(거주국) 기록은 체류 카드에 붙이지 않는다 — 거주국을 체류국으로 바꾸면 그 체류가 종료된 채 남아
+      // (SettingsScreen confirmCountryChange), 멤버[0] 지역이 같으면 아래 국내 7일 규칙이 국내 기록을 흡수한다(QA L5).
+      if (isDomestic && g.stay) return false;
       const members = g.records
         .map((id) => records.find((r) => r.id === id))
         .filter(Boolean) as TravelRecord[];
@@ -834,8 +942,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const tripGroupsRef = useRef(tripGroups);
   tripGroupsRef.current = tripGroups;
 
-  /** 반환값: 이 기록이 들어간(또는 새로 만든) 카드 id. 붙이지 않았으면 null. */
-  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }): string | null => {
+  /** 반환값: 이 기록이 들어간(또는 새로 만든) 카드 id. 붙이지 않았으면 null.
+   *  opts.askPausedStay(기본 true): 일시정지 체류의 애매한 기록이면 사용자에게 묻는다. 사용자가 지금 저장한 게
+   *  아닌 비대화형 경로(예약 글 발행 effect — 앱 시작 직후 맥락 없이 뜨거나 다른 기기 기록일 수 있다, QA L3)는
+   *  false — 묻지 않고 체류에 붙이지 않은 채 일반 매칭(drainPendingLinks와 같은 정책). */
+  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean; askPausedStay?: boolean }): string | null => {
+    const ask = opts?.askPausedStay !== false;
     const country = rec.countryName;
     if (!country) return null;
 
@@ -845,14 +957,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
     // 회고(과거 여행 작성) 기록 — 현재 위치와 무관하므로 세션을 건드리지 않고 날짜 규칙으로
     if (!coversNow(rec)) {
-      return linkByDate(rec);
+      return linkByDate(rec, { askPausedStay: ask });
     }
 
-    // 진행 중(active) 체류국의 실시간 기록 → 체류 카드에 직접 합류 + 활동 시각 갱신
+    // 진행 중·일시정지(active/paused) 체류국의 실시간 기록 → 체류 카드에 직접 합류 + 활동 시각 갱신.
+    // paused 포함: 체류국에서 실시간으로 남긴 기록은 그 나라에 있다는 뜻이라 체류 카드가 맞다
+    // (위치 감지 전이라 아직 일시정지 상태일 수 있다). 자동 재개는 하지 않는다 — 재개는 도착 감지·수동 재개만.
+    // 단, 일시정지 체류의 마지막 활동일 이후 기록은 따로 온 여행일 수 있어 애매하다 — 아래 세션 경로로 보내고
+    // 사용자에게 묻는다(askPausedStay). 날짜 없는 기록(스냅 등)은 오늘로 본다(coversNow와 같은 간주).
     const stayG = tripGroupsRef.current.find(
-      (g) => g.stay && g.stay.status === 'active' && g.countryName === country
+      (g) => g.stay && g.stay.status !== 'ended' && g.countryName === country
     );
-    if (stayG && country !== homeCountryName) {
+    const rtNow = Date.now();
+    const pausedAmbiguous = !!stayG && country !== homeCountryName &&
+      isAmbiguousForPausedStay(stayG.stay!, parseRecDate(rec.startDate) ?? parseRecDate(rec.date) ?? rtNow, rtNow);
+    if (stayG && pausedAmbiguous && ask) askPausedStay(stayG, rec.id);
+    if (stayG && country !== homeCountryName && !pausedAmbiguous) {
       if (!stayG.records.includes(rec.id)) {
         const grow = (list: TripGroup[]) => list.map((g) =>
           g.id === stayG.id
@@ -879,8 +999,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
     // 해외 실시간 기록 — 살아 있는(30일 무활동 만료 전) 세션에 이 국가의 카드가 있으면 추가
     const session = sessionAlive(tripSessionRef.current) ? tripSessionRef.current : null;
+    // 애매해서 비켜 간 체류 카드는 세션 매핑으로도 붙이지 않는다 — 제3국 이동으로 일시정지된 체류는 세션에
+    // 체류 카드 매핑이 남아 있어(귀국만 세션을 지운다) 여기서 도로 흡수된다. 새 카드로 열고 매핑을 덮는다.
     const sessionGid = session?.groups[country];
-    const target = sessionGid ? tripGroupsRef.current.find((g) => g.id === sessionGid) : undefined;
+    const target = sessionGid && !(pausedAmbiguous && sessionGid === stayG?.id)
+      ? tripGroupsRef.current.find((g) => g.id === sessionGid) : undefined;
     if (target) {
       if (!target.records.includes(rec.id)) {
         const grow = (list: TripGroup[]) =>
@@ -911,6 +1034,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const startStay = (countryName: string, type: StayType) => {
     // 진행 중 체류가 이미 있으면 무시 — 동시 체류는 1개(프롬프트/감지 이벤트 중복 발화 방어)
     if (tripGroupsRef.current.some((g) => g.stay && g.stay.status !== 'ended')) return;
+    // 거주국은 장기체류 대상이 아니다(온보딩·설정 목록은 이미 빼지만 모든 호출 경로의 마지막 방어선)
+    if (homeCountryName && countryName === homeCountryName) return;
     const today = new Date();
     const ymd = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
     const meta = COUNTRIES.find((c) => c.name === countryName);
@@ -968,6 +1093,27 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     tripGroupsRef.current = apply(tripGroupsRef.current);
   };
 
+  // 체류 재개 — status 'active' + 활동 시각 갱신 + 귀국 때 지워진 세션에 체류 카드 재등록.
+  // 도착 감지(체류국 복귀, 아래 effect)와 수동 재개(프로필·설정)가 같은 처리를 쓴다.
+  // 세션 재등록 이유: 재전환 시 프롬프트 재노출 방지·세션 일관성 유지.
+  const resumeStay = (groupId: string) => {
+    const target = tripGroupsRef.current.find((g) => g.id === groupId);
+    if (!target?.stay || target.stay.status !== 'paused') return;
+    const apply = (list: TripGroup[]) => list.map((g) =>
+      g.id === groupId ? { ...g, stay: { ...g.stay!, status: 'active' as StayStatus, lastActiveAt: Date.now() } } : g);
+    setTripGroups((prev) => apply(prev));
+    tripGroupsRef.current = apply(tripGroupsRef.current);
+    if (target.countryName) {
+      const restored: TripSession = {
+        groups: { ...(tripSessionRef.current?.groups ?? {}), [target.countryName]: target.id },
+        lastActiveAt: Date.now(),
+      };
+      setTripSession(restored);
+      tripSessionRef.current = restored;
+      emitToast(i18n.t('stay.resumeToast', { country: target.countryName }));
+    }
+  };
+
   // 국가명 → ISO 코드 (COUNTRIES term의 첫 토큰이 소문자 iso2)
   const codeOfCountryName = (name: string | undefined | null): string | null => {
     if (!name) return null;
@@ -996,23 +1142,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       : null;
     const d = decideOnVisitedChange({ visitedCountryCode: currentVisitedCountryCode, homeCountryCode, stay: snap });
 
-    if ((d.pauseStay || d.resumeStay) && stayGroup) {
+    if (d.resumeStay && stayGroup) {
+      // 재개(+세션 재등록·토스트)는 수동 재개와 같은 함수 — resumeStay 주석 참고
+      resumeStay(stayGroup.id);
+    } else if (d.pauseStay && stayGroup) {
+      // 일시정지 = 체류국을 떠난 걸 감지한 시점 → lastActiveAt을 지금으로(=마지막으로 체류국에 있던 시각의 근사, QA M1).
+      // 안 올리면 체류 중 실시간 기록 없이 지낸 기간의 회고가 전부 '일시정지 뒤 기록'으로 애매 판정돼 질문이 뜨고,
+      // 60일 넛지도 떠난 날이 아니라 마지막 기록일부터 세게 된다. pauseStay는 active일 때만 true라(decideOnVisitedChange)
+      // 이미 paused인 체류(제3국→거주국 등)에는 오지 않는다 — 처음 떠난 시각이 덮이지 않는다.
+      // 감지가 늦게 돌면(프로필 미마운트) 그만큼 늦은 값이 되어 그 며칠은 애매 판정에서 빠진다(허용).
       const apply = (list: TripGroup[]) => list.map((g) =>
-        g.id === stayGroup.id
-          ? { ...g, stay: { ...g.stay!, status: (d.resumeStay ? 'active' : 'paused') as StayStatus, lastActiveAt: d.resumeStay ? Date.now() : g.stay!.lastActiveAt } }
-          : g);
+        g.id === stayGroup.id ? { ...g, stay: { ...g.stay!, status: 'paused' as StayStatus, lastActiveAt: Date.now() } } : g);
       setTripGroups((prev2) => apply(prev2));
       tripGroupsRef.current = apply(tripGroupsRef.current);
-      // 재개: 귀국 때 지워진 세션에 체류 카드를 다시 등록 — 재전환 시 프롬프트 재노출 방지·세션 일관성 유지
-      if (d.resumeStay && stayGroup.countryName) {
-        const restored: TripSession = {
-          groups: { ...(tripSessionRef.current?.groups ?? {}), [stayGroup.countryName]: stayGroup.id },
-          lastActiveAt: Date.now(),
-        };
-        setTripSession(restored);
-        tripSessionRef.current = restored;
-        emitToast(i18n.t('stay.resumeToast', { country: stayGroup.countryName }));
-      }
     }
 
     // 새 해외국(거주국·체류국 아님) → 여행/장기체류 프롬프트 요청 (이미 그 나라 여행 세션이 있으면 생략)
@@ -3973,7 +4115,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (linkedScheduledRef.current.has(r.id)) return;
       linkedScheduledRef.current.add(r.id);
       if (tripGroups.some((g) => g.records.includes(r.id))) return;
-      linkRecordToTrip(r);
+      // 비대화형 — 일시정지 체류 질문을 띄우지 않는다(linkRecordToTrip opts 주석, QA L3)
+      linkRecordToTrip(r, { askPausedStay: false });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, records, tripGroups]);
@@ -4027,7 +4170,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, refreshNeighbors,
     addComment, toggleCommentLike, deleteComment,
     addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups,
-    startStay, endStay, absorbIntoStay, setStayPromptCountry,
+    startStay, endStay, resumeStay, absorbIntoStay, setStayPromptCountry,
     saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords,
     setCurrentViewer, refreshFeed, loadMoreFeed, refreshComments, refreshMyPostCounts, refreshPostCounts,
     hydrateMyRecords, syncMyRecords, rearmTripRestore, applyLocalStateBackup, rebackupAlbumOriginals, setCountryCover,
