@@ -23,8 +23,6 @@ import Toast from '../components/Toast';
 import { useProfileSettings, useSettingsActions } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
 import RequirementList from '../components/RequirementList';
-import { andFitText } from '../utils/fitText';
-import { AutoPillRing } from '../components/record/CalendarBottomSheet';
 import {
   SETTINGS_COLORS,
   SettingsHeader,
@@ -97,6 +95,8 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
   const handleChanged = trimmedHandle !== globalHandle;
   const handleFormatOk = HANDLE_RE.test(trimmedHandle);
   const showHandleRequirements = canChangeHandle && handleChanged;
+  // 저장 활성 조건 — 저장 때와 같은 기준(아이디·소개는 trim 후)으로 원본과 비교한다.
+  const isDirty = handleChanged || bio.trim() !== globalBio || profilePhoto !== globalProfilePhoto;
 
   // 중복 검사 상태 — 'idle'은 아직 서버를 부르지 않은 상태, 'unknown'은 검사 불가
   // (미설정·오프라인·타임아웃). 둘 다 줄을 감춘다. 최종 방어는 handleSave의 제출 시점
@@ -260,20 +260,11 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
   return (
     <SafeAreaView style={s.safeArea}>
-      {/* 헤더 — 오른쪽 슬롯에 앱 공용 저장 알약(블로그·스트립 정보 헤더와 같은 70×30·흰 10%·AutoPillRing).
-          링(AutoPillRing) → 콘텐츠 순. 폭은 문구(다국어)마다 달라져 AutoPillRing이 스스로 실측한다 */}
+      {/* 헤더 — 저장은 하단 버튼 하나로만(우상단 저장 알약은 중복이라 제거) */}
       <SettingsHeader
         title={t('editProfile.title')}
         onBack={goBackOnce}
         backA11yLabel={t('editProfile.back')}
-        right={
-          <TouchableOpacity onPress={handleSave} disabled={saving} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button">
-            <View style={[s.saveBtn, saving && s.saveBtnBusy]}>
-              <AutoPillRing />
-              <Text style={s.saveText} {...andFitText}>{t('editProfile.save')}</Text>
-            </View>
-          </TouchableOpacity>
-        }
       />
 
       <KeyboardAvoidingView
@@ -334,11 +325,14 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 아이디 */}
           <View style={s.fieldGroup}>
-            <Text style={settingsText.fieldLabel}>{t('editProfile.handleLabel')}</Text>
-            <SettingsField style={!canChangeHandle && s.fieldLocked} baseRim={COLORS.line}>
+            <View style={s.labelRow}>
+              <Text style={[settingsText.fieldLabel, s.fieldLabel]}>{t('editProfile.handleLabel')}</Text>
+              {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
+            </View>
+            <SettingsField style={[s.fieldPad, s.handleField, !canChangeHandle && s.fieldLocked]} baseRim={COLORS.line}>
               <Text style={s.atPrefix}>@</Text>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[settingsText.input, !canChangeHandle && s.inputDisabled]}
+                style={[settingsText.input, s.handleInput, !canChangeHandle && s.inputDisabled]}
                 value={handle}
                 onChangeText={(text) => setHandle(text.replace(/[^a-zA-Z0-9_]/g, ''))}
                 placeholder={t('editProfile.handlePlaceholder')}
@@ -348,7 +342,6 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 autoCapitalize="none"
                 editable={canChangeHandle}
               />
-              {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
             </SettingsField>
             {showHandleRequirements && (
               <RequirementList items={handleRequirements} style={s.reqList} />
@@ -382,8 +375,11 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 소개 */}
           <View style={s.fieldGroup}>
-            <Text style={settingsText.fieldLabel}>{t('editProfile.bioLabel')}</Text>
-            <SettingsField baseRim={COLORS.line}>
+            <View style={s.labelRow}>
+              <Text style={[settingsText.fieldLabel, s.fieldLabel]}>{t('editProfile.bioLabel')}</Text>
+              <Text style={s.charCount}>{bio.length}/50</Text>
+            </View>
+            <SettingsField style={s.fieldPad} baseRim={COLORS.line}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[settingsText.input, s.bioInput]}
                 value={bio}
@@ -395,14 +391,13 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 textAlignVertical="top"
               />
             </SettingsField>
-            <Text style={s.charCountBelow}>{bio.length}/50</Text>
           </View>
 
-          {/* 저장 버튼 (하단 대형) — 설정 알약. 저장 중엔 잠기고 흐려진다 */}
+          {/* 저장 버튼 (하단 대형) — 설정 알약. 바뀐 게 없거나 저장 중이면 잠기고 흐려진다 */}
           <SettingsPillButton
             label={saving ? t('editProfile.checking') : t('editProfile.saveLarge')}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || !isDirty}
             baseRim={COLORS.line}
             style={s.saveLargeBtn}
           />
@@ -418,24 +413,6 @@ const s = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.bg,
-  },
-
-  // 헤더 오른쪽 저장 — 앱 공용 저장 알약(BlogRecordScreen st.saveBtn과 같은 값): 70×30·반경 15·바탕 흰 10%,
-  // 테두리는 AutoPillRing이 그리므로 borderWidth 없음(링 실측이 밀린다). minWidth라 긴 번역도 잘리지 않는다.
-  saveBtn: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 15,
-    minWidth: 70,
-    height: 30,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  saveBtnBusy: { opacity: 0.5 },
-  saveText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#C3C3C3',
   },
 
   // 스크롤 — 좌우 16 = 설정 화면 카드 폭
@@ -498,38 +475,52 @@ const s = StyleSheet.create({
     color: COLORS.red,
   },
 
-  // 입력 필드 — 칸은 SettingsField(설정 카드 재질), 라벨은 settingsText.fieldLabel(흰 50%)
+  // 입력 필드 — 칸은 SettingsField(설정 카드 재질). 2026-11 시안: 라벨은 보라, 글자 수는 라벨 줄 오른쪽
   fieldGroup: {
     marginBottom: 20,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  fieldLabel: {
+    color: COLORS.label,
+    marginBottom: 0,
+  },
+  // 칸 안쪽 글자 시작 — 시안 좌우 16(공용 18 덮어씀)
+  fieldPad: {
+    paddingHorizontal: 16,
+  },
+  // 아이디 칸 높이 44(시안) — 공용 최소 50·세로 15를 줄인다
+  handleField: {
+    minHeight: 44,
+  },
+  handleInput: {
+    paddingVertical: 12,
   },
   atPrefix: {
     fontSize: 14,
     color: COLORS.text50,
-    marginRight: 2,
+    marginRight: 4,
   },
   charCount: {
     fontSize: 11,
     color: COLORS.text50,
-    marginLeft: 8,
+    marginRight: 14,
   },
-  charCountBelow: {
-    fontSize: 11,
-    color: COLORS.text50,
-    textAlign: 'right',
-    marginTop: 6,
-    marginRight: 17,
-  },
-  // 여러 줄 소개 — settingsText.input의 세로 15를 12로 줄이고 높이를 104로 해서 글 영역 80(예전 칸 안쪽 높이)을 지킨다.
-  // 칸(SettingsField)은 높이를 따라 늘어나며, 글은 위에서부터(textAlignVertical top) 채워진다.
+  // 여러 줄 소개 — 칸 높이 100(시안), 글은 위 14에서부터(textAlignVertical top) 채워진다.
   bioInput: {
-    height: 104,
-    paddingVertical: 12,
+    height: 100,
+    paddingTop: 14,
+    paddingBottom: 14,
     textAlignVertical: 'top',
   },
 
-  // 하단 저장 알약
+  // 하단 저장 알약 — 소개 칸과 54 간격(시안, fieldGroup 20 + 34)
   saveLargeBtn: {
-    marginTop: 12,
+    marginTop: 34,
   },
   // 아이디 변경 잠금(2주) — 칸 전체를 흐리게
   fieldLocked: {
