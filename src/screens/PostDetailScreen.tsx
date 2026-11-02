@@ -53,7 +53,7 @@ import { companionLabel, flightLabel } from './CutTravelInfoScreen';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 // RatingStars는 2026-09-20 시안 적용으로 이 화면에서 링 배지(RatingRingBadge)로 대체되어 제거.
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
-import { sectionSlices } from '../utils/albumSections';
+import AlbumTimeline from '../components/AlbumTimeline';
 import AuthorAvatar from '../components/AuthorAvatar';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
@@ -2603,36 +2603,19 @@ export default function PostDetailScreen() {
                       {heartOverlay}
                     </Animated.View>
                   ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
-                    /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음)
-                       섹션(albumSections)이 있으면 섹션 제목별로 나눠 그린다 (보기 전용) */
+                    /* 사진첩: 게시물이 아닌 앨범 — 촬영시각 타임라인(보기 전용) + 장수 표기 (좋아요·댓글·여행정보 없음).
+                       옛 기록의 albumSections(수동 섹션, 폐지)는 무시한다. 뷰어는 화면과 같은 순서(order)로 연다. */
                     <>
-                      {(record.albumSections && record.albumSections.length > 0
-                        ? sectionSlices(record.albumSections, record.medias.length)
-                        : [null]
-                      ).map((sec) => (
-                        <View key={sec?.id ?? 'flat'}>
-                          {sec && (
-                            <View style={s.albumSectionHeader}>
-                              <Text style={s.albumSectionTitle}>{sec.title}</Text>
-                              <Text style={s.albumSectionCount}>{sec.count}</Text>
-                            </View>
-                          )}
-                          <View style={s.albumGrid}>
-                            {(sec ? record.medias!.slice(sec.start, sec.end) : record.medias!).map((uri, i) => {
-                              const globalIdx = sec ? sec.start + i : i;
-                              return (
-                                <TouchableOpacity
-                                  key={`${uri}-${globalIdx}`}
-                                  activeOpacity={0.85}
-                                  onPress={() => handleMediaTap(() => openFullImage(record.medias!, globalIdx))}
-                                >
-                                  <Image source={{ uri }} style={s.albumGridImg} />
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        </View>
-                      ))}
+                      <View style={s.albumTimelineWrap}>
+                        <AlbumTimeline
+                          medias={record.medias}
+                          mediaTimes={record.mediaTimes}
+                          width={SCREEN_W - 32}
+                          cellRadius={4}
+                          onPressPhoto={(gi, order) => handleMediaTap(() =>
+                            openFullImage(order.map((i) => record.medias![i]), Math.max(0, order.indexOf(gi))))}
+                        />
+                      </View>
                       <Text style={s.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias.length })}</Text>
                     </>
                   ) : record.medias && record.medias.length > 0 ? (
@@ -3435,18 +3418,9 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
       default: {},
     }),
   },
-  // 사진첩(앨범) 그리드 — 본문 패딩(16+16) 안 3열
-  albumGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginBottom: 10 },
-  albumGridImg: {
-    width: Math.floor((SCREEN_W - 32 - 4) / 3),
-    height: Math.floor((SCREEN_W - 32 - 4) / 3),
-    borderRadius: 4,
-    backgroundColor: '#1F1F22',
-  },
+  // 사진첩(앨범) 타임라인 — 본문 패딩(16+16) 안 폭을 AlbumTimeline에 넘긴다
+  albumTimelineWrap: { marginBottom: 10 },
   albumCount: { color: '#A1A1B0', fontSize: 12, marginBottom: 10 },
-  albumSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 8 },
-  albumSectionTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-  albumSectionCount: { fontSize: 12, color: '#A1A1B0' },
   cutImage: {
     width: SCREEN_W - 32, height: SCREEN_H * 0.6, borderRadius: 12,
     marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',

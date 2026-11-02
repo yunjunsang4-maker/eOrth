@@ -498,7 +498,8 @@ export default function TripDetailScreen() {
   //    representativePhoto만 지정하면 medias 순서를 건드리지 않고도 원하는 사진이 썸네일이 된다.
   //    예전처럼 선택 사진을 medias 맨 앞으로 옮기면
   //      · 사진별 글(photoTexts)·비공개 대상(mediaPrivacy)이 인덱스 기준이라 전부 한 칸씩 밀리고
-  //      · 사진첩(albumSections)은 섹션 경계가 밀려 '1일차/2일차' 구성이 깨지며
+  //      · 옛 앱 버전은 사진첩을 albumSections(medias 구간 분할)로 그려 섹션 경계가 밀리며
+  //        (현재 앱은 촬영시각 타임라인이라 순서 영향 없음)
   //      · 이미 발행된 게시물의 사진 순서까지 바뀐다.
   //    (사진첩 화면 TripRecordScreen의 '커버로 지정'과 동일한 방식)
   const applyThumb = async (uri: string, t: CutTransform) => {

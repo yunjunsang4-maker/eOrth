@@ -153,11 +153,12 @@ export interface TravelRecord {
   // 피드 사진 프레임(2026-09-06) — 게시물 단위. 없거나 ratio가 'original'이면 기존 렌더(비율대로).
   // fill은 원본이 아닌 비율일 때만 쓰인다(비율·색 목록은 utils/photoFrame). 사진 추가·삭제·재정렬과 무관.
   photoFrame?: PhotoFrame;
-  // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
+  // 사진첩(앨범) 옛 수동 섹션 — medias의 연속 구간 분할({id,title,count}[]). 2026-11 타임라인 전환 후
+  // 더는 쓰지도 그리지도 않는다. 옛 기록·서버 데이터와 옛 앱 버전 호환을 위해 필드만 남겨 둔다.
   albumSections?: { id: string; title: string; count: number }[];
   // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)
-  mediaAssetIds?: Record<string, string>; // media uri → 기기 사진 assetId (중복 추가 방지)
-  mediaTimes?: Record<string, number>;    // media uri → 촬영시각 ms ('일자별로 다시 구성'용)
+  mediaAssetIds?: Record<string, string>; // media uri → 기기 사진 assetId (중복 추가 방지·날짜 다시 찾기)
+  mediaTimes?: Record<string, number>;    // media uri → 촬영시각 ms (타임라인 원천 — utils/albumSections buildAlbumTimeline)
   // 사진첩 서버 백업 상태 — uploadedMediaUrls는 로컬 uri→업로드 URL 캐시(수정 때 전 장
   // 재업로드 방지, 서버 data엔 미포함). albumUploadQuality는 서버본 화질(미설정=압축 도입
   // 이전 발행분, 원본으로 취급). 원본 백업은 프리미엄 혜택 — services/posts.ts 참조.
@@ -1237,6 +1238,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // (live !== rec 같은 객체 identity 비교는 persistRecordPhotos의 로컬 URI 교체까지 수정으로
   // 오탐해, 사진 있는 글 대부분이 발행 직후 전 장을 재업로드하고 첫 업로드본을 고아로 남겼다)
   const pendingEditRef = useRef<Set<string>>(new Set());
+  // 같은 기록의 수정 발행(updatePost) 겹침 가드 — 진행 중 건수와 '겹친 적 있음' 표시.
+  // 서버는 마지막에 도착한 PATCH가 이긴다. 갱신 둘이 겹치면 먼저 끝난 쪽이 지운 사진을
+  // 늦게 도착한 옛 data가 다시 참조할 수 있어(타 기기에서 깨진 사진), 겹친 갱신은 정리를 건너뛴다.
+  // ⚠️ 직렬화 큐로 바꾸지 말 것 — 큐잉된 갱신이 enqueue 시점의 업로드 캐시를 써 앞 갱신이 올린
+  //    사진을 전부 재업로드하고 앞 업로드본은 고아가 된다.
+  const updateInFlightRef = useRef<Map<string, number>>(new Map());
+  const updateOverlapRef = useRef<Set<string>>(new Set());
+  const beginPostUpdate = (id: string) => {
+    const n = updateInFlightRef.current.get(id) ?? 0;
+    if (n > 0) updateOverlapRef.current.add(id);
+    updateInFlightRef.current.set(id, n + 1);
+  };
+  // settle(성공·실패 모두) 때 부른다. 마지막 건이 끝나야 겹침 표시를 푼다 — 겹친 갱신들이
+  // 전부 끝나기 전엔 어느 쪽 성공 콜백도 정리하지 않는다.
+  const endPostUpdate = (id: string) => {
+    const n = (updateInFlightRef.current.get(id) ?? 1) - 1;
+    if (n > 0) { updateInFlightRef.current.set(id, n); return; }
+    updateInFlightRef.current.delete(id);
+    updateOverlapRef.current.delete(id);
+  };
   // 발행(publishPost)이 날아가고 있는 건수 — 기기 간 동기화(syncMyRecords)의 경합 가드.
   // insert는 서버에 들어갔는데 로컬 레코드에 remoteId가 아직 안 붙은 순간, 동기화 프로브가
   // 그 id를 '빠진 글'로 오인해 같은 글을 한 벌 더 추가한다. 그 창을 이 카운터로 닫는다.
@@ -1314,9 +1335,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // persistRecordPhotos의 로컬 URI 교체는 수정이 아니다(서버엔 이미 업로드본이 실림).
         if (pendingEditRef.current.has(rec.id)) {
           pendingEditRef.current.delete(rec.id);
+          // 이 갱신도 겹침 가드에 센다 — 날아가는 동안 사용자가 또 고치면(updateRecord) 그쪽 정리를 막는다
+          beginPostUpdate(rec.id);
           updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live))
             .then((ms) => { if (ms && ms > 0) stampServerUpdatedAt(rec.id, ms); })
-            .catch(notifySyncError);
+            .catch(notifySyncError)
+            .finally(() => endPostUpdate(rec.id));
         }
       })
       .catch(notifySyncError)
@@ -1380,9 +1404,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 기록이 참조하는 업로드(원격) 미디어 URL 전부 수집 — 삭제/교체 시 Storage 고아 파일 정리용
+  // ⚠️ 작성 기기의 사진첩은 medias·대표가 로컬 file:// 이고, 업로드본 URL은 uploadedMediaUrls
+  //    (로컬 uri → URL)에만 있다. http만 모으면 사진첩 파일이 삭제·수정 diff 어디에도 안 잡혀
+  //    Storage에 고아로 영영 남는다. 그래서 로컬 uri는 캐시를 거쳐 '지금 참조 중인 사진의
+  //    업로드본'으로 바꿔 모은다. 대표가 medias[0]과 같은 업로드 URL을 공유할 수 있어 대표
+  //    참조도 반드시 포함한다(빠지면 수정 diff의 keep 집합에서 새어 살아 있는 파일을 지운다).
+  //    캐시는 사진첩에만 있으므로 다른 형식에는 영향이 없다.
   const collectRemoteMediaUrls = (r: TravelRecord): string[] => {
     const out: string[] = [];
-    const push = (u?: string | null) => { if (u && u.startsWith('http')) out.push(u); };
+    const push = (u?: string | null) => {
+      if (!u) return;
+      const remote = u.startsWith('http') ? u : r.uploadedMediaUrls?.[u];
+      if (remote) out.push(remote);
+    };
     (r.medias ?? []).forEach(push);
     push(r.representativePhoto);
     push(r.cutPhoto?.previewUri);
@@ -1392,6 +1426,23 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       push(d.representativePhoto);
     });
     return out;
+  };
+
+  // Storage에서 지운 URL을 사진첩 업로드 캐시(uploadedMediaUrls)에서도 뺀다.
+  // ⚠️ 안 빼면 같은 로컬 uri가 다시 medias에 들어올 때(삭제 후 되돌리기 등) upAlbum이 캐시를
+  //    그대로 재사용해 이미 지운 URL을 서버에 발행한다 — 다른 기기·타인 화면에서 사진이 깨진다.
+  //    persistRecordPhotos가 키(로컬 uri)를 비동기로 바꿀 수 있어 키가 아니라 값(URL)으로 찾는다.
+  const dropUploadedUrls = (id: string, removed: string[]) => {
+    if (removed.length === 0) return;
+    const gone = new Set(removed);
+    setRecords((prev) =>
+      prev.map((r) => {
+        if (r.id !== id || !r.uploadedMediaUrls) return r;
+        const entries = Object.entries(r.uploadedMediaUrls);
+        const kept = entries.filter(([, url]) => !gone.has(url));
+        return kept.length === entries.length ? r : { ...r, uploadedMediaUrls: Object.fromEntries(kept) };
+      })
+    );
   };
 
   /**
@@ -1484,6 +1535,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // ⚠️ 삭제는 반드시 서버 갱신 '성공 후'에만 — 오프라인/실패인데 파일을 먼저 지우면
         //    서버 게시물이 죽은 URL을 계속 참조하고 사진은 영구 유실된다(복구 불가).
         //    실패 시 남는 파일은 고아로 두고(탈퇴 sweep 대상) 데이터 쪽을 지킨다.
+        beginPostUpdate(id);
         updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes }))
           .then((ok) => {
             // ok: 서버 updated_at(ms) | -1(성공·타임스탬프 불명) | null(실패)
@@ -1491,16 +1543,28 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             // 내가 올린 수정이므로 기준선을 옮긴다 — 안 옮기면 다음 프로브가 이 글을
             // '다른 기기가 고친 글'로 오인해 본문을 도로 받아온다.
             if (ok > 0) stampServerUpdatedAt(id, ok);
-            if (orphans.length > 0) removeMediaUrls(orphans).catch(() => {});
+            // 겹친 갱신이면 정리하지 않는다(판정은 아래 finally의 표시 해제보다 먼저 돈다).
+            // ponytail: 겹친 경우 그 orphans는 Storage 고아로 남는다(탈퇴 sweep 대상) — 아까우면
+            //   레코드별 직렬화 + '실행 시점' 업로드 캐시 조회로 바꿀 것.
+            if (orphans.length > 0 && !updateOverlapRef.current.has(id)) {
+              removeMediaUrls(orphans).catch(() => {});
+              dropUploadedUrls(id, orphans);
+            }
           })
-          .catch(notifySyncError);
+          .catch(notifySyncError)
+          .finally(() => endPostUpdate(id));
       } else if (cur && publishAttemptRef.current.has(id)) {
         // 발행(업로드) 진행 중 수정 — 완료 시점에 최신 내용으로 서버를 갱신하도록 예약.
         // 업로드가 진행 중인 파일을 여기서 지우면 방금 올라간 사진이 사라지므로 정리하지 않는다.
         pendingEditRef.current.add(id);
       } else if (orphans.length > 0) {
-        // 서버 사본이 없는(로컬 전용) 기록 — 참조하는 게시물이 없으니 즉시 정리
-        removeMediaUrls(orphans).catch(() => {});
+        // 서버 사본이 없는(로컬 전용) 기록 — 참조하는 게시물이 없으니 즉시 정리.
+        // ⚠️ 단 사진첩 업로드 캐시 유래 URL은 지우지 않고 캐시도 그대로 둔다. 이 분기는 주로
+        //    재시작 직후 오프라인일 때 오는데, insert는 서버에 들어갔고 응답만 유실된 경우
+        //    재발행의 23505 회수는 data를 갱신하지 않아 서버가 그 URL을 계속 참조할 수 있다.
+        const cached = new Set(Object.values(cur?.uploadedMediaUrls ?? {}));
+        const direct = orphans.filter((u) => !cached.has(u));
+        if (direct.length > 0) removeMediaUrls(direct).catch(() => {});
       }
     }
   };
@@ -1523,7 +1587,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
     if (isSupabaseConfigured && target) {
       // 게시물이 참조하던 업로드 파일 (Storage 고아 정리 대상)
-      const urls = collectRemoteMediaUrls(target);
+      // 기록이 통째로 사라지므로 사진첩 업로드 캐시의 값 전부도 함께 지운다 — 지금 medias가
+      // 참조하지 않는 캐시 항목(이전 수정에서 빠졌는데 정리 못 한 것)도 여기서 마지막으로 거둔다.
+      const urls = [...new Set([...collectRemoteMediaUrls(target), ...Object.values(target.uploadedMediaUrls ?? {})])];
       if (target.remoteId) {
         // ⚠️ 사진 삭제는 서버 게시물 삭제 '성공 후'에만 — 오프라인에서 먼저 지우면 서버에 남은
         //    게시물이 죽은 URL을 참조하고(타인 피드에 깨진 사진) 원본은 복구할 수 없다.

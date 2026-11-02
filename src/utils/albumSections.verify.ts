@@ -1,89 +1,123 @@
 /**
  * albumSections 검증 — npx tsx src/utils/albumSections.verify.ts
  */
-import {
-  groupUrisByDay,
-  reorderWithinRange,
-  moveSection, removePhotosAt, movePhotosToSection,
-  sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection, deleteSection,
-  normalizeSections, sectionIndexOf, type AlbumSection,
-} from './albumSections';
+import { buildAlbumTimeline, MOMENT_GAP_MS, removePhotosAt, remapUriKeys, exifTakenAt } from './albumSections';
 
 let pass = 0, fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
   const ok = JSON.stringify(got) === JSON.stringify(want);
   ok ? pass++ : fail++;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `\n  want=${JSON.stringify(want)}\n  got =${JSON.stringify(got)}`}`);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok ? '' : `
+  want=${JSON.stringify(want)}
+  got =${JSON.stringify(got)}`}`);
 };
 
-const M = ['a', 'b', 'c', 'd', 'e'];
-const S: AlbumSection[] = [
-  { id: 's1', title: '1일차', count: 2 },
-  { id: 's2', title: '2일차', count: 3 },
-];
+// ── 타임라인 ──
+// 시각은 전부 new Date(y,m,d,h) 로컬 생성 — 기기 시간대가 달라도 같은 날로 묶여 TZ 무관하게 돈다
+const at = (d: number, h: number, mi = 0) => new Date(2026, 2, d, h, mi).getTime(); // 2026-03-d
+const shape = (tl: ReturnType<typeof buildAlbumTimeline>) =>
+  tl.days.map((d) => [d.key, d.dayN, d.moments.map((m) => m.indexes)]);
 
-// 구간 계산
-eq('slices', sectionSlices(S, 5).map((s) => [s.start, s.end]), [[0, 2], [2, 5]]);
-eq('owner of idx3', sectionIndexOf(S, 5, 3), 1);
+// 정렬 + 일 묶음 + 순간 분리 + 미상: medias 순서와 무관하게 시각순, 3/2 오전·오후는 두 순간
+{
+  const M = ['p0', 'p1', 'p2', 'p3', 'p4', 'px'];
+  const T = { p0: at(3, 9), p1: at(2, 14, 20), p2: at(2, 10), p3: at(2, 10, 30), p4: at(3, 9, 10) };
+  const tl = buildAlbumTimeline(M, T);
+  eq('timeline days/moments', shape(tl), [
+    ['2026.03.02', 1, [[2, 3], [1]]],
+    ['2026.03.03', 2, [[0, 4]]],
+  ]);
+  eq('timeline undated', tl.undated, [5]);
+  // 뷰어 스와이프 순서 = 화면 순서(날짜순 전부 → 미상)
+  eq('timeline order', tl.order, [2, 3, 1, 0, 4, 5]);
+  eq('moment startMs = 첫 사진 시각', tl.days[0].moments.map((m) => m.startMs), [at(2, 10), at(2, 14, 20)]);
+  eq('day startMs = 그날 첫 사진', tl.days.map((d) => d.startMs), [at(2, 10), at(3, 9)]);
+}
 
-// 섹션에 추가 — 1일차 끝(idx2)에 삽입
-const add = addPhotosToSection(M, S, 0, ['X', 'Y']);
-eq('add medias', add.medias, ['a', 'b', 'X', 'Y', 'c', 'd', 'e']);
-eq('add counts', add.sections.map((s) => s.count), [4, 3]);
+// 순간 경계: 정확히 2시간이면 새 순간, 1ms 모자라면 같은 순간
+{
+  const base = at(5, 10);
+  eq('gap exactly 2h → split', shape(buildAlbumTimeline(['a', 'b'], { a: base, b: base + MOMENT_GAP_MS })), [['2026.03.05', 1, [[0], [1]]]]);
+  eq('gap 2h-1ms → same moment', shape(buildAlbumTimeline(['a', 'b'], { a: base, b: base + MOMENT_GAP_MS - 1 })), [['2026.03.05', 1, [[0, 1]]]]);
+  // 간격은 '순간 시작'이 아니라 '바로 앞 사진' 기준 — 1시간 간격으로 3시간 이어 찍으면 한 순간
+  eq('gap measured from previous photo', shape(buildAlbumTimeline(['a', 'b', 'c'], { a: at(5, 10), b: at(5, 11), c: at(5, 12) })), [['2026.03.05', 1, [[0, 1, 2]]]]);
+}
 
-// 삭제 — 2일차의 첫 사진(idx2='c') 제거
-const rm = removePhotoAt(M, S, 2);
-eq('rm medias', rm.medias, ['a', 'b', 'd', 'e']);
-eq('rm counts', rm.sections.map((s) => s.count), [2, 2]);
-
-// 이동 — 'a'(1일차)를 2일차 끝으로
-const mv = movePhotoToSection(M, S, 0, 1);
-eq('mv medias', mv.medias, ['b', 'c', 'd', 'e', 'a']);
-eq('mv counts', mv.sections.map((s) => s.count), [1, 4]);
-
-// 섹션 삭제 — 2일차 삭제 → 1일차가 흡수
-eq('del section', deleteSection(S, 5, 1)?.map((s) => [s.title, s.count]), [['1일차', 5]]?.length === 1 ? [['1일차', 5]] : []);
-// 첫 섹션 삭제 → 다음 섹션이 흡수
-eq('del first', deleteSection(S, 5, 0)?.map((s) => [s.title, s.count]), [['2일차', 5]]);
-// 마지막 하나 삭제 → null(평면 복귀)
-eq('del last-one', deleteSection([{ id: 's', title: 'x', count: 5 }], 5, 0), null);
-
-// 손상 데이터 보정 — counts 합 ≠ medias 길이
-eq('normalize', normalizeSections([{ id: 'a', title: 'A', count: 2 }, { id: 'b', title: 'B', count: 9 }], 5).map((s) => s.count), [2, 3]);
-
-// 날짜 그룹핑 — 정렬 + 같은 날 묶기 + 미상은 맨 뒤
-const D1 = new Date(2026, 4, 6, 10).getTime();
-const D1b = new Date(2026, 4, 6, 20).getTime();
-const D2 = new Date(2026, 4, 7, 9).getTime();
-const g = groupUrisByDay([
-  { uri: 'p2', time: D2 }, { uri: 'p1a', time: D1 }, { uri: 'px' }, { uri: 'p1b', time: D1b },
-]);
-eq('day groups', g.map((x) => [x.key, x.uris]), [
-  ['2026.05.06', ['p1a', 'p1b']],
-  ['2026.05.07', ['p2']],
-  [null, ['px']],
+// 자정을 넘기면 2시간 안이어도 다른 날(일 묶음이 순간보다 우선)
+eq('midnight splits day', shape(buildAlbumTimeline(['a', 'b'], { a: at(5, 23, 30), b: at(6, 0, 10) })), [
+  ['2026.03.05', 1, [[0]]],
+  ['2026.03.06', 2, [[1]]],
 ]);
 
-// 구간 내 순서 변경 — 2일차(start=2) 안에서 0→2 이동
-eq('reorder in range', reorderWithinRange(M, 2, 0, 2), ['a', 'b', 'd', 'e', 'c']);
-eq('reorder flat', reorderWithinRange(M, 0, 4, 0), ['e', 'a', 'b', 'c', 'd']);
+// dayN은 달력 일수 차 — 사진 없는 3/2는 건너뛰어 Day 1, Day 3
+eq('dayN skips empty day', buildAlbumTimeline(['a', 'b'], { a: at(1, 12), b: at(3, 12) }).days.map((d) => d.dayN), [1, 3]);
+// 서머타임이 있는 시간대에서도 반올림으로 정수 — 3/1 → 3/31은 Day 31
+eq('dayN across month (DST-safe)', buildAlbumTimeline(['a', 'b'], { a: at(1, 12), b: at(31, 12) }).days.map((d) => d.dayN), [1, 31]);
 
-// 섹션 순서 이동 — 2일차를 앞으로 (medias 블록도 함께)
-const ms = moveSection(M, S, 1, 0);
-eq('move section medias', ms.medias, ['c', 'd', 'e', 'a', 'b']);
-eq('move section titles', ms.sections.map((x) => x.title), ['2일차', '1일차']);
+// 동률(같은 시각)은 medias 순서 유지
+eq('tie keeps medias order', buildAlbumTimeline(['a', 'b', 'c'], { c: at(4, 8), a: at(4, 8), b: at(4, 8) }).order, [0, 1, 2]);
 
-// 다중 제거 — a(1일차), d(2일차)
-const rmm = removePhotosAt(M, S, [0, 3]);
-eq('multi rm medias', rmm.medias, ['b', 'c', 'e']);
-eq('multi rm counts', rmm.sections?.map((x) => x.count), [1, 2]);
-// 평면 다중 제거
-eq('multi rm flat', removePhotosAt(M, null, [1, 4]).medias, ['a', 'c', 'd']);
+// 무효 시각(0·음수)은 미상 — exifTakenAt이 음수를 걸러도 옛 데이터엔 남아 있을 수 있다
+{
+  const tl = buildAlbumTimeline(['a', 'b', 'c'], { a: 0, b: -5, c: at(4, 8) });
+  eq('zero/negative → undated', [tl.undated, tl.order], [[0, 1], [2, 0, 1]]);
+}
 
-// 다중 이동 — a, b(1일차)를 2일차 끝으로 (순서 유지)
-const mvm = movePhotosToSection(M, S, [1, 0], 1);
-eq('multi mv medias', mvm.medias, ['c', 'd', 'e', 'a', 'b']);
-eq('multi mv counts', mvm.sections.map((x) => x.count), [0, 5]);
+// mediaTimes 자체가 없는 옛 기록 — 전부 미상, days 비어 있음(화면은 평면 격자로 그린다)
+{
+  const tl = buildAlbumTimeline(['a', 'b'], undefined);
+  eq('mediaTimes undefined', [tl.days.length, tl.undated, tl.order], [0, [0, 1], [0, 1]]);
+}
+// 빈 사진첩
+eq('empty medias', buildAlbumTimeline([], {}), { days: [], undated: [], order: [] });
+
+// ── 다중 제거 ──
+eq('remove multi', removePhotosAt(['a', 'b', 'c', 'd', 'e'], [1, 4]), ['a', 'c', 'd']);
+// 범위 밖·음수 인덱스는 무시
+eq('remove out of range', removePhotosAt(['a', 'b'], [-1, 2, 9]), ['a', 'b']);
+
+// ── uri 키 리맵(서버 발행 사본의 mediaTimes·mediaAssetIds) ──
+const FROM = ['file:///a.jpg', 'file:///b.jpg', 'https://x/c.jpg'];
+const TO = ['https://s/A.jpg', 'https://s/B.jpg', 'https://x/c.jpg'];
+// 로컬 키가 업로드 URL로 옮겨지고 값은 그대로
+eq('remap local→remote', remapUriKeys({ 'file:///a.jpg': 1, 'file:///b.jpg': 2 }, FROM, TO), { 'https://s/A.jpg': 1, 'https://s/B.jpg': 2 });
+// 다른 기기에서 받아 온 기록 — 이미 http 키는 손대지 않는다
+eq('remap keeps http key', remapUriKeys({ 'https://x/c.jpg': 3 }, FROM, TO), { 'https://x/c.jpg': 3 });
+// 삭제된 사진의 고아 로컬 키는 서버로 안 간다
+eq('remap drops orphan', remapUriKeys({ 'file:///gone.jpg': 9, 'file:///a.jpg': 1 }, FROM, TO), { 'https://s/A.jpg': 1 });
+// 맵 자체가 없는 옛 기록 — undefined 그대로(빈 객체를 새로 싣지 않는다)
+eq('remap undefined map', remapUriKeys(undefined, FROM, TO), undefined);
+// assetId 값은 보존(같은 기기 재설치 후 불러오기 중복 판정에 values만 쓰인다)
+eq('remap keeps assetId value', remapUriKeys({ 'file:///b.jpg': 'PH-123' }, FROM, TO), { 'https://s/B.jpg': 'PH-123' });
+
+// ── EXIF 촬영시각 ──
+const T0 = new Date(2026, 4, 6, 14, 30, 5).getTime(); // 로컬 2026-05-06 14:30:05
+// 두 플랫폼 모두 최상위 키(iOS도 picker가 {Exif}·{TIFF}를 최상위로 펼친다)
+eq('exif top-level', exifTakenAt({ DateTimeOriginal: '2026:05:06 14:30:05' }), T0);
+// 원본 시각이 없으면 DateTime 폴백
+eq('exif DateTime fallback', exifTakenAt({ DateTime: '2026:05:06 14:30:05' }), T0);
+// 원본 시각이 있으면 수정 시각(DateTime)보다 우선 — 편집 앱이 DateTime만 갱신하는 경우
+eq('exif original wins', exifTakenAt({ DateTime: '2027:01:01 00:00:00', DateTimeOriginal: '2026:05:06 14:30:05' }), T0);
+// 오프셋이 있으면 절대시각 — 도쿄 +09:00 20:00 = UTC 11:00 (기기 시간대와 무관)
+eq('exif offset +09:00', exifTakenAt({ DateTimeOriginal: '2026:05:06 20:00:00', OffsetTimeOriginal: '+09:00' }), Date.UTC(2026, 4, 6, 11, 0, 0));
+// 음수 오프셋 — 뉴욕 -05:00 20:00 = 다음날 UTC 01:00
+eq('exif offset -05:00', exifTakenAt({ DateTimeOriginal: '2026:05:06 20:00:00', OffsetTimeOriginal: '-05:00' }), Date.UTC(2026, 4, 7, 1, 0, 0));
+// OffsetTimeOriginal이 없으면 OffsetTime 사용
+eq('exif OffsetTime fallback', exifTakenAt({ DateTimeOriginal: '2026:05:06 20:00:00', OffsetTime: '+02:00' }), Date.UTC(2026, 4, 6, 18, 0, 0));
+// 형식이 틀린 오프셋은 무시하고 기기 로컬로 해석
+eq('exif bad offset → local', exifTakenAt({ DateTimeOriginal: '2026:05:06 14:30:05', OffsetTimeOriginal: '+9' }), T0);
+// 형식이 깨진 문자열·빈 값(0000:00:00)은 기록 안 함 → '기타'
+eq('exif bad string', exifTakenAt({ DateTimeOriginal: '2026-05-06' }), undefined);
+eq('exif zero date', exifTakenAt({ DateTimeOriginal: '0000:00:00 00:00:00' }), undefined);
+// EXIF 없음 — null/undefined/빈 객체 각각
+// 빈·공백 DateTimeOriginal은 없는 값 → DateTime 폴백 (일부 카메라가 공백 19자로 채운다)
+eq('exif blank original → DateTime', exifTakenAt({ DateTimeOriginal: ' '.repeat(19), DateTime: '2026:05:06 14:30:05' }), T0);
+eq('exif empty original → DateTime', exifTakenAt({ DateTimeOriginal: '', DateTime: '2026:05:06 14:30:05' }), T0);
+// 빈 OffsetTimeOriginal도 없는 값 → OffsetTime 폴백
+eq('exif blank OTO → OffsetTime', exifTakenAt({ DateTimeOriginal: '2026:05:06 20:00:00', OffsetTimeOriginal: '', OffsetTime: '+02:00' }), Date.UTC(2026, 4, 6, 18, 0, 0));
+eq('exif undefined', exifTakenAt(undefined), undefined);
+eq('exif null', exifTakenAt(null), undefined);
+eq('exif empty', exifTakenAt({}), undefined);
 
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

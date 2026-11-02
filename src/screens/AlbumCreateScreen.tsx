@@ -25,7 +25,6 @@ import { useRecordData, useRecordActions } from '../store/recordStore';
 import { useProfileSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
-import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import { getTripPool, saveTripPool } from '../utils/tripPhotoPool';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -48,7 +47,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DETECTOR_KEYS } from '../store/persist';
 import HeaderGlassButton from '../components/HeaderGlassButton';
 
-// 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
+// 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 현재 프리미엄 여부와 무관하게 100장
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
 
 type AlbumPhoto = PhotoRef & { creationTime?: number };
@@ -106,7 +105,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const insets = useSafeAreaInsets();
   const { tripGroups, records } = useRecordData();
   const { addImportedAlbum, addTripGroup, updateTripGroup, updateRecord } = useRecordActions();
-  // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
+  // 사진첩 사진 상한 — 모두 100장 (constants/limits.ts getMaxAlbumPhotos, 프리미엄 상향은 제거됨)
   const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
 
@@ -343,7 +342,10 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     })).filter(g => g.countries.length > 0);
   })();
 
-  const defaultTitle = selectedCountry ? `${selectedCountry.name} 앨범` : `${fmtDate(startDate)} 앨범`;
+  // 기본 제목은 content로 저장되므로 언어별 키로 만든다 — 하드코딩하면 영어 모드에서도 '일본 앨범'이 박힌다
+  const defaultTitle = selectedCountry
+    ? t('album.defaultTitle', { country: countryLabel(selectedCountry.name, i18n.language) })
+    : t('album.defaultTitleDate', { date: fmtDate(startDate) });
 
   // 이어 담기 모드: 그 사진첩에 이미 들어간 사진은 목록에서 뺀다
   const notAppended = appendedAssetIds
@@ -428,7 +430,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       if (copied.length === 0) throw new Error('copy failed');
       // iCloud 오프로드 등으로 복사에 실패한 장수 — 조용히 빠지면 "사진이 왜 없지" 혼란이 생긴다
       const failCount = items.length - copied.length;
-      // 복사본 uri → 원본 assetId/촬영시각 — 중복 추가 방지·'일자별로 다시 구성'에 쓴다
+      // 복사본 uri → 원본 assetId/촬영시각 — 중복 추가 방지·사진첩 타임라인(AlbumTimeline)의 원천
       const mediaAssetIds: Record<string, string> = {};
       const mediaTimes: Record<string, number> = {};
       copied.forEach((uri, k) => {
@@ -443,26 +445,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         repUri = (await bakeCoverCrop(copied[0], activeAdjust, CARD_ASPECT, albumId)) ?? undefined;
       }
       const albumTitle = title.trim() || defaultTitle;
-      // 날짜별 자동 섹션 — 촬영일이 2일 이상이면 'n일차' 섹션으로 자동 정리 (미상은 '기타')
-      const pairs = copied.map((uri, k) => ({ uri, time: (items[srcIndexes[k]] as AlbumPhoto | undefined)?.creationTime }));
-      const groups = groupUrisByDay(pairs);
-      let mediasOrdered = copied;
-      let autoSections: { id: string; title: string; count: number }[] | undefined;
-      if (groups.filter((g) => g.key !== null).length >= 2) {
-        mediasOrdered = groups.flatMap((g) => g.uris);
-        let dayN = 0;
-        autoSections = groups.map((g) => ({
-          id: newSectionId(),
-          title: g.key ? t('comp.sectionDayN', { n: ++dayN }) : t('comp.sectionEtc'),
-          count: g.uris.length,
-        }));
-      }
 
       // ── 이어 담기: 새 카드를 만들지 않고 기존 사진첩 뒤에 사진만 붙인다 ──
-      // 기존 순서와 albumSections는 건드리지 않는다. 섹션은 TripRecordScreen에서 사용자가
-      // 이름을 바꾸거나 사진을 옮길 수 있는 값이라, 여기서 다시 짜면 정리해 둔 게 날아간다.
-      // 늘어난 장수는 normalizeSections가 마지막 섹션으로 흡수하므로 렌더도 어긋나지 않고,
-      // 날짜별로 다시 묶고 싶으면 사진첩 화면의 '일자별로 다시 구성'을 쓰면 된다.
+      // 화면은 촬영시각 타임라인이라 붙이는 순서는 상관없다 — mediaTimes만 합치면 제 날짜에 들어간다.
       if (appendTarget) {
         const mergedStart = [appendTarget.startDate, fmtDate(startDate)]
           .map(parseAlbumDate).filter((d): d is Date => !!d).sort((a, b) => +a - +b)[0];
@@ -484,10 +469,13 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         // 앨범 사진을 pool에 기록한다 — 추천 입력이 pool로 단일화됐다(2026-09-01).
         // 분석은 여행 상세 진입 시 lazy로 돈다. 여기서 돌리지 않는다.
         // await 금지: 아래 replace를 붙잡지 않는다. 보관 실패가 앨범 생성을 막을 이유도 없다.
-        // 여행 카드 id: route 파라미터가 없으면(FAB 등 카드 밖 진입) appendTarget이 이미
-        // 속한 그룹을 찾는다 — 기존 기록이라 tripGroups 상태에 반영돼 있어 find가 안전하다.
+        // 여행 카드 id: appendTarget이 실제로 속한 그룹이 우선이다 — 기존 기록이라 tripGroups
+        // 상태에 반영돼 있어 find가 안전하다. route의 tripGroupId(진입한 카드 X)를 먼저 쓰면 안 된다:
+        // TripDetail은 X에 앨범이 이미 있으면 진입을 막으므로, X에서 들어와 이어 담는 대상은
+        // 겹치는 기간의 다른 카드 Y 소속일 수 있다. 사진은 Y 앨범에 담기는데 pool만 X로 가면 어긋난다.
+        // 어느 카드에도 안 속한 앨범일 때만 진입 카드로 폴백한다.
         {
-          const gid = tripGroupId ?? tripGroups.find((g) => g.records.includes(appendTarget.id))?.id;
+          const gid = tripGroups.find((g) => g.records.includes(appendTarget.id))?.id ?? tripGroupId;
           if (gid) {
             saveTripPool({
               tripGroupId: gid,
@@ -524,10 +512,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         startDate: fmtDate(startDate),
         endDate: fmtDate(endDate),
         title: albumTitle,
-        medias: mediasOrdered,
-        // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
+        medias: copied,
+        // 커버 복사가 실패하면 copied[0]이 다른 사진이므로 카드 썸네일용 대표를 명시
         representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
-        albumSections: autoSections,
         mediaAssetIds,
         mediaTimes,
       });

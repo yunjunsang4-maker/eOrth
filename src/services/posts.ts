@@ -11,6 +11,7 @@ import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
 import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageCompress';
+import { remapUriKeys } from '../utils/albumSections';
 import type { TravelRecord } from '../store/recordStore';
 import type { ServerPostCounts } from '../utils/postCountSync';
 import type { ServerPostRef } from '../utils/mergeMyRecords';
@@ -101,6 +102,16 @@ async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions):
     }
     // 로컬 전용 캐시는 서버 data에 싣지 않는다
     delete copy.uploadedMediaUrls;
+    // uri 키 맵을 업로드 URL 키로 옮겨 싣는다 — 로컬 경로 키 그대로 올리면 다른 기기·재설치 후엔
+    // medias(원격 URL)와 키가 안 맞아 '일자별로 다시 구성'과 사진 AI(adaptAlbumToPool)가
+    // 촬영시각을 잃는다. 대응은 rec.medias[i] → copy.medias[i](순서 보존), 대표도 같은 식.
+    // mediaAssetIds는 지우지 않고 리맵만 한다 — 값(assetId)은 같은 기기 재설치 후 불러오기의
+    // 중복 판정에 쓰인다(scanSampling은 values만 본다). 작성 기기의 로컬 값은 mergeMyRecords의
+    // keepLocal이 지키므로 서버 사본만 바뀐다.
+    const from = [...(rec.medias ?? []), ...(rec.representativePhoto ? [rec.representativePhoto] : [])];
+    const to = [...(copy.medias ?? []), ...(copy.representativePhoto ? [copy.representativePhoto] : [])];
+    copy.mediaTimes = remapUriKeys(rec.mediaTimes, from, to);
+    copy.mediaAssetIds = remapUriKeys(rec.mediaAssetIds, from, to);
     if (Object.keys(thumbs).length > 0) copy.thumbs = thumbs;
     return copy;
   }

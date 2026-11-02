@@ -20,7 +20,6 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useActiveStay, useRecordActions } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
-import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { getMaxAlbumPhotos } from '../constants/limits';
@@ -438,7 +437,6 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       let tripCount = 0;
       let photoCount = 0;
       const countries: { flag: string; name: string }[] = [];
-      const trFn = t; // 아래 루프의 t(여행)가 번역 함수 t를 가리므로 별칭 사용
       const homeCountryName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
       const stayCountryName = activeStayGroup?.stay?.status !== 'ended' ? (activeStayGroup?.countryName ?? null) : null;
       for (const t of trips) {
@@ -470,21 +468,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         if (adj && adj.uri === coverUri && firstItemCopied) {
           repUri = (await bakeCoverCrop(copied[0], adj.t, CARD_ASPECT, t.id)) ?? undefined;
         }
-        // 날짜별 자동 섹션 — 촬영일이 2일 이상이면 'n일차' 섹션으로 자동 정리 (미상은 '기타')
-        const pairs = copied.map((uri, k) => ({ uri, time: (items[srcIndexes[k]] as TripPhoto | undefined)?.creationTime }));
-        const groups = groupUrisByDay(pairs);
-        let mediasOrdered = copied;
-        let autoSections: { id: string; title: string; count: number }[] | undefined;
-        if (groups.filter((g) => g.key !== null).length >= 2) {
-          mediasOrdered = groups.flatMap((g) => g.uris);
-          let dayN = 0;
-          autoSections = groups.map((g) => ({
-            id: newSectionId(),
-            title: g.key ? trFn('comp.sectionDayN', { n: ++dayN }) : trFn('comp.sectionEtc'),
-            count: g.uris.length,
-          }));
-        }
-        // 복사본 uri → 원본 갤러리 자산 id / 촬영시각.
+        // 복사본 uri → 원본 갤러리 자산 id / 촬영시각(사진첩 타임라인의 원천).
         // assetId는 "이 사진은 이미 가져왔다"는 근거가 되어, 앱 내에서 다시 스캔할 때
         // 같은 여행이 중복 카드로 또 만들어지는 것을 막는다(사진첩 생성 화면과 동일 규약).
         const mediaAssetIds: Record<string, string> = {};
@@ -497,10 +481,9 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         const recId = addImportedAlbum({
           country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
           date: t.date, startDate: t.startDate, endDate: t.endDate,
-          title: t.title, medias: mediasOrdered,
-          // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
+          title: t.title, medias: copied,
+          // 커버 복사가 실패하면 copied[0]이 다른 사진이므로 카드 썸네일용 대표를 명시
           representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
-          albumSections: autoSections,
           mediaAssetIds,
           mediaTimes,
         }).id;
