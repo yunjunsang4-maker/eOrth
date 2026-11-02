@@ -1,5 +1,5 @@
 // src/utils/stayMachine.verify.ts
-import { decideOnVisitedChange, shouldNudgeEnd, stayCoversDate, isAmbiguousForPausedStay, STAY_NUDGE_MS, StaySnapshot } from './stayMachine';
+import { decideOnVisitedChange, shouldNudgeEnd, stayCoversDate, isAmbiguousForPausedStay, nudgeDismissState, encodeNudgeDismiss, computeStayEndedAt, STAY_NUDGE_MS, StaySnapshot } from './stayMachine';
 import { parseDotDate } from './momentMatch';
 
 let failed = 0;
@@ -42,7 +42,30 @@ eq(decideOnVisitedChange({ visitedCountryCode: 'JP', homeCountryCode: 'KR', stay
 // 넛지: paused + 60일 경과
 eq(shouldNudgeEnd(pausedJP, 1000 + STAY_NUDGE_MS), true, '넛지: 60일 경과');
 eq(shouldNudgeEnd(pausedJP, 1000 + STAY_NUDGE_MS - 1), false, '넛지: 60일 미만');
-eq(shouldNudgeEnd(stayJP, 1000 + STAY_NUDGE_MS), false, '넛지: active는 제외');
+// 2026-11-02: 진행 중 체류도 체류국 활동이 60일 없으면 넛지(도착 감지를 꺼 두면 영영 일시정지되지 않던 문제)
+eq(shouldNudgeEnd(stayJP, 1000 + STAY_NUDGE_MS), true, '넛지: active도 60일 무활동이면 대상');
+eq(shouldNudgeEnd(stayJP, 1000 + STAY_NUDGE_MS - 1), false, '넛지: active 60일 미만');
+eq(shouldNudgeEnd({ ...stayJP, status: 'ended' }, 1000 + STAY_NUDGE_MS), false, '넛지: ended는 제외');
+
+// 넛지 '아직이에요' — 60일 동안만 다시 묻지 않음, 옛 형식(id만)은 legacy
+eq(nudgeDismissState(null, 'grp-a', 5000), 'none', '무시 기록 없음 → none');
+eq(nudgeDismissState(encodeNudgeDismiss('grp-a', 5000), 'grp-a', 5000 + STAY_NUDGE_MS - 1), 'suppressed', '닫은 뒤 60일 미만 → 묻지 않음');
+eq(nudgeDismissState(encodeNudgeDismiss('grp-a', 5000), 'grp-a', 5000 + STAY_NUDGE_MS), 'none', '닫은 뒤 60일 → 다시 물음');
+eq(nudgeDismissState(encodeNudgeDismiss('grp-b', 5000), 'grp-a', 6000), 'none', '다른 체류 카드의 무시 기록 → none');
+eq(nudgeDismissState('grp-a', 'grp-a', 6000), 'legacy', '옛 형식(id만) → legacy');
+eq(nudgeDismissState('grp-b', 'grp-a', 6000), 'none', '옛 형식이지만 다른 카드 → none');
+
+// 체류 종료일 — 기록 마지막 날 / 일시정지면 떠난 날 중 늦은 쪽 / 둘 다 없으면 오늘, 시작일보다 앞서지 않음
+{
+  const dd = (s: string) => parseDotDate(s)!;
+  const now = dd('2026.11.02') + 15 * 60 * 60 * 1000;
+  eq(computeStayEndedAt({ status: 'active', startedAt: '2026.03.01', lastActiveAt: dd('2026.03.01') }, [], now), '2026.11.02', '종료일: active·기록 없음 → 오늘(예전엔 시작일=기간 0일)');
+  eq(computeStayEndedAt({ status: 'paused', startedAt: '2026.03.01', lastActiveAt: dd('2026.07.20') + 9 * 3600e3 }, [], now), '2026.07.20', '종료일: paused·기록 없음 → 떠난 날');
+  eq(computeStayEndedAt({ status: 'paused', startedAt: '2026.03.01', lastActiveAt: dd('2026.07.20') }, ['2026.05.10', '2026.06.30'], now), '2026.07.20', '종료일: paused → 기록보다 늦은 떠난 날');
+  eq(computeStayEndedAt({ status: 'active', startedAt: '2026.03.01', lastActiveAt: dd('2026.08.01') }, ['2026.05.10', '2026.08.15', undefined], now), '2026.08.15', '종료일: active → 마지막 기록일(빈 날짜 무시)');
+  eq(computeStayEndedAt({ status: 'active', startedAt: '2026.03.01', lastActiveAt: 0 }, ['2026-09-05', '2026.08.15'], now), '2026.09.05', '종료일: \'-\'·\'.\' 표기 섞여도 날짜 순(문자열 정렬이면 08.15)');
+  eq(computeStayEndedAt({ status: 'active', startedAt: '2026.03.01', lastActiveAt: 0 }, ['2026.02.20'], now), '2026.03.01', '종료일: 시작일보다 앞서지 않음');
+}
 
 // ─── stayCoversDate: 회고·타기기 기록을 체류 카드에 붙일지(기간 포함, 양끝 포함) ───
 const d = (s: string) => parseDotDate(s)!;

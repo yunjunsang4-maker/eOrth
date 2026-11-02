@@ -71,7 +71,7 @@ import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
 import { StayPromptModal } from '../components/record/StayPromptModal';
 import { PillRing } from '../components/record/CalendarBottomSheet';
-import { shouldNudgeEnd } from '../utils/stayMachine';
+import { shouldNudgeEnd, nudgeDismissState, encodeNudgeDismiss } from '../utils/stayMachine';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -2117,12 +2117,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 도착 감지를 꺼진 것으로 표시하므로
   // 실제 동작도 일치시키고, 꺼질 때는 '여행 중' 표시를 거주국으로 되돌린다.
   // 감지 실패(countryCode null)는 둘로 나눈다:
-  //  · 위치 권한 없음(영구) → 거주국으로. 안 그러면 권한을 끈 뒤 '여행 중' 표시가 고착된다.
-  //  · 그 외(오프라인 역지오코딩 실패·측위 실패 등 일시적) → 기존 값 유지. 거주국으로 덮으면
-  //    recordStore 도착 감지 effect가 '귀국'으로 읽어 체류를 일시정지하고 여행 세션을 끊는다.
+  //  · 위치 권한 없음·OS 위치 서비스 꺼짐(영구) → ''(모름). 안 그러면 권한을 끈 뒤 '여행 중' 표시가 고착된다.
+  //  · 그 외(오프라인 역지오코딩 실패·측위 실패 등 일시적) → 기존 값 유지.
+  // 감지를 끄거나 못 할 때 거주국이 아니라 ''를 넣는다(2026-11-02) — 거주국을 넣으면 recordStore 도착 감지
+  // effect가 '귀국'으로 읽어 체류를 일시정지하고 여행 세션을 끊었다. ''는 그 effect가 판정 없이 지나간다.
+  // '' 일 때 '여행 중' 표시(아래 visit)와 광고 국가 판정(adCampaignSelect)은 값이 비었다고 보고 건너뛴다.
   useEffect(() => {
     if (!arrivalDetect || !notifPrefs.master) {
-      setCurrentVisitedCountryCode(homeCountryCode);
+      setCurrentVisitedCountryCode('');
       return;
     }
     let cancelled = false;
@@ -2141,7 +2143,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       // OS 위치 서비스 자체가 꺼진 것도 영구 상태로 친다 — 권한은 granted라 위 판정만으론 못 잡는다
       const servicesOn = await Location.hasServicesEnabledAsync().catch(() => true);
       if (cancelled) return;
-      if ((perm && perm.status !== 'granted') || !servicesOn) setCurrentVisitedCountryCode(homeCountryCode);
+      if ((perm && perm.status !== 'granted') || !servicesOn) setCurrentVisitedCountryCode('');
     };
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
     check(); // 앱 실행(마운트) 시 1회
@@ -2421,25 +2423,47 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     navigation.navigate('TripDetail', { trip });
   };
 
-  // 체류 종료 넛지 — 체류국 60일 무복귀(paused) 시 카드당 1회 물어본다
+  // 체류 종료 넛지 — 마지막 체류 활동에서 60일(shouldNudgeEnd: 일시정지=떠난 지 60일, 진행 중=체류국 기록 60일 없음).
+  // '아직이에요'는 60일 동안만 다시 묻지 않는다(nudgeDismissState) — 예전엔 카드당 영구 무시였다(2026-11-02).
+  // 상태·활동 시각·무시 기록이 바뀌면 다시 본다(예전엔 카드 id가 바뀔 때만 봐서 앱을 켠 채 일시정지돼도 몰랐다).
+  // nudgeOpenRef: 답하기 전 의존값이 바뀌어 effect가 다시 돌아도 팝업이 겹쳐 뜨지 않게.
+  const nudgeOpenRef = useRef(false);
   useEffect(() => {
-    if (!activeStayGroup?.stay) return;
-    if (stayNudgeDismissedFor === activeStayGroup.id) return;
-    const snap = { countryCode: '', status: activeStayGroup.stay.status, lastActiveAt: activeStayGroup.stay.lastActiveAt };
-    if (!shouldNudgeEnd(snap, Date.now())) return;
+    const g = activeStayGroup;
+    if (!g?.stay || nudgeOpenRef.current) return;
+    const now = Date.now();
+    const dismiss = nudgeDismissState(stayNudgeDismissedFor, g.id, now);
+    if (dismiss === 'legacy') {
+      // 옛 저장본(id만) — 지금 닫은 것으로 옮겨 적는다. 업데이트 직후 곧바로 다시 묻지 않게
+      setStayNudgeDismissedFor(encodeNudgeDismiss(g.id, now));
+      return;
+    }
+    if (dismiss === 'suppressed') return;
+    const snap = { countryCode: '', status: g.stay.status, lastActiveAt: g.stay.lastActiveAt };
+    if (!shouldNudgeEnd(snap, now)) return;
     // 여기엔 햅틱을 넣지 않는다 — 이 넛지는 사용자가 누른 게 아니라 조건이 되면 스스로 뜬다.
     // 촉각 경고는 "내가 방금 되돌릴 수 없는 걸 눌렀다"는 신호라, 자동 팝업에 붙이면
     // 아무것도 안 했는데 진동하는 꼴이 된다.
+    nudgeOpenRef.current = true;
+    const country = g.countryName ?? '';
     Alert.alert(
       t('stay.nudgeTitle'),
-      t('stay.nudgeMsg', { country: activeStayGroup.countryName ?? '' }),
+      // 진행 중이면 '떠났다'고 단정할 수 없다 — 기록이 없었다는 사실만 말한다
+      g.stay.status === 'paused' ? t('stay.nudgeMsg', { country }) : t('stay.nudgeActiveMsg', { country }),
       [
-        { text: t('stay.nudgeKeep'), style: 'cancel', onPress: () => setStayNudgeDismissedFor(activeStayGroup.id) },
-        { text: t('stay.endStay'), style: 'destructive', onPress: () => { endStay(activeStayGroup.id); setStayNudgeDismissedFor(activeStayGroup.id); } },
-      ]
+        { text: t('stay.nudgeKeep'), style: 'cancel', onPress: () => {
+          nudgeOpenRef.current = false;
+          setStayNudgeDismissedFor(encodeNudgeDismiss(g.id, Date.now()));
+        } },
+        { text: t('stay.endStay'), style: 'destructive', onPress: () => {
+          nudgeOpenRef.current = false;
+          endStay(g.id);
+        } },
+      ],
+      { cancelable: false }, // 바깥 탭·뒤로로 닫히면 nudgeOpenRef가 안 풀린다
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStayGroup?.id]);
+  }, [activeStayGroup?.id, activeStayGroup?.stay?.status, activeStayGroup?.stay?.lastActiveAt, stayNudgeDismissedFor]);
 
 
   return (

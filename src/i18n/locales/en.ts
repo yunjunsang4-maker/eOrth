@@ -2168,6 +2168,7 @@ const en = {
     endConfirmMsg: 'Your {{country}} stay card will be wrapped up. Future visits will be recorded as new trips.',
     nudgeTitle: 'Has your stay ended?',
     nudgeMsg: "You haven't been back to {{country}} for a while. Wrap up the stay card?",
+    nudgeActiveMsg: "No records from {{country}} for over 60 days. If you're no longer staying there, wrap up the stay card?",
     nudgeKeep: 'Not yet',
     resumeToast: 'Resuming your stay in {{country}}',
     resume: 'Resume stay',

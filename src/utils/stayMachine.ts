@@ -44,8 +44,46 @@ export function decideOnVisitedChange(p: {
   return { pauseStay: !!stay && stay.status === 'active', resumeStay: false, isNewAbroadCountry: true };
 }
 
+// 체류 종료 넛지 대상 — 마지막 체류 활동(lastActiveAt)에서 60일.
+//  · paused: 체류국을 떠난 지 60일(떠남 감지 시 lastActiveAt=그때).
+//  · active: 체류국 실시간 기록·재개가 60일 없음. 도착 감지를 꺼 두면 귀국해도 일시정지가 안 돼
+//    체류가 영영 '진행 중'으로 남고 이웃에게 '체류 중'으로 보였다 — 그 경우를 여기서 잡는다(2026-11-02).
 export function shouldNudgeEnd(stay: StaySnapshot | null, now: number): boolean {
-  return !!stay && stay.status === 'paused' && now - stay.lastActiveAt >= STAY_NUDGE_MS;
+  return !!stay && stay.status !== 'ended' && now - stay.lastActiveAt >= STAY_NUDGE_MS;
+}
+
+// 넛지 '아직이에요' 기록 — 'id|닫은 시각(ms)'. 닫은 뒤 60일이 지나면 다시 묻는다.
+// 옛 저장본은 id만 있다(영구 무시) → 'legacy'로 돌려, 호출부가 지금 시각으로 옮겨 적게 한다(곧바로 다시 묻지 않게).
+// 카드 id(grp-…)에는 '|'가 없다.
+export function encodeNudgeDismiss(stayId: string, now: number): string {
+  return `${stayId}|${now}`;
+}
+export function nudgeDismissState(stored: string | null | undefined, stayId: string, now: number): 'none' | 'suppressed' | 'legacy' {
+  if (!stored) return 'none';
+  const [id, at] = stored.split('|');
+  if (id !== stayId) return 'none';
+  if (at === undefined) return 'legacy';
+  const t = Number(at);
+  return Number.isFinite(t) && now - t < STAY_NUDGE_MS ? 'suppressed' : 'none';
+}
+
+// 체류 종료일('YYYY.MM.DD') — 체류 카드 기록의 마지막 날과, 일시정지면 떠난 날(lastActiveAt) 중 늦은 쪽.
+// 둘 다 없으면(진행 중인데 기록 0개) 오늘. 예전엔 기록이 없으면 시작일이라 기간이 0일이 되어,
+// 그 기간에 쓴 회고 기록이 stayCoversDate 밖으로 판정돼 체류 카드에 못 붙었다(2026-11-02).
+// 날짜는 숫자로 비교한다 — 문자열 정렬은 '-'·'.' 표기가 섞이면 순서가 틀린다. 시작일보다 앞서지 않게 자른다.
+export function computeStayEndedAt(
+  stay: { status: StayStatus; startedAt: string; lastActiveAt: number },
+  recordDates: (string | undefined)[],
+  now: number,
+): string {
+  const day = (ms: number) => { const d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const cands = recordDates.map((s) => parseDotDate(s)).filter((n): n is number => n != null);
+  if (stay.status === 'paused') cands.push(day(stay.lastActiveAt));
+  let end = cands.length > 0 ? Math.max(...cands) : day(now);
+  const start = parseDotDate(stay.startedAt);
+  if (start != null && end < start) end = start;
+  const d = new Date(end);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
 // 기록 시작일(로컬 자정 ms)이 체류 기간 [startedAt, endedAt ?? 오늘] 안인가 — 양끝 포함.

@@ -55,7 +55,7 @@ import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
 import type { PhotoFrame } from '../utils/photoFrame';
 import type { StayType, StayStatus } from '../utils/stayMachine';
-import { decideOnVisitedChange, stayCoversDate, isAmbiguousForPausedStay, type StaySnapshot } from '../utils/stayMachine';
+import { decideOnVisitedChange, stayCoversDate, isAmbiguousForPausedStay, computeStayEndedAt, type StaySnapshot } from '../utils/stayMachine';
 import {
   requestNeighbor as apiRequestNeighbor,
   cancelNeighborRequest as apiCancelNeighborRequest,
@@ -1057,15 +1057,16 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     tripSessionRef.current = opened;
   };
 
-  // 체류 종료 — status='ended', endedAt=마지막 체류국 기록일(기록 없으면 시작일)
+  // 체류 종료 — status='ended', endedAt=computeStayEndedAt(마지막 기록일·일시정지면 떠난 날, 둘 다 없으면 오늘).
+  // 기록은 recordsLiveRef로 읽는다 — 넛지·애매 질문의 답처럼 나중에 불려도 낡은 렌더 클로저를 쓰지 않게.
   const endStay = (groupId: string) => {
+    const now = Date.now();
     const apply = (list: TripGroup[]) => list.map((g) => {
       if (g.id !== groupId || !g.stay) return g;
       const dates = g.records
-        .map((id) => records.find((r) => r.id === id))
-        .map((r) => r && (r.endDate || r.startDate || r.date))
-        .filter(Boolean) as string[];
-      const endedAt = dates.sort().slice(-1)[0] || g.stay.startedAt;
+        .map((id) => recordsLiveRef.current.find((r) => r.id === id))
+        .map((r) => r && (r.endDate || r.startDate || r.date));
+      const endedAt = computeStayEndedAt(g.stay, dates, now);
       return { ...g, stay: { ...g.stay, status: 'ended' as StayStatus, endedAt } };
     });
     setTripGroups(apply);
@@ -1128,6 +1129,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const prev = prevVisitedRef.current;
     prevVisitedRef.current = currentVisitedCountryCode;
     if (prev === currentVisitedCountryCode) return;
+    // '' = 위치를 모름(도착 감지·알림 전체 끔, 위치 권한·위치 서비스 꺼짐 — ProfileScreen). 귀국이 아니다.
+    // 예전엔 이때 거주국을 넣어 '귀국'으로 읽혀 체류가 일시정지되고 여행 세션이 끊겼다(2026-11-02).
+    // 아무 판정도 하지 않는다 — 다시 감지되면 ''→실제 국가 전환으로 그때 판정한다.
+    if (!currentVisitedCountryCode) return;
 
     // 귀국(해외→거주국 전환) → 여행 세션 종료 (기존 동작 유지)
     if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {

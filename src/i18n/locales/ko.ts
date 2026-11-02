@@ -2187,6 +2187,7 @@ const ko = {
     endConfirmMsg: '{{country}} 체류 카드가 마무리돼요. 이후 이 나라 방문은 새 여행으로 기록돼요.',
     nudgeTitle: '체류가 끝났나요?',
     nudgeMsg: '{{country}}에 오랫동안 돌아가지 않았어요. 체류 카드를 마무리할까요?',
+    nudgeActiveMsg: '{{country}}에서 60일 넘게 기록이 없어요. 아직 체류 중이 아니라면 체류 카드를 마무리할까요?',
     nudgeKeep: '아직이에요',
     resumeToast: '{{country}} 체류를 이어가요',
     resume: '체류 재개',
