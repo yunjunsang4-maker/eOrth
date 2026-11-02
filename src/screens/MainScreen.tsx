@@ -223,8 +223,6 @@ function sheetHandlePan(y: SharedValue<number>, start: SharedValue<number>, clos
 // + SNAP_ABOVE_FAB(utils/tabBar 단일 출처)로 컴포넌트 안에서 구한다(snapBottom).
 // right: iOS는 프로필 탭 아이콘 중심선(utils/tabBar IOS_STACK_CENTER_RIGHT) 파생값, Android는 시안 46.
 const SNAP_BTN = { right: Platform.OS === 'ios' ? IOS_SNAP_RIGHT : 46, size: 60 };
-/** 스냅 버튼 위에 얹는 오버레이가 스냅 바닥에서 더 올라가는 높이 (snapBottom에 더한다) */
-const ABOVE_SNAP_GAP = SNAP_BTN.size + 10;
 /** '방문 지역 추가하기' 칩과 옆 버튼(iOS FAB / Android 스냅) 사이 가로 틈. 코치마크 강조 구멍 여백(MainCoachmark PAD 8)보다
  *  커야 FAB·스냅 강조 단계에서 칩이 구멍 안으로 비치지 않는다. */
 const FAB_SIDE_GAP = 10;
@@ -2179,32 +2177,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 puzzleComplete={!!regionProgress && regionProgress.total > 0 && regionProgress.visited === regionProgress.total}
               />
             </View>
-            {/* ── 하단 오버레이 스택 ──
-                진행도와 칩들을 각자 absolute로 띄우면 서로를, 그리고 앞 레이어인 스냅 버튼을
-                모른다. 실제로 '방문 지역 추가하기' 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
-                하나의 스택에 넣고 스냅 버튼 위(ABOVE_SNAP)에 앵커해 겹침을 구조적으로 막는다.
-                아래(스냅 버튼 쪽)부터 쌓이도록 column-reverse를 쓴다.
-                '방문 지역 추가하기' 칩은 2026-10-31부터, 진행도 칩은 2026-11-01부터 이 스택이 아니라
-                iOS FAB 줄 / Android 스냅 줄(아래 별도 블록). 남은 퍼즐 칩은 스택 바닥(스냅 윗면 + 10)으로 내려온다 —
-                두 칩 줄(FAB·스냅 줄)보다 위라 세로로 겹치지 않는다. */}
-            <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: snapBottom + ABOVE_SNAP_GAP }]}>
-              {/* 퍼즐 사진 선택 유도 칩 — 퍼즐 모드인데 사진이 없으면 지도가 사진 모드처럼
-                  보이고, 안내는 표시 설정 시트 안에만 있어 발견이 안 됐다. 지도 위에서 바로
-                  시트로 보낸다(지역 데이터 미수록 국가는 퍼즐 대상이 아니라 숨김). */}
-              {regionGlobalMode === 'puzzle' && !puzzleImage && !!regionProgress && (
-                <View style={{ alignSelf: 'center', maxWidth: '92%' }}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={openDisplaySettings}
-                    accessibilityRole="button"
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 16, paddingVertical: 10 }}
-                  >
-                    <PuzzlePieceIcon size={15} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }} {...andFitText}>{t('main.puzzlePickChip')}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
+            {/* 퍼즐 사진 선택은 지구본 버튼 표시 설정 팝업에서만 한다 — 지도 위 유도 칩은 2026-11-02 사용자 결정으로 제거. */}
 
             {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만.
                 iOS는 기록 추가 FAB 가로줄 FAB 왼쪽, Android는 스냅 버튼 가로줄 스냅 왼쪽(2026-10-31 사용자 확정).
@@ -3637,17 +3610,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  // 하단 오버레이 스택 — 스냅 버튼 위에 앵커(bottom은 인라인). column-reverse라 JSX에서 먼저
-  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다. 지금은 퍼즐 사진 칩 하나뿐(스냅 윗면 + 10).
-  // (태그 칩·진행도 칩은 여기서 빠져 iOS FAB 줄 / Android 스냅 줄에 따로 있다 — 렌더부 주석 참고)
-  regionBottomStack: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 2,
-    flexDirection: 'column-reverse',
-    gap: 10,
   },
   regionProgressText: {
     fontSize: 12,
