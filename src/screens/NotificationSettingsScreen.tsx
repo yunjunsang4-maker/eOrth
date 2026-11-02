@@ -9,7 +9,18 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon, BackpackIcon, SparkleIcon } from '../components/icons';
+import { CalendarIcon, MegaphoneIcon, BackpackIcon, SparkleIcon } from '../components/icons';
+// 2026-11 시안 아이콘(흰 채움) — 시안에 없는 줄(체류 중 여행·추억·마케팅·여행 기억)은 기존 팔레트 아이콘 유지
+import {
+  SettingsNotifIcon,
+  SettingsFriendTripIcon,
+  SettingsLikeIcon,
+  SettingsMessageIcon,
+  SettingsProfileIcon,
+  SettingsArrivalIcon,
+  SettingsSnapIcon,
+  SettingsHomeRegionIcon,
+} from '../components/icons/SettingsIcons';
 import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import { useNotifSettings, useSettingsActions } from '../store/settingsStore';
@@ -161,7 +172,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
 
   const basicItems: SettingItem[] = [
     {
-      icon: <BellIcon size={20} />,
+      icon: <SettingsNotifIcon />,
       label: t('notifSettings.masterLabel'),
       description: t('notifSettings.masterDesc'),
       toggle: masterEnabled,
@@ -169,18 +180,18 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
     },
   ];
   const socialItems: SettingItem[] = [
-    sub({ icon: <MapIcon size={20} />, label: t('notifSettings.friendTripLabel'), description: t('notifSettings.friendTripDesc'), toggle: friendTrip, onToggle: (v) => setNotifPref('friendTrip', v) }),
-    sub({ icon: <HeartIcon size={20} />, label: t('notifSettings.likesLabel'), description: t('notifSettings.likesDesc'), toggle: likes, onToggle: (v) => setNotifPref('likes', v) }),
-    sub({ icon: <ChatIcon size={20} />, label: t('notifSettings.messagesLabel'), description: t('notifSettings.messagesDesc'), toggle: messages, onToggle: (v) => setNotifPref('messages', v) }),
-    sub({ icon: <PersonIcon size={20} />, label: t('notifSettings.newFollowerLabel'), description: t('notifSettings.newFollowerDesc'), toggle: newFollower, onToggle: (v) => setNotifPref('newFollower', v) }),
+    sub({ icon: <SettingsFriendTripIcon />, label: t('notifSettings.friendTripLabel'), description: t('notifSettings.friendTripDesc'), toggle: friendTrip, onToggle: (v) => setNotifPref('friendTrip', v) }),
+    sub({ icon: <SettingsLikeIcon />, label: t('notifSettings.likesLabel'), description: t('notifSettings.likesDesc'), toggle: likes, onToggle: (v) => setNotifPref('likes', v) }),
+    sub({ icon: <SettingsMessageIcon />, label: t('notifSettings.messagesLabel'), description: t('notifSettings.messagesDesc'), toggle: messages, onToggle: (v) => setNotifPref('messages', v) }),
+    sub({ icon: <SettingsProfileIcon />, label: t('notifSettings.newFollowerLabel'), description: t('notifSettings.newFollowerDesc'), toggle: newFollower, onToggle: (v) => setNotifPref('newFollower', v) }),
   ];
   const travelItems: SettingItem[] = [
-    sub({ icon: <PlaneIcon size={20} />, label: t('notifSettings.arrivalLabel'), description: t('notifSettings.arrivalDesc'), toggle: arrivalDetect, onToggle: handleArrivalToggle }),
-    sub({ icon: <BellIcon size={20} />, label: t('notifSettings.snapLabel'), description: t('notifSettings.snapDesc'), toggle: snapEnabled, onToggle: setSnapEnabled }),
+    sub({ icon: <SettingsArrivalIcon />, label: t('notifSettings.arrivalLabel'), description: t('notifSettings.arrivalDesc'), toggle: arrivalDetect, onToggle: handleArrivalToggle }),
+    sub({ icon: <SettingsSnapIcon />, label: t('notifSettings.snapLabel'), description: t('notifSettings.snapDesc'), toggle: snapEnabled, onToggle: setSnapEnabled }),
     ...(TRAVEL_MOMENTS_ENABLED
       ? [sub({ icon: <SparkleIcon size={20} />, label: t('moments.settingsLabel'), description: t('moments.settingsDesc'), toggle: travelMoment, onToggle: (v) => setNotifPref('travelMoment', v) })]
       : []),
-    sub({ icon: <HomeIcon size={20} />, label: t('notifSettings.returnLabel'), description: t('notifSettings.returnDesc'), toggle: returnDetect, onToggle: (v) => setNotifPref('returnDetect', v) }),
+    sub({ icon: <SettingsHomeRegionIcon />, label: t('notifSettings.returnLabel'), description: t('notifSettings.returnDesc'), toggle: returnDetect, onToggle: (v) => setNotifPref('returnDetect', v) }),
     // 이 줄만 위치 권한이 필요 없다 — 최근 사진에서 체류국 밖 여행을 찾는다
     // 아이콘은 이모지(🧳) 대신 앱 팔레트 아이콘 — 다른 행과 같은 크기·스킨색 점
     sub({ icon: <BackpackIcon size={20} />, label: t('notifSettings.stayTripLabel'), description: t('notifSettings.stayTripDesc'), toggle: stayTripSuggest, onToggle: (v) => setNotifPref('stayTripSuggest', v) }),
