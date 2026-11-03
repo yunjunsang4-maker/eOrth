@@ -169,6 +169,8 @@ const en = {
     stripFrameCustomMsg: 'With Premium, when creating a photo strip you can:\n· pick any frame color beyond the basic palette (+ button)\n· use your own photo as the frame background (🖼️ button)\n· add a caption in any font to the bottom area\nThe date stamp is free for everyone.',
     languageChange: 'Language',
     languageSelectMsg: 'Choose your language',
+    betaTranslationTitle: 'Beta translation',
+    betaTranslationMsg: 'This language is still in beta.\nIf you spot an awkward or wrong translation, please report it via Settings > Send feedback.',
     langKo: '한국어',
     langEn: 'English',
     langJa: '日本語', // 언어 선택지는 각 언어를 자기 언어로 적는다(langKo 와 같은 관례)

@@ -57,9 +57,9 @@ export const LANGUAGE_LABELS: Record<AppLanguage, string> = {
   fr: 'Français',
 }; // 각 언어를 자기 언어로 적는 것이 관례다(번역하지 말 것)
 
-export const SELECTABLE_LANGUAGES: AppLanguage[] = __DEV__
-  ? ['ko', 'en', 'ja', 'zh-Hant', 'es-419', 'es-ES', 'fr']
-  : ['ko', 'en'];
+// 2026-11-03 사용자 결정: 정식 빌드에서도 전부 고를 수 있게 __DEV__ 게이트를 걷었다.
+// ko·en 밖은 아직 부분 번역이라 고를 때 '베타 번역' 신고 안내를 띄운다(i18n/betaTranslationNotice.ts).
+export const SELECTABLE_LANGUAGES: AppLanguage[] = ['ko', 'en', 'ja', 'zh-Hant', 'es-419', 'es-ES', 'fr'];
 
 // 기기 언어 기반 기본 언어 — 한국어 기기만 ko, 그 외는 전부 en (사용자 확정 2026-07-30).
 // ⚠️ 일본어·번체 중국어·스페인어·프랑스어 기기도 아직 en 이다 — 완역 전까지는 기기 언어로 자동 선택하지 않는다.

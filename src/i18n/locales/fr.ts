@@ -140,6 +140,8 @@ const fr: WithPlurals<typeof ko> = {
   settings: {
     languageChange: 'Changer de langue',
     languageSelectMsg: 'Choisissez la langue à utiliser',
+    betaTranslationTitle: 'Traduction en bêta',
+    betaTranslationMsg: 'Cette langue est encore en version bêta.\nSi vous repérez une traduction maladroite ou erronée, signalez-la via l’envoi de commentaires dans les paramètres.',
     langKo: '한국어',
     langEn: 'English',
     langJa: '日本語',

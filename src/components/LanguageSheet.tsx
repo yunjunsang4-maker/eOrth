@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../utils/stage';
 import { LANGUAGE_LABELS, SELECTABLE_LANGUAGES, type AppLanguage } from '../i18n';
+import { showBetaTranslationNotice } from '../i18n/betaTranslationNotice';
 import { select } from '../utils/haptics';
 import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton, settingsText } from './settings/SettingsUI';
 import SystemSheet, { NATIVE_SHEET } from './SystemSheet';
@@ -77,6 +78,8 @@ export default function LanguageSheet({
     select();
     onSelect(lang);
     onClose();
+    // ko·en 밖은 베타 번역 — 시트가 닫힌 뒤 고른 언어로 신고 안내
+    if (lang !== current) showBetaTranslationNotice(lang, 450);
   };
 
   // 저장된 언어가 게이트 밖(정식 빌드의 ja·zh-Hant 등)이어도 자기 언어 행은 보여야 한다 —

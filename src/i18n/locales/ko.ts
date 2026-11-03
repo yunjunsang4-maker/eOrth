@@ -176,6 +176,8 @@ const ko = {
     stripFrameCustomMsg: '프리미엄 구독 시 네컷(스트립) 만들기에서\n· 프레임 색을 팔레트 외의 색으로 자유롭게 (+ 버튼)\n· 내 사진을 프레임 배경으로 (🖼️ 버튼)\n· 하단 여백에 문구를 원하는 폰트로\n꾸밀 수 있어요. 날짜 스탬프는 무료예요.',
     languageChange: '언어 변경',
     languageSelectMsg: '사용할 언어를 선택하세요',
+    betaTranslationTitle: '베타 번역 안내',
+    betaTranslationMsg: '이 언어는 아직 베타 버전이에요.\n어색하거나 틀린 번역을 발견하면 설정 > 피드백 보내기로 신고 부탁드려요.',
     langKo: '한국어',
     langEn: 'English',
     langJa: '日本語', // 언어 선택지는 각 언어를 자기 언어로 적는다(langKo 와 같은 관례)

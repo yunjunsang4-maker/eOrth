@@ -132,6 +132,8 @@ const ja: DeepPartial<typeof ko> = {
   settings: {
     languageChange: '言語を変更',
     languageSelectMsg: '使用する言語を選んでください',
+    betaTranslationTitle: 'ベータ版の翻訳',
+    betaTranslationMsg: 'この言語はまだベータ版です。\n不自然な訳や誤訳を見つけたら、設定のフィードバックからお知らせください。',
     langKo: '한국어',
     langEn: 'English',
     langJa: '日本語',

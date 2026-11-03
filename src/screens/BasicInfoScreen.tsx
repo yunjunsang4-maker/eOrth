@@ -50,6 +50,7 @@ import { minimumSignupAge } from '../constants/minimumAge';
 // 이번에 고친 것과 똑같은 방식으로 조용히 갈라진다.
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
 import { DEVICE_DEFAULT_HOME_COUNTRY, LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
+import { showBetaTranslationNotice } from '../i18n/betaTranslationNotice';
 import { PillRing } from '../components/record/CalendarBottomSheet';
 import HeaderGlassButton from '../components/HeaderGlassButton';
 
@@ -520,7 +521,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
                     key={value}
                     style={[styles.languageBtn, active && styles.languageBtnActive]}
                     activeOpacity={0.8}
-                    onPress={() => setLanguage(value)}
+                    onPress={() => {
+                      // ko·en 밖은 베타 번역 — 고른 언어로 신고 안내(LanguageSheet와 같은 함수)
+                      if (value !== language) showBetaTranslationNotice(value);
+                      setLanguage(value);
+                    }}
                   >
                     <Text
                       style={[styles.languageText, active && styles.languageTextActive]}

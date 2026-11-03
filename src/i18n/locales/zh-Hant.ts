@@ -131,6 +131,8 @@ const zhHant: DeepPartial<typeof ko> = {
   settings: {
     languageChange: '變更語言',
     languageSelectMsg: '請選擇要使用的語言',
+    betaTranslationTitle: '翻譯測試版',
+    betaTranslationMsg: '此語言目前仍為測試版。\n若發現不自然或錯誤的翻譯，請透過設定中的意見回饋告訴我們。',
     langKo: '한국어',
     langEn: 'English',
     langJa: '日本語',
