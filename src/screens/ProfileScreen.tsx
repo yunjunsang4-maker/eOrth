@@ -35,7 +35,8 @@ import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } fr
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { isKoreanLang } from '../utils/langKind';
-import { PersonIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
+import { PersonIcon, LockClosedIcon, BackChevronIcon, EyeIcon, GalleryIcon, TrashIcon } from '../components/icons';
+import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
 import HeaderGlassButton from '../components/HeaderGlassButton';
 import DefaultAvatar from '../components/DefaultAvatar';
 import GrainOverlay from '../components/GrainOverlay';
@@ -857,87 +858,24 @@ function AvatarActionSheet({
   onChangePhoto: () => void;
   onDeletePhoto: () => void;
 }) {
-  const { t, i18n } = useTranslation();
-  const translateY = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 60,
-        friction: 12,
-      }).start();
-    } else {
-      translateY.setValue(500);
-    }
-  }, [visible]);
-
+  const { t } = useTranslation();
+  // 앱 공용 ⋯ 바텀시트(components/MenuSheet, 2026-11-04 통일) — 예전 #1E1E2E 카드·이모지(📷✏️🗑️)·취소 카드 대신
   return (
-    <Modal
-      transparent
-      visible={visible}
-      animationType="none"
-      onRequestClose={onClose}
-      statusBarTranslucent navigationBarTranslucent
-    >
-      <View style={asStyles.overlay}>
-        {/* 배경 탭으로 닫기 */}
-        <TouchableOpacity
-          style={StyleSheet.absoluteFillObject}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-        {/* 바텀시트 */}
-        <Animated.View style={[asStyles.sheet, { transform: [{ translateY }] }]}>
-          {/* 핸들 바 */}
-          <View style={asStyles.handle} />
-
-          {/* 옵션 카드 */}
-          <View style={asStyles.optionsCard}>
-            {hasPhoto && (
-              <>
-                <TouchableOpacity
-                  style={asStyles.option}
-                  activeOpacity={0.7}
-                  onPress={onViewPhoto}
-                >
-                  <Text style={asStyles.optionIcon}>📷</Text>
-                  <Text style={asStyles.optionText}>{t('profile.viewPhoto')}</Text>
-                </TouchableOpacity>
-                <View style={asStyles.divider} />
-              </>
-            )}
-            <TouchableOpacity
-              style={asStyles.option}
-              activeOpacity={0.7}
-              onPress={onChangePhoto}
-            >
-              <Text style={asStyles.optionIcon}>✏️</Text>
-              <Text style={asStyles.optionText}>{t('profile.changePhoto')}</Text>
-            </TouchableOpacity>
-            {hasPhoto && (
-              <>
-                <View style={asStyles.divider} />
-                <TouchableOpacity
-                  style={asStyles.option}
-                  activeOpacity={0.7}
-                  onPress={onDeletePhoto}
-                >
-                  <Text style={asStyles.optionIcon}>🗑️</Text>
-                  <Text style={[asStyles.optionText, asStyles.deleteText]}>{t('profile.deletePhoto')}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          {/* 취소 카드 */}
-          <TouchableOpacity style={asStyles.cancelCard} activeOpacity={0.7} onPress={onClose}>
-            <Text style={asStyles.cancelText}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
+    <MenuSheet visible={visible} onClose={onClose}>
+      {hasPhoto && (
+        <>
+          <MenuSheetItem icon={<EyeIcon size={18} color="#FFFFFF" />} label={t('profile.viewPhoto')} onPress={onViewPhoto} />
+          <MenuSheetDivider />
+        </>
+      )}
+      <MenuSheetItem icon={<GalleryIcon size={18} color="#FFFFFF" />} label={t('profile.changePhoto')} onPress={onChangePhoto} />
+      {hasPhoto && (
+        <>
+          <MenuSheetDivider />
+          <MenuSheetItem icon={<TrashIcon size={18} color={MENU_DANGER} />} label={t('profile.deletePhoto')} onPress={onDeletePhoto} danger />
+        </>
+      )}
+    </MenuSheet>
   );
 }
 
@@ -3995,71 +3933,6 @@ const orderSt = StyleSheet.create({
   },
 });
 
-// ─── 액션 시트 스타일 ───
-const asStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 36,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  optionsCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 17,
-    paddingHorizontal: 20,
-    gap: 12,
-  },
-  optionIcon: {
-    fontSize: 18,
-    width: 26,
-    textAlign: 'center',
-  },
-  optionText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  deleteText: {
-    color: '#FF3B30',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#2E2E3B',
-    marginLeft: 58,
-  },
-  cancelCard: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 20,
-    paddingVertical: 17,
-    alignItems: 'center',
-  },
-  cancelText: {
-    fontSize: 16,
-    color: '#A1A1B0',
-    fontWeight: '500',
-  },
-});
 
 // ─── 병합 모드 (카드 합치기) 스타일 ───
 const mergeSt = StyleSheet.create({

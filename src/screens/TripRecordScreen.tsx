@@ -34,6 +34,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
 import HeaderGlassButton from '../components/HeaderGlassButton';
+import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t, i18n } = useTranslation();
@@ -527,33 +528,20 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         />
       </SettingsModal>
 
-      {/* ⋯ 팝업 메뉴 */}
-      {/* 앱 공용 ⋯ 바텀시트 룩(PostDetail MenuSheet와 같은 값 — 손잡이·#1A1A28·r24·행 52·아이콘 18·1px 구분선).
-          iOS 새 빌드는 위 HeaderGlassButton 시스템 메뉴, 옛 빌드·안드로이드가 이 시트 */}
-      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMenuVisible(false)}>
-        <View style={styles.menuOverlay} accessibilityViewIsModal>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[styles.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
-            <View style={styles.menuHandle} />
-            {isAlbum && (
-              <>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={() => { setMenuVisible(false); openTitleModal(); }}
-                  activeOpacity={0.7}
-                >
-                  <PencilIcon size={18} color="#FFFFFF" /><Text style={styles.menuItemText}>{t('trip.albumRenameAlbum')}</Text>
-                </TouchableOpacity>
-                <View style={styles.menuDivider} />
-              </>
-            )}
-            <TouchableOpacity style={styles.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-              <TrashIcon size={18} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>{t('trip.deleteAction')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* ⋯ 메뉴 — 앱 공용 바텀시트(components/MenuSheet). iOS 새 빌드는 위 HeaderGlassButton 시스템 메뉴가 먼저 뜬다 */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)}>
+        {isAlbum && (
+          <>
+            <MenuSheetItem
+              icon={<PencilIcon size={18} color="#FFFFFF" />}
+              label={t('trip.albumRenameAlbum')}
+              onPress={() => { setMenuVisible(false); openTitleModal(); }}
+            />
+            <MenuSheetDivider />
+          </>
+        )}
+        <MenuSheetItem icon={<TrashIcon size={18} color={MENU_DANGER} />} label={t('trip.deleteAction')} onPress={handleDelete} danger />
+      </MenuSheet>
     </View>
   );
 }
@@ -773,38 +761,4 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ── ⋯ 메뉴 바텀시트 — PostDetail MenuSheet(menuSheetS·s.menuItem)와 같은 값 ──
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  menuSheet: {
-    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 menuOverlay는 전체 폭 유지)
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    alignSelf: 'center',
-    backgroundColor: '#1A1A28',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-  },
-  menuHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'center', marginBottom: 8,
-  },
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center',
-    height: 52, paddingHorizontal: 4, gap: 12,
-  },
-  menuItemText: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
-  menuItemDelete: {
-    color: '#FF3B30',
-  },
 });

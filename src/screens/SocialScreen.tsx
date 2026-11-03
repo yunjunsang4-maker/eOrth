@@ -70,14 +70,13 @@ import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
 import { stageWidthNow, useStageGutter, useStageWidth, STAGE_MAX_W } from '../utils/stage';
-import { SettingsCard, SettingsDivider, SettingsOptionRow, SettingsPillButton } from '../components/settings/SettingsUI';
 import { useTabBarClearance } from '../utils/tabBar';
 
 const APP_LOGO = require('../../assets/example-avatar.webp'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
-import SystemSheet, { NATIVE_SHEET } from '../components/SystemSheet';
+import MenuSheet, { MenuSheetItem, MenuSheetDivider } from '../components/MenuSheet';
 import Toast from '../components/Toast';
 import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
 import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
@@ -541,22 +540,6 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
   const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font, lateFonts);
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
-  // 메뉴 바텀시트 애니메이션 — 배경 딤은 '제자리 페이드', 시트만 슬라이드업.
-  // (animationType="slide"는 풀스크린 딤까지 통째로 올라와 검은 화면이 딸려 올라오는 거슬림이 있었음)
-  const menuAnim = useRef(new Animated.Value(0)).current; // 0=닫힘, 1=열림
-  const [menuMounted, setMenuMounted] = useState(false);
-  useEffect(() => {
-    if (menuVisible) {
-      setMenuMounted(true);
-      Animated.timing(menuAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
-    } else if (menuMounted) {
-      Animated.timing(menuAnim, { toValue: 0, duration: 170, useNativeDriver: true }).start(({ finished }) => {
-        if (finished) setMenuMounted(false);
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menuVisible]);
-
   // 피드 FlashList 재활용으로 이 카드 인스턴스가 다른 글을 받으면 열려 있던 메뉴·신고 창을 닫는다.
   // (창이 열려 있으면 스크롤이 막혀 보통은 일어나지 않지만, 창이 열린 채 그 글이 동기화로 지워지면
   //  셀이 다른 글에 재배정돼 '삭제·차단' 메뉴가 엉뚱한 글을 가리킨다. 예전엔 카드가 언마운트돼 창도 사라졌다)
@@ -850,56 +833,16 @@ function DiaryCard({ item, mode, navigation, toggleLike, onArchive, onDelete, on
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
-      {/* iOS 새 빌드: 게시물 상세 ⋯(PostDetail MenuSheet)와 같은 시스템 시트·같은 행(2026-11-02). 옛 빌드·안드로이드는 아래 기존 시트 */}
-      {NATIVE_SHEET ? (
-        <SystemSheet visible={menuVisible} onClose={() => setMenuVisible(false)}>
-          <View style={ss.menuSystemBody}>
-            {menuOptions.map((opt, i) => (
-              <React.Fragment key={opt.key}>
-                {i > 0 && <View style={ss.menuSystemDivider} />}
-                <TouchableOpacity style={ss.menuSystemRow} activeOpacity={0.7} onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}>
-                  {opt.icon}
-                  <Text style={[ss.menuSystemText, opt.danger && { color: '#FF3B30' }]}>{opt.label}</Text>
-                </TouchableOpacity>
-              </React.Fragment>
-            ))}
-          </View>
-        </SystemSheet>
-      ) : (
-      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <View style={{ flex: 1 }}>
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
-          />
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-          <Animated.View
-            // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-            // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
-            // left/right:0 대신 ss.sheet의 width/maxWidth/alignSelf에 맡긴다 —
-            // 절대배치에 left/right를 주면 폭이 창 폭으로 고정돼 클램프가 무시된다
-            // 재질은 설정 계열 시트(LanguageSheet)와 같은 공용 부품 — 검은 카드(SettingsCard)·설정 행·취소 알약
-            style={[ss.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { position: 'absolute', bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [120 + menuOptions.length * 60 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
-          >
-            <View style={ss.menuHandle} />
-            <SettingsCard style={{ marginBottom: 10 }}>
-              {menuOptions.map((opt, i) => (
-                <React.Fragment key={opt.key}>
-                  {i > 0 && <SettingsDivider />}
-                  <SettingsOptionRow
-                    left={<View style={{ width: 24, alignItems: 'center' }}>{opt.icon}</View>}
-                    label={opt.label}
-                    danger={opt.danger}
-                    onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}
-                  />
-                </React.Fragment>
-              ))}
-            </SettingsCard>
-            <SettingsPillButton label={t('common.cancel')} onPress={() => setMenuVisible(false)} baseRim="rgba(255,255,255,0.15)" />
-          </Animated.View>
-        </View>
-      </Modal>
-      )}
+      {/* ⋯ 메뉴 — 앱 공용 바텀시트(components/MenuSheet, 2026-11-04 통일). iOS 새 빌드는 시스템 시트, 그 밖은 Modal 시트.
+          항목 동작은 시트가 내려간 뒤 실행(280) — 신고 창·Alert가 닫히는 시트와 겹치지 않게 */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)}>
+        {menuOptions.map((opt, i) => (
+          <React.Fragment key={opt.key}>
+            {i > 0 && <MenuSheetDivider />}
+            <MenuSheetItem icon={opt.icon} label={opt.label} danger={opt.danger} onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }} />
+          </React.Fragment>
+        ))}
+      </MenuSheet>
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
@@ -2388,26 +2331,6 @@ const ss = StyleSheet.create({
     textAlign: 'center',
     paddingVertical: 12,
   },
-  // 게시물 ⋯ 메뉴 — LanguageSheet와 같은 틀(배경 없는 시트 위에 카드·알약이 뜬다)
-  menuSheet: {
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-  },
-  menuHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    alignSelf: 'center',
-    marginBottom: 12,
-  },
-  // iOS 시스템 시트 안 ⋯ 메뉴 — PostDetail MenuSheet(menuSheetS.systemBody·s.menuItem)와 같은 값
-  menuSystemBody: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
-  menuSystemRow: { flexDirection: 'row', alignItems: 'center', height: 52, paddingHorizontal: 4, gap: 12 },
-  menuSystemText: { fontSize: 15, color: '#FFFFFF', fontWeight: '600' },
-  menuSystemDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
   // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
   otherShareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

@@ -16,7 +16,8 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
-import { TrashIcon, BackChevronIcon } from '../components/icons';
+import { TrashIcon, BackChevronIcon, PencilIcon, LockOpenIcon } from '../components/icons';
+import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
 import { countryLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
@@ -224,35 +225,15 @@ export default function TripGroupScreen() {
         <View style={{ height: 48 }} />
       </ScrollView>
 
-      {/* ⋯ 팝업 메뉴 */}
-      <Modal
-        visible={menuVisible}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <TouchableOpacity
-          style={st.menuOverlay}
-          accessibilityViewIsModal
-          activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
-        >
-          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[st.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
-            <TouchableOpacity style={st.menuItem} onPress={openEdit}>
-              <Text style={st.menuItemText}>✏️  {t('comp2.groupEdit')}</Text>
-            </TouchableOpacity>
-            <View style={st.menuDivider} />
-            <TouchableOpacity style={st.menuItem} onPress={handleUngroup}>
-              <Text style={st.menuItemText}>🔓  {t('comp2.groupUngroup')}</Text>
-            </TouchableOpacity>
-            <View style={st.menuDivider} />
-            <TouchableOpacity style={st.menuItem} onPress={handleDelete}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[st.menuItemText, st.menuItemDelete]}>{t('trip.groupDelete')}</Text></View>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* ⋯ 메뉴 — 앱 공용 바텀시트(components/MenuSheet). iOS 새 빌드는 위 HeaderGlassButton 시스템 메뉴가 먼저 뜬다.
+          예전 이모지(✏️·🔓)는 시스템 메뉴 SF Symbol(pencil·lock.open)과 같은 뜻의 공용 아이콘으로 */}
+      <MenuSheet visible={menuVisible} onClose={() => setMenuVisible(false)}>
+        <MenuSheetItem icon={<PencilIcon size={18} color="#FFFFFF" />} label={t('comp2.groupEdit')} onPress={openEdit} />
+        <MenuSheetDivider />
+        <MenuSheetItem icon={<LockOpenIcon size={18} color="#FFFFFF" />} label={t('comp2.groupUngroup')} onPress={handleUngroup} />
+        <MenuSheetDivider />
+        <MenuSheetItem icon={<TrashIcon size={18} color={MENU_DANGER} />} label={t('trip.groupDelete')} onPress={handleDelete} danger />
+      </MenuSheet>
 
       {/* 편집 모달 */}
       <Modal
@@ -456,43 +437,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   feedCompanions: {
     fontSize: 12,
     color: '#A1A1B0',
-  },
-
-  // ── ⋯ 팝업 메뉴 ──
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  menuSheet: {
-    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 menuOverlay는 전체 폭 유지)
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    alignSelf: 'center',
-    backgroundColor: '#1E1B33',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 8,
-    paddingBottom: 32,
-    borderTopWidth: 1,
-    borderColor: a.tint(0.2),
-  },
-  menuItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  menuItemText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '500',
-  },
-  menuItemDelete: {
-    color: '#FF3B30',
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    marginHorizontal: 16,
   },
 
   // ── 편집 모달 ──
