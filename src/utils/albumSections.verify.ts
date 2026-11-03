@@ -150,5 +150,39 @@ eq('effective: mediaTimes 없음 → undefined', effectiveMediaTimes({ uploadedM
 eq('effective: 로컬 시각이 무효면 옮기지 않음',
   effectiveMediaTimes({ mediaTimes: { 'file:///a': 0 }, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }), { 'file:///a': 0 });
 
+// ── 역방향(원격 → 로컬) — 다른 기기·개발 빌드가 찾은 시각이 서버 사본에 원격 키로 들어와 합쳐진 작성 기기 기록 ──
+{
+  const up = { 'file:///d/0.jpg': 'https://cdn/0.jpg', 'file:///d/1.jpg': 'https://cdn/1.jpg' };
+  const t = { 'https://cdn/0.jpg': T0, 'https://cdn/1.jpg': T0 + 60000 };
+  const eff = effectiveMediaTimes({ mediaTimes: t, uploadedMediaUrls: up });
+  eq('역방향: 원격 키 시각을 로컬 키로도', eff, { ...t, 'file:///d/0.jpg': T0, 'file:///d/1.jpg': T0 + 60000 });
+  eq('역방향: 입력 변형 없음', Object.keys(t).length, 2);
+  // 실제 증상 재현: medias=로컬(작성 기기), mediaTimes=원격 키만 → 그대로면 전부 미상
+  const medias = ['file:///d/0.jpg', 'file:///d/1.jpg'];
+  eq('역방향 증상 재현: 그대로면 전부 미상', buildAlbumTimeline(medias, t).undated, [0, 1]);
+  eq('역방향 복구: effective면 미상 0장', buildAlbumTimeline(medias, eff).undated, []);
+}
+// 로컬 키 값이 무효(0)이고 원격이 유효하면 로컬을 채운다
+eq('역방향: 로컬 무효값(0)은 원격으로 채움',
+  effectiveMediaTimes({ mediaTimes: { 'file:///a': 0, 'https://cdn/a': T0 }, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }),
+  { 'file:///a': T0, 'https://cdn/a': T0 });
+// 양쪽 다 유효하면(값이 달라도) 손대지 않고 같은 객체
+{
+  const t = { 'file:///a': T0, 'https://cdn/a': T0 + 5 };
+  eq('양쪽 유효: 같은 객체 그대로', effectiveMediaTimes({ mediaTimes: t, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }) === t, true);
+}
+// 양쪽 다 무효면 채울 근거가 없다 — 같은 객체
+{
+  const t = { 'file:///a': 0, 'https://cdn/a': -1 };
+  eq('양쪽 무효: 같은 객체 그대로', effectiveMediaTimes({ mediaTimes: t, uploadedMediaUrls: { 'file:///a': 'https://cdn/a' } }) === t, true);
+}
+// 한 기록 안에 정방향·역방향이 섞여도 각각 채운다
+eq('정·역방향 혼합',
+  effectiveMediaTimes({
+    mediaTimes: { 'file:///a': T0, 'https://cdn/b': T0 + 1 },
+    uploadedMediaUrls: { 'file:///a': 'https://cdn/a', 'file:///b': 'https://cdn/b' },
+  }),
+  { 'file:///a': T0, 'https://cdn/b': T0 + 1, 'https://cdn/a': T0, 'file:///b': T0 + 1 });
+
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

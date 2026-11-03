@@ -93,11 +93,14 @@ export function remapUriKeys<T>(
 }
 
 /**
- * 화면·재분석이 함께 쓰는 '실효' 촬영시각 맵 — mediaTimes + 업로드 캐시 역매핑.
- * 작성 기기에서도 medias가 서버 URL로 통째 바뀌는 경로가 있다(mergeMyRecords.pickUriList: 서버본과 장수가
- * 다를 때). 그때 mediaTimes 키는 로컬 file:// 경로로 남아 하나도 안 맞는다. uploadedMediaUrls(로컬 → 업로드 URL)
- * 쌍으로 mediaTimes[로컬]을 원격 키로도 보여 준다.
- * - 원격 키에 유효한 시각이 이미 있으면 덮지 않는다(0·음수 같은 무효 값만 채운다).
+ * 화면·재분석이 함께 쓰는 '실효' 촬영시각 맵 — mediaTimes + 업로드 캐시 양방향 매핑.
+ * uploadedMediaUrls(로컬 → 업로드 URL) 쌍으로 한쪽 키에만 있는 시각을 다른 쪽 키로도 보여 준다.
+ * - 로컬 → 원격: 작성 기기에서도 medias가 서버 URL로 통째 바뀌는 경로가 있다(mergeMyRecords.pickUriList:
+ *   서버본과 장수가 다를 때). 그때 mediaTimes 키는 로컬 file:// 경로로 남아 하나도 안 맞는다.
+ * - 원격 → 로컬: 다른 기기·개발 빌드(운영 DB)가 '날짜 다시 찾기'로 찾은 시각은 서버 사본에 원격 URL 키로
+ *   저장된다. mergeServerUpdate가 mediaTimes를 합집합으로 합쳐 작성 기기에도 그 키가 들어오지만, 작성 기기의
+ *   medias는 로컬 file:// 경로라 그대로면 타임라인에서 계속 '날짜 미상'이다.
+ * - 대상 키에 유효한 시각이 이미 있으면 덮지 않는다(0·음수 같은 무효 값만 채운다).
  * - 더할 것이 없으면 입력 객체를 그대로 돌려준다 — useMemo 의존값이 매 렌더 바뀌지 않게.
  * 내 타임라인(TripRecordRenderer)·버튼 노출(AlbumTimeline undated)·재분석 대상(albumReanalyze)이 모두
  * 이 함수를 거쳐야 셋이 어긋나지 않는다.
@@ -112,9 +115,12 @@ export function effectiveMediaTimes(rec: {
   const valid = (v: unknown) => typeof v === 'number' && v > 0;
   let out: Record<string, number> | undefined;
   for (const [local, remote] of Object.entries(up)) {
-    if (!remote || !valid(t[local]) || valid((out ?? t)[remote])) continue;
+    if (!remote) continue;
+    const cur = out ?? t;
+    const [from, to] = valid(cur[local]) ? [local, remote] : [remote, local];
+    if (!valid(cur[from]) || valid(cur[to])) continue;
     out ??= { ...t };
-    out[remote] = t[local];
+    out[to] = cur[from];
   }
   return out ?? t;
 }
