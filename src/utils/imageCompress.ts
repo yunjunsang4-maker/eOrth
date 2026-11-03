@@ -22,6 +22,12 @@ export const PHOTO_QUALITY = 0.75;
 export const THUMB_MAX_EDGE = 640;
 export const THUMB_QUALITY = 0.6;
 
+// 사진첩 규격 — 서버 업로드본(services/posts.ts)과 기기 저장본(importPhotoStore.copyTripOriginals·
+// TripRecordScreen 사진 추가)이 같은 값을 쓴다. 저장본이 이미 이 규격이면 업로드 때 compressImage가
+// 그대로 통과시켜 재인코딩이 한 번으로 끝난다. 감상·재동기화용으로 충분한 화질.
+export const ALBUM_EDGE = 2048;
+export const ALBUM_QUALITY = 0.85;
+
 function getSize(uri: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     Image.getSize(uri, (width, height) => resolve({ width, height }), reject);

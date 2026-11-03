@@ -8,8 +8,13 @@
 // 데이터는 저장하지 않고 medias + mediaTimes로 렌더 시점에 유도한다(utils/albumSections
 // buildAlbumTimeline). 시각 있는 사진이 하나도 없으면(옛 기록·EXIF 없는 사진만) 날짜 줄 없이
 // 예전과 같은 평면 3열 격자로 그린다. 하루 안의 순간(시각) 구분은 시안에서 빠져 한 줄로 이어 붙인다.
+// 칸은 FeedPhoto(expo-image)로 그린다 — 메모리·디스크 캐시(재방문 즉시 표시)와, 원격이면 thumbs의 640px 축소본을
+// 고르기 위해서다. 크게 보기(뷰어)는 호출부가 medias 원본을 그대로 넘긴다.
+// ⚠️ earlyResize 필수: expo-image iOS는 이걸 켜야 칸 크기로 '디코드 단계에서' 줄인다. 끄면 옛 앨범 원본 HEIC
+//    (12~48MP)를 칸마다 전체 디코드하고 메모리 캐시에도 전체 크기로 쌓아, 100칸 동시 로드 시 메모리가 치솟는다.
+//    안드로이드(Glide)는 원래 목표 크기로 디코드한다.
 import React, { useMemo } from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../ui/Text';
@@ -17,6 +22,7 @@ import { buildAlbumTimeline } from '../utils/albumSections';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
 import { SettingsChevronIcon } from './icons/SettingsIcons';
+import FeedPhoto from './FeedPhoto';
 
 const GAP = 2;      // 평면 격자 사진 사이 간격(예전 격자와 같음)
 const ROW_GAP = 3;  // 가로 줄 사진 사이 간격(시안 3)
@@ -26,6 +32,8 @@ const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calend
 interface Props {
   medias: string[];
   mediaTimes?: Record<string, number>;
+  // 기록의 원본 URL → 640px 축소본 맵(TravelRecord.thumbs) — 격자 칸에만 쓴다. 로컬 file://는 매칭되지 않아 그대로
+  thumbs?: Record<string, string>;
   width: number; // 가용 폭
   // 날짜 줄 좌우 들여쓰기 — 사진 줄은 width 끝까지 붙이고 글자만 안쪽으로(화면 폭을 넘겨받는 내 사진첩 16)
   inset?: number;
@@ -46,7 +54,7 @@ interface Props {
   reanalyzing?: boolean;
 }
 
-export default function AlbumTimeline({ medias, mediaTimes, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onAddPhotos, onDayMenu, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
+export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onAddPhotos, onDayMenu, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
   const { t } = useTranslation();
   const a = useSkinAccent();
   const tl = useMemo(() => buildAlbumTimeline(medias, mediaTimes), [medias, mediaTimes]);
@@ -65,7 +73,7 @@ export default function AlbumTimeline({ medias, mediaTimes, width, inset = 0, on
         onPress={() => (selecting ? onToggleSelect?.(i) : onPressPhoto(i, tl.order))}
         style={[cellStyle, { overflow: 'hidden' }]}
       >
-        <Image source={{ uri: medias[i] }} style={[cellStyle, styles.img]} resizeMode="cover" />
+        <FeedPhoto uri={medias[i]} thumbs={thumbs} style={[cellStyle, styles.img]} earlyResize />
         {selecting && (
           <View style={[styles.selOverlay, isSel && styles.selOverlayOn]}>
             <View style={[styles.selCheck, isSel && styles.selCheckOn]}>

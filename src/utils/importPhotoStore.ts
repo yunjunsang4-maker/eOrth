@@ -1,3 +1,5 @@
+import { markMetadataStripped, unmarkMetadataStripped } from './mediaUploadPlan';
+
 // ── 순수 경로 헬퍼 (테스트 대상) ──
 export function tripDir(base: string, tripId: string): string {
   return `${base}trips/${tripId}/`;
@@ -271,16 +273,50 @@ export async function copyTripCover(
  * 선택 사진 원본을 앱 저장소(documentDirectory)로 복사한다.
  * - id가 있으면 MediaLibrary.getAssetInfoAsync로 localUri(file://)를 얻어 복사(iOS ph:// 대응).
  * - 실패한 장은 건너뛰고 성공한 복사본 URI만 반환. firstItemCopied로 커버(0번) 성공 여부를 알린다.
+ * - opts.compress가 있으면 원본 대신 장변 maxEdge·JPEG quality 압축본을 저장한다(사진첩 — 수 MB HEIC
+ *   원본을 칸마다 풀 디코드하던 표시 지연·저장 용량 대책). 원본을 얻는 경로(localUri → getAssetInfoAsync)는
+ *   그대로이고, 압축 실패·이미 작은 사진은 원본 복사로 폴백한다(사진 누락 방지).
+ *   ⚠️ 압축본엔 EXIF가 없다 — 촬영시각·assetId는 호출부가 MediaLibrary 메타(items)로 기록하므로 무관하지만,
+ *   '날짜 다시 찾기'의 파일 크기 매칭·파일 EXIF 단계(utils/albumReanalyze 1.5·2)는 압축본에선 못 찾는다
+ *   (assetId 단계 1은 그대로 동작).
  */
 export async function copyTripOriginals(
   tripId: string,
   items: PhotoRef[],
   onProgress?: (done: number, total: number) => void,
+  opts?: { compress?: { maxEdge: number; quality: number } },
 ): Promise<{ uris: string[]; firstItemCopied: boolean; srcIndexes: number[] }> {
    
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
    
   const MediaLibrary = require('expo-media-library') as typeof import('expo-media-library');
+  // 지연 require — 이 파일의 순수 헬퍼를 node 검증(importPhotoStore.verify.ts)이 RN 없이 불러온다
+  const { compressImage } = require('./imageCompress') as typeof import('./imageCompress');
+  const compress = opts?.compress;
+
+  // from → to 저장. 압축 지정 시 압축본(앱 캐시)을 옮기고, 실패·이미 작으면 원본 복사.
+  // 원본을 못 읽으면 copyAsync가 throw해 호출부가 다음 경로(자산 재조회)로 넘어간다.
+  const place = async (from: string, to: string) => {
+    if (compress) {
+      const small = await compressImage(from, compress.maxEdge, compress.quality); // 실패 시 from 그대로(throw 없음)
+      if (small !== from) {
+        try {
+          await FileSystem.moveAsync({ from: small, to });
+          // 장부 키는 경로다 — compressImage가 올린 캐시 경로가 아니라 옮긴 경로로 다시 올려야
+          // 업로드 초크포인트(services/media.ts)가 이 파일을 또 굽지 않는다. 장부는 메모리라 앱 재시작 후엔
+          // 업로드 때 한 번 더 재인코딩(0.92·EXIF 없음)될 수 있다 — 손해는 화질 약간뿐, 유출 방향 아님.
+          markMetadataStripped(to);
+          return;
+        } catch {
+          // 옮기기 실패 → 원본 복사로 폴백
+        }
+      }
+    }
+    // 원본(EXIF 있음)을 이 경로에 둔다 — 이전 시도가 같은 경로를 압축본으로 장부에 올렸을 수 있어
+    // (ImportPhotoSelect 재저장은 같은 tripId) 먼저 해제한다. 안 하면 GPS 든 원본이 업로드 strip을 건너뛴다.
+    unmarkMetadataStripped(to);
+    await FileSystem.copyAsync({ from, to });
+  };
 
   const base = FileSystem.documentDirectory;
   if (!base) return { uris: [], firstItemCopied: false, srcIndexes: [] };
@@ -302,7 +338,7 @@ export async function copyTripOriginals(
     // 1순위: 스캔 때 받아 둔 localUri (추가 조회 없음)
     if (it.localUri) {
       try {
-        await FileSystem.copyAsync({ from: it.localUri, to });
+        await place(it.localUri, to);
         copiedByIndex[i] = to;
         return;
       } catch {
@@ -316,7 +352,7 @@ export async function copyTripOriginals(
         const info = await MediaLibrary.getAssetInfoAsync(it.id, { shouldDownloadFromNetwork: true });
         from = (info.localUri || it.uri) as string;
       }
-      await FileSystem.copyAsync({ from, to });
+      await place(from, to);
       copiedByIndex[i] = to;
     } catch {
       // 이 장은 건너뜀 (iCloud 오프로드 실패 등)
@@ -328,7 +364,11 @@ export async function copyTripOriginals(
   // 이득이 커서 동시 8장으로 올렸다(4 → 8, '저장 공간 최적화' 기기에서 체감 절반).
   // 메모리는 안전하다 — getAssetInfoAsync는 파일 URL만 주고 copyAsync는 스트리밍 복사라
   // 원본을 메모리에 통째로 올리는 단계가 없다(디코드 없음). jetsam 위험은 동시 수와 무관.
-  await runWithConcurrency(items.length, 8, async (i) => {
+  // 압축 시엔 2 — 장마다 원본을 통째로 디코드(24MP ≈ 100MB, 48MP ≈ 190MB 비트맵)해 동시 수가 곧 메모리 피크다.
+  // 예전엔 업로드 때 1장씩 순차 압축했다. 안드로이드는 getSize(Fresco)가 한 번 더 디코드할 여지도 있어
+  // 저사양(3~4GB) 기기·48MP 기준으로 2에 묶는다(최대 ≈ 400MB).
+  // ponytail: 고정 2. 저장이 너무 느리다는 신고가 오고 실측 메모리가 여유 있으면 3으로.
+  await runWithConcurrency(items.length, compress ? 2 : 8, async (i) => {
     await copyOne(i);
     done++;
     onProgress?.(done, items.length);

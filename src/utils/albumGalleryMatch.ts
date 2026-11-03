@@ -1,8 +1,9 @@
 /**
  * albumGalleryMatch.ts — '날짜 다시 찾기'의 사진첩 매칭 판단(순수 함수)
  *
- * 앨범 사진은 copyTripOriginals가 MediaLibrary 원본 localUri를 copyAsync로 **바이트 그대로** 복사한 것이라
- * 원본과 파일 크기가 같다. 그래서 앨범 기간의 기기 사진첩 자산 중 파일 크기(바이트)가 같은 자산의 creationTime을 쓴다
+ * 옛 앨범(2026-11 이전) 사진은 copyTripOriginals가 MediaLibrary 원본 localUri를 copyAsync로 **바이트 그대로** 복사한 것이라
+ * 원본과 파일 크기가 같다. 이후 앨범은 장변 2048 압축본으로 저장돼 크기가 달라 이 매칭은 옛 앨범 대상이다
+ * (새 앨범은 생성 때 mediaTimes·mediaAssetIds를 기록하므로 보통 여기까지 오지 않는다). 그래서 앨범 기간의 기기 사진첩 자산 중 파일 크기(바이트)가 같은 자산의 creationTime을 쓴다
  * — 파일 EXIF에 기대지 않는다(albumReanalyze의 1.5단계).
  * 네이티브 호출(조회·크기 읽기)은 albumReanalyze가 하고, 여기는 어떤 순서로 볼지·무엇을 고를지만 정한다.
  *

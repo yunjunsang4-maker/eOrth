@@ -2610,6 +2610,7 @@ export default function PostDetailScreen() {
                         <AlbumTimeline
                           medias={record.medias}
                           mediaTimes={record.mediaTimes}
+                          thumbs={record.thumbs}
                           width={SCREEN_W - 32}
                           cellRadius={4}
                           onPressPhoto={(gi, order) => handleMediaTap(() =>

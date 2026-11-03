@@ -25,6 +25,7 @@ import { useRecordData, useRecordActions } from '../store/recordStore';
 import { useProfileSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { ALBUM_EDGE, ALBUM_QUALITY } from '../utils/imageCompress';
 import { getTripPool, saveTripPool } from '../utils/tripPhotoPool';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -426,7 +427,12 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         ...picked.filter((p) => p.uri !== cover),
       ];
       setSaveProgress({ done: 0, total: items.length });
-      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items, (done, total) => setSaveProgress({ done, total }));
+      // 원본 대신 서버 앨범 규격(2048/0.85) 압축본으로 저장 — 격자 표시·용량·업로드가 가벼워진다.
+      // 촬영시각·assetId는 아래에서 MediaLibrary 메타(items)로 기록하므로 압축으로 EXIF가 사라져도 타임라인은 그대로다.
+      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(
+        albumId, items, (done, total) => setSaveProgress({ done, total }),
+        { compress: { maxEdge: ALBUM_EDGE, quality: ALBUM_QUALITY } },
+      );
       if (copied.length === 0) throw new Error('copy failed');
       // iCloud 오프로드 등으로 복사에 실패한 장수 — 조용히 빠지면 "사진이 왜 없지" 혼란이 생긴다
       const failCount = items.length - copied.length;

@@ -2,7 +2,8 @@
  * exifFromBytes.ts — 파일 앞부분 바이트에서 EXIF 촬영시각(ms)을 꺼내는 순수 함수
  *
  * 쓰임: 촬영시각(mediaTimes)이 없는 옛 사진첩 사진의 '날짜 다시 찾기'(utils/albumReanalyze).
- * 앨범 사진은 copyTripOriginals가 원본을 그대로 복사한 것이라 EXIF가 살아 있다.
+ * 옛 앨범(2026-11 이전) 사진은 copyTripOriginals가 원본을 그대로 복사한 것이라 EXIF가 살아 있다.
+ * 이후 앨범은 장변 2048 JPEG 압축본으로 저장돼 EXIF가 없다 — 이 경로는 옛 앨범 대상이다.
  *
  * 방식: 'Exif\0\0' 마커를 찾아 그 뒤 TIFF 헤더(II*\0 / MM\0*)부터 읽는다.
  *   IFD0 → ExifIFD 포인터(0x8769) → DateTimeOriginal(0x9003)·OffsetTimeOriginal(0x9011)·OffsetTime(0x9010),

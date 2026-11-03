@@ -202,6 +202,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
           <AlbumTimeline
             medias={medias}
             mediaTimes={mediaTimes}
+            thumbs={record.thumbs}
             width={SCREEN_W}
             inset={16}
             onPressPhoto={(gi, order) => setViewer({ order, at: Math.max(0, order.indexOf(gi)) })}

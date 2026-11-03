@@ -12,6 +12,7 @@ import {
   Platform,
   Image,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import TripRecordRenderer from '../components/TripRecordRenderer';
@@ -20,6 +21,8 @@ import { getMaxAlbumPhotos } from '../constants/limits';
 import { useProfileSettings } from '../store/settingsStore';
 import { removePhotosAt, exifTakenAt } from '../utils/albumSections';
 import { findMissingPhotoTimes } from '../utils/albumReanalyze';
+import { compressImage, ALBUM_EDGE, ALBUM_QUALITY } from '../utils/imageCompress';
+import { runWithConcurrency } from '../utils/importPhotoStore';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
@@ -81,7 +84,11 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
 
+  // 압축 중 표시·연타 방지 — 압축은 장당 수백 ms라 여러 장이면 몇 초 걸린다
+  const [addingPhotos, setAddingPhotos] = useState(false);
+  const addingRef = useRef(false);
   const handleAlbumAddPhotos = async () => {
+    if (addingRef.current) return;
     if (medias.length >= albumMax) {
       Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: albumMax }));
       return;
@@ -91,7 +98,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: albumMax - medias.length,
-        // 서버 업로드 때 어차피 장변 2048/0.85로 압축되므로(services/posts.ts) 여기서 또 깎으면 이중 손실
+        // 압축은 아래에서 우리가 한 번(장변 2048/0.85) — 여기서도 깎으면 이중 손실
         quality: 1,
         // 촬영시각용 — 타임라인과 사진 AI가 mediaTimes를 쓴다(없으면 '날짜 미상'으로 간다)
         exif: true,
@@ -106,17 +113,34 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         return;
       }
       const picked = fresh.slice(0, albumMax - medias.length);
+      // 원본 대신 사진첩 규격(장변 2048/0.85) 압축본으로 담는다 — 격자 표시·저장 용량·업로드가 가벼워진다.
+      // 촬영시각은 picker exif(압축 전 원본 메타)에서 읽으므로 압축본에 EXIF가 없어도 타임라인은 그대로다.
+      // 실패·이미 작은 사진은 compressImage가 원본 uri를 그대로 돌려준다(누락 없음).
+      // 동시 2장 — 장마다 원본을 통째로 디코드(48MP ≈ 190MB)해 동시 수가 곧 메모리 피크다(copyTripOriginals와 같은 값).
+      addingRef.current = true;
+      setAddingPhotos(true);
       const uris = picked.map((a) => a.uri);
+      try {
+        await runWithConcurrency(picked.length, 2, async (k) => {
+          uris[k] = await compressImage(picked[k].uri, ALBUM_EDGE, ALBUM_QUALITY);
+        });
+      } finally {
+        addingRef.current = false;
+        if (mountedRef.current) setAddingPhotos(false);
+      }
+      // 압축하는 사이 사진이 추가·삭제됐을 수 있어 최신 기록 기준으로 병합한다(누른 시점 클로저는 낡았다)
+      const { record: cur, updateRecord: update } = latestRef.current;
+      const curMedias = cur.medias ?? [];
       // 새로 담는 사진의 assetId를 함께 기록 — 다음 추가 때 중복 대조용
-      const nextAssetIds = { ...(record.mediaAssetIds ?? {}) };
-      picked.forEach((a) => { if (a.assetId) nextAssetIds[a.uri] = a.assetId; });
+      const nextAssetIds = { ...(cur.mediaAssetIds ?? {}) };
+      picked.forEach((a, k) => { if (a.assetId) nextAssetIds[uris[k]] = a.assetId; });
       // 촬영시각도 같은 uri 키로 — AlbumCreateScreen이 만든 기존 mediaTimes와 병합
-      const nextTimes = { ...(record.mediaTimes ?? {}) };
-      picked.forEach((a) => { const ts = exifTakenAt(a.exif); if (ts) nextTimes[a.uri] = ts; });
-      const nextMedias = [...medias, ...uris];
-      updateRecord(record.id, {
+      const nextTimes = { ...(cur.mediaTimes ?? {}) };
+      picked.forEach((a, k) => { const ts = exifTakenAt(a.exif); if (ts) nextTimes[uris[k]] = ts; });
+      const nextMedias = [...curMedias, ...uris].slice(0, albumMax);
+      update(cur.id, {
         medias: nextMedias,
-        representativePhoto: record.representativePhoto ?? nextMedias[0],
+        representativePhoto: cur.representativePhoto ?? nextMedias[0],
         mediaAssetIds: nextAssetIds,
         mediaTimes: nextTimes,
       });
@@ -366,6 +390,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
+          {isAlbum && addingPhotos ? <ActivityIndicator style={{ marginTop: 10 }} color={a.accent} /> : null}
           {!isAlbum && (
           <View style={styles.social}>
             <View style={styles.socialBar}>

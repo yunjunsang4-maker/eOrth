@@ -20,6 +20,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useActiveStay, useRecordActions } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { ALBUM_EDGE, ALBUM_QUALITY } from '../utils/imageCompress';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { getMaxAlbumPhotos } from '../constants/limits';
@@ -454,10 +455,12 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           ...picked.filter((p) => p.uri === coverUri),
           ...picked.filter((p) => p.uri !== coverUri),
         ];
+        // 원본 대신 서버 앨범 규격(2048/0.85) 압축본으로 저장 — 촬영시각·assetId는 아래에서 items 메타로 기록한다
         const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(
           t.id,
           items,
           (done) => setSaveProgress({ done: doneBefore + done, total: grandTotal }),
+          { compress: { maxEdge: ALBUM_EDGE, quality: ALBUM_QUALITY } },
         );
         doneBefore += items.length;
         if (copied.length === 0) continue;

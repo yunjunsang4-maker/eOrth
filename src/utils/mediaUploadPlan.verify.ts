@@ -11,6 +11,7 @@ import {
   markMetadataStripped,
   isMetadataStripped,
   resetMetadataStripped,
+  unmarkMetadataStripped,
 } from './mediaUploadPlan';
 
 let failed = 0;
@@ -98,6 +99,17 @@ eq(isMetadataStripped('file:///cache/1199.jpg'), true, '장부 상한: 최근 �
 eq(isMetadataStripped('file:///cache/0.jpg'), false, '장부 상한: 오래된 항목은 버려진다(재인코딩 1회 손해뿐)');
 resetMetadataStripped();
 eq(isMetadataStripped('file:///cache/1199.jpg'), false, '장부: reset이 비운다');
+
+// ── 장부 해제: 같은 경로에 원본(EXIF 있음)을 다시 쓰는 경우 ──
+// copyTripOriginals 재시도에서 압축본(장부 등록) 자리에 원본 폴백 복사가 덮이면 GPS가 그대로 올라갈 뻔했다
+const reused = 'file:///doc/trips/t1/0.jpg';
+markMetadataStripped(reused);
+eq(planMetadataStrip(reused), { action: 'skip', reason: 'already-stripped' }, '해제 전: 압축본 경로는 건너뜀');
+unmarkMetadataStripped(reused);
+eq(planMetadataStrip(reused), { action: 'strip', format: 'jpeg' }, '해제 후: 같은 경로는 다시 strip 대상');
+unmarkMetadataStripped('file:///never/marked.jpg'); // 없는 경로 해제는 무해
+unmarkMetadataStripped('');
+eq(isMetadataStripped('file:///never/marked.jpg'), false, '해제: 없던 경로·빈 문자열도 오류 없이 통과');
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

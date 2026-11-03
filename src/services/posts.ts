@@ -10,16 +10,14 @@
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
-import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageCompress';
+import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY, ALBUM_EDGE, ALBUM_QUALITY } from '../utils/imageCompress';
 import { remapUriKeys } from '../utils/albumSections';
 import type { TravelRecord } from '../store/recordStore';
 import type { ServerPostCounts } from '../utils/postCountSync';
 import type { ServerPostRef } from '../utils/mergeMyRecords';
 import { mergeAuthorDisplay, type AuthorProfileRow } from '../utils/authorDisplay';
 
-// 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
-const ALBUM_EDGE = 2048;
-const ALBUM_QUALITY = 0.85;
+// 사진첩 서버본 압축 규격(ALBUM_EDGE·ALBUM_QUALITY)은 utils/imageCompress에 있다 — 기기 저장본과 같은 값.
 
 export interface PublishMediaOptions {
   /** 사진첩(medias·대표) 업로드 화질 — 'compressed'=장변 2048 압축본, 'original'=원본 그대로 */
@@ -28,6 +26,9 @@ export interface PublishMediaOptions {
   uploadCache?: Record<string, string>;
   /** 이번 호출에서 새로 업로드된 로컬 uri → URL 매핑 (호출부가 캐시에 병합) */
   onUploaded?: (map: Record<string, string>) => void;
+  /** 이번 호출에서 새로 만든 축소본 매핑(원본 URL → 축소본 URL) — 호출부가 로컬 기록 thumbs에 병합.
+   *  사진첩은 medias가 로컬 file:// 그대로라 매 수정마다 addThumb가 다시 돌아서, 로컬에 남겨야 재생성을 피한다. */
+  onThumbs?: (map: Record<string, string>) => void;
 }
 
 // 업로드 실패(uploadImage가 원본 로컬 URI를 그대로 반환) 감지 — 로컬 file:// 경로가
@@ -87,18 +88,27 @@ async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions):
     try {
       if (copy.medias?.length) {
         const out: string[] = [];
-        for (const u of copy.medias) out.push(await upAlbum(u));
+        for (const u of copy.medias) {
+          const url = await upAlbum(u);
+          // 앨범 격자(AlbumTimeline)용 축소본 — 남의 사진첩을 볼 때 칸마다 2048 사본을 받지 않게.
+          // 로컬 원본이 있을 때만 만든다(이미 원격 URL이면 원본이 없다). 이미 맵에 있으면 addThumb가 건너뛴다.
+          if (!/^https?:\/\//.test(u)) await addThumb(u, url);
+          out.push(url);
+        }
         copy.medias = out;
       }
       if (copy.representativePhoto) {
         const cover = copy.representativePhoto;
         copy.representativePhoto = await upAlbum(cover);
-        // 앨범 커버는 프로필 여행카드 목록에 뜨므로 축소본을 만든다(본문 100장은 대상 아님)
+        // 앨범 커버는 프로필 여행카드 목록에 뜨므로 축소본을 만든다(medias와 같은 URL이면 위에서 이미 만들어 건너뜀)
         if (!/^https?:\/\//.test(cover)) await addThumb(cover, copy.representativePhoto);
       }
     } finally {
       // 중간 실패해도 여기까지 올라간 장은 캐시로 보고 — 재시도가 이어서 진행되게 (100장 업로드 내성)
       if (Object.keys(uploadedNow).length > 0) opts?.onUploaded?.(uploadedNow);
+      // 축소본도 같은 이유로 중간까지 만든 것을 보고 — 다음 수정·재시도가 다시 만들지 않게
+      const newThumbs = Object.fromEntries(Object.entries(thumbs).filter(([k]) => !rec.thumbs?.[k]));
+      if (Object.keys(newThumbs).length > 0) opts?.onThumbs?.(newThumbs);
     }
     // 로컬 전용 캐시는 서버 data에 싣지 않는다
     delete copy.uploadedMediaUrls;

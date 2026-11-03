@@ -21,6 +21,7 @@ export default function FeedPhoto({
   contentFit = 'cover',
   transition = 120,
   onError,
+  earlyResize,
 }: {
   uri: string;
   /** 기록의 원본→축소본 맵(TravelRecord.thumbs). 없으면 원본을 그대로 쓴다 */
@@ -30,6 +31,12 @@ export default function FeedPhoto({
   transition?: number;
   /** 로드 실패 통지 — 깨진 이미지를 폴백으로 바꾸는 호출부용(광고 카드·초대 아바타) */
   onError?: () => void;
+  /**
+   * iOS 전용: 뷰 크기로 '디코드 단계에서' 축소(expo-image enforceEarlyResizing, ImageIO 썸네일 디코드).
+   * 끄면(기본) 일반 file://·https는 전체를 디코드한 뒤 줄이고 메모리 캐시에도 전체 크기로 남는다
+   * (expo-image ios/ImageView.swift shouldEarlyResize). 고정 크기 칸이 많은 격자(사진첩)용. 안드로이드는 prop 자체가 없다(Glide가 원래 목표 크기로 디코드).
+   */
+  earlyResize?: boolean;
 }) {
   return (
     <Image
@@ -39,6 +46,7 @@ export default function FeedPhoto({
       cachePolicy="memory-disk"
       transition={transition}
       onError={onError}
+      enforceEarlyResizing={earlyResize}
     />
   );
 }

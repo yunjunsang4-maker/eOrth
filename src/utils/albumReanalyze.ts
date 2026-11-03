@@ -10,12 +10,13 @@
  *      다른 기기에서 조회하면 엉뚱한 사진의 날짜가 '성공'으로 와 저장·서버 전파된다. 로컬 복사본이 있다는
  *      것이 작성 기기라는 증거다. 풀 수 없는 assetId로 권한 팝업을 띄우지 않는 효과도 있다.
  *   1.5 사진첩 매칭(utils/albumGalleryMatch) — 1단계로 못 찾은 로컬 사진을, 앨범 기간(±1일)의 기기 사진첩 자산과
- *      파일 크기로 맞춰 creationTime을 쓴다(가로·세로는 조회 순서에만, 크기 일치 즉시 확정·전부 찾으면 조기 종료·상한 1500장). 앨범 사진은 copyTripOriginals가 원본 localUri를 바이트 그대로
- *      복사한 것이라 크기가 같다. 파일 EXIF에 기대지 않는다(실기기에서 EXIF 경로가 한 장도 못 찾던 문제 대응 — 원인 미확정).
+ *      파일 크기로 맞춰 creationTime을 쓴다(가로·세로는 조회 순서에만, 크기 일치 즉시 확정·전부 찾으면 조기 종료·상한 1500장). 옛 앨범(2026-11 이전) 사진은 copyTripOriginals가 원본 localUri를
+ *      바이트 그대로 복사한 것이라 크기가 같다. 이후 앨범은 장변 2048 압축본이라 크기가 달라 이 단계는 옛 앨범 대상이다. 파일 EXIF에 기대지 않는다(실기기에서 EXIF 경로가 한 장도 못 찾던 문제 대응 — 원인 미확정).
  *      찾으면 assetId도 돌려줘 호출부가 mediaAssetIds(로컬 키)에 기록한다. 기간이 없으면 건너뛴다.
  *      권한 거부·limited에서 못 찾은 사진은 permissionLimited 쪽으로 센다(limited면 범위 밖 원본은 목록에 없다).
- *   2. 로컬이면 파일의 EXIF DateTimeOriginal(utils/exifFromBytes). 앨범 사진은 copyTripOriginals가
- *      원본을 복사한 것이라 EXIF가 살아 있다(파일명은 .jpg지만 iPhone은 내용이 HEIC일 수 있다).
+ *   2. 로컬이면 파일의 EXIF DateTimeOriginal(utils/exifFromBytes). 옛 앨범(2026-11 이전) 사진은 copyTripOriginals가
+ *      원본을 복사한 것이라 EXIF가 살아 있다(파일명은 .jpg지만 iPhone은 내용이 HEIC일 수 있다). 이후 앨범은
+ *      2048 압축본이라 EXIF가 없어 이 단계는 옛 앨범 대상이다(새 앨범은 생성 때 mediaTimes를 기록한다).
  *      - 앞 64KB를 읽어 HEIF(ftyp heic 등)면 meta/iinf/iloc으로 Exif 항목 위치를 구해 그 범위만 다시 읽는다.
  *        iPhone 24/48MP HEIC는 Exif 항목이 파일 앞 256KB 밖 mdat에 있을 수 있어 앞부분 스캔으론 못 찾는다.
  *        meta가 64KB보다 길면(애플식으로 iloc이 meta 맨 끝) meta 선언 크기만큼(상한 1MB) 다시 읽는다.

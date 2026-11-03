@@ -1293,6 +1293,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             r.id === rec.id ? { ...r, uploadedMediaUrls: { ...(r.uploadedMediaUrls ?? {}), ...map } } : r
           )
         ),
+      // 사진첩 축소본(원본 URL → 640px URL)도 로컬에 남긴다 — 안 남기면 medias가 로컬 file://라
+      // 수정 때마다 posts.ts가 100장 축소본을 다시 만들어 올린다(Storage 고아·업로드 낭비).
+      onThumbs: (map) =>
+        setRecords((prev) =>
+          prev.map((r) => (r.id === rec.id ? { ...r, thumbs: { ...(r.thumbs ?? {}), ...map } } : r))
+        ),
     };
   };
 
@@ -1410,12 +1416,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   //    업로드본'으로 바꿔 모은다. 대표가 medias[0]과 같은 업로드 URL을 공유할 수 있어 대표
   //    참조도 반드시 포함한다(빠지면 수정 diff의 keep 집합에서 새어 살아 있는 파일을 지운다).
   //    캐시는 사진첩에만 있으므로 다른 형식에는 영향이 없다.
+  //    각 원본 URL의 목록용 축소본(thumbs[원본 URL])도 같이 모은다 — 사진첩은 장마다 축소본이 있어
+  //    (posts.ts) 빼면 사진을 지우거나 대표를 바꿀 때마다 축소본이 Storage 고아로 남는다.
   const collectRemoteMediaUrls = (r: TravelRecord): string[] => {
     const out: string[] = [];
     const push = (u?: string | null) => {
       if (!u) return;
       const remote = u.startsWith('http') ? u : r.uploadedMediaUrls?.[u];
-      if (remote) out.push(remote);
+      if (!remote) return;
+      out.push(remote);
+      const thumb = r.thumbs?.[remote];
+      if (thumb) out.push(thumb);
     };
     (r.medias ?? []).forEach(push);
     push(r.representativePhoto);
@@ -1428,7 +1439,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return out;
   };
 
-  // Storage에서 지운 URL을 사진첩 업로드 캐시(uploadedMediaUrls)에서도 뺀다.
+  // Storage에서 지운 URL을 사진첩 업로드 캐시(uploadedMediaUrls)와 축소본 맵(thumbs)에서도 뺀다.
+  // thumbs도 값(지운 축소본 URL)으로 찾는다 — 남겨 두면 posts.ts addThumb가 '이미 있음'으로 보고
+  // 지운 축소본 URL을 서버에 다시 실어 목록 사진이 깨진다.
   // ⚠️ 안 빼면 같은 로컬 uri가 다시 medias에 들어올 때(삭제 후 되돌리기 등) upAlbum이 캐시를
   //    그대로 재사용해 이미 지운 URL을 서버에 발행한다 — 다른 기기·타인 화면에서 사진이 깨진다.
   //    persistRecordPhotos가 키(로컬 uri)를 비동기로 바꿀 수 있어 키가 아니라 값(URL)으로 찾는다.
@@ -1437,10 +1450,16 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const gone = new Set(removed);
     setRecords((prev) =>
       prev.map((r) => {
-        if (r.id !== id || !r.uploadedMediaUrls) return r;
-        const entries = Object.entries(r.uploadedMediaUrls);
-        const kept = entries.filter(([, url]) => !gone.has(url));
-        return kept.length === entries.length ? r : { ...r, uploadedMediaUrls: Object.fromEntries(kept) };
+        if (r.id !== id || (!r.uploadedMediaUrls && !r.thumbs)) return r;
+        const prune = (m?: Record<string, string>) => {
+          if (!m) return m;
+          const entries = Object.entries(m);
+          const kept = entries.filter(([, url]) => !gone.has(url));
+          return kept.length === entries.length ? m : Object.fromEntries(kept);
+        };
+        const up = prune(r.uploadedMediaUrls);
+        const th = prune(r.thumbs);
+        return up === r.uploadedMediaUrls && th === r.thumbs ? r : { ...r, uploadedMediaUrls: up, thumbs: th };
       })
     );
   };
@@ -1562,7 +1581,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // ⚠️ 단 사진첩 업로드 캐시 유래 URL은 지우지 않고 캐시도 그대로 둔다. 이 분기는 주로
         //    재시작 직후 오프라인일 때 오는데, insert는 서버에 들어갔고 응답만 유실된 경우
         //    재발행의 23505 회수는 data를 갱신하지 않아 서버가 그 URL을 계속 참조할 수 있다.
-        const cached = new Set(Object.values(cur?.uploadedMediaUrls ?? {}));
+        // 축소본도 같은 발행에서 올라간 것이라 캐시 유래로 취급한다(같은 이유로 지우지 않는다)
+        const cached = new Set([...Object.values(cur?.uploadedMediaUrls ?? {}), ...Object.values(cur?.thumbs ?? {})]);
         const direct = orphans.filter((u) => !cached.has(u));
         if (direct.length > 0) removeMediaUrls(direct).catch(() => {});
       }
@@ -1589,7 +1609,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       // 게시물이 참조하던 업로드 파일 (Storage 고아 정리 대상)
       // 기록이 통째로 사라지므로 사진첩 업로드 캐시의 값 전부도 함께 지운다 — 지금 medias가
       // 참조하지 않는 캐시 항목(이전 수정에서 빠졌는데 정리 못 한 것)도 여기서 마지막으로 거둔다.
-      const urls = [...new Set([...collectRemoteMediaUrls(target), ...Object.values(target.uploadedMediaUrls ?? {})])];
+      // 축소본 맵 값도 전부 — 지금 참조 중이 아닌 사진의 축소본(이전 수정에서 못 지운 것)까지 거둔다
+      const urls = [...new Set([
+        ...collectRemoteMediaUrls(target),
+        ...Object.values(target.uploadedMediaUrls ?? {}),
+        ...Object.values(target.thumbs ?? {}),
+      ])];
       if (target.remoteId) {
         // ⚠️ 사진 삭제는 서버 게시물 삭제 '성공 후'에만 — 오프라인에서 먼저 지우면 서버에 남은
         //    게시물이 죽은 URL을 참조하고(타인 피드에 깨진 사진) 원본은 복구할 수 없다.

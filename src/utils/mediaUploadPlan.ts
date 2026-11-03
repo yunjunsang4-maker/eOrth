@@ -70,6 +70,15 @@ export function markMetadataStripped(uri: string): void {
   stripped.add(uri);
 }
 
+/**
+ * 장부에서 경로를 뺀다 — 장부는 '경로'로 기록하므로, 장부에 오른 경로에 압축본이 아닌 파일
+ * (EXIF가 살아 있는 원본 복사 등)을 덮어쓸 때는 반드시 먼저 뺀다. 안 빼면 GPS가 든 원본이
+ * already-stripped로 판정돼 업로드 초크포인트가 제거를 건너뛴다(위치 유출).
+ */
+export function unmarkMetadataStripped(uri: string): void {
+  if (uri) stripped.delete(uri);
+}
+
 export function isMetadataStripped(uri: string): boolean {
   return !!uri && stripped.has(uri);
 }
