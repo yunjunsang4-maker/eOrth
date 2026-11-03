@@ -2094,7 +2094,7 @@ const ko = {
     albumReanalyzeFound: '{{count}}장의 날짜를 찾았어요.',
     albumReanalyzeMissed: '{{count}}장은 찾지 못했어요.',
     // 못 찾은 이유별 한 줄(0인 이유는 안 보인다)
-    albumReasonRemote: '· 서버에서 받은 사진이라 확인할 수 없음 {{count}}장',
+    albumReasonRemote: '· 서버 사본에 날짜 정보가 없거나 받지 못함 {{count}}장',
     albumReasonPermission: '· 사진 접근 권한이 제한돼 확인 못 함 {{count}}장',
     albumReasonFileMissing: '· 사진 파일을 열 수 없음 {{count}}장',
     albumReasonNoExif: '· 사진에 날짜 정보가 없음 {{count}}장',

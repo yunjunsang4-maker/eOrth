@@ -149,7 +149,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     reanalyzingRef.current = true;
     setReanalyzing(true);
     try {
-      const { times, tried, found, reasons } = await findMissingPhotoTimes(record);
+      const { times, assetIds, tried, found, reasons } = await findMissingPhotoTimes(record);
       if (found > 0) {
         const { record: cur, updateRecord: update } = latestRef.current;
         const merged = { ...(cur.mediaTimes ?? {}) };
@@ -159,7 +159,15 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         for (const [uri, ts] of Object.entries(times)) {
           if (alive.has(uri) && !(merged[uri] > 0)) merged[uri] = ts;
         }
-        update(cur.id, { mediaTimes: merged });
+        // 사진첩 매칭으로 알게 된 원본 assetId — 다음 중복 판정(AlbumCreateScreen)·재분석에 쓴다.
+        // 키는 로컬 경로라 medias가 업로드 URL로 바뀐 사진은 uploadedMediaUrls로 살아 있는지 본다. 기존 키는 덮지 않는다.
+        const ids = { ...(cur.mediaAssetIds ?? {}) };
+        let idsChanged = false;
+        for (const [key, id] of Object.entries(assetIds)) {
+          const up = cur.uploadedMediaUrls?.[key];
+          if ((alive.has(key) || (!!up && alive.has(up))) && !ids[key]) { ids[key] = id; idsChanged = true; }
+        }
+        update(cur.id, idsChanged ? { mediaTimes: merged, mediaAssetIds: ids } : { mediaTimes: merged });
       }
       if (!mountedRef.current) return;
       const missed = tried - found;

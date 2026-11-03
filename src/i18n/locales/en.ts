@@ -2073,7 +2073,7 @@ const en = {
     albumNoDatesHint: 'These photos have no date taken',
     albumReanalyzeFound: 'Found dates for {{count}} photo(s).',
     albumReanalyzeMissed: 'Could not find {{count}} photo(s).',
-    albumReasonRemote: '· Downloaded from the server, can’t check: {{count}}',
+    albumReasonRemote: '· Server copy has no date info or couldn’t be loaded: {{count}}',
     albumReasonPermission: '· Limited photo access, couldn’t check: {{count}}',
     albumReasonFileMissing: '· Photo file couldn’t be opened: {{count}}',
     albumReasonNoExif: '· No date info in the photo: {{count}}',
