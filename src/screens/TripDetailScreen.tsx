@@ -998,11 +998,14 @@ export default function TripDetailScreen() {
             // 행 배경 사진 — 이 형식 사진 중 한 장이 행을 꽉 채운다(풍경 80 · 사람 15 · 음식 5).
             // 분석이 끝나기 전에는 후보 첫 장을 깔아 두고, 끝나면 고른 사진으로 갈아탄다.
             const rowBg = rowPhoto[m.vt] ?? (rowCands[m.vt] ?? [])[0];
+            // 기록이 하나뿐인 형식은 펼쳐 봐야 타일 하나라, 세로 선 왼쪽(글자 쪽)을 누르면 그 기록으로 바로 간다.
+            // 펼치기는 선 오른쪽 화살표 구간(아래 rowChevronHit)이 맡는다. 2개 이상이면 행 전체가 펼치기(종전).
+            const single = m.items.length === 1;
             return (
               <Animated.View key={m.vt} style={[s.rowWrap, { opacity: headerAnim }]}>
                 <TouchableOpacity
                   activeOpacity={0.85}
-                  onPress={() => toggleModule(m.vt)}
+                  onPress={() => (single ? handleRecordPress(m.items[0]) : toggleModule(m.vt))}
                   style={s.row}
                   accessibilityRole="button"
                   accessibilityLabel={viewTypeName(m.vt, t)}
@@ -1061,6 +1064,16 @@ export default function TripDetailScreen() {
                   >
                     <ChevronIcon size={16} color={COLORS.white} />
                   </Animated.View>
+                  {single && (
+                    <TouchableOpacity
+                      style={s.rowChevronHit}
+                      activeOpacity={0.6}
+                      onPress={() => toggleModule(m.vt)}
+                      accessibilityRole="button"
+                      accessibilityLabel={viewTypeName(m.vt, t)}
+                      accessibilityState={{ expanded: open }}
+                    />
+                  )}
                 </TouchableOpacity>
 
                 {/* 펼침 — 이 형식의 기록 타일(형식 불문 한 종류). 2개 이상이면 가로 스와이프. */}
@@ -1447,6 +1460,8 @@ const s = StyleSheet.create({
     width: 30, height: 30, marginRight: 12,
     alignItems: 'center', justifyContent: 'center',
   },
+  // 기록 1개 형식의 펼치기 터치 영역 — 세로 선 오른쪽 선명 구간 전체(행 높이 꽉)
+  rowChevronHit: { position: 'absolute', top: 0, bottom: 0, right: 0, width: ROW_CLEAR_W },
   expandWrap: { marginTop: 12 },
   tileFadeRight: { position: 'absolute', top: 0, bottom: 0, right: 0, width: 56 },
   listFadeBottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
