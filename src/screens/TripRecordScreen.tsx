@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import TripRecordRenderer from '../components/TripRecordRenderer';
+import { SettingsModal, SettingsField, SettingsPillButton, settingsText, SETTINGS_COLORS } from '../components/settings/SettingsUI';
 import * as ImagePicker from 'expo-image-picker';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { useProfileSettings } from '../store/settingsStore';
@@ -488,36 +489,37 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         )}
       </KeyboardAvoidingView>
 
-      {/* 앨범 이름 변경 모달 */}
-      <Modal visible={titleModal} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setTitleModal(false)}>
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력) */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.sectionModalOverlay} accessibilityViewIsModal>
-          <View style={styles.sectionModalCard}>
-            <Text style={styles.sectionModalTitle}>{t('trip.albumRenameAlbum')}</Text>
-            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-              style={styles.sectionModalInput}
-              value={titleInput}
-              onChangeText={setTitleInput}
-              placeholder={t('trip.albumTitlePh')}
-              placeholderTextColor="#5A5A6E"
-              autoFocus
-              maxLength={20}
-            />
-            <View style={styles.sectionModalBtns}>
-              <TouchableOpacity style={styles.sectionModalBtn} onPress={() => setTitleModal(false)}>
-                <Text style={styles.sectionModalBtnTxt}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sectionModalBtn, styles.sectionModalBtnOk, !titleInput.trim() && { opacity: 0.4 }]}
-                onPress={confirmTitleModal}
-                disabled={!titleInput.trim()}
-              >
-                <Text style={[styles.sectionModalBtnTxt, { color: '#FFFFFF' }]}>{t('trip.albumSectionOk')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* 앨범 이름 변경 — 앱 공용 팝업(SettingsModal: 카드·제목·하단 취소 알약) + 공용 입력칸·확인 알약.
+          입력 중 실수 탭으로 날아가지 않게 배경 탭 닫힘은 끈다(안드로이드 뒤로·취소는 닫힘). autoFocus라 키보드 회피(avoidKeyboard) */}
+      <SettingsModal
+        visible={titleModal}
+        title={t('trip.albumRenameAlbum')}
+        closeLabel={t('common.cancel')}
+        onClose={() => setTitleModal(false)}
+        avoidKeyboard
+        backdropDismiss={false}
+      >
+        <SettingsField baseRim={SETTINGS_COLORS.line} style={styles.renameField}>
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
+            style={settingsText.input}
+            value={titleInput}
+            onChangeText={setTitleInput}
+            placeholder={t('trip.albumTitlePh')}
+            placeholderTextColor={SETTINGS_COLORS.text50}
+            autoFocus
+            maxLength={20}
+            returnKeyType="done"
+            onSubmitEditing={confirmTitleModal}
+          />
+        </SettingsField>
+        <SettingsPillButton
+          label={t('trip.albumSectionOk')}
+          onPress={confirmTitleModal}
+          disabled={!titleInput.trim()}
+          baseRim={SETTINGS_COLORS.line}
+          style={styles.renameOk}
+        />
+      </SettingsModal>
 
       {/* ⋯ 팝업 메뉴 */}
       <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
@@ -629,56 +631,9 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     fontWeight: '600',
     color: '#A1A1B0',
   },
-  // 앨범 이름 입력 모달
-  sectionModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-  },
-  sectionModalCard: {
-    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
-    width: '100%',
-    maxWidth: STAGE_MAX_W,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 16,
-    padding: 18,
-  },
-  sectionModalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    marginBottom: 12,
-  },
-  sectionModalInput: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  sectionModalBtns: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 14,
-  },
-  sectionModalBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  sectionModalBtnOk: {
-    backgroundColor: a.accentDeep,
-  },
-  sectionModalBtnTxt: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#A1A1B0',
-  },
+  // 앨범 이름 변경 팝업 — 설명 없는 제목 아래 20, 확인 알약은 입력칸 아래 14(하단 취소 알약과 같은 간격)
+  renameField: { marginTop: 20 },
+  renameOk: { marginTop: 14 },
   // 사진첩(앨범) — 사진 장수 표기
   commentItem: {
     flexDirection: 'row',

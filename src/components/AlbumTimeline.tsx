@@ -21,8 +21,9 @@ import { Text } from '../ui/Text';
 import { buildAlbumTimeline } from '../utils/albumSections';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
-import { SettingsChevronIcon } from './icons/SettingsIcons';
 import FeedPhoto from './FeedPhoto';
+import { BackChevronIcon } from './icons';
+import { PillRing } from './record/CalendarBottomSheet';
 
 const GAP = 2;      // 평면 격자 사진 사이 간격(예전 격자와 같음)
 const ROW_GAP = 3;  // 가로 줄 사진 사이 간격(시안 3)
@@ -166,7 +167,14 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
                 >
                   <Text style={styles.headLabel} numberOfLines={1} {...andFitText}>{g.label}</Text>
                   <Text style={styles.headCount} numberOfLines={1}>{g.indexes.length}</Text>
-                  <SettingsChevronIcon />
+                  {/* 상대 프로필 '겹치는 나라' 줄과 같은 원형 '>' — 원 14·#28292D + 공용 유리 테두리 + 공용 꺾쇠 좌우 반전.
+                      꺾쇠 Svg는 터치 삼킴 방지로 View(pointerEvents none)로 감싼다 */}
+                  <View style={styles.headChevron}>
+                    <PillRing width={14} height={14} radius={7} />
+                    <View pointerEvents="none" style={styles.headChevronFlip}>
+                      <BackChevronIcon size={7} opacity={1} />
+                    </View>
+                  </View>
                 </TouchableOpacity>
               ) : (
                 <>
@@ -184,6 +192,8 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
                   accessibilityLabel={`${g.label} ⋯`}
                   activeOpacity={0.7}
                 >
+                  {/* 앱 공용 유리 테두리(대각 그라데이션) — 게시물·프로필 ⋯ 버튼과 같은 링 */}
+                  <PillRing width={23} height={23} radius={11.5} />
                   <View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} />
                 </TouchableOpacity>
               )}
@@ -220,6 +230,9 @@ const styles = StyleSheet.create({
   headCount: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
   // 날짜·장수·'>' 묶음 — 줄 안에서 줄어들 수 있게(⋯ 버튼 자리 보장)
   headOpen: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // FriendProfileScreen overlapChevron과 같은 값 — 테두리는 PillRing(borderWidth 주면 이중 테두리)
+  headChevron: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#28292D', alignItems: 'center', justifyContent: 'center' },
+  headChevronFlip: { transform: [{ scaleX: -1 }] },
   // 시안 ⋯ — 지름 22.6·흰 10% 원 + 흰 점 3개(지름 2.3)
   dayMenuBtn: {
     marginLeft: 'auto',
