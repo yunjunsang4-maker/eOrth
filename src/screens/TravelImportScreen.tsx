@@ -1381,6 +1381,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const [viewportH, setViewportH] = useState(0);
   const [contentH, setContentH] = useState(0);
   const canScroll = contentH > viewportH + 1;
+  const showBackBtn = fromProfile && !scanning && !scanFinished;
 
   // 분석 기간 칩 가로 슬라이드.
   // 재스캔이면 '지난 불러오기 이후'가 앞에 붙어 칩이 4개가 되는데, 이 라벨만 90pt를 넘어
@@ -1415,7 +1416,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           스킵 경로로 읽혀 심사 거절 사유였다(5.1.1(iv)). gestureEnabled:false 화면이라
           이 화살표가 없으면 출구가 사라진다. 스캔 중(취소 버튼)·결과(하단 바)에는
           각자의 이탈 수단이 있어 초기 화면에서만 보인다. */}
-      {fromProfile && !scanning && !scanFinished && (
+      {showBackBtn && (
         <HeaderGlassButton back
           style={[styles.backBtn, { top: insets.top + 8 }]}
           onPress={leaveImport}
@@ -1429,7 +1430,14 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         contentContainerStyle={[
           styles.scroll,
           // 결과 화면의 하단 여백은 플로팅 바 전용 — CTA 아래 이탈 링크가 붙어 바가 그만큼 높아졌다
-          { paddingTop: insets.top + 14, paddingBottom: showResults ? 182 : insets.bottom + 24 },
+          // 뒤로가기 화살표(top+8, 44pt)가 떠 있는 초기 화면은 헤더를 그 아래로 내리고,
+          // 남는 세로 여백은 위로 몰아 계속하기 버튼이 하단에 붙게 한다.
+          // 화면이 작아 넘치면 flex-end는 효과가 없고 위 패딩만 남아 스크롤된다.
+          {
+            paddingTop: showBackBtn ? insets.top + 8 + 44 + 12 : insets.top + 14,
+            paddingBottom: showResults ? 182 : insets.bottom + 24,
+          },
+          showBackBtn && styles.scrollBottomAligned,
         ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
@@ -1796,6 +1804,10 @@ const styles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: Spacing[4],
+  },
+  scrollBottomAligned: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   header: {
     marginBottom: 0,
