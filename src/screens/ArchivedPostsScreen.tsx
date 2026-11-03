@@ -12,25 +12,38 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
 import { useToast } from '../store/toastStore';
-import { andFitText } from '../utils/fitText';
-import { ArchiveIcon } from '../components/icons';
-import { SETTINGS_COLORS, SettingsHeader, SettingsEmptyState } from '../components/settings/SettingsUI';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path, G } from 'react-native-svg';
+import { AutoPillRing } from '../components/record/CalendarBottomSheet';
+import { SETTINGS_COLORS, SettingsHeader } from '../components/settings/SettingsUI';
 import type { RootStackScreenProps } from '../navigation/types';
 // 소셜탭 피드와 동일한 매거진 카드(DiaryCard)·높이 추정치를 그대로 재사용해 형태를 통일한다.
 import { DiaryCardMemo, estDiaryHeight } from './SocialScreen';
 
 const C = {
   bg: SETTINGS_COLORS.bg,
-  card: '#1A0A2E',
-  accent: '#BF85FC',
-  accentDim: 'rgba(191,133,252,0.15)',
-  accentBorder: 'rgba(191,133,252,0.25)',
-  dim: '#A1A1B0',
+  count: '#A78BFA',
   white: '#FFFFFF',
-  divider: '#1A1A26',
 };
 
 const noop = () => {}; // 아카이브 화면에서 안 쓰는 콜백(빠른공유·차단·신고 등) 자리채움
+
+// 2026-11-03 시안 탭 알약 채움 — 위→아래 세로 그라데이션(활성은 한 단계 밝게)
+const TAB_FILL = ['#0D0E12', '#17171B'] as const;
+const TAB_FILL_ACTIVE = ['#1D1E21', '#28282C'] as const;
+const EMPTY_ICON_COLOR = '#9CA3AF'; // 차단한 사용자 빈 상태 금지 표식과 같은 회색
+
+// 빈 상태 아이콘 — 시안의 겹친 북마크 2장(74×74). 앞 장을 배경색 굵은 테두리로 칠해 뒷장과 사이 틈을 낸다.
+const BOOKMARK_D = 'M0 12A12 12 0 0 1 12 0H38A12 12 0 0 1 50 12V56.5A2.5 2.5 0 0 1 46.4 58.7L25 50L3.6 58.7A2.5 2.5 0 0 1 0 56.5Z';
+const StackedBookmarksIcon = () => (
+  <Svg width={74} height={74} viewBox="0 0 74 74">
+    <G transform="translate(24 0)"><Path d={BOOKMARK_D} fill={EMPTY_ICON_COLOR} /></G>
+    <G transform="translate(1 14)">
+      <Path d={BOOKMARK_D} fill="none" stroke={SETTINGS_COLORS.bg} strokeWidth={8} strokeLinejoin="round" />
+      <Path d={BOOKMARK_D} fill={EMPTY_ICON_COLOR} />
+    </G>
+  </Svg>
+);
 
 // ─────────────────────────────────────────────
 // 보관된 게시물 화면
@@ -114,31 +127,32 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
       <SettingsHeader title={t('misc.archivedTitle')} onBack={() => navigation.goBack()} backA11yLabel={t('friends.back')} />
 
       {/* 기록 형식 필터 탭바 */}
+      {/* 2026-11-03 시안: 가로 스크롤 알약(높이 30·간격 12) — 그라데이션 채움 + 공용 대각 링 */}
       <View style={s.tabBar}>
-        {(['all', 'feed', 'blog', 'album', 'snap', 'cut'] as const).map((tab) => {
-          const isActive = activeTab === tab;
-          return (
-            <TouchableOpacity
-              key={tab}
-              style={[s.tabItem, isActive && s.tabItemActive]}
-              onPress={() => setActiveTab(tab)}
-              activeOpacity={0.7}
-            >
-              <Text style={[s.tabText, isActive && s.tabTextActive]} {...andFitText}>
-                {TAB_LABELS[tab]} <Text style={[s.tabCount, isActive && s.tabCountActive]}>{counts[tab]}</Text>
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
+          {(['all', 'feed', 'blog', 'album', 'snap', 'cut'] as const).map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <View key={tab} style={s.tabItem}>
+                <LinearGradient colors={isActive ? TAB_FILL_ACTIVE : TAB_FILL} style={[StyleSheet.absoluteFill, s.tabFill]} pointerEvents="none" />
+                <AutoPillRing />
+                <TouchableOpacity style={s.tabInner} onPress={() => setActiveTab(tab)} activeOpacity={0.7}>
+                  <Text style={[s.tabText, isActive && s.tabTextActive]} numberOfLines={1}>
+                    {TAB_LABELS[tab]} <Text style={[s.tabCount, isActive && s.tabCountActive]}>{counts[tab]}</Text>
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {filteredRecords.length === 0 ? (
-        <SettingsEmptyState
-          // 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 — 위 useSkinAccent() 구독이 그 용도
-          icon={<ArchiveIcon size={48} />}
-          title={getEmptyMessage()}
-          style={s.emptyContainer}
-        />
+        // 빈 상태 — 회색 겹친 북마크 + 흰 제목 18, 세로 가운데보다 조금 위(차단한 사용자 빈 상태와 같은 배치)
+        <View style={s.emptyContainer}>
+          <StackedBookmarksIcon />
+          <Text style={s.emptyTitle}>{getEmptyMessage()}</Text>
+        </View>
       ) : (
         <ScrollView
           contentContainerStyle={s.scroll}
@@ -190,43 +204,44 @@ const s = StyleSheet.create({
   },
 
   // 탭바 스타일
+  // 시안: 탭 줄 높이 52(위아래 11 + 알약 30), 아래 헤더와 같은 0.8pt 흰 15% 구분선
   tabBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: C.divider,
+    borderBottomWidth: 0.8,
+    borderBottomColor: SETTINGS_COLORS.line,
     backgroundColor: C.bg,
   },
-  tabItem: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 18,
-    backgroundColor: C.card,
-    borderWidth: 1,
-    borderColor: 'transparent',
+  tabRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    gap: 12,
   },
-  tabItemActive: {
-    backgroundColor: C.accentDim,
-    borderColor: C.accentBorder,
+  // 링(AutoPillRing) 때문에 borderWidth·overflow hidden 금지 — 채움은 LinearGradient 자체 모서리로
+  tabItem: {
+    height: 30,
+    borderRadius: 15,
+  },
+  tabFill: { borderRadius: 15 },
+  tabInner: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
   },
   tabText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
-    color: C.dim,
+    color: SETTINGS_COLORS.text50,
   },
   tabTextActive: {
     color: C.white,
     fontWeight: '700',
   },
+  // 개수 — 시안 #A78BFA, 비활성은 반투명
   tabCount: {
-    fontSize: 10,
-    color: C.dim,
-    opacity: 0.6,
+    fontSize: 12,
+    color: C.count,
+    opacity: 0.5,
   },
   tabCountActive: {
-    color: C.accent,
     opacity: 1,
   },
 
@@ -238,9 +253,13 @@ const s = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
 
-  // 빈 상태 — 남는 높이 가운데(문구는 SettingsEmptyState의 흰 50%)
+  // 빈 상태 — 가운데 정렬 후 paddingBottom만큼 위로(시안: 묶음 중심이 본문 중심보다 ~60 위)
   emptyContainer: {
     flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingBottom: 120,
   },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: C.white, textAlign: 'center', marginTop: 20 },
 });

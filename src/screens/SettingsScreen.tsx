@@ -887,8 +887,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         description={t('settings.globeSkinDesc')}
         closeLabel={t('common.cancel')}
         onClose={() => setSkinModalVisible(false)}
+        // 2026-11-03 시안: 카드 모서리 30·좌우 여백 18, 취소 버튼 높이 50·모서리 22
+        radius={30}
+        closeRadius={22}
+        cardStyle={st.skinCard}
+        closeStyle={st.skinClose}
       >
-        <ScrollView style={[st.modalList, st.modalListBleed]} showsVerticalScrollIndicator={false}>
+        {/* 시안은 구분선이 카드 끝까지 가지 않고 여백(18) 안쪽에서 끝난다 — modalListBleed 없이 */}
+        <ScrollView style={[st.modalList, st.skinList]} showsVerticalScrollIndicator={false}>
           {GLOBE_SKINS.map((s, i) => {
             const locked = s.premium && !isPremium;
             return (
@@ -993,6 +999,10 @@ const st = StyleSheet.create({
   modalList: { flexGrow: 0, flexShrink: 1 },
   // 선택 목록은 팝업 카드 좌우 패딩(16)을 상쇄해 카드 끝까지 편다 — 행·구분선이 설정 카드처럼 전폭
   modalListBleed: { marginHorizontal: -16, marginTop: 12 },
+  // 지구본 스킨 팝업 — 시안 치수
+  skinCard: { paddingHorizontal: 18 },
+  skinClose: { height: 50 },
+  skinList: { marginTop: 12 },
   // 장기 체류 국가 단계 — 검색칸 바로 아래
   modalListAfterSearch: { marginTop: 8 },
   // 팝업 안 검색칸 — 하단 취소 알약과 같은 옅은 흰 테두리로 카드와 구분

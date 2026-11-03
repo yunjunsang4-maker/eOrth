@@ -1,37 +1,34 @@
-// AlbumTimeline — 사진첩(앨범) 촬영시각 세로 타임라인 (내 사진첩·남의 사진첩 보기 공용)
+// AlbumTimeline — 사진첩(앨범) 촬영시각 날짜별 묶음 (내 사진첩·남의 사진첩 보기 공용)
 //
-//   ●  3월 2일 (토)  1일차
-//   │  ┌──┐┌──┐┌──┐
-//   │  14:20                ← 그날 순간이 둘 이상일 때만 시작 시각
-//   │  ┌──┐┌──┐
-//   ●  3월 3일 (일)  2일차
+//   3월 2일 (토)  4                    (⋯)
+//   ┌────┐┌────┐┌────┐┌──…  ← 하루 사진은 가로 한 줄 슬라이드(2026-11-03 시안 iPhone 17 - 126)
+//   3월 3일 (일)  2
+//   ┌────┐┌────┐
 //
 // 데이터는 저장하지 않고 medias + mediaTimes로 렌더 시점에 유도한다(utils/albumSections
-// buildAlbumTimeline). 시각 있는 사진이 하나도 없으면(옛 기록·EXIF 없는 사진만) 선 없이
-// 예전과 같은 평면 3열 격자로 그린다.
-// 선·점은 Svg가 아니라 View로 그린다 — 새 아키텍처에서 Svg는 pointerEvents를 무시하고
-// 터치를 삼켜(eorth-android-traps 3) 옆 사진 탭이 먹통이 될 수 있다.
-import React, { useMemo, useState } from 'react';
-import { View, Image, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+// buildAlbumTimeline). 시각 있는 사진이 하나도 없으면(옛 기록·EXIF 없는 사진만) 날짜 줄 없이
+// 예전과 같은 평면 3열 격자로 그린다. 하루 안의 순간(시각) 구분은 시안에서 빠져 한 줄로 이어 붙인다.
+import React, { useMemo } from 'react';
+import { View, Image, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../ui/Text';
 import { buildAlbumTimeline } from '../utils/albumSections';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
+import { SettingsChevronIcon } from './icons/SettingsIcons';
 
-const RAIL_W = 28;  // 왼쪽 선 영역
-const GAP = 2;      // 사진 사이 간격(예전 격자와 같음)
-const DOT = 10;
-const HEAD_H = 22;  // 날짜 줄 최소 높이 — 실제 높이는 글자 배율 따라 커지고, 점은 실측 높이 가운데에 맞춘다
-const BODY_PB = 16; // 그룹 사이 간격(groupBody 하단 패딩)
+const GAP = 2;      // 평면 격자 사진 사이 간격(예전 격자와 같음)
+const ROW_GAP = 3;  // 가로 줄 사진 사이 간격(시안 3)
+const FADE_W = 70;  // 줄 오른쪽 끝 흐림 폭(시안: 검정 25% → 0)
 const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
-
-const pad2 = (n: number) => String(n).padStart(2, '0');
 
 interface Props {
   medias: string[];
   mediaTimes?: Record<string, number>;
   width: number; // 가용 폭
+  // 날짜 줄 좌우 들여쓰기 — 사진 줄은 width 끝까지 붙이고 글자만 안쪽으로(화면 폭을 넘겨받는 내 사진첩 16)
+  inset?: number;
   // 탭한 사진의 medias 전역 인덱스 + 화면 표시 순서(뷰어 스와이프 순서로 쓴다)
   onPressPhoto: (globalIdx: number, order: number[]) => void;
   // 다중 선택 모드 — 탭이 선택 토글로 바뀌고 체크 오버레이 표시
@@ -39,22 +36,24 @@ interface Props {
   selected?: number[];
   onToggleSelect?: (globalIdx: number) => void;
   onAddPhotos?: () => void; // 있으면 맨 끝에 '+' 타일(편집 모드)
+  // 있으면 날짜 줄 오른쪽 ⋯ — 그날 사진의 medias 전역 인덱스와 날짜 라벨을 넘긴다(메뉴는 호출부가 띄운다)
+  onDayMenu?: (indexes: number[], label: string) => void;
+  // 있으면 날짜 줄(날짜·장수 + '>')을 누를 때 그날 하루 보기로 — AlbumDay 키('YYYY.MM.DD')를 넘긴다. '날짜 미상'엔 없다
+  onOpenDay?: (dayKey: string) => void;
   cellRadius?: number;
   // 있으면(=편집 가능한 내 사진첩) 촬영시각 없는 사진이 있을 때만 '날짜 다시 찾기' 버튼
   onReanalyze?: () => void;
   reanalyzing?: boolean;
 }
 
-export default function AlbumTimeline({ medias, mediaTimes, width, onPressPhoto, selecting, selected, onToggleSelect, onAddPhotos, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
+export default function AlbumTimeline({ medias, mediaTimes, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onAddPhotos, onDayMenu, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
   const { t } = useTranslation();
   const a = useSkinAccent();
   const tl = useMemo(() => buildAlbumTimeline(medias, mediaTimes), [medias, mediaTimes]);
-  // 날짜 줄 실측 높이 — iOS는 글자 배율 상한이 없어(ui/Text FONT_SCALE_CAP) 큰 글자에서 22를 넘는다.
-  // 라벨이 전부 한 줄(numberOfLines=1)·같은 글꼴이라 첫 그룹 하나만 재서 모든 점에 쓴다.
-  const [headH, setHeadH] = useState(HEAD_H);
   const flat = tl.days.length === 0;
-  // 3등분 — floor로 내려 3칸+간격이 폭을 넘어 줄바꿈되는 일을 막는다
-  const cell = Math.floor((width - (flat ? 0 : RAIL_W) - GAP * 2) / 3);
+  // 평면 격자는 3등분(floor — 3칸+간격이 폭을 넘어 줄바꿈되지 않게). 가로 줄은 폭의 1/3(402 → 134)이라
+  // 셋째 칸이 살짝 잘려 옆으로 넘길 수 있다는 게 보인다(시안)
+  const cell = flat ? Math.floor((width - GAP * 2) / 3) : Math.round(width / 3);
   const cellStyle = { width: cell, height: cell, borderRadius: cellRadius };
 
   const tile = (i: number) => {
@@ -109,9 +108,9 @@ export default function AlbumTimeline({ medias, mediaTimes, width, onPressPhoto,
   if (flat) {
     return (
       <View>
-        {/* 시각 있는 사진이 0장이라 선 없이 그리는 경우 — 격자 위 한 줄 안내 + 같은 버튼 */}
+        {/* 시각 있는 사진이 0장이라 날짜 줄 없이 그리는 경우 — 격자 위 한 줄 안내 + 같은 버튼 */}
         {reanalyzeBtn && (
-          <View style={styles.flatHint}>
+          <View style={[styles.flatHint, { paddingHorizontal: inset }]}>
             <Text style={styles.flatHintTxt} numberOfLines={1} {...andFitText}>{t('comp.albumNoDatesHint')}</Text>
             {reanalyzeBtn}
           </View>
@@ -124,87 +123,115 @@ export default function AlbumTimeline({ medias, mediaTimes, width, onPressPhoto,
     );
   }
 
-  // 그룹 = 날짜 하루 또는 맨 끝 '날짜 미상'. 마지막 그룹의 마지막 격자에 '+' 타일을 붙인다.
+  // 그룹 = 날짜 하루 또는 맨 끝 '날짜 미상'. 마지막 그룹 줄 끝에 '+' 타일을 붙인다.
   const groups = [
     ...tl.days.map((d) => {
       const dt = new Date(d.startMs);
       return {
         key: d.key,
         label: `${t('time.monthDay', { m: dt.getMonth() + 1, d: dt.getDate() })} (${t(WEEK_KEYS[dt.getDay()])})`,
-        sub: t('comp.sectionDayN', { n: d.dayN }),
         dim: false,
-        // 순간이 하나뿐인 날은 시각 라벨 생략
-        chunks: d.moments.map((m) => {
-          const mt = new Date(m.startMs);
-          return { time: d.moments.length > 1 ? `${pad2(mt.getHours())}:${pad2(mt.getMinutes())}` : null, indexes: m.indexes };
-        }),
+        indexes: d.moments.flatMap((m) => m.indexes),
       };
     }),
-    ...(tl.undated.length > 0
-      ? [{ key: 'undated', label: t('comp.albumUndated'), sub: null, dim: true, chunks: [{ time: null, indexes: tl.undated }] }]
-      : []),
+    ...(tl.undated.length > 0 ? [{ key: 'undated', label: t('comp.albumUndated'), dim: true, indexes: tl.undated }] : []),
   ];
 
   return (
     <View>
-      {groups.map((g, gi) => (
-        <View key={g.key} style={styles.groupRow}>
-          <View style={styles.rail}>
-            {/* 첫 그룹은 점에서 선이 시작하고, 마지막 그룹은 하단 간격을 빼 마지막 사진 행에서 끝난다 */}
-            <View style={[styles.line, { top: gi === 0 ? headH / 2 : 0, bottom: gi === groups.length - 1 ? BODY_PB : 0 }]} />
-            <View style={[styles.dot, { top: (headH - DOT) / 2, backgroundColor: g.dim ? '#5A5A6E' : a.accent }]} />
-          </View>
-          <View style={styles.groupBody}>
-            <View style={styles.head} onLayout={gi === 0 ? (e) => setHeadH(e.nativeEvent.layout.height) : undefined}>
-              <Text style={[styles.headLabel, g.dim && { color: '#A1A1B0' }]} numberOfLines={1} {...andFitText}>{g.label}</Text>
-              {g.sub && <Text style={styles.headSub} numberOfLines={1}>{g.sub}</Text>}
+      {groups.map((g, gi) => {
+        const last = gi === groups.length - 1;
+        const n = g.indexes.length + (last && addTile ? 1 : 0);
+        // 칸들이 폭을 넘을 때만 오른쪽 흐림 — 넘길 게 더 있다는 신호
+        const overflows = n * cell + (n - 1) * ROW_GAP > width;
+        return (
+          <View key={g.key} style={gi > 0 && styles.dayNext}>
+            <View style={[styles.head, { paddingHorizontal: inset }]}>
+              {onOpenDay && !selecting && g.key !== 'undated' ? (
+                <TouchableOpacity
+                  style={styles.headOpen}
+                  onPress={() => onOpenDay(g.key)}
+                  hitSlop={{ top: 11, bottom: 11 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={g.label}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.headLabel} numberOfLines={1} {...andFitText}>{g.label}</Text>
+                  <Text style={styles.headCount} numberOfLines={1}>{g.indexes.length}</Text>
+                  <SettingsChevronIcon />
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <Text style={[styles.headLabel, g.dim && { color: '#A1A1B0' }]} numberOfLines={1} {...andFitText}>{g.label}</Text>
+                  <Text style={styles.headCount} numberOfLines={1}>{g.indexes.length}</Text>
+                </>
+              )}
               {g.key === 'undated' && reanalyzeBtn}
+              {onDayMenu && !selecting && (
+                <TouchableOpacity
+                  style={styles.dayMenuBtn}
+                  onPress={() => onDayMenu(g.indexes, g.label)}
+                  hitSlop={{ top: 11, bottom: 11, left: 11, right: 11 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${g.label} ⋯`}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} />
+                </TouchableOpacity>
+              )}
             </View>
-            {g.chunks.map((c, ci) => (
-              <View key={ci}>
-                {c.time && <Text style={styles.time} numberOfLines={1}>{c.time}</Text>}
-                <View style={styles.grid}>
-                  {c.indexes.map(tile)}
-                  {gi === groups.length - 1 && ci === g.chunks.length - 1 && addTile}
-                </View>
-              </View>
-            ))}
+            <View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+                {g.indexes.map(tile)}
+                {last && addTile}
+              </ScrollView>
+              {overflows && (
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.25)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.fade, { height: cell }]}
+                />
+              )}
+            </View>
           </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: GAP },
-  img: { backgroundColor: '#1A0A2E' },
-  groupRow: { flexDirection: 'row' },
-  rail: { width: RAIL_W },
-  line: {
-    position: 'absolute',
-    left: RAIL_W / 2 - 1,
-    width: 2,
-    // 구분선 토큰(#1A1A26)은 배경 위에서 거의 안 보여 한 단계 밝은 카드색을 쓴다
-    backgroundColor: '#2E2E3B',
-  },
-  dot: {
-    position: 'absolute',
-    left: RAIL_W / 2 - DOT / 2,
-    width: DOT,
-    height: DOT,
-    borderRadius: DOT / 2,
-  },
-  groupBody: { flex: 1, paddingBottom: BODY_PB },
-  head: { minHeight: HEAD_H, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  img: { backgroundColor: '#D9D9D9' }, // 로딩 중 칸 색 — 2026-11-03 시안 자리표시 회백색
+  // 시안: 날짜 줄 아래 11 → 사진 줄, 사진 줄 아래 35 → 다음 날짜 줄
+  dayNext: { marginTop: 35 },
+  head: { minHeight: 23, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 11 },
   headLabel: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-  headSub: { fontSize: 12, color: '#A1A1B0' },
+  headCount: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  // 날짜·장수·'>' 묶음 — 줄 안에서 줄어들 수 있게(⋯ 버튼 자리 보장)
+  headOpen: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // 시안 ⋯ — 지름 22.6·흰 10% 원 + 흰 점 3개(지름 2.3)
+  dayMenuBtn: {
+    marginLeft: 'auto',
+    width: 23,
+    height: 23,
+    borderRadius: 11.5,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  dayMenuDot: { width: 2.3, height: 2.3, borderRadius: 1.15, backgroundColor: '#FFFFFF' },
+  row: { gap: ROW_GAP },
+  fade: { position: 'absolute', top: 0, right: 0, width: FADE_W },
   // '날짜 미상' 줄(평면 격자에선 안내 줄)의 오른쪽 끝
   reBtn: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   reTxt: { fontSize: 13, fontWeight: '600' },
   flatHint: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   flatHintTxt: { flexShrink: 1, fontSize: 13, color: '#A1A1B0' },
-  time: { fontSize: 12, fontWeight: '600', color: '#A1A1B0', marginTop: 4, marginBottom: 6 },
   selOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.25)',

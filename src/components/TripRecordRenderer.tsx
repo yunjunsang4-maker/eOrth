@@ -4,6 +4,7 @@ import {
   Image,
   StyleSheet,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +36,8 @@ interface Props {
   onAlbumRemoveAt?: (globalIndex: number) => void; // 뷰어 액션 바 '삭제'
   onAlbumReanalyze?: () => void; // '날짜 다시 찾기' — 촬영시각 없는 사진만 다시 찾음
   albumReanalyzing?: boolean;
+  onAlbumSelectIndexes?: (indexes: number[]) => void; // 날짜 줄 ⋯ '선택' — 그날 사진을 골라 둔 채 선택 모드로
+  onAlbumOpenDay?: (dayKey: string) => void; // 날짜 줄 '>' — 그날 하루 보기(AlbumDayScreen)
 }
 
 // ─────────────────────────────────────────────
@@ -154,7 +157,7 @@ function BlogView({ record }: { record: TravelRecord }) {
 // 3. Album — 촬영시각 세로 타임라인 (AlbumTimeline)
 // 수동 섹션·꾹 눌러 끌기 재정렬은 2026-11 타임라인으로 대체돼 제거됐다.
 // ─────────────────────────────────────────────
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing }: {
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing, onSelectIndexes, onOpenDay }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: () => void;
@@ -167,8 +170,10 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   onRemoveAt?: (globalIndex: number) => void;
   onReanalyze?: () => void;
   reanalyzing?: boolean;
+  onSelectIndexes?: (indexes: number[]) => void;
+  onOpenDay?: (dayKey: string) => void;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   // 뷰어는 타임라인 표시 순서(order)로 넘긴다 — 뷰어 위치 at은 order 기준이라
   // 커버·지구본·삭제 콜백에 넘길 땐 order[at]으로 medias 전역 인덱스로 되돌린다.
   // order는 연 시점 스냅샷: 뷰어가 떠 있는 동안 medias가 바뀌는 건 삭제뿐이고, 삭제는 뷰어를 닫는다.
@@ -185,22 +190,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
 
   return (
     <View style={styles.albumWrap}>
-      {/* 헤더 카드 */}
-      <View style={styles.albumHeader}>
-        <View style={styles.albumHeaderLeft}>
-          <Text style={styles.albumFlag}>{record.countryFlag}</Text>
-          <View>
-            <Text style={styles.albumCountry}>{countryLabel(record.countryName, i18n.language)}</Text>
-            {/* 여행 기간 표시 — 시작~종료(다르면 범위, 같으면 단일). 마지막날 단일 표기 대체 */}
-            <Text style={styles.albumDate}>
-              {record.startDate && record.endDate && record.startDate !== record.endDate
-                ? `${record.startDate} ~ ${record.endDate}`
-                : (record.startDate || record.date)}
-            </Text>
-          </View>
-        </View>
-        <StarRow rating={record.rating} size={14} />
-      </View>
+      {/* 국가·기간 헤더 카드는 2026-11-03 시안에서 빠졌다 — 기간·장수는 TripRecordScreen 상단 정보 줄 */}
 
       {medias.length === 0 && !editable ? (
         <View style={styles.albumEmpty}>
@@ -213,11 +203,19 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
             medias={medias}
             mediaTimes={mediaTimes}
             width={SCREEN_W}
+            inset={16}
             onPressPhoto={(gi, order) => setViewer({ order, at: Math.max(0, order.indexOf(gi)) })}
             selecting={selecting}
             selected={selected}
             onToggleSelect={onToggleSelect}
             onAddPhotos={editable ? onAddPhotos : undefined}
+            // 날짜 줄 ⋯ — 그날 사진 선택 / 사진 추가. 작은 선택지 둘이라 시스템 Alert로 띄운다(iOS·안드로이드 공통)
+            onDayMenu={editable && (onSelectIndexes || onAddPhotos) ? (indexes, label) => Alert.alert(label, undefined, [
+              ...(onSelectIndexes ? [{ text: t('trip.albumSelect'), onPress: () => onSelectIndexes(indexes) }] : []),
+              ...(onAddPhotos ? [{ text: t('comp.albumAddPhotos'), onPress: onAddPhotos }] : []),
+              { text: t('common.cancel'), style: 'cancel' as const },
+            ]) : undefined}
+            onOpenDay={onOpenDay}
             onReanalyze={editable ? onReanalyze : undefined}
             reanalyzing={reanalyzing}
           />
@@ -367,7 +365,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing, onAlbumSelectIndexes, onAlbumOpenDay }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -386,6 +384,8 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           onRemoveAt={onAlbumRemoveAt}
           onReanalyze={onAlbumReanalyze}
           reanalyzing={albumReanalyzing}
+          onSelectIndexes={onAlbumSelectIndexes}
+          onOpenDay={onAlbumOpenDay}
         />
       );
     case 'snap':
@@ -535,35 +535,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0A0F',
     gap: 2,
   },
-  albumHeader: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 0,
-    marginBottom: 2,
-  },
-  albumHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  albumFlag: { fontSize: 32 },
-  albumCountry: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  albumDate: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 2,
-  },
-  // 타임라인 왼쪽은 선 영역(28)이 여백 역할을 한다 — 위 헤더 카드와 살짝 띄운다
+  // 시안: 상단 정보 줄 아래 30 → 첫 날짜 줄
   albumTimelineWrap: {
-    paddingTop: 12,
+    paddingTop: 30,
   },
   albumSelectBtn: {
     marginHorizontal: 16,

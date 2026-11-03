@@ -15,7 +15,8 @@ import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDel
 import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
 import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
-import { EmailIcon, LockClosedIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
+import { TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
+import { SettingsEmailIcon, SettingsPasswordLockIcon } from '../components/icons/SettingsIcons';
 import RequirementList from '../components/RequirementList';
 import {
   SETTINGS_COLORS,
@@ -32,7 +33,6 @@ import {
 
 const COLORS = {
   ...SETTINGS_COLORS,
-  textMuted:    '#8B8B9E', // 소셜 가입자의 잠긴 비밀번호 아이콘(예전 값 유지)
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
 };
@@ -327,7 +327,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const emailPressable = signUpMethod === 'email' && !emailSubmitting;
   const emailItems: SettingItem[] = [
     {
-      icon: <EmailIcon size={20} />,
+      icon: <SettingsEmailIcon />,
       label: signUpMethod === 'email' ? t('accountSettings.emailAddress') : (signUpMethod === 'google' ? t('accountSettings.googleAccount') : t('accountSettings.appleAccount')),
       description: signUpEmail,
       onPress: emailPressable ? handleEmailChange : undefined,
@@ -336,7 +336,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   ];
   const passwordItems: SettingItem[] = [
     {
-      icon: <LockClosedIcon size={20} color={signUpMethod !== 'email' ? COLORS.textMuted : undefined} />,
+      icon: <SettingsPasswordLockIcon />,
       label: t('accountSettings.passwordChange'),
       description: signUpMethod === 'email' ? t('accountSettings.passwordLastChanged') : t('accountSettings.socialNoPassword'),
       onPress: handlePasswordChange,
@@ -347,7 +347,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     ...(appleLinked ? [{ icon: <AppleIcon size={18} color="#FFFFFF" />, label: 'Apple', value: t('accountSettings.linked'), chevron: false }] : []),
     ...(!googleLinked && !appleLinked
       // '이메일로 가입했어요'는 길어 오른쪽 값 자리(폭 50%·한 줄)에선 좁은 화면에서 말줄임된다 → 라벨 아래 설명 줄(예전 표시 위치)
-      ? [{ icon: <EmailIcon size={18} color="#FFFFFF" />, label: t('accountSettings.socialNoneLabel'), description: t('accountSettings.socialNoneValue'), chevron: false }]
+      ? [{ icon: <SettingsEmailIcon />, label: t('accountSettings.socialNoneLabel'), description: t('accountSettings.socialNoneValue'), chevron: false }]
       : []),
   ];
 
@@ -375,14 +375,15 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             눌러도 아무 일 없는 행이라 꺾쇠를 숨긴다(chevron: false). */}
         <SettingGroup label={t('accountSettings.sectionSocial')} items={socialItems} baseRim={RIM} />
 
-        {/* ── 위험 구역 ── 계정 삭제는 위험 동작 → 로그아웃과 같은 danger 알약 */}
-        <Text style={settingsText.groupLabel}>{t('accountSettings.sectionDanger')}</Text>
+        {/* ── 계정 삭제 ── 위험 동작 → 로그아웃과 같은 danger 알약. 2026-11-03 시안: 섹션 라벨 없이 카드 아래 40·높이 55·모서리 22 */}
         <SettingsPillButton
           tone="danger"
           icon={<TrashIcon size={20} color={SETTINGS_COLORS.logout} />}
           label={t('accountSettings.deleteAccount')}
           onPress={handleDeleteAccount}
           baseRim={RIM}
+          radius={22}
+          style={styles.deleteBtn}
         />
 
         <View style={{ height: 40 }} />
@@ -697,6 +698,7 @@ const styles = StyleSheet.create({
   },
   // 헤더선 아래 첫 그룹 라벨 — 예전 첫 섹션 위 간격(24+20)보다 설정 화면 리듬(21)에 맞춘다
   firstGroupLabel: { marginTop: 21 },
+  deleteBtn: { marginTop: 40, height: 55 },
 
   // ── 팝업 ── 틀·제목·설명·하단 취소 알약은 SettingsModal. 본문은 설명 아래 20, 높이 상한 안에서 스크롤.
   // 스크롤뷰 자신을 팝업 카드 좌우 패딩(16)만큼 펼치고 안쪽에서 16을 되돌린다 — ScrollView는 자기 영역 밖을 잘라서,

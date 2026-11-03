@@ -33,6 +33,7 @@ import UserFollowListScreen from '../screens/UserFollowListScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import StatsDetailScreen from '../screens/StatsDetailScreen';
 import TripRecordScreen from '../screens/TripRecordScreen';
+import AlbumDayScreen from '../screens/AlbumDayScreen';
 import TripGroupScreen from '../screens/TripGroupScreen';
 import TripDetailScreen from '../screens/TripDetailScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
@@ -445,6 +446,7 @@ export default function AppNavigator() {
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="StatsDetail" component={StatsDetailScreen} />
         <Stack.Screen name="TripRecord" component={TripRecordScreen} />
+        <Stack.Screen name="AlbumDay" component={AlbumDayScreen} />
         <Stack.Screen name="TripGroup" component={TripGroupScreen} />
         <Stack.Screen name="TripDetail" component={TripDetailScreen} />
         <Stack.Screen

@@ -335,7 +335,7 @@ export const SettingsOptionRow = ({ label, onPress, selected, left, right, dange
 
 /** 알약 버튼 — 높이 60·모서리 30(compact = 36·18, 행 안에 들어가는 작은 버튼). 배경은 터치러블 밖 형제로 깔아
  *  눌림 중에도 채움이 흐려지지 않는다. */
-export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, baseRim, noRing, disabled, compact, style }: {
+export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, baseRim, noRing, disabled, compact, radius, style }: {
   label: string;
   onPress: () => void;
   /** danger = 로그아웃·계정 삭제·차단 해제(빨강 10% 채움 + 빨간 글자) */
@@ -349,10 +349,12 @@ export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, bas
   disabled?: boolean;
   /** 목록 행·배너 안에 들어가는 작은 알약(높이 36). 폭은 글자에 맞춘다 */
   compact?: boolean;
+  /** 모서리 — 생략 = 높이 절반(완전한 알약). 시안이 덜 둥근 버튼을 줄 때만(지구본 스킨 팝업 22) */
+  radius?: number;
   style?: StyleProp<ViewStyle>;
 }) => (
-  <View style={[s.pillBtn, compact && s.pillBtnCompact, disabled && s.pillDisabled, style]}>
-    <CardSurface radius={compact ? 18 : 30} fill={tone === 'danger' ? LOGOUT_FILL : CARD_FILL} baseRim={baseRim} noRing={noRing} />
+  <View style={[s.pillBtn, compact && s.pillBtnCompact, disabled && s.pillDisabled, style, radius != null && { borderRadius: radius }]}>
+    <CardSurface radius={radius ?? (compact ? 18 : 30)} fill={tone === 'danger' ? LOGOUT_FILL : CARD_FILL} baseRim={baseRim} noRing={noRing} />
     <TouchableOpacity
       style={[s.pillInner, compact && s.pillInnerCompact]}
       activeOpacity={0.7}
@@ -371,8 +373,14 @@ export const SettingsPillButton = ({ label, onPress, tone = 'default', icon, bas
 /** 팝업 틀 — 투명 fade Modal + 어두운 오버레이 + CardSurface 카드(모서리 22·높이 상한 85%) + 제목·설명 + 본문 + 하단 알약.
  *  중앙 카드라 안전영역은 오버레이 여백으로 충분하다. 본문 목록은 flexShrink로 상한 안에서 스크롤해야 알약이 화면에 남는다. */
 export const SettingsModal = ({
-  visible, title, description, closeLabel, onClose, onDismiss, avoidKeyboard, backdropDismiss = true, titleStyle, cardStyle, children,
+  visible, title, description, closeLabel, onClose, onDismiss, avoidKeyboard, backdropDismiss = true, titleStyle, cardStyle, radius = 22, closeRadius, closeStyle, children,
 }: {
+  /** 하단 알약 치수 덮어쓰기(높이 등) — 모서리는 closeRadius로 */
+  closeStyle?: StyleProp<ViewStyle>;
+  /** 카드 모서리 — 생략 = 22. 링이 이 값으로 그려져서 cardStyle.borderRadius만으론 바뀌지 않는다 */
+  radius?: number;
+  /** 하단 알약 모서리 — 생략 = 완전한 알약(SettingsPillButton.radius) */
+  closeRadius?: number;
   visible: boolean;
   title: string;
   titleStyle?: StyleProp<TextStyle>;
@@ -400,13 +408,13 @@ export const SettingsModal = ({
     // 배경 층은 accessible={false}·focusable={false} — 스크린리더 사용자는 하단 알약(또는 안드로이드 뒤로)으로 닫는다.
     <View style={s.modalOverlay} accessibilityViewIsModal>
       <Pressable style={StyleSheet.absoluteFill} accessible={false} focusable={false} onPress={backdropDismiss ? dismiss : undefined} />
-      <View style={[s.modalCard, cardStyle]}>
-        <CardSurface radius={22} />
+      <View style={[s.modalCard, cardStyle, { borderRadius: radius }]}>
+        <CardSurface radius={radius} />
         <Text style={[settingsText.sheetTitle, titleStyle]}>{title}</Text>
         {description ? <Text style={settingsText.sheetDesc}>{description}</Text> : null}
         {children}
         {/* 팝업 카드와 채움이 같아 링 가운데(투명) 구간에서 윤곽이 사라진다 — 옅은 흰 테두리를 아래에 깐다 */}
-        <SettingsPillButton label={closeLabel} onPress={onClose} baseRim={COLORS.line} style={s.modalClose} />
+        <SettingsPillButton label={closeLabel} onPress={onClose} baseRim={COLORS.line} radius={closeRadius} style={[s.modalClose, closeStyle]} />
       </View>
     </View>
   );

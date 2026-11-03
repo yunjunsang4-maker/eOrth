@@ -152,6 +152,8 @@ export type RootStackParamList = {
   EditProfile: undefined;
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };
+  // 사진첩 하루 보기 — dayKey는 buildAlbumTimeline의 AlbumDay.key('YYYY.MM.DD', 기기 로컬 날짜)
+  AlbumDay: { record: TravelRecord; dayKey: string };
   TripGroup: { groupId: string };
   // guestRecords: 타인 프로필 진입용 — 그 여행의 기록(서버 조회본). 있으면 읽기 전용 게스트 모드
   TripDetail: { trip: TripThumbnailParam; guestRecords?: TravelRecord[] };

@@ -1393,7 +1393,7 @@ const en = {
     typeBlog: 'Blog',
     typeAlbum: 'Album',
     albumPhotoCount: '{{count}} photos',
-    albumPhotoCountMax: '{{count}} / {{max}} photos',
+    albumPhotoCountMax: '{{count}}/{{max}} photos',
     typeCut: 'Four-cut',
     typeSnap: 'Snap',
     hideComment: 'Hide',

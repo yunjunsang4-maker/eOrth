@@ -1410,7 +1410,7 @@ const ko = {
     typeBlog: '블로그',
     typeAlbum: '앨범',
     albumPhotoCount: '사진 {{count}}장',
-    albumPhotoCountMax: '사진 {{count}} / {{max}}장',
+    albumPhotoCountMax: '{{count}}/{{max}}장',
     typeCut: '네컷',
     typeSnap: '스냅',
     hideComment: '숨기기',

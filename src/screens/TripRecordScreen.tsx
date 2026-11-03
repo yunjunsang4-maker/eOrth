@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecordData, useComments, useRecordActions } from '../store/recordStore';
-import { TrashIcon, CommentIcon, BackChevronIcon } from '../components/icons';
+import { TrashIcon, CommentIcon, BackChevronIcon, OutlineCalendarIcon } from '../components/icons';
 import TimeAgoText from '../components/TimeAgoText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
@@ -306,11 +306,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             <BackChevronIcon />
           </HeaderGlassButton>
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
-            {/* 사진첩(앨범) 총 사진 수 — 스크롤 없이 상단에서 바로 확인 */}
-            {isAlbum && (
-              <Text style={styles.headerCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
-            )}
+            {/* 사진첩(앨범)은 2026-11-03 시안대로 국기 없이 국가명만 — 사진 수는 아래 정보 줄로 옮겼다 */}
+            <Text style={styles.headerTitle} numberOfLines={1}>{isAlbum ? '' : `${record.countryFlag ?? ''} `}{record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
           </View>
           <HeaderGlassButton
             onPress={() => setMenuVisible(true)}
@@ -327,6 +324,17 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             <Text style={styles.menuIcon}>⋯</Text>
           </HeaderGlassButton>
         </View>
+
+      {/* 사진첩 정보 줄(시안) — 위아래 0.8pt 흰 15% 선 사이 높이 52: 달력 + 여행 기간 · 오른쪽 사진 수 */}
+      {isAlbum && (
+        <View style={styles.albumInfo}>
+          <OutlineCalendarIcon size={12} color="rgba(255,255,255,0.6)" />
+          <Text style={styles.albumInfoText} numberOfLines={1}>
+            {record.startDate && record.endDate ? `${record.startDate} ~ ${record.endDate}` : (record.startDate || record.date)}
+          </Text>
+          <Text style={styles.albumInfoCount} numberOfLines={1}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
+        </View>
+      )}
 
       {/* 본문 + 좋아요/댓글 */}
       <KeyboardAvoidingView
@@ -352,13 +360,12 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumToggleSelect={toggleSelect}
             onAlbumRemoveAt={handleViewerDelete}
             onAlbumReanalyze={isAlbum ? handleReanalyze : undefined}
+            onAlbumSelectIndexes={(idx) => { setSelecting(true); setSelected(idx); }}
+            onAlbumOpenDay={isAlbum ? (dayKey) => navigation.navigate('AlbumDay', { record, dayKey }) : undefined}
             albumReanalyzing={reanalyzing}
           />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
-          {isAlbum ? (
-            <Text style={styles.albumCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
-          ) : null}
           {!isAlbum && (
           <View style={styles.social}>
             <View style={styles.socialBar}>
@@ -648,12 +655,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     color: '#A1A1B0',
   },
   // 사진첩(앨범) — 사진 장수 표기
-  albumCount: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    paddingHorizontal: 16,
-    paddingTop: 10,
-  },
   commentItem: {
     flexDirection: 'row',
     gap: 10,
@@ -750,12 +751,18 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     color: '#FFFFFF',
     textAlign: 'center',
   },
-  headerCount: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#A1A1B0',
-    marginTop: 2,
+  albumInfo: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    borderTopWidth: 0.8,
+    borderBottomWidth: 0.8,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
+  albumInfoText: { flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  albumInfoCount: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
   menuBtn: {
     width: 36,
     height: 36,
