@@ -28,7 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecordData, useComments, useRecordActions } from '../store/recordStore';
-import { TrashIcon, CommentIcon, BackChevronIcon, OutlineCalendarIcon } from '../components/icons';
+import { TrashIcon, CommentIcon, BackChevronIcon, OutlineCalendarIcon, PencilIcon } from '../components/icons';
 import TimeAgoText from '../components/TimeAgoText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
@@ -331,8 +331,14 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             <BackChevronIcon />
           </HeaderGlassButton>
           <View style={styles.headerTitleWrap}>
-            {/* 사진첩(앨범)은 2026-11-03 시안대로 국기 없이 국가명만 — 사진 수는 아래 정보 줄로 옮겼다 */}
-            <Text style={styles.headerTitle} numberOfLines={1}>{isAlbum ? '' : `${record.countryFlag ?? ''} `}{record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
+            {/* 사진첩(앨범)은 2026-11-03 시안대로 국기 없이 — 사진 수는 아래 정보 줄로 옮겼다.
+                국가명 자리에 앨범 이름(content)을 둔다: AlbumCreate가 만든 앨범은 지구본·통계 제외를 위해
+                countryName을 비워 둬서 이 줄이 비었고, '앨범 이름 변경'도 보이는 곳이 없었다. 이름이 없으면 국가명 폴백 */}
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {isAlbum && record.content?.trim()
+                ? record.content.trim()
+                : `${isAlbum ? '' : `${record.countryFlag ?? ''} `}${record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}`}
+            </Text>
           </View>
           <HeaderGlassButton
             onPress={() => setMenuVisible(true)}
@@ -522,23 +528,31 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </SettingsModal>
 
       {/* ⋯ 팝업 메뉴 */}
-      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
+      {/* 앱 공용 ⋯ 바텀시트 룩(PostDetail MenuSheet와 같은 값 — 손잡이·#1A1A28·r24·행 52·아이콘 18·1px 구분선).
+          iOS 새 빌드는 위 HeaderGlassButton 시스템 메뉴, 옛 빌드·안드로이드가 이 시트 */}
+      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMenuVisible(false)}>
+        <View style={styles.menuOverlay} accessibilityViewIsModal>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[styles.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
+          <View style={[styles.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
+            <View style={styles.menuHandle} />
             {isAlbum && (
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => { setMenuVisible(false); openTitleModal(); }}
-              >
-                <Text style={styles.menuItemText}>{t('trip.albumRenameAlbum')}</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setMenuVisible(false); openTitleModal(); }}
+                  activeOpacity={0.7}
+                >
+                  <PencilIcon size={18} color="#FFFFFF" /><Text style={styles.menuItemText}>{t('trip.albumRenameAlbum')}</Text>
+                </TouchableOpacity>
+                <View style={styles.menuDivider} />
+              </>
             )}
-            <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>{t('trip.deleteAction')}</Text></View>
+            <TouchableOpacity style={styles.menuItem} onPress={handleDelete} activeOpacity={0.7}>
+              <TrashIcon size={18} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>{t('trip.deleteAction')}</Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );
@@ -759,34 +773,37 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     letterSpacing: 2,
   },
 
-  // ── 팝업 메뉴 ──
+  // ── ⋯ 메뉴 바텀시트 — PostDetail MenuSheet(menuSheetS·s.menuItem)와 같은 값 ──
   menuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   menuSheet: {
     // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 menuOverlay는 전체 폭 유지)
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',
-    backgroundColor: '#1E1B33',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingTop: 8,
-    paddingBottom: 32,
-    borderTopWidth: 1,
-    borderColor: a.tint(0.2),
+    backgroundColor: '#1A1A28',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  menuHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center', marginBottom: 8,
   },
   menuItem: {
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    flexDirection: 'row', alignItems: 'center',
+    height: 52, paddingHorizontal: 4, gap: 12,
   },
   menuItemText: {
-    fontSize: 16,
+    fontSize: 15,
     color: '#FFFFFF',
-    fontWeight: '500',
+    fontWeight: '600',
   },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)' },
   menuItemDelete: {
     color: '#FF3B30',
   },
