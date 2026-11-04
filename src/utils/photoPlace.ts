@@ -3,7 +3,8 @@
  * 네이티브 호출(사진첩 좌표·역지오코딩)은 화면에 두고, 여기는 RN 의존 없이 photoPlace.verify.ts로 검증한다.
  *
  * 장소는 기록에 저장하지 않는다 — 사진별 좌표가 서버(공개될 수 있는 기록)로 올라가지 않게,
- * 작성 기기에서 화면을 열 때만 기기 사진첩 좌표로 계산해 보여 준다.
+ * 화면을 열 때만 기기 사진첩 좌표로 계산해 보여 준다. 이 기기 assetId가 없으면(iOS 원격 URL 사진)
+ * 촬영시각으로 기기 사진첩을 찾아(pickAssetByTime) 그 자산의 좌표를 쓴다 — 찾은 assetId도 저장하지 않는다.
  */
 
 const isRemote = (u: string) => /^https?:\/\//i.test(u);
@@ -26,6 +27,31 @@ export function localAssetIdOf(
     }
   }
   return undefined;
+}
+
+/** 촬영시각 ↔ 사진첩 creationTime 허용오차 — EXIF는 초 단위(초 아래 버림)라 최대 999ms 차이 + 여유 */
+export const TIME_TOL_MS = 1500;
+
+/**
+ * 촬영시각 ts에 가장 가까운 creationTime의 자산 id. 허용오차(포함) 밖·creationTime이 0/NaN인 자산은 뺀다.
+ * 동률이면 앞의 것. ts가 잘못된 값이면 undefined.
+ * ponytail: 같은 초의 연사와 겹치면 가장 가까운 것을 쓴다 — 장소는 거의 같다.
+ *   EXIF에 시간대 오프셋이 없어 시각이 몇 시간 어긋난 사진은 매칭되지 않아 장소가 없다.
+ */
+export function pickAssetByTime(
+  assets: { id: string; creationTime: number }[],
+  ts: number,
+  tolMs: number,
+): string | undefined {
+  if (!Number.isFinite(ts) || ts <= 0) return undefined;
+  let best: string | undefined;
+  let bestD = Infinity;
+  for (const a of assets) {
+    if (!a?.id || !Number.isFinite(a.creationTime) || a.creationTime <= 0) continue;
+    const d = Math.abs(a.creationTime - ts);
+    if (d <= tolMs && d < bestD) { best = a.id; bestD = d; }
+  }
+  return best;
 }
 
 /** 역지오코딩 결과(expo-location LocationGeocodedAddress의 일부) */

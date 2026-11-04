@@ -3,7 +3,8 @@
 // 디자인은 사진첩 화면(2026-11-03 시안)과 같은 틀: 글래스 뒤로 + 가운데 제목, 위아래 선 사이 정보 줄, 134 칸 가로 줄.
 //
 // 장소는 저장하지 않는다(utils/photoPlace 주석) — 이 기기 사진첩 좌표 → 역지오코딩을 화면을 열 때만 한다.
-// 그래서 다른 기기에서 만든 사진첩이나 기기 사진첩에 없는 사진은 장소 없이 시각만 나온다.
+// 이 기기 assetId가 없는 사진(iOS 원격 URL)은 촬영시각 ±TIME_TOL_MS로 기기 사진첩을 찾아 그 좌표를 쓴다.
+// 기기 사진첩에 없는 사진은 장소 없이 시각만 나온다.
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import FeedPhoto from '../components/FeedPhoto';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { useRecordData } from '../store/recordStore';
 import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
-import { localAssetIdOf, formatPlace } from '../utils/photoPlace';
+import { localAssetIdOf, formatPlace, pickAssetByTime, TIME_TOL_MS } from '../utils/photoPlace';
 import { isUsableLatLon } from '../utils/photoLocationBatch';
 import { andFitText } from '../utils/fitText';
 import { useStageWidth } from '../utils/stage';
@@ -50,6 +51,25 @@ function placeOfAsset(assetId: string): Promise<string | null> {
   return p;
 }
 
+// 촬영시각 → 기기 사진첩 assetId(없으면 null). placeCache와 같은 메모리 캐시 — 찾은 id는 기록에 쓰지 않는다.
+// iOS 술어는 creationDate > / <(배타)라 경계는 빠지지만 허용오차 안쪽이라 상관없다.
+const timeAssetCache = new Map<number, Promise<string | null>>();
+function assetIdAtTime(ts: number): Promise<string | null> {
+  let p = timeAssetCache.get(ts);
+  if (!p) {
+    p = MediaLibrary.getAssetsAsync({
+      mediaType: 'photo',
+      createdAfter: ts - TIME_TOL_MS,
+      createdBefore: ts + TIME_TOL_MS,
+      first: 10,
+    }).then((page) => pickAssetByTime(page.assets, ts, TIME_TOL_MS) ?? null).catch(() => null);
+    timeAssetCache.set(ts, p);
+  }
+  return p;
+}
+
+type PlaceTry = { assetId: string } | { ts: number };
+
 export default function AlbumDayScreen({ navigation, route }: RootStackScreenProps<'AlbumDay'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -70,32 +90,47 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
   const order = useMemo(() => day?.moments.flatMap((m) => m.indexes) ?? [], [day]);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
 
-  // 순간별 장소 — 순간의 앞쪽 사진부터 이 기기 assetId가 있는 것으로 최대 PLACE_TRIES장 시도
+  // 순간별 장소 — 순간의 앞쪽 사진부터 최대 PLACE_TRIES장 시도. 사진마다 이 기기 assetId가 있으면 그것,
+  // 없고 촬영시각이 있으면 시각으로 기기 사진첩 자산을 찾는다(iOS 원격 URL 사진).
   const [places, setPlaces] = useState<Record<number, string>>({});
   const { mediaAssetIds, uploadedMediaUrls } = record;
   useEffect(() => {
     if (!day) return;
     let alive = true;
     (async () => {
-      const ids = day.moments.map((m) =>
-        m.indexes.map((i) => localAssetIdOf({ mediaAssetIds, uploadedMediaUrls }, medias[i]))
-          .filter((id): id is string => !!id).slice(0, PLACE_TRIES));
-      if (!ids.some((l) => l.length)) return; // 이 기기 사진이 없으면 권한도 묻지 않는다
+      const tries = day.moments.map((m) =>
+        m.indexes.map((i): PlaceTry | null => {
+          const assetId = localAssetIdOf({ mediaAssetIds, uploadedMediaUrls }, medias[i]);
+          if (assetId) return { assetId };
+          const ts = mediaTimes?.[medias[i]];
+          return ts ? { ts } : null;
+        }).filter((c): c is PlaceTry => !!c)
+          // 이 기기 assetId가 있는 사진을 먼저 — 시각 매칭이 실패하는 원격 사진에 시도 수를 다 쓰지 않게(안정 정렬)
+          .sort((a, b) => Number('ts' in a) - Number('ts' in b))
+          .slice(0, PLACE_TRIES));
+      if (!tries.some((l) => l.length)) return;
       try {
-        const perm = await MediaLibrary.requestPermissionsAsync(false); // 읽기만
+        // 이 기기 사진이 있으면 기존처럼 권한을 묻고, 시각 폴백만 있으면 팝업 없이 확인만 —
+        // 다른 기기 앨범을 열었다고 사진첩 권한 팝업이 뜨면 안 된다
+        const hasLocal = tries.some((l) => l.some((c) => 'assetId' in c));
+        const perm = hasLocal
+          ? await MediaLibrary.requestPermissionsAsync(false) // 읽기만
+          : await MediaLibrary.getPermissionsAsync(false);
         if (perm.status !== 'granted') return;
       } catch { return; }
       // 순서대로 — iOS 역지오코딩은 연타하면 제한에 걸린다(한 화면 순간 수만큼이라 순차로도 충분)
-      for (let mi = 0; mi < ids.length && alive; mi++) {
-        for (const id of ids[mi]) {
-          const name = await placeOfAsset(id);
+      for (let mi = 0; mi < tries.length && alive; mi++) {
+        for (const c of tries[mi]) {
+          const id = 'assetId' in c ? c.assetId : await assetIdAtTime(c.ts);
+          if (!alive) return;
+          const name = id ? await placeOfAsset(id) : null;
           if (!alive) return;
           if (name) { setPlaces((p) => ({ ...p, [mi]: name })); break; }
         }
       }
     })();
     return () => { alive = false; };
-  }, [day, medias, mediaAssetIds, uploadedMediaUrls]);
+  }, [day, medias, mediaTimes, mediaAssetIds, uploadedMediaUrls]);
 
   const dt = day ? new Date(day.startMs) : null;
   const title = dt ? `${t('time.monthDay', { m: dt.getMonth() + 1, d: dt.getDate() })} (${t(WEEK_KEYS[dt.getDay()])})` : '';
