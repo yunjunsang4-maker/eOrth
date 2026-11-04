@@ -2027,6 +2027,10 @@ const ko = {
     editGroup: '묶음 편집',
     groupTitle: '묶음 제목',
     groupNamePlaceholder: '여행 묶음 이름을 입력해주세요',
+    // 사진첩 하루 보기(AlbumDayScreen) 장소 줄 → 지도 미리보기 시트
+    albumDayPlaceMapA11y: '{{place}} 지도 보기',
+    albumDayOpenGoogleMaps: 'Google 지도에서 열기',
+    albumDayOpenAppleMaps: 'Apple 지도에서 열기',
     saveLarge: '저장하기',
     noPhotoToChange: '변경할 수 있는 사진이 없어요.',
     // 과거 여행 불러오기로 만든 카드 — 보관해 둔 분석 사진에서 썸네일을 다시 뽑는다

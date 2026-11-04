@@ -6,7 +6,8 @@
 // 이 기기 assetId가 없는 사진(iOS 원격 URL)은 촬영시각 ±TIME_TOL_MS로 기기 사진첩을 찾아 그 좌표를 쓴다.
 // 기기 사진첩에 없는 사진은 장소 없이 시각만 나온다.
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Linking, Platform } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
@@ -17,34 +18,41 @@ import HeaderGlassButton from '../components/HeaderGlassButton';
 import { BackChevronIcon, OutlineCalendarIcon, PinIcon } from '../components/icons';
 import FeedPhoto from '../components/FeedPhoto';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import MenuSheet, { MenuSheetItem, MenuSheetDivider } from '../components/MenuSheet';
 import { useRecordData } from '../store/recordStore';
 import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
-import { localAssetIdOf, formatPlace, pickAssetByTime, TIME_TOL_MS } from '../utils/photoPlace';
+import { localAssetIdOf, formatPlace, formatClock, pickAssetByTime, TIME_TOL_MS } from '../utils/photoPlace';
 import { isUsableLatLon } from '../utils/photoLocationBatch';
 import { andFitText } from '../utils/fitText';
 import { useStageWidth } from '../utils/stage';
 import type { RootStackScreenProps } from '../navigation/types';
 
+
 const ROW_GAP = 3;  // AlbumTimeline 가로 줄과 같은 값
 const FADE_W = 70;
 const PLACE_TRIES = 3; // 순간마다 좌표를 찾아볼 사진 수 상한 — 역지오코딩 호출 수를 묶는다
 const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
-const pad2 = (n: number) => String(n).padStart(2, '0');
-const hhmm = (ms: number) => { const d = new Date(ms); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+// 장소 이름 + 그곳 시간대(iOS만, 순간 시각을 현지 시간으로 — formatClock). 둘 다 없으면 null.
+// lat/lon은 장소 줄 → 지도 시트용. 메모리(placeCache·state)에만 — 기록·스토어·서버에 쓰지 않는다(파일 상단 주석).
+type AssetPlace = { name: string | null; tz: string | null; lat: number; lon: number };
+type MapAt = { name: string; lat: number; lon: number };
 
-// assetId → 장소 이름(없으면 null). 같은 사진을 다시 열 때 역지오코딩을 또 부르지 않게 앱 실행 동안만 기억한다.
+// assetId → 장소(없으면 null). 같은 사진을 다시 열 때 역지오코딩을 또 부르지 않게 앱 실행 동안만 기억한다.
 // ponytail: 메모리 캐시만 — 앱을 다시 켜면 다시 찾는다. 느리다는 말이 나오면 AsyncStorage로.
-const placeCache = new Map<string, Promise<string | null>>();
-function placeOfAsset(assetId: string): Promise<string | null> {
+const placeCache = new Map<string, Promise<AssetPlace | null>>();
+function placeOfAsset(assetId: string): Promise<AssetPlace | null> {
   let p = placeCache.get(assetId);
   if (!p) {
     p = (async () => {
       // 네트워크 다운로드 없이 — 좌표는 사진첩 DB 값이라 iCloud 원본을 받으러 갈 필요가 없다
       const info = await MediaLibrary.getAssetInfoAsync(assetId, { shouldDownloadFromNetwork: false });
-      const loc = info?.location;
-      if (!loc || !isUsableLatLon(loc.latitude, loc.longitude)) return null;
-      const [geo] = await Location.reverseGeocodeAsync({ latitude: loc.latitude, longitude: loc.longitude });
-      return formatPlace(geo);
+      // iOS는 좌표를 문자열로 줄 때가 있다 — 숫자로 바꿔야 isUsableLatLon(typeof number)을 통과한다(TravelImportScreen과 같은 처리)
+      const lat = Number(info?.location?.latitude), lon = Number(info?.location?.longitude);
+      if (!info?.location || !isUsableLatLon(lat, lon)) return null;
+      const [geo] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+      const fp = formatPlace(geo);
+      const tz = geo?.timezone ?? null; // 이름이 없어도 시간대는 살린다
+      return fp || tz ? { name: fp, tz, lat, lon } : null;
     })().catch(() => null);
     placeCache.set(assetId, p);
   }
@@ -71,7 +79,7 @@ function assetIdAtTime(ts: number): Promise<string | null> {
 type PlaceTry = { assetId: string } | { ts: number };
 
 export default function AlbumDayScreen({ navigation, route }: RootStackScreenProps<'AlbumDay'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const width = useStageWidth(); // 태블릿에서도 앱 컬럼 폭 기준(규칙 9)
   const { record: paramRecord, dayKey } = route.params;
@@ -89,10 +97,15 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
   );
   const order = useMemo(() => day?.moments.flatMap((m) => m.indexes) ?? [], [day]);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
+  // 장소 줄 → 지도 시트. 열림 여부를 따로 둔다 — 닫을 때 mapAt까지 비우면 닫히는 애니메이션 동안
+  // 시트 내용(제목·지도)이 먼저 사라져 빈 시트가 쪼그라드는 게 보인다.
+  const [mapAt, setMapAt] = useState<MapAt | null>(null);
+  const [mapOpen, setMapOpen] = useState(false);
+  const openMapUrl = (url: string) => { setMapOpen(false); Linking.openURL(url).catch(() => {}); };
 
   // 순간별 장소 — 순간의 앞쪽 사진부터 최대 PLACE_TRIES장 시도. 사진마다 이 기기 assetId가 있으면 그것,
   // 없고 촬영시각이 있으면 시각으로 기기 사진첩 자산을 찾는다(iOS 원격 URL 사진).
-  const [places, setPlaces] = useState<Record<number, string>>({});
+  const [places, setPlaces] = useState<Record<number, AssetPlace>>({});
   const { mediaAssetIds, uploadedMediaUrls } = record;
   useEffect(() => {
     if (!day) return;
@@ -123,9 +136,10 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
         for (const c of tries[mi]) {
           const id = 'assetId' in c ? c.assetId : await assetIdAtTime(c.ts);
           if (!alive) return;
-          const name = id ? await placeOfAsset(id) : null;
+          const place = id ? await placeOfAsset(id) : null;
           if (!alive) return;
-          if (name) { setPlaces((p) => ({ ...p, [mi]: name })); break; }
+          if (place) setPlaces((p) => ({ ...p, [mi]: place }));
+          if (place?.name) break; // 시간대만 찾았으면 저장하고 다음 후보로 이름을 더 찾는다
         }
       }
     })();
@@ -158,7 +172,9 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
         {day?.moments.map((m, mi) => {
           const lastTs = mediaTimes?.[medias[m.indexes[m.indexes.length - 1]]] ?? m.startMs;
-          const start = hhmm(m.startMs), end = hhmm(lastTs);
+          // 시각은 사진 찍은 곳의 현지 시간(iOS 역지오코딩 시간대) — 없으면 기기 시간대
+          const tz = places[mi]?.tz;
+          const start = formatClock(m.startMs, tz), end = formatClock(lastTs, tz);
           const overflows = m.indexes.length * cell + (m.indexes.length - 1) * ROW_GAP > width;
           return (
             <View key={m.startMs} style={mi > 0 && styles.momentNext}>
@@ -167,11 +183,23 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
                 <Text style={styles.time} numberOfLines={1}>{start === end ? start : `${start} – ${end}`}</Text>
                 <Text style={styles.count} numberOfLines={1}>{m.indexes.length}</Text>
               </View>
-              {places[mi] ? (
-                <View style={styles.placeRow}>
+              {places[mi]?.name ? (
+                <TouchableOpacity
+                  style={styles.placeRow}
+                  activeOpacity={0.6}
+                  hitSlop={{ top: 6, bottom: 6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('trip.albumDayPlaceMapA11y', { place: places[mi].name })}
+                  onPress={() => {
+                    const p = places[mi];
+                    if (!p.name) return;
+                    setMapAt({ name: p.name, lat: p.lat, lon: p.lon });
+                    setMapOpen(true);
+                  }}
+                >
                   <PinIcon size={12} color="rgba(255,255,255,0.6)" />
-                  <Text style={styles.place} numberOfLines={1} {...andFitText}>{places[mi]}</Text>
-                </View>
+                  <Text style={styles.place} numberOfLines={1} {...andFitText}>{places[mi].name}</Text>
+                </TouchableOpacity>
               ) : null}
               <View style={styles.rowWrap}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
@@ -203,6 +231,44 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
         initialIndex={Math.max(0, viewerAt ?? 0)}
         onClose={() => setViewerAt(null)}
       />
+
+      {/* 장소 지도 시트 — 공용 MenuSheet(iOS 시스템 시트 / 안드로이드 Modal 시트) */}
+      <MenuSheet visible={mapOpen} onClose={() => setMapOpen(false)} title={mapAt?.name}>
+        {mapAt && (
+          <>
+            {/* 구글 지도 embed — API 키 없이 되는 output=embed 주소. 좌표는 이 요청으로만 나간다(저장 안 함) */}
+            <View style={styles.map}>
+              <WebView
+                // embed 주소를 바로 열면 구글이 "must be used in an iframe"만 낸다(2026-11-04 실기기) — iframe 한 장짜리 페이지로 감싼다
+                source={{ html: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:#2E2E3B}iframe{border:0;width:100%;height:100%;display:block}</style></head><body><iframe src="https://maps.google.com/maps?q=${mapAt.lat},${mapAt.lon}&amp;z=15&amp;hl=${encodeURIComponent(i18n.language)}&amp;output=embed" allowfullscreen></iframe></body></html>` }}
+                style={styles.mapWeb}
+                startInLoadingState
+                renderLoading={() => (
+                  <View style={styles.mapLoading}><ActivityIndicator color="#A1A1B0" /></View>
+                )}
+                // 미리보기 밖으로 가는 이동('큰 지도 보기' 링크 등)은 그냥 막는다 — 아래 'Google 지도에서 열기' 행이 그 길이다.
+                // 바깥 페이지 첫 로드는 about:(안드로이드는 data:일 수 있음), 지도는 iframe 안(하위 프레임)이라 통과.
+                // iframe 주소는 301로 www.google.com/maps/embed?pb=…로 넘어간다 — 두 표시와 유럽 동의 페이지(consent.google.*)도 통과.
+                onShouldStartLoadWithRequest={(req) =>
+                  req.isTopFrame === false || /output=embed|\/maps\/embed|^about:|^data:|\/\/consent\.google\./.test(req.url)}
+              />
+            </View>
+            <MenuSheetItem
+              label={t('trip.albumDayOpenGoogleMaps')}
+              onPress={() => openMapUrl(`https://www.google.com/maps/search/?api=1&query=${mapAt.lat},${mapAt.lon}`)}
+            />
+            {Platform.OS === 'ios' && (
+              <>
+                <MenuSheetDivider />
+                <MenuSheetItem
+                  label={t('trip.albumDayOpenAppleMaps')}
+                  onPress={() => openMapUrl(`https://maps.apple.com/?ll=${mapAt.lat},${mapAt.lon}&q=${encodeURIComponent(mapAt.name)}`)}
+                />
+              </>
+            )}
+          </>
+        )}
+      </MenuSheet>
     </View>
   );
 }
@@ -244,6 +310,9 @@ const styles = StyleSheet.create({
   rowWrap: { marginTop: 11 },
   row: { gap: ROW_GAP },
   img: { backgroundColor: '#D9D9D9' },
+  map: { height: 220, borderRadius: 16, overflow: 'hidden', backgroundColor: '#2E2E3B', marginBottom: 8 },
+  mapWeb: { flex: 1, backgroundColor: '#2E2E3B' },
+  mapLoading: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2E2E3B' },
   fade: { position: 'absolute', top: 0, right: 0, width: FADE_W },
   empty: { fontSize: 14, color: '#A1A1B0', textAlign: 'center', marginTop: 60 },
 });

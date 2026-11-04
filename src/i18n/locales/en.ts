@@ -2008,6 +2008,10 @@ const en = {
     editGroup: 'Edit group',
     groupTitle: 'Group title',
     groupNamePlaceholder: 'Enter a name for the travel group',
+    // Album day view (AlbumDayScreen) place row → map preview sheet
+    albumDayPlaceMapA11y: 'View {{place}} on map',
+    albumDayOpenGoogleMaps: 'Open in Google Maps',
+    albumDayOpenAppleMaps: 'Open in Apple Maps',
     saveLarge: 'Save',
     noPhotoToChange: 'There are no photos to change.',
     // For cards created by the past-trip import — reroll the cover from the saved scan result

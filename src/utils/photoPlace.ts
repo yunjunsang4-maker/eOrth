@@ -60,19 +60,57 @@ export interface GeoParts {
   district?: string | null;
   subregion?: string | null;
   region?: string | null;
+  /** 도로명(iOS thoroughfare) */
+  street?: string | null;
+  /** 번지(iOS subThoroughfare) — 명소 판정에만 쓰고 화면에는 내지 않는다 */
+  streetNumber?: string | null;
+  /** iOS: 명소면 'Apple Park'·'서울숲', 주소면 '1 Infinite Loop'. 안드로이드는 대체로 주소 한 줄 */
   name?: string | null;
+  /** IANA 시간대 id(예 'America/New_York'). expo-location은 iOS에서만 채운다 — 안드로이드는 null */
+  timezone?: string | null;
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * 절대시각(ms) → 'HH:MM'. timeZone이 있으면 그 시간대(사진 찍은 곳)의 현지 시각, 없거나 Intl이 못 다루면
+ * (잘못된 id·Hermes 미지원) 기기 시간대로 폴백한다. 일부 엔진은 h23에서도 자정을 '24:05'로 내서 '00'으로 고친다.
+ * ponytail: 안드로이드는 역지오코딩에 timezone이 없어 기기 시간대로 나온다 —
+ *   필요하면 EXIF OffsetTimeOriginal이나 좌표→시간대 표로 확장.
+ */
+export function formatClock(ms: number, timeZone?: string | null): string {
+  if (timeZone) {
+    try {
+      const s = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+        .format(ms).replace(/^24:/, '00:');
+      if (/^\d{2}:\d{2}$/.test(s)) return s; // 엔진이 다른 모양을 내면 폴백
+    } catch { /* 폴백 */ }
+  }
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 /**
- * 주소 → '도시 동네' 한 줄. 도시가 없으면 광역(region)으로, 동네가 없으면 subregion으로 채운다.
- * 같은 이름이 겹치면(도쿄 도쿄) 한 번만. 다 비면 null — 화면은 장소 줄을 그리지 않는다.
+ * 주소 → '도시 동네 · 명소/도로' 한 줄. 도시가 없으면 광역(region).
+ * 동네가 없을 때 subregion은 도시도 없을 때만 — 미국 subregion은 county(시보다 넓음)라 'Morristown Morris County'처럼 거꾸로 된다.
+ * 뒤 조각은 name이 명소(번지·도로명·행정명과 무관)면 name, 아니면 도로명. 번지는 집 앞까지 짚는 너무 정확한 위치라 뺀다.
+ * 같은 이름이 겹치면(도쿄 도쿄) 한 번만. 다 비면 name, 그것도 없으면 null — 화면은 장소 줄을 그리지 않는다.
  */
 export function formatPlace(geo: GeoParts | null | undefined): string | null {
   if (!geo) return null;
   const clean = (v?: string | null) => (typeof v === 'string' ? v.trim() : '') || null;
-  const big = clean(geo.city) ?? clean(geo.region);
-  const small = clean(geo.district) ?? clean(geo.subregion);
+  const city = clean(geo.city), district = clean(geo.district), region = clean(geo.region), subregion = clean(geo.subregion);
+  const name = clean(geo.name), street = clean(geo.street), streetNumber = clean(geo.streetNumber);
+  const big = city ?? region;
+  const small = district ?? (city ? null : subregion);
   const parts = [big, small].filter((p): p is string => !!p);
-  const uniq = parts.filter((p, i) => parts.indexOf(p) === i);
-  return uniq.length ? uniq.join(' ') : clean(geo.name);
+  const base = parts.filter((p, i) => parts.indexOf(p) === i).join(' ');
+  const landmark = !!name
+    && !(streetNumber && name.includes(streetNumber))
+    && !(street && name.includes(street))
+    && ![city, district, region, subregion].includes(name);
+  let detail = landmark ? name : street;
+  if (detail && (detail === big || detail === small)) detail = null;
+  if (detail) return base ? `${base} · ${detail}` : detail;
+  return base || name;
 }
