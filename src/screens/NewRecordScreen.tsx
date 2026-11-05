@@ -82,6 +82,7 @@ import {
   BackChevronIcon,
 } from '../components/icons';
 import HeaderGlassButton from '../components/HeaderGlassButton';
+import { regionDisplayName } from '../utils/regionLabel';
 
 if (Platform.OS === 'android') {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1328,8 +1329,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         representativePhotoSource: effectiveRep || undefined, // 편집 재진입 매칭용 (medias 항목 URI)
         date: firstStart,
         content: title || (selectedCountries.length === 1
-          ? t('newRecord.defaultTitleOne', { country: first.name })
-          : t('newRecord.defaultTitleMany', { country: first.name, count: selectedCountries.length - 1 })),
+          ? t('newRecord.defaultTitleOne', { country: countryLabel(first.name, i18n.language) })
+          : t('newRecord.defaultTitleMany', { country: countryLabel(first.name, i18n.language), count: selectedCountries.length - 1 })),
         photoTexts,
         photoFrame: serializePhotoFrame(photoFrame), // 원본이면 undefined → 옛 글과 같은 형태
         memo: photoTexts[repIndex] ?? '',
@@ -1393,7 +1394,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             const d = pcd[c.name];
             addTripGroup(
               {
-                title: t('store.tripTitle', { name: c.name }), // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
+                title: t('store.tripTitle', { name: countryLabel(c.name, i18n.language) }), // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
                 records: [recId],
                 coverRecordId: recId,
                 countryName: c.name,
@@ -1684,7 +1685,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                                 onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
                                 activeOpacity={0.75}
                               >
-                                <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
+                                <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{regionDisplayName(r.name, r.nameEn, i18n.language)}</Text>
                               </TouchableOpacity>
                             );
                           })}

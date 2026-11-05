@@ -10,6 +10,8 @@ import { D3_SRC } from '../data/vendorD3';
 import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
 import { CITY_LABELS } from '../data/cityLabels';
 import { GLASS_SPACE_BG } from '../data/glassSpaceBg';
+import { COUNTRIES } from '../constants/countries';
+import { localCountryName } from '../utils/countryLocalName';
 
 // 오프라인 번들: WebView HTML에 라이브러리/지형 데이터를 인라인 주입
 // (script 태그 조기 종료 방지를 위해 </script 만 이스케이프)
@@ -364,7 +366,9 @@ function labelsEn() { return globeLang !== 'ko'; }
 // ⚠️ 여기서 나오는 값은 **표시 전용**이다. countryTapped의 country 필드처럼 RN이 기록 조회
 //    키로 쓰는 자리에 넣으면 영어 모드에서 탭이 조용히 죽는다(식별자는 언제나 한글 KO_NAMES).
 // 영문명이 비어 있으면 한글로 폴백한다 — 데이터 누락이 빈 라벨로 보이면 안 된다.
-function dispCountry(L) { return labelsEn() ? (L.name || L.ko) : (L.ko || L.name); }
+// ja·zh-Hant·es·fr 국가명은 RN이 한글명→현지명 표로 넘긴다(__initNames·setLang.names). 표에 없으면 영문.
+var globeNames = (typeof window !== 'undefined' && window.__initNames) || {};
+function dispCountry(L) { return labelsEn() ? (globeNames[L.ko] || L.name || L.ko) : (L.ko || L.name); }
 function dispCity(C) { return labelsEn() ? (C.en || C.n) : C.n; }
 try { document.documentElement.lang = globeLang; } catch (e) {}
 var globeDefaultColor = '#BF85FC';
@@ -2581,6 +2585,7 @@ function handleVisitedMessage(msg) {
     // 라벨 언어 전환. 이미 그려진 라벨은 더티 체크(회전·줌 변화)만 보므로, 그냥 두면
     // 손을 대기 전까지 옛 언어가 화면에 남는다 → zf를 NaN으로 만들어 다음 그리기를 강제한다.
     var lg = msg.lang || 'ko';
+    globeNames = msg.names || {};
     if (lg !== globeLang) {
       globeLang = lg;
       try { document.documentElement.lang = lg; } catch (e) {}
@@ -2874,7 +2879,8 @@ function labelsEn(){ return globeLang !== 'ko'; }
 // ⚠️ 아래 두 함수의 결과는 **표시 전용**이다. countryTapped의 country 필드처럼 RN이 기록
 //    조회 키로 쓰는 자리에 넣으면 영어 모드에서 탭이 조용히 죽는다(식별자는 언제나 KO_NAMES).
 //    영문명이 비어 있으면 한글로 폴백한다 — 데이터 누락이 빈 라벨로 보이면 안 된다.
-function dispCountry(L){ return labelsEn() ? (L.name || L.ko) : (L.ko || L.name); }
+var globeNames = (typeof window !== 'undefined' && window.__initNames) || {}; // 현지 국가명 표(classic과 동일)
+function dispCountry(L){ return labelsEn() ? (globeNames[L.ko] || L.name || L.ko) : (L.ko || L.name); }
 function dispCity(C){ return labelsEn() ? (C.en || C.n) : C.n; }
 try { document.documentElement.lang = globeLang; } catch(e) {}
 
@@ -3734,6 +3740,7 @@ function handleMsg(msg){
     // 라벨 언어 전환 — 더티 체크(회전·줌)만으론 이미 그려진 라벨이 안 바뀌므로
     // zf를 NaN으로 만들어 다음 그리기를 강제한다(classic과 동일 이유).
     var lg=msg.lang||'ko';
+    globeNames=msg.names||{};
     if(lg!==globeLang){
       globeLang=lg;
       try { document.documentElement.lang=lg; } catch(e) {}
@@ -3805,7 +3812,18 @@ export default function GlobeView({
     items: sponsoredItems,
   }), [sponsoredItems]);
 
-  const langPayload = useMemo(() => JSON.stringify({ type: 'setLang', lang }), [lang]);
+  // 현지 국가명 표 — 값이 있는 언어(ja·zh-Hant·es·fr)만 채워지고, en 등은 빈 표라 웹뷰가 영문을 쓴다.
+  const localNames = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of COUNTRIES) {
+      const v = localCountryName(c.name, lang);
+      if (v) m[c.name] = v;
+    }
+    // 지구본 KO_NAMES만 '콩고 공화국'이라 부른다(COUNTRIES는 '콩고'). 북한·그린란드·서사하라는 COUNTRIES에 없어 영문.
+    if (m['콩고']) m['콩고 공화국'] = m['콩고'];
+    return m;
+  }, [lang]);
+  const langPayload = useMemo(() => JSON.stringify({ type: 'setLang', lang, names: localNames }), [lang, localNames]);
 
   const themePayload = useMemo(() => JSON.stringify({
     type: 'setTheme',
@@ -3946,7 +3964,7 @@ export default function GlobeView({
         // 메시지 도착 전까지 파란(비유리) 지구본이 번쩍이는 것을 막는다
         // 라벨 언어도 같은 이유로 부팅 전에 주입 — setLang 메시지를 기다리면 첫 프레임의
         // 라벨이 한글로 한 번 그려졌다 영문으로 바뀌는 깜빡임이 난다.
-        injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; window.__initLang=${JSON.stringify(lang)}; true;`}
+        injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; window.__initLang=${JSON.stringify(lang)}; window.__initNames=${JSON.stringify(localNames)}; true;`}
         style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
         nestedScrollEnabled={false}

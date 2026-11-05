@@ -255,8 +255,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <Text style={st.iconText}>N</Text>
           </View>
           <Text style={st.desc}>
-            네이버 블로그 글의 URL을 붙여넣으면{'\n'}
-            내용을 자동으로 가져올 수 있어요
+            {t('imports.nvDesc')}
           </Text>
 
           <View style={st.urlInputWrap}>
@@ -390,7 +389,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <View style={st.previewRow}>
               <Text style={st.previewLabel}>{t('imports.nvTitleLabel')}</Text>
               <Text style={st.previewValue} numberOfLines={2}>
-                {blogData.title || '(없음)'}
+                {blogData.title || `(${t('blog.none')})`}
               </Text>
             </View>
 
@@ -399,7 +398,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <View style={st.previewRow}>
               <Text style={st.previewLabel}>{t('imports.nvBodyLabel')}</Text>
               <Text style={st.previewValue} numberOfLines={4}>
-                {blogData.body ? blogData.body.substring(0, 200) + (blogData.body.length > 200 ? '...' : '') : '(없음)'}
+                {blogData.body ? blogData.body.substring(0, 200) + (blogData.body.length > 200 ? '...' : '') : `(${t('blog.none')})`}
               </Text>
             </View>
 
@@ -409,7 +408,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
                 <View style={st.previewDivider} />
                 <View style={st.previewRow}>
                   <Text style={st.previewLabel}>{t('imports.nvPhotoLabel')}</Text>
-                  <Text style={st.previewValue}>{blogData.photos.length}장</Text>
+                  <Text style={st.previewValue}>{t('imports.icPhotoCountN', { count: blogData.photos.length })}</Text>
                 </View>
               </>
             )}

@@ -17,6 +17,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useProfileSettings, useHomeSettings, useSkinSettings, usePrefSettings, useSettingsActions } from '../store/settingsStore';
 import { LANGUAGE_LABELS } from '../i18n';
+import { countryLabel } from '../utils/countryLabel';
 import { useRecordData, useActiveStay, useRecordActions } from '../store/recordStore';
 import { emitToast } from '../store/toastStore';
 import { COUNTRIES, countriesHomeFirst } from '../constants/countries';
@@ -132,7 +133,7 @@ const SimpleViewSamples = () => {
   const [openedAt] = useState(() => Date.now());
   const caption = t('settings.simpleCardViewHelpSampleCaption');
   const sample = useMemo(
-    () => ({ ...EXAMPLE_FEED_RECORD, id: 'simple-view-demo', isExample: false, likes: 12, memo: caption, timestamp: openedAt - 3 * HOUR_MS }),
+    () => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent'), id: 'simple-view-demo', isExample: false, likes: 12, memo: caption, timestamp: openedAt - 3 * HOUR_MS }),
     [caption, openedAt],
   );
   const card = (mode: 'full' | 'minimal', columnIndex: number) => (
@@ -343,8 +344,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     const base = countriesHomeFirst(COUNTRIES, homeCountryCode);
     const q = countrySearch.trim();
     if (!q) return base;
-    return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()));
-  }, [countrySearch, homeCountryCode]);
+    return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()) || countryLabel(c.name, i18n.language).toLowerCase().includes(q.toLowerCase()));
+  }, [countrySearch, homeCountryCode, i18n.language]);
 
   // 검색어 필터링 (거주국 제외)
   const stayFilteredCountries = useMemo(() => {
@@ -352,9 +353,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     return COUNTRIES.filter((c) => {
       if (c.name === homeCountryName) return false;
       if (!q) return true;
-      return c.term.toLowerCase().includes(q) || c.name.includes(q);
+      return c.term.toLowerCase().includes(q) || c.name.includes(q) || countryLabel(c.name, i18n.language).toLowerCase().includes(q);
     });
-  }, [stayCountrySearch, homeCountryName]);
+  }, [stayCountrySearch, homeCountryName, i18n.language]);
 
   // 빠른 선택 — 내 기록에서 최근 남긴 국가 최대 5개(중복 제거·거주국 제외·최신순).
   // 체류 국가는 대개 이미 기록을 남긴 나라라, 200여 개 목록을 훑기 전에 먼저 보여준다.
@@ -428,7 +429,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const handleStayTypeSelect = (type: StayType) => {
     if (!staySelectedCountry) return;
     startStay(staySelectedCountry.name, type);
-    emitToast(t('stay.settingsStarted', { country: staySelectedCountry.name }));
+    emitToast(t('stay.settingsStarted', { country: countryLabel(staySelectedCountry.name, i18n.language) }));
     closeStayModal();
   };
 
@@ -438,7 +439,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       const paused = activeStayGroup.stay?.status === 'paused';
       Alert.alert(
         t(paused ? 'stay.pausedTitle' : 'stay.alreadyActiveTitle'),
-        t(paused ? 'stay.pausedMsg' : 'stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
+        t(paused ? 'stay.pausedMsg' : 'stay.alreadyActiveMsg', { country: countryLabel(activeStayGroup.countryName ?? '', i18n.language) }),
         [
           { text: t('common.cancel'), style: 'cancel' },
           // 일시정지 체류는 여기서도 재개할 수 있다(재개 토스트는 resumeStay가 낸다)
@@ -551,7 +552,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       icon: <SettingsResidenceIcon />,
       label: t('settings.residence'),
       // 시안대로 국가 이름만(국기 없음). 코드('KR')는 목록에 없는 값일 때의 마지막 표시다
-      value: homeCountry?.name ?? homeCountryCode,
+      value: homeCountry ? countryLabel(homeCountry.name, i18n.language) : homeCountryCode,
       onPress: openCountryModal,
       // 바꾸면 무엇이 달라지는지 — 중요한 변경이라 행 옆에서 바로 볼 수 있게
       onHelp: () => setResidenceHelpVisible(true),
@@ -569,7 +570,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       icon: <SettingsStayIcon />,
       label: t('stay.settingsStart'),
       value: activeStayGroup
-        ? `${activeStayGroup.countryFlag ?? ''} ${activeStayGroup.countryName ?? ''}`.trim()
+        ? `${activeStayGroup.countryFlag ?? ''} ${countryLabel(activeStayGroup.countryName ?? '', i18n.language)}`.trim()
         : undefined,
       onPress: handleStayPress,
       // 켜면 무엇이 달라지는지 — 거주 국가와 헷갈리기 쉬운 기능이라 행 옆에서 바로 설명
@@ -734,13 +735,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {/* 무엇에서 무엇으로 — 국기·국가명은 한 Text에 합치지 않는다(삼성 한글 소실, 6ae35f9) */}
             <View style={st.residenceChange}>
               <Text style={st.residenceChangeText}>{homeCountry?.flag ?? ''}</Text>
-              <Text style={st.residenceChangeText}>{homeCountry?.name ?? homeCountryCode}</Text>
+              <Text style={st.residenceChangeText}>{homeCountry ? countryLabel(homeCountry.name, i18n.language) : homeCountryCode}</Text>
               <Text style={st.residenceChangeArrow}>→</Text>
               <Text style={st.residenceChangeText}>{pendingCountry?.flag ?? ''}</Text>
-              <Text style={[st.residenceChangeText, st.residenceChangeTo]}>{pendingCountry?.name ?? pendingCountryCode}</Text>
+              <Text style={[st.residenceChangeText, st.residenceChangeTo]}>{pendingCountry ? countryLabel(pendingCountry.name, i18n.language) : pendingCountryCode}</Text>
             </View>
             {stayEndsOnChange && (
-              <Text style={st.residenceStayNote}>{t('stay.homeEndsStay', { country: activeStayGroup?.countryName ?? '' })}</Text>
+              <Text style={st.residenceStayNote}>{t('stay.homeEndsStay', { country: countryLabel(activeStayGroup?.countryName ?? '', i18n.language) })}</Text>
             )}
             <SettingsPillButton label={t('common.confirm')} onPress={confirmCountryChange} style={st.residenceConfirmBtn} />
           </>
@@ -767,7 +768,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           renderItem={({ item }) => (
             <SettingsOptionRow
               left={<Text style={st.optionFlag}>{item.flag}</Text>}
-              label={item.name}
+              label={countryLabel(item.name, i18n.language)}
               selected={countryCodeOf(item) === (pendingCountryCode ?? (homeCountryCode || '').toUpperCase())}
               onPress={() => {
                 select();

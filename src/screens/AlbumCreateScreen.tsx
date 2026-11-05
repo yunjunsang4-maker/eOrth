@@ -779,7 +779,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             >
               <PinIcon size={12} color={gpsOnly ? skinAccent.accent : '#A1A1B0'} />
               <Text style={[st.gpsChipTxt, gpsOnly && { color: skinAccent.accent }]}>
-                {t('album.gpsOnly', { country: selectedCountry?.name })}
+                {t('album.gpsOnly', { country: countryLabel(selectedCountry?.name, i18n.language) })}
               </Text>
             </TouchableOpacity>
             {geoProgress && (
@@ -917,7 +917,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               <View style={st.pvCardInfo}>
                 <Text style={st.pvCardTitle}>{selectedCountry ? `${selectedCountry.flag} ` : ''}{title.trim() || defaultTitle}</Text>
                 <Text style={st.pvCardDate}>
-                  {fmtDate(startDate)} ~ {fmtDate(endDate).substring(5)} · {selected.length}장
+                  {fmtDate(startDate)} ~ {fmtDate(endDate).substring(5)} · {t('imports.icPhotoCountN', { count: selected.length })}
                 </Text>
               </View>
             </TouchableOpacity>

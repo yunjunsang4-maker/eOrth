@@ -319,7 +319,7 @@ export default function DMScreen({ navigation, route }: Props) {
     sharePostId?: string;
   };
 
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   // 날짜 구분선(dayLabel: 오늘/어제/날짜)은 렌더 때 new Date()로 계산되고 타이머가 없다 — 대화를 연 채
   // 자정을 넘기면 '오늘'이 어제 메시지에 그대로 붙어 있었다. 공용 분 시계를 '날짜가 바뀔 때만' 구독해
   // 자정에 한 번 다시 그린다(분마다가 아니다). 값은 쓰지 않는다 — dayLabel이 직접 현재 시각을 읽는다
@@ -492,7 +492,7 @@ export default function DMScreen({ navigation, route }: Props) {
       if (result.canceled || !result.assets?.length) return;
       addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
     } catch (e: any) {
-      Alert.alert(t('dm.photoAttachFailTitle'), e?.message ?? t('dm.photoAttachFailMsg'));
+      Alert.alert(t('dm.photoAttachFailTitle'), t('dm.photoAttachFailMsg'));
     }
   };
 
@@ -511,7 +511,7 @@ export default function DMScreen({ navigation, route }: Props) {
       if (result.canceled || !result.assets?.length) return;
       addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
     } catch (e: any) {
-      Alert.alert(t('dm.photoAttachFailTitle'), e?.message ?? t('dm.photoAttachFailMsg'));
+      Alert.alert(t('dm.photoAttachFailTitle'), t('dm.photoAttachFailMsg'));
     }
   };
 
@@ -1078,7 +1078,7 @@ export default function DMScreen({ navigation, route }: Props) {
                         <Text style={st.pickerType}>{viewLabel}</Text>
                         <Text style={st.pickerDate}>{r.date}</Text>
                       </View>
-                      <Text style={st.pickerCountry}>{r.country}</Text>
+                      <Text style={st.pickerCountry}>{countryTagLabel(r.country, i18n.language)}</Text>
                       <Text style={st.pickerContent} numberOfLines={1}>{r.content}</Text>
                     </View>
                   </TouchableOpacity>

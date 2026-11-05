@@ -13,7 +13,7 @@ import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMy
 import { mergeServerPostCounts } from '../utils/postCountSync';
 import { mergeMyRecords, classifyServerPosts, mergeServerUpdate } from '../utils/mergeMyRecords';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
-import { COUNTRIES } from '../constants/countries';
+import { COUNTRIES, countryEnglishName } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
 import { koAliases, matchesCountry } from '../utils/countryMatch';
 import { parseDotDate } from '../utils/momentMatch';
@@ -82,6 +82,16 @@ import { isBlockedIn, isProfileUuid } from '../utils/blockMatch';
 import { ISO2_TO_GEO } from '../constants/homeRegions'; // Task 1에서 export로 바꿔둔 것
 import { removeComment, restoreComment } from './commentListLogic';
 import { makeStableActions } from './stableActions';
+import { localCountryName } from '../utils/countryLocalName';
+import { isKoreanLang } from '../utils/langKind';
+
+// 알림 문구 속 국가명 — utils/countryLabel은 screens/MainScreen을 import해 이 파일로 순환하므로 순수 경로만 쓴다
+// (ja·zh-Hant·es·fr 표 → 영문).
+const stayCountryLabel = (ko: string | undefined | null): string => {
+  if (!ko) return '';
+  if (isKoreanLang(i18n.language)) return ko;
+  return localCountryName(ko, i18n.language) ?? countryEnglishName(ko);
+};
 
 /** 한글 국가명 → ISO3 (지역 키 마이그레이션용). term 첫 토큰이 ISO2다: 'jp 일본 japan' */
 const KO_TO_ISO3: Record<string, string> = Object.fromEntries(
@@ -735,7 +745,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const makeTripGroup = (country: string, rec: TravelRecord, regionName?: string): TripGroup => ({
     id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     // 국내 지역 카드는 "제주 여행"처럼 지역명으로 (국가 단위와 구분)
-    title: i18n.t('store.tripTitle', { name: regionName ?? country }),
+    title: i18n.t('store.tripTitle', { name: regionName ?? stayCountryLabel(country) }),
     records: [rec.id],
     coverRecordId: rec.id,
     createdAt: new Date(),
@@ -778,7 +788,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     pausedStayAskRef.current = { stayId: stayG.id, recIds: [recId] };
-    const country = stayG.countryName ?? '';
+    const country = stayCountryLabel(stayG.countryName);
     const take = () => { const cur = pausedStayAskRef.current; pausedStayAskRef.current = null; return cur; };
     // 답 시점에 아직 살아 있는(ended 아님) 체류 카드 — 없으면 답은 no-op
     const liveStay = (stayId: string) =>
@@ -1112,7 +1122,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       };
       setTripSession(restored);
       tripSessionRef.current = restored;
-      emitToast(i18n.t('stay.resumeToast', { country: target.countryName }));
+      emitToast(i18n.t('stay.resumeToast', { country: stayCountryLabel(target.countryName) }));
     }
   };
 

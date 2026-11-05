@@ -2383,7 +2383,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // 촉각 경고는 "내가 방금 되돌릴 수 없는 걸 눌렀다"는 신호라, 자동 팝업에 붙이면
     // 아무것도 안 했는데 진동하는 꼴이 된다.
     nudgeOpenRef.current = true;
-    const country = g.countryName ?? '';
+    const country = countryLabel(g.countryName, i18n.language);
     Alert.alert(
       t('stay.nudgeTitle'),
       // 진행 중이면 '떠났다'고 단정할 수 없다 — 기록이 없었다는 사실만 말한다
@@ -2808,7 +2808,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           warn(); // 되돌릴 수 없는 동작을 묻는 중
           Alert.alert(
             t('stay.endConfirmTitle'),
-            t('stay.endConfirmMsg', { country: activeStayGroup.countryName ?? '' }),
+            t('stay.endConfirmMsg', { country: countryLabel(activeStayGroup.countryName, i18n.language) }),
             [
               { text: t('common.cancel'), style: 'cancel' },
               { text: t('stay.endStay'), style: 'destructive', onPress: () => endStay(activeStayGroup.id) },
@@ -2825,7 +2825,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         onStay={(type) => {
           // 동시 체류 1개 — 기존 진행 중 체류가 있으면 안내 후 무시
           if (activeStayGroup) {
-            Alert.alert(t('stay.alreadyActiveTitle'), t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }));
+            Alert.alert(t('stay.alreadyActiveTitle'), t('stay.alreadyActiveMsg', { country: countryLabel(activeStayGroup.countryName, i18n.language) }));
             setStayPromptCountry(null);
             return;
           }

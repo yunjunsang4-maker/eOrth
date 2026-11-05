@@ -12,6 +12,7 @@ import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DETECTOR_KEYS } from '../store/persist';
+import i18n from '../i18n';
 
 // ─── 알림 채널 설정 ───
 Notifications.setNotificationHandler({
@@ -25,16 +26,16 @@ Notifications.setNotificationHandler({
 });
 
 // ─── 스냅 알림 문구 (랜덤) ───
-const SNAP_MESSAGES = [
-  '지금 이 순간, 어디에 있나요? 📸',
-  '여행 중이네요! 지금 뭐 보고 있어요? 👀',
-  '이 순간을 놓치지 마세요! ⚡',
-  '3, 2, 1... 지금 바로 찍어보세요! 🔥',
-  '지금 그곳의 풍경이 궁금해요! 🌍',
-  '여행지에서의 리얼한 순간을 남겨봐요! ✨',
-  '꾸미지 않은 지금 이 순간! 📷',
-  '지금 눈앞에 뭐가 보이나요? 🧭',
-];
+// 문구는 i18n snap.notifMsg1~N. 예약 알림은 예약 시점의 앱 언어로 굳는다(발송 시점에 다시 번역할 방법이 없다).
+const SNAP_MESSAGE_COUNT = 8;
+function snapNotifContent(countryName?: string): { title: string; body: string } {
+  const n = 1 + Math.floor(Math.random() * SNAP_MESSAGE_COUNT);
+  return {
+    // countryName은 reverseGeocode 결과라 이미 기기 언어 표기다
+    title: countryName ? i18n.t('snap.notifTitleCountry', { country: countryName }) : i18n.t('snap.notifTitle'),
+    body: i18n.t(`snap.notifMsg${n}` as 'snap.notifMsg1'),
+  };
+}
 
 // ─── 현재 국가 감지 ───
 //
@@ -142,10 +143,7 @@ export async function requestNotificationPermission(): Promise<boolean> {
 export const SNAP_INSTANT_NOTIF_ID = 'snap-instant';
 
 export async function sendSnapNotification(countryName?: string): Promise<string> {
-  const message = SNAP_MESSAGES[Math.floor(Math.random() * SNAP_MESSAGES.length)];
-  const title = countryName
-    ? `${countryName}에서 여행 중! ⚡`
-    : '여행 중이네요! ⚡';
+  const { title, body: message } = snapNotifContent(countryName);
 
   const id = await Notifications.scheduleNotificationAsync({
     identifier: SNAP_INSTANT_NOTIF_ID, // 같은 id로 다시 보내면 트레이에서 교체된다(누적 방지)
@@ -182,10 +180,7 @@ export async function scheduleRandomSnapNotification(
     1000;
   const delaySec = Math.round(delayMs / 1000);
 
-  const message = SNAP_MESSAGES[Math.floor(Math.random() * SNAP_MESSAGES.length)];
-  const title = countryName
-    ? `${countryName}에서 여행 중! ⚡`
-    : '여행 중이네요! ⚡';
+  const { title, body: message } = snapNotifContent(countryName);
 
   const id = await Notifications.scheduleNotificationAsync({
     identifier: SNAP_FOLLOWUP_NOTIF_ID, // 같은 id로 다시 예약하면 이전 예약을 교체한다
@@ -217,11 +212,10 @@ export async function cancelScheduledSnapNotifications(): Promise<void> {
 
 // ─── 촬영 지연시간 포맷 ───
 export function formatLateSeconds(seconds?: number): string {
-  if (!seconds || seconds <= 0) return '즉시 촬영';
-  if (seconds < 60) return `${seconds}초 후 촬영`;
+  if (!seconds || seconds <= 0) return i18n.t('snap.lateNow');
+  if (seconds < 60) return i18n.t('snap.lateSec', { s: seconds });
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return s > 0 ? `${m}분 ${s}초 후 촬영` : `${m}분 후 촬영`;
+  return s > 0 ? i18n.t('snap.lateMinSec', { m, s }) : i18n.t('snap.lateMin', { m });
 }
 
-export const SNAP_MESSAGES_LIST = SNAP_MESSAGES;

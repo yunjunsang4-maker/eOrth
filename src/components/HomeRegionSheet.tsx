@@ -20,6 +20,7 @@ import { detectCurrentCountry } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
 import { BackChevronIcon } from './icons';
 import { SettingsChevronIcon } from './icons/SettingsIcons';
+import { countryLabel } from '../utils/countryLabel';
 import {
   SETTINGS_COLORS,
   SettingsCard,
@@ -29,6 +30,7 @@ import {
   SettingsPillButton,
   settingsText,
 } from './settings/SettingsUI';
+import { regionDisplayName } from '../utils/regionLabel';
 
 // 거주 지역(시·도) 설정 시트 — 소셜 탭 '일상' 링의 기준값을 받는다.
 //
@@ -65,7 +67,7 @@ export default function HomeRegionSheet({
   /** 저장된 거주 지역을 지우는 행을 보일지 — 설정 화면만 켠다(온보딩·스냅 저장 시트는 '고르는' 맥락이라 끈다) */
   allowClear?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { homeCountryCode, homeRegion } = useHomeSettings();
   const { setHomeRegion } = useSettingsActions();
@@ -130,7 +132,7 @@ export default function HomeRegionSheet({
       }
       if (detected.toUpperCase() !== (effectiveCountry || '').toUpperCase()) {
         // 여행 중에 눌렀을 수 있다 — 거주국 밖이면 저장하지 않고 안내만 (거주 지역은 거주국 안의 값)
-        setNotice(t('homeRegion.outsideHome', { country: homeCountryName }));
+        setNotice(t('homeRegion.outsideHome', { country: countryLabel(homeCountryName, i18n.language) }));
         return;
       }
       const norm = normalizeHomeRegion(effectiveCountry, city);
@@ -239,7 +241,7 @@ export default function HomeRegionSheet({
                   {filteredRegions.map((r, i) => (
                     <React.Fragment key={r.nameEn}>
                       {i > 0 && <SettingsDivider />}
-                      <SettingsOptionRow label={r.name} selected={homeRegion?.nameEn === r.nameEn} onPress={() => save(r.name, r.nameEn)} />
+                      <SettingsOptionRow label={regionDisplayName(r.name, r.nameEn, i18n.language)} selected={homeRegion?.nameEn === r.nameEn} onPress={() => save(r.name, r.nameEn)} />
                     </React.Fragment>
                   ))}
                   {filteredRegions.length === 0 ? <Text style={styles.empty}>{t('settings.searchNoResult')}</Text> : null}

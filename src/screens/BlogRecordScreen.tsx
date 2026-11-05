@@ -1433,7 +1433,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           selectedCountries.forEach((c) => {
             addTripGroup(
               {
-                title: `${c.name} 여행`,
+                title: t('store.tripTitle', { name: countryLabel(c.name, i18n.language) }),
                 records: [recId],
                 coverRecordId: recId,
                 countryName: c.name,

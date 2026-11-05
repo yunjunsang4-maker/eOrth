@@ -8,6 +8,7 @@ import { useHomeSettings } from '../store/settingsStore';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { STAGE_MAX_W } from '../utils/stage';
 import { select } from '../utils/haptics';
+import { countryLabel } from '../utils/countryLabel';
 
 /**
  * 국가 선택 모달 — 국기·국가명 목록에서 고른다. 검색 지원.
@@ -41,7 +42,7 @@ export default function CountryPickerModal({
   /** 목록에서 뺄 코드들 — 체류국 선택에서 거주국을 제외하는 식으로 쓴다 */
   excludeCodes?: string[];
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { homeCountryCode } = useHomeSettings();
   const [search, setSearch] = useState('');
@@ -57,9 +58,9 @@ export default function CountryPickerModal({
     );
     const q = search.trim();
     if (!q) return base;
-    // 한글 이름과 term(코드+영문명) 양쪽으로 찾는다 — 'kr'·'korea'·'대한'이 모두 걸린다
-    return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()));
-  }, [search, excludeCodes, homeCountryCode]);
+    // 한글 이름·term(코드+영문명)·현재 언어 표기로 찾는다 — 'kr'·'korea'·'대한'·'韓国'이 모두 걸린다
+    return base.filter((c) => c.name.includes(q) || c.term.toLowerCase().includes(q.toLowerCase()) || countryLabel(c.name, i18n.language).toLowerCase().includes(q.toLowerCase()));
+  }, [search, excludeCodes, homeCountryCode, i18n.language]);
 
   const close = () => { setSearch(''); onClose(); };
 
@@ -104,12 +105,12 @@ export default function CountryPickerModal({
                   onPress={() => { select(); onSelect(item); setSearch(''); }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  accessibilityLabel={item.name}
+                  accessibilityLabel={countryLabel(item.name, i18n.language)}
                 >
                   {/* 국기·국가명을 한 Text에 합치지 말 것 — 삼성 기기에서 한글이 사라진다(6ae35f9) */}
                   <View style={s.valueRow}>
                     <Text style={s.itemText}>{item.flag}</Text>
-                    <Text style={s.itemText}>{item.name}</Text>
+                    <Text style={s.itemText}>{countryLabel(item.name, i18n.language)}</Text>
                   </View>
                   {on && <Text style={s.check}>✓</Text>}
                 </TouchableOpacity>

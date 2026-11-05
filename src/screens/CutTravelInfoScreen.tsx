@@ -42,6 +42,7 @@ import {
   BackChevronIcon,
 } from '../components/icons';
 import HeaderGlassButton from '../components/HeaderGlassButton';
+import { OTHER_CURRENCIES, currencyName } from '../constants/currencies';
 
 // 디자인 토큰 — BlogRecordScreen의 C와 같은 표(2026-09-24 기록 화면 UI 통일).
 // 강조색(구 보라 고정색 4종 — 네온/딥/바탕/테두리)은 여기서 제거했다 —
@@ -99,17 +100,6 @@ const CURRENCIES = ['KRW', 'JPY', 'USD'];
 const VISIBILITY_OPTIONS: { value: Visibility }[] = [
   { value: 'neighbors' },
   { value: 'private' },
-];
-const OTHER_CURRENCIES = [
-  { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
-  { code: 'GBP', name: '파운드 (영국)' }, { code: 'AUD', name: '호주 달러' },
-  { code: 'CAD', name: '캐나다 달러' }, { code: 'CHF', name: '스위스 프랑' },
-  { code: 'HKD', name: '홍콩 달러' }, { code: 'SGD', name: '싱가포르 달러' },
-  { code: 'THB', name: '바트 (태국)' }, { code: 'VND', name: '동 (베트남)' },
-  { code: 'MYR', name: '링깃 (말레이시아)' }, { code: 'PHP', name: '페소 (필리핀)' },
-  { code: 'IDR', name: '루피아 (인도네시아)' }, { code: 'INR', name: '루피 (인도)' },
-  { code: 'TRY', name: '리라 (튀르키예)' }, { code: 'AED', name: '디르함 (UAE)' },
-  { code: 'NZD', name: '뉴질랜드 달러' },
 ];
 
 // ─── 동행자 아이콘 ───
@@ -489,8 +479,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       date: sStr,
       // 글 미입력 시 피드와 동일한 기본 제목 (카드/목록 표시용 텍스트)
       content: memo.trim() || (selectedCountries.length === 1
-        ? t('newRecord.defaultTitleOne', { country: selectedCountry.name })
-        : t('newRecord.defaultTitleMany', { country: selectedCountry.name, count: selectedCountries.length - 1 })),
+        ? t('newRecord.defaultTitleOne', { country: countryLabel(selectedCountry.name, i18n.language) })
+        : t('newRecord.defaultTitleMany', { country: countryLabel(selectedCountry.name, i18n.language), count: selectedCountries.length - 1 })),
       visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
@@ -513,7 +503,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       selectedCountries.forEach((c) => {
         addTripGroup(
           {
-            title: `${c.name} 여행`,
+            title: t('store.tripTitle', { name: countryLabel(c.name, i18n.language) }),
             records: [recId],
             coverRecordId: recId,
             countryName: c.name,
@@ -1001,7 +991,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               />
             </View>
             <ScrollView style={{ maxHeight: 320, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
+              {/* 이름은 현재 언어(currency.<코드>) — 예전 한글 하드코딩 배열은 영어·일본어 모드에도 한글이 나왔다 */}
               {OTHER_CURRENCIES
+                .map(code => ({ code, name: currencyName(code, t) }))
                 .filter(c => {
                   const q = currencySearch.trim().toLowerCase();
                   return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);

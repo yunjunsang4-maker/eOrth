@@ -51,6 +51,7 @@ import { minimumSignupAge } from '../constants/minimumAge';
 import { countryCodeOf as codeOf } from '../components/CountryPickerModal';
 import { DEVICE_DEFAULT_HOME_COUNTRY, LANGUAGE_LABELS, SELECTABLE_LANGUAGES } from '../i18n';
 import { showBetaTranslationNotice } from '../i18n/betaTranslationNotice';
+import { countryLabel } from '../utils/countryLabel';
 import { PillRing } from '../components/record/CalendarBottomSheet';
 import HeaderGlassButton from '../components/HeaderGlassButton';
 
@@ -116,7 +117,7 @@ type Props = RootStackScreenProps<'BasicInfo'>;
 
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { profilePhoto, handle: storeHandle } = useProfileSettings();
   const { homeCountryCode, homeRegion } = useHomeSettings();
   const { language: storeLanguage } = usePrefSettings();
@@ -560,10 +561,10 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 activeOpacity={0.8}
                 onPress={() => { setCountrySearch(''); setCountryModalVisible(true); }}
                 accessibilityRole="button"
-                accessibilityLabel={`${t('basicInfo.residence')} ${selectedCountry.name}`}
+                accessibilityLabel={`${t('basicInfo.residence')} ${countryLabel(selectedCountry.name, i18n.language)}`}
               >
                 <Text style={styles.countryFlagText}>{selectedCountry.flag}</Text>
-                <Text style={styles.residenceValueTxt} numberOfLines={1}>{selectedCountry.name}</Text>
+                <Text style={styles.residenceValueTxt} numberOfLines={1}>{countryLabel(selectedCountry.name, i18n.language)}</Text>
               </TouchableOpacity>
               {/* 거주 지역(시·도) — 소셜 탭 '일상' 링의 기준값. 설정 화면과 같은 공용 시트를 연다.
                   선택 항목이라 canContinue 에는 넣지 않는다: 고르지 않아도 [다음]이 눌려야 한다.
@@ -643,7 +644,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
                   {stayCountry ? (
                     <View style={styles.countryValueRow}>
                       <Text style={styles.countryFlagText}>{stayCountry.flag}</Text>
-                      <Text style={[styles.input, { paddingVertical: 16 }]}>{stayCountry.name}</Text>
+                      <Text style={[styles.input, { paddingVertical: 16 }]}>{countryLabel(stayCountry.name, i18n.language)}</Text>
                     </View>
                   ) : (
                     <Text style={[styles.input, { paddingVertical: 16 }]}>
@@ -730,7 +731,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           />
           <FlatList
             data={(countrySearch.trim()
-              ? COUNTRIES.filter((c) => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()))
+              ? COUNTRIES.filter((c) => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()) || countryLabel(c.name, i18n.language).toLowerCase().includes(countrySearch.toLowerCase()))
               : COUNTRIES).filter((c) => codeOf(c) !== codeOf(selectedCountry))}
             keyExtractor={(c) => c.term}
             keyboardShouldPersistTaps="handled"
@@ -742,7 +743,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 {/* 국기·국가명 분리 — 위 거주국가 행과 같은 이유(6ae35f9) */}
                 <View style={styles.countryValueRow}>
                   <Text style={styles.modalItemText}>{item.flag}</Text>
-                  <Text style={styles.modalItemText}>{item.name}</Text>
+                  <Text style={styles.modalItemText}>{countryLabel(item.name, i18n.language)}</Text>
                 </View>
                 {stayCountry && codeOf(item) === codeOf(stayCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
               </TouchableOpacity>

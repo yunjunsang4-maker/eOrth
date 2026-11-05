@@ -2223,7 +2223,7 @@ export default function PostDetailScreen() {
     const bodyText = record.blogBlocks ? blocksToPlainText(record.blogBlocks) : record.content;
     const photos = record.blogBlocks ? blocksToPhotos(record.blogBlocks) : (record.medias || []);
     const blogData: BlogData = {
-      title: record.content.trim() || `${record.countryFlag ?? ''} ${record.countryName ?? ''}`.trim() || t('postDetail.travelRecord'),
+      title: record.content.trim() || `${record.countryFlag ?? ''} ${countryLabel(record.countryName, i18n.language)}`.trim() || t('postDetail.travelRecord'),
       body: bodyText,
       photos,
       memo: record.memo,
@@ -2251,7 +2251,7 @@ export default function PostDetailScreen() {
         text: t('postDetail.textShare'),
         onPress: () => {
           const lines: string[] = [];
-          if (record.countryFlag && record.countryName) lines.push(`📍 ${record.countryFlag} ${record.countryName}`);
+          if (record.countryFlag && record.countryName) lines.push(`📍 ${record.countryFlag} ${countryLabel(record.countryName, i18n.language)}`);
           if (record.startDate && record.endDate) lines.push(`📅 ${record.startDate} ~ ${record.endDate}`);
           if (bodyText) lines.push('', bodyText);
           if (record.keywords?.length) lines.push('', record.keywords.map(hashTag).join(' '));

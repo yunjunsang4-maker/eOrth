@@ -114,6 +114,21 @@
 | 추가하다 | ajouter | |
 | 탭하다 | **appuyer sur** | 「cliquer」 금지(웹 어감) |
 | 입력하다 | saisir | |
+| 여행 카드 / 기록카드 / 카드 | **fiche de voyage / fiche** | 「carte」는 지도(carte des continents)와 겹친다. 체류 카드 = fiche de séjour |
+| 소셜 피드(타임라인) | fil | 기록 형식 이름 Feed(고유명사)와 구분. 「fil d’actualité」로 늘리지 않는다 |
+| 게시물 | publication | 블로그 글 하나는 article |
+| 동행자(같이 간 사람) | accompagnants | 앱 고유어 compagnon(메이트)과 구분. 「compagnons de route」 금지 |
+| 이웃(서로이웃 관계의 상대) | compagnons | es 와 같이 메이트로 통일 |
+| 팔로우 / 팔로잉(목록) / 팔로잉(상태 버튼) / 맞팔로우 | Suivre / Abonnements / Suivi / Suivre en retour | 팔로워 = abonnés |
+| 설정(앱 화면) | Réglages | iOS 명칭. 안드로이드 기기 설정 경로 안내만 Paramètres |
+| 피드백 보내기 | Envoyer un commentaire | 설정 메뉴 이름 — 안내 문구가 이 이름을 그대로 인용한다 |
+| 갤러리에서 선택(버튼) | Choisir dans Photos | 안내 문구가 «\u00A0Choisir dans Photos\u00A0»로 인용한다 |
+| 이메일 | e-mail / adresse e-mail | 「mail」「courriel」 금지(혼용 방지) |
+| 임시저장 | brouillon | |
+| 소제목(블로그) | intertitre | 부제목 = sous-titre |
+| 장기체류 유형 워킹홀리데이 | PVT | Permis Vacances-Travail. 프랑스 통칭 |
+| Apple 지도 | Plans | iOS 프랑스어판 앱 이름 |
+| 스냅(복수) | Snap | 고유명사라 복수 s 를 붙이지 않는다(「3 Snap」) |
 
 ## 4. 하지 말 것
 

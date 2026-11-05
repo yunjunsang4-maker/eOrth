@@ -22,6 +22,7 @@ import Reanimated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, r
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
+import { localCountryName } from '../utils/countryLocalName';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
 import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
@@ -638,9 +639,11 @@ export default function MainScreen({ navigation, route }: Props) {
   const { requestNeighbor, updateTripGroup } = useRecordActions();
   // 기록의 지역/국가명 현지화 — 한국어가 아니면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
   // 한글 국가명 → 영어. MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
-  // (판정이 "en인가"가 아닌 "ko인가"인 이유는 utils/langKind.ts 주석 — ja도 영문 국가명을 본다)
+  // (판정이 "en인가"가 아닌 "ko인가"인 이유는 utils/langKind.ts 주석). ja·zh-Hant·es·fr은 countryLocalName 표 먼저.
   const countryEn = (ko: string): string => {
     if (!ko || isKoreanLang(i18n.language)) return ko;
+    const local = localCountryName(ko, i18n.language);
+    if (local) return local;
     if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
     return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
   };
@@ -2541,7 +2544,8 @@ export default function MainScreen({ navigation, route }: Props) {
               </View>
               <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
                 {REGION_COUNTRIES
-                  .filter(c => { const q = countryPickerSearch.trim(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q.toLowerCase()); })
+                  // 한글·현재 언어 표기·영문 어느 쪽으로도 검색된다(ja·zh-Hant·es·fr은 countryEn이 현지명이라 영문을 따로 본다)
+                  .filter(c => { const q = countryPickerSearch.trim().toLowerCase(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q) || (KO_TO_EN[c.name] ?? '').toLowerCase().includes(q); })
                   .map(c => {
                     const fav = regionFavoriteCodes.includes(c.code);
                     return (
@@ -2815,7 +2819,7 @@ export default function MainScreen({ navigation, route }: Props) {
             <SheetBackdrop />
             <Text style={styles.fmTitle}>{t('main.recordFormatTitle')}</Text>
             <Text style={styles.fmSub}>
-              {pendingCountry?.name ? t('main.recordFormatPromptCountry', { country: pendingCountry.name }) : t('main.recordFormatPrompt')}
+              {pendingCountry?.name ? t('main.recordFormatPromptCountry', { country: countryEn(pendingCountry.name) }) : t('main.recordFormatPrompt')}
             </Text>
             <View style={styles.fmGrid}>
               {[
@@ -3371,7 +3375,7 @@ export default function MainScreen({ navigation, route }: Props) {
                           ) : (
                             <View style={[dsm.regionThumb, dsm.regionThumbEmpty]} />
                           )}
-                          <Text style={dsm.regionName} numberOfLines={1}>{r.name}</Text>
+                          <Text style={dsm.regionName} numberOfLines={1}>{regionDisplayName(r.name, r.nameEn, i18n.language)}</Text>
                           {/* 수동 지정이 있을 때만 — 지우면 기록 대표사진 자동 선정으로 복귀 */}
                           {!!regionPhotos[r.key] && (
                             <TouchableOpacity

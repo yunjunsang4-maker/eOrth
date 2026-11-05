@@ -207,6 +207,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
       <SnapButton
         onPress={() => navigation.navigate('SnapRecord')}
         style={[styles.snap, { bottom: snapBottom }]}
+        accessibilityLabel={t('main.coachSnapTitle')}
       />
       {/* 튜토리얼 오버레이 — 강조 단계가 아니면 어둡게, 강조 단계면 투명.
           어느 쪽이든 터치는 차단한다(pointerEvents auto): 코치마크의 터치 차단막은 화면 '안'에

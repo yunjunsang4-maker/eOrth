@@ -18,7 +18,7 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecordData, useRecordActions, TravelRecord } from '../store/recordStore';
 import { TrashIcon, BackChevronIcon, PencilIcon, LockOpenIcon } from '../components/icons';
 import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
-import { countryLabel } from '../utils/countryLabel';
+import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
 import { andFitText } from '../utils/fitText';
 import HeaderGlassButton from '../components/HeaderGlassButton';
@@ -80,7 +80,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const st = useSt();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -214,7 +214,7 @@ export default function TripGroupScreen() {
                 {showDivider && (
                   <CountryDivider
                     flag={record.countryFlag ?? ''}
-                    name={record.countryName ?? record.country ?? ''}
+                    name={record.countryName ? countryLabel(record.countryName, i18n.language) : countryTagLabel(record.country ?? '', i18n.language)}
                   />
                 )}
                 <FeedCard record={record} />

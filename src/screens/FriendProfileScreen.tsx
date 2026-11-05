@@ -174,11 +174,11 @@ export default function FriendProfileScreen({
     // 체류 중(메이트 조건부 노출) — 거주국 표시보다 우선
     if (profileRow?.stay_status === 'active' && profileRow?.stay_country) {
       const info = countryInfoFromCode(profileRow.stay_country.toUpperCase());
-      return t('stay.stayingIn', { flag: info.countryFlag, name: info.countryName });
+      return t('stay.stayingIn', { flag: info.countryFlag, name: countryLabel(info.countryName, i18n.language) });
     }
     if (profileRow?.country) {
       const info = countryInfoFromCode(profileRow.country.toUpperCase());
-      return `${info.countryFlag} ${info.countryName}`;
+      return `${info.countryFlag} ${countryLabel(info.countryName, i18n.language)}`;
     }
     const recent = sourcePosts.find((p) => p.countryName);
     return recent?.countryName ? `${recent.countryFlag || '📍'} ${countryLabel(recent.countryName ?? '', i18n.language)}` : '';

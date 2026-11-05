@@ -90,6 +90,7 @@ i18next 계층이 `es-419 → es → en`, `es-ES → es → en`이라(실측) �
 | 컴퓨터 (후속 섹션) | computadora | ordenador |
 | 동영상 (후속 섹션) | video | vídeo |
 | 자동차 (후속 섹션) | carro / auto | coche |
+| 길게 누르기 | mantén presionada | mantén pulsada |
 | 「coger」 | **양쪽 다 금지**(중남미 비속어) → tomar / agarrar | |
 
 새 차이가 발견되면 이 표에 먼저 적고 es-ES.ts에 키를 더한다. 표에 없는 키를 es-ES.ts에 넣지 않는다.
