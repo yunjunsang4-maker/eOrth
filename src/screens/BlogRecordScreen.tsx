@@ -24,7 +24,8 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import * as ImagePicker from 'expo-image-picker';
-import { compressImage, compressImages } from '../utils/imageCompress';
+import { compressImage } from '../utils/imageCompress';
+import { runWithConcurrency } from '../utils/importPhotoStore';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
@@ -1070,12 +1071,29 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setPhotoMenuVisible(false);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'] as MediaType[], allowsMultipleSelection: true, quality: 0.8,
+        // quality 1 — 아래 compressImage가 한 번 압축한다. 0.8이면 iOS 선택기가 내보낼 때 장마다 재인코딩해
+        // (여러 장이면 선택 후 대기) 그걸 또 압축하는 이중 작업·이중 손실이 된다(TripRecordScreen 사진 추가와 같은 이유)
+        mediaTypes: ['images'] as MediaType[], allowsMultipleSelection: true, quality: 1,
       });
       if (result.canceled) return;
       if (result.assets.length > 1) {
         const originals = result.assets.map(a => a.uri);
-        const uris = await compressImages(originals);
+        // 압축은 동시 2장 — compressImages는 전부 동시라 장마다 원본을 통째로 디코드(48MP ≈ 190MB)해
+        // 여러 장이면 메모리 피크가 장수만큼 쌓인다(TripRecordScreen·copyTripOriginals와 같은 값).
+        // 진행은 기존 토스트 자리로 — 새 오버레이(RN Modal)는 띄우지 않는다(eorth-ios-modal-picker-touch-freeze)
+        const uris = [...originals];
+        let done = 0;
+        const progress = () => setToastMsg(`${t('common.loading')} ${done}/${originals.length}`);
+        progress();
+        try {
+          await runWithConcurrency(originals.length, 2, async (k) => {
+            uris[k] = await compressImage(originals[k]);
+            done++;
+            progress();
+          });
+        } finally {
+          setToastMsg('');
+        }
         uris.forEach((u, i) => { if (u !== originals[i]) originalUriMapRef.current[u] = originals[i]; });
         const layout: ImageLayout = uris.length === 2 ? 'grid2' : 'grid3';
         insertBlockAfter(createImagesBlock(uris, layout));
@@ -2916,7 +2934,7 @@ function RepPhotoModal({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'] as MediaType[],
         allowsMultipleSelection: false,
-        quality: 0.8,
+        quality: 1, // compressImage가 한 번 압축한다 — 선택기 재인코딩(0.8)과 이중 작업·이중 손실 방지
       });
       if (result.canceled || !result.assets[0]) return;
       const orig = result.assets[0].uri;

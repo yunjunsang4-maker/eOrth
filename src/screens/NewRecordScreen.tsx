@@ -540,7 +540,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: slots, // slots>=1 보장 (0이면 무제한이 되어 상한 초과 위험)
-        quality: 0.8,
+        // quality 1 — 뒤의 importOriginals(addNewOriginals → compressImages)가 한 번 압축한다. 0.8이면 iOS 선택기가
+        // 내보낼 때 장마다 재인코딩해(여러 장이면 선택 후 대기) 그걸 또 압축하는 이중 작업·이중 손실이 된다
+        quality: 1,
       });
       if (!result.canceled && result.assets) {
         await importOriginals(result.assets.map(a => a.uri));

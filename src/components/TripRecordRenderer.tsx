@@ -38,6 +38,8 @@ interface Props {
   albumReanalyzing?: boolean;
   onAlbumSelectIndexes?: (indexes: number[]) => void; // 날짜 줄 ⋯ '선택' — 그날 사진을 골라 둔 채 선택 모드로
   onAlbumOpenDay?: (dayKey: string) => void; // 날짜 줄 '>' — 그날 하루 보기(AlbumDayScreen)
+  onAlbumAddPhotosForDay?: (dayKey: string) => void; // 날짜 줄 ⋯ '이 날 찍은 사진 추가' — 그날 기기 사진 격자(DateRangePhotoSheet)
+  albumDayPlaces?: Record<string, string>; // 날짜 키 → 그날 장소 이름(메모리 값, 내 사진첩만)
 }
 
 // ─────────────────────────────────────────────
@@ -157,7 +159,7 @@ function BlogView({ record }: { record: TravelRecord }) {
 // 3. Album — 촬영시각 세로 타임라인 (AlbumTimeline)
 // 수동 섹션·꾹 눌러 끌기 재정렬은 2026-11 타임라인으로 대체돼 제거됐다.
 // ─────────────────────────────────────────────
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing, onSelectIndexes, onOpenDay }: {
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing, onSelectIndexes, onOpenDay, onAddPhotosForDay, dayPlaces }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: () => void;
@@ -172,6 +174,8 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   reanalyzing?: boolean;
   onSelectIndexes?: (indexes: number[]) => void;
   onOpenDay?: (dayKey: string) => void;
+  onAddPhotosForDay?: (dayKey: string) => void;
+  dayPlaces?: Record<string, string>;
 }) {
   const { t } = useTranslation();
   // 뷰어는 타임라인 표시 순서(order)로 넘긴다 — 뷰어 위치 at은 order 기준이라
@@ -209,13 +213,18 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
             selecting={selecting}
             selected={selected}
             onToggleSelect={onToggleSelect}
-            onAddPhotos={editable ? onAddPhotos : undefined}
-            // 날짜 줄 ⋯ — 그날 사진 선택 / 사진 추가. 작은 선택지 둘이라 시스템 Alert로 띄운다(iOS·안드로이드 공통)
-            onDayMenu={editable && (onSelectIndexes || onAddPhotos) ? (indexes, label) => Alert.alert(label, undefined, [
-              ...(onSelectIndexes ? [{ text: t('trip.albumSelect'), onPress: () => onSelectIndexes(indexes) }] : []),
-              ...(onAddPhotos ? [{ text: t('comp.albumAddPhotos'), onPress: onAddPhotos }] : []),
-              { text: t('common.cancel'), style: 'cancel' as const },
-            ]) : undefined}
+            // 날짜 줄 ⋯ — 그날 사진 선택 / 이 날 찍은 사진 추가. 작은 선택지 둘이라 시스템 Alert로 띄운다(iOS·안드로이드 공통).
+            // '날짜 미상' 줄은 고를 날짜가 없어 일반 '사진 추가'(onAddPhotos — 내 사진첩은 기록 기간 격자, 기간 없으면 시스템 선택기)
+            onDayMenu={editable && (onSelectIndexes || onAddPhotos || onAddPhotosForDay) ? (indexes, label, dayKey) => {
+              const forDay = dayKey !== 'undated' && onAddPhotosForDay;
+              Alert.alert(label, undefined, [
+                ...(onSelectIndexes ? [{ text: t('trip.albumSelect'), onPress: () => onSelectIndexes(indexes) }] : []),
+                ...(forDay ? [{ text: t('trip.albumAddDayPhotos'), onPress: () => forDay(dayKey) }]
+                  : onAddPhotos ? [{ text: t('comp.albumAddPhotos'), onPress: onAddPhotos }] : []),
+                { text: t('common.cancel'), style: 'cancel' as const },
+              ]);
+            } : undefined}
+            dayPlaces={dayPlaces}
             onOpenDay={onOpenDay}
             onReanalyze={editable ? onReanalyze : undefined}
             reanalyzing={reanalyzing}
@@ -366,7 +375,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing, onAlbumSelectIndexes, onAlbumOpenDay }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing, onAlbumSelectIndexes, onAlbumOpenDay, onAlbumAddPhotosForDay, albumDayPlaces }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -387,6 +396,8 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           reanalyzing={albumReanalyzing}
           onSelectIndexes={onAlbumSelectIndexes}
           onOpenDay={onAlbumOpenDay}
+          onAddPhotosForDay={onAlbumAddPhotosForDay}
+          dayPlaces={albumDayPlaces}
         />
       );
     case 'snap':

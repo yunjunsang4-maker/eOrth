@@ -6,8 +6,9 @@
  *
  * 액션 바(선택) — showActions일 때 하단에 기기 저장, 호출부가 넘기면 지구본 사진 지정·커버 지정·삭제.
  */
-import React, { useRef, useState, useEffect } from 'react';
-import { Modal, View, TouchableOpacity, ScrollView, Image, useWindowDimensions, Alert, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Modal, View, TouchableOpacity, ScrollView, FlatList, useWindowDimensions, Alert, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
@@ -49,7 +50,6 @@ export default function PhotoViewerModal({
   const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [index, setIndex] = useState(initialIndex);
-  const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
     if (visible) setIndex(initialIndex);
   }, [visible, initialIndex]);
@@ -71,19 +71,23 @@ export default function PhotoViewerModal({
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
-        <ScrollView
-          ref={scrollRef}
+        {/* 페이지 목록은 FlatList(가상화) — 기간 격자에서 수천 장을 넘겨 열면 ScrollView는 페이지(줌 ScrollView)를 전부 만들어
+            여는 순간이 무거웠다. getItemLayout + initialScrollIndex로 처음부터 그 장에서 열린다(안드로이드 contentOffset 무시 문제도 없음) */}
+        <FlatList
+          data={uris}
           horizontal
           pagingEnabled
           showsHorizontalScrollIndicator={false}
-          contentOffset={{ x: initialIndex * W, y: 0 }}
-          // Android는 contentOffset 초기 적용이 무시될 수 있어 onLayout 폴백 스크롤
-          onLayout={() => scrollRef.current?.scrollTo({ x: initialIndex * W, animated: false })}
+          keyExtractor={(uri, i) => `${uri}-${i}`}
+          getItemLayout={(_, i) => ({ length: W, offset: W * i, index: i })}
+          initialScrollIndex={Math.min(Math.max(0, initialIndex), Math.max(0, uris.length - 1))}
+          initialNumToRender={1}
+          maxToRenderPerBatch={2}
+          windowSize={3}
+          extraData={index}
           onMomentumScrollEnd={(e) => setIndex(Math.round(e.nativeEvent.contentOffset.x / W))}
-        >
-          {uris.map((uri, i) => (
+          renderItem={({ item: uri, index: i }) => (
             <ScrollView
-              key={`${uri}-${i}`}
               style={{ width: W, height: H }}
               contentContainerStyle={{ width: W, height: H, justifyContent: 'center', alignItems: 'center' }}
               maximumZoomScale={4}
@@ -93,10 +97,19 @@ export default function PhotoViewerModal({
               showsVerticalScrollIndicator={false}
               showsHorizontalScrollIndicator={false}
             >
-              <Image source={{ uri }} style={{ width: W, height: H * 0.8 }} resizeMode="contain" />
+              {/* expo-image — RN Image는 iOS ph://(갤러리 원본 참조)를 못 그려(camera-roll 로더 없음) 기간 사진 격자·사진첩 만들기에서
+                  넘겨 본 사진이 검게 떴다. expo-image는 ph://·file://·http(s)를 모두 그린다.
+                  ⚠️ 지금 보는 사진 ±1장만 그린다 — 기간 격자는 수백~수천 장을 넘기는데, 전부 마운트하면 여는 순간 그만큼 디코드해
+                  열림이 몇 초씩 늦고 메모리가 터져 앱이 꺼졌다(2026-11-05 실기기). 나머지 페이지는 같은 크기 빈 칸(페이징 오프셋 유지).
+                  ⚠️ allowDownscaling 기본값(화면 크기로 줄여 디코드) — 원본 해상도(false)는 48MP 한 장에 ~190MB라 빠른 표시가 우선(사용자 결정:
+                  원본 아니어도 됨). 대가로 핀치 4배 확대 시 다소 흐리다. */}
+              {Math.abs(i - index) <= 1 ? (
+                <Image source={{ uri }} style={{ width: W, height: H * 0.8 }} contentFit="contain" transition={0} priority={i === index ? 'high' : 'normal'} />
+              ) : null}
             </ScrollView>
-          ))}
-        </ScrollView>
+          )}
+        />
+
         {/* 상단 좌표 — 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
         {uris.length > 1 && (
           <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 56 : insets.top + 12, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)' }}>

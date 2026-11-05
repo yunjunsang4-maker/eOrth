@@ -22,7 +22,7 @@ import { buildAlbumTimeline } from '../utils/albumSections';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
 import FeedPhoto from './FeedPhoto';
-import { BackChevronIcon } from './icons';
+import { BackChevronIcon, PinIcon } from './icons';
 import { PillRing } from './record/CalendarBottomSheet';
 
 const GAP = 2;      // 평면 격자 사진 사이 간격(예전 격자와 같음)
@@ -44,9 +44,10 @@ interface Props {
   selecting?: boolean;
   selected?: number[];
   onToggleSelect?: (globalIdx: number) => void;
-  onAddPhotos?: () => void; // 있으면 맨 끝에 '+' 타일(편집 모드)
-  // 있으면 날짜 줄 오른쪽 ⋯ — 그날 사진의 medias 전역 인덱스와 날짜 라벨을 넘긴다(메뉴는 호출부가 띄운다)
-  onDayMenu?: (indexes: number[], label: string) => void;
+  // 있으면 날짜 줄 오른쪽 ⋯ — 그날 사진의 medias 전역 인덱스·날짜 라벨·그룹 키('YYYY.MM.DD' 또는 'undated')를 넘긴다(메뉴는 호출부가 띄운다)
+  onDayMenu?: (indexes: number[], label: string, dayKey: string) => void;
+  // 날짜 키 → 그날 장소 이름(내 사진첩만, TripRecordScreen이 기기 사진첩 좌표로 계산). 표시만 한다 — 저장하지 않는 값
+  dayPlaces?: Record<string, string>;
   // 있으면 날짜 줄(날짜·장수 + '>')을 누를 때 그날 하루 보기로 — AlbumDay 키('YYYY.MM.DD')를 넘긴다. '날짜 미상'엔 없다
   onOpenDay?: (dayKey: string) => void;
   cellRadius?: number;
@@ -55,7 +56,7 @@ interface Props {
   reanalyzing?: boolean;
 }
 
-export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onAddPhotos, onDayMenu, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
+export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onDayMenu, dayPlaces, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
   const { t } = useTranslation();
   const a = useSkinAccent();
   const tl = useMemo(() => buildAlbumTimeline(medias, mediaTimes), [medias, mediaTimes]);
@@ -85,14 +86,6 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
       </TouchableOpacity>
     );
   };
-
-  const addTile = onAddPhotos && !selecting ? (
-    <TouchableOpacity key="add" style={[cellStyle, styles.addTile]} onPress={onAddPhotos} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-      <Text style={styles.addPlus}>＋</Text>
-      {/* 고정폭 타일 라벨 — 안드로이드 한글 폰트가 넓어 줄바꿈되지 않게 한 줄 축소 */}
-      <Text style={styles.addLabel} {...andFitText}>{t('comp.albumAddPhotos')}</Text>
-    </TouchableOpacity>
-  ) : null;
 
   // '날짜 다시 찾기' — 촬영시각 없는 사진이 있을 때만. 선택 모드에선 숨긴다(탭이 선택 토글이라 헷갈림).
   const reLabel = t(reanalyzing ? 'comp.albumReanalyzing' : 'comp.albumReanalyze');
@@ -126,13 +119,12 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
         )}
         <View style={styles.grid}>
           {tl.order.map(tile)}
-          {addTile}
         </View>
       </View>
     );
   }
 
-  // 그룹 = 날짜 하루 또는 맨 끝 '날짜 미상'. 마지막 그룹 줄 끝에 '+' 타일을 붙인다.
+  // 그룹 = 날짜 하루 또는 맨 끝 '날짜 미상'.
   const groups = [
     ...tl.days.map((d) => {
       const dt = new Date(d.startMs);
@@ -149,13 +141,13 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
   return (
     <View>
       {groups.map((g, gi) => {
-        const last = gi === groups.length - 1;
-        const n = g.indexes.length + (last && addTile ? 1 : 0);
+        const n = g.indexes.length;
         // 칸들이 폭을 넘을 때만 오른쪽 흐림 — 넘길 게 더 있다는 신호
         const overflows = n * cell + (n - 1) * ROW_GAP > width;
+        const place = dayPlaces?.[g.key];
         return (
           <View key={g.key} style={gi > 0 && styles.dayNext}>
-            <View style={[styles.head, { paddingHorizontal: inset }]}>
+            <View style={[styles.head, { paddingHorizontal: inset }, !!place && styles.headWithPlace]}>
               {onOpenDay && !selecting && g.key !== 'undated' ? (
                 <TouchableOpacity
                   style={styles.headOpen}
@@ -186,7 +178,7 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
               {onDayMenu && !selecting && (
                 <TouchableOpacity
                   style={styles.dayMenuBtn}
-                  onPress={() => onDayMenu(g.indexes, g.label)}
+                  onPress={() => onDayMenu(g.indexes, g.label, g.key)}
                   hitSlop={{ top: 11, bottom: 11, left: 11, right: 11 }}
                   accessibilityRole="button"
                   accessibilityLabel={`${g.label} ⋯`}
@@ -198,10 +190,16 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
                 </TouchableOpacity>
               )}
             </View>
+            {/* 그날 장소 한 줄 — 가변 길이라 축소(andFitText) 대신 말줄임. 시안 없음: 날짜 줄 아래 12 회색 */}
+            {place ? (
+              <View style={[styles.placeRow, { paddingHorizontal: inset }]}>
+                <PinIcon size={12} color="rgba(255,255,255,0.5)" />
+                <Text style={styles.placeTxt} numberOfLines={1}>{place}</Text>
+              </View>
+            ) : null}
             <View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
                 {g.indexes.map(tile)}
-                {last && addTile}
               </ScrollView>
               {overflows && (
                 <LinearGradient
@@ -228,6 +226,10 @@ const styles = StyleSheet.create({
   head: { minHeight: 23, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 11 },
   headLabel: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   headCount: { fontSize: 11, color: 'rgba(255,255,255,0.5)' },
+  // 장소 줄이 있으면 날짜 줄 아래 4 → 장소 줄 → 11 → 사진 줄(장소 없을 때의 11 간격은 그대로)
+  headWithPlace: { marginBottom: 4 },
+  placeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 11 },
+  placeTxt: { flexShrink: 1, fontSize: 12, color: 'rgba(255,255,255,0.5)' },
   // 날짜·장수·'>' 묶음 — 줄 안에서 줄어들 수 있게(⋯ 버튼 자리 보장)
   headOpen: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   // FriendProfileScreen overlapChevron과 같은 값 — 테두리는 PillRing(borderWidth 주면 이중 테두리)
@@ -271,14 +273,4 @@ const styles = StyleSheet.create({
   },
   selCheckOn: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
   selCheckTxt: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', lineHeight: 15 },
-  addTile: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  addPlus: { fontSize: 26, color: '#A1A1B0', lineHeight: 30 },
-  addLabel: { fontSize: 11, color: '#A1A1B0' },
 });

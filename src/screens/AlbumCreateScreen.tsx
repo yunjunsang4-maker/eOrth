@@ -24,7 +24,7 @@ import { GlassButton } from '../components/ui';
 import { useRecordData, useRecordActions } from '../store/recordStore';
 import { useProfileSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
-import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { copyTripOriginals, bakeCoverCrop, runWithConcurrency, type PhotoRef } from '../utils/importPhotoStore';
 import { ALBUM_EDGE, ALBUM_QUALITY } from '../utils/imageCompress';
 import { getTripPool, saveTripPool } from '../utils/tripPhotoPool';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -32,10 +32,11 @@ import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 // 공용 달력은 components/record에서 직접 가져온다 — 예전엔 NewRecordScreen의 재수출을 거쳐
 // 화면 하나가 다른 화면 모듈 전체를 끌고 들어왔다.
-import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { CalendarBottomSheet, AutoPillRing } from '../components/record/CalendarBottomSheet';
 import { DateRangeField } from '../components/record/DateRangeField';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
-import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon, BackChevronIcon } from '../components/icons';
+import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon, OutlineCalendarIcon } from '../components/icons';
+import { SettingsHeader, SettingsPillButton, SettingsEmptyState } from '../components/settings/SettingsUI';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
@@ -43,13 +44,15 @@ import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { fetchPhotosInRange } from '../utils/rangePhotoFetch';
+import { dayRangeMs } from '../utils/dateRangePhotoPick';
+import { withTimeout } from '../utils/withTimeout';
+import AssetImage from '../components/AssetImage';
 import { adaptAlbumToPool } from '../services/photoAI/recoSource';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DETECTOR_KEYS } from '../store/persist';
-import HeaderGlassButton from '../components/HeaderGlassButton';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 현재 프리미엄 여부와 무관하게 100장
-const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
 
 type AlbumPhoto = PhotoRef & { creationTime?: number };
 
@@ -81,6 +84,12 @@ const parseAlbumDate = (s?: string): Date | null => {
 const ALBUM_ACCENT = '#FFA657';
 
 const COL = 3;
+// 2단계 사진 선택 — 기간 사진 격자(DateRangePhotoSheet)와 같은 값
+const PICK_GAP = 3;        // 사진첩 가로 줄(AlbumTimeline ROW_GAP)과 같은 간격
+const PICK_FADE_H = 24;    // 하단 영역 위 페이드
+const PICK_BOTTOM_TOP = 8; // 하단 영역 위 여백
+const PICK_PILL_H = 60;    // SettingsPillButton 기본 높이
+const PICK_CHIP_FILL = '#111116'; // SettingsUI CARD_FILL과 같은 값(export 아님)
 const CARD_H = 180;
 // CELL/CARD_W는 폭에서 파생되므로 컴포넌트 본문에서 useStageWidth()로 계산한다(아래).
 // 모듈 최상위 stageWidthNow()로 박제하면 접힌 채(360dp) 시작해 펼쳤을 때
@@ -98,7 +107,8 @@ function CheckMark({ size = 13, color = '#FFFFFF' }: { size?: number; color?: st
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
   const { t, i18n } = useTranslation();
   const stageW = useStageWidth();
-  const CELL = Math.floor((stageW - 16 * 2 - 8 * (COL - 1)) / COL);
+  // 사진 선택 격자 — 사진첩처럼 좌우 여백 없이 3등분, 간격 PICK_GAP(floor — 3칸+간격이 폭을 넘어 줄바꿈되지 않게)
+  const CELL = Math.floor((stageW - PICK_GAP * (COL - 1)) / COL);
   // 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
   const CARD_W = stageW - 32; // 시트(pvSheet) 좌우 패딩 16×2
   const CARD_ASPECT = CARD_W / CARD_H;
@@ -110,11 +120,13 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
 
-  // 기간 (기본: 최근 7일)
+  // 기간 (기본: 최근 7일). 여행 상세 카드에서 들어오면 그 카드 일정(tripPrefill 날짜)으로 시작한다.
+  // 과거 여행 불러오기 보관분(tripPhotoPool)이 있으면 아래 effect가 그 기간으로 다시 덮는다.
   const today = new Date();
   const weekAgo = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
-  const [startDate, setStartDate] = useState<Date>(weekAgo);
-  const [endDate, setEndDate] = useState<Date>(today);
+  const tripPrefill = route?.params?.tripPrefill as { startDate?: string; endDate?: string } | undefined;
+  const [startDate, setStartDate] = useState<Date>(() => parseAlbumDate(tripPrefill?.startDate) ?? weekAgo);
+  const [endDate, setEndDate] = useState<Date>(() => parseAlbumDate(tripPrefill?.endDate) ?? parseAlbumDate(tripPrefill?.startDate) ?? today);
   const [calendarVisible, setCalendarVisible] = useState(false);
 
   // 국가 선택 (필수) — 카드 표시용 국기로만 쓰고 countryName은 비워
@@ -170,12 +182,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
-  const [loading, setLoading] = useState(false);     // 첫 페이지 로딩
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [loading, setLoading] = useState(false);     // 기간 사진 목록 로딩
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'인지
+  // 목록 uri는 갤러리 값 그대로(iOS ph://) — 격자는 AssetImage가 셀 크기로 그린다(utils/rangePhotoFetch 주석).
+  // 선택(selected)·커버·조정값의 키도 이 uri다. 파일 경로가 필요한 곳(미리보기 RN Image·크게 보기·저장 복사)은
+  // localByUri(ph:// → file://, '다음'·꾹 누름 때 선택분만 변환)를 거친다.
   const [photos, setPhotos] = useState<AlbumPhoto[]>([]);
-  const cursorRef = useRef<string | undefined>(undefined);
-  const hasNextRef = useRef(false);
+  const [localByUri, setLocalByUri] = useState<Record<string, string>>({});
+  const disp = (uri: string) => localByUri[uri] ?? uri;
 
   // 선택
   const [selected, setSelected] = useState<string[]>([]);
@@ -253,36 +267,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     setCalendarVisible(false);
   };
 
-  // ── 갤러리에서 기간 내 사진 페이지 로드 ──
-  const fetchPage = async (after?: string) => {
-    const startMs = new Date(startDate); startMs.setHours(0, 0, 0, 0);
-    const endMs = new Date(endDate); endMs.setHours(23, 59, 59, 999);
-    const page = await MediaLibrary.getAssetsAsync({
-      first: PAGE_SIZE,
-      after,
-      mediaType: 'photo',
-      sortBy: 'creationTime',
-      createdAfter: startMs.getTime(),
-      createdBefore: endMs.getTime(),
-    });
-    cursorRef.current = page.endCursor;
-    hasNextRef.current = page.hasNextPage;
-    // iOS: ph:// 그대로 <Image>에 넣으면 새 아키텍처에서 검은 타일로 뜸(NewRecordScreen과 동일 이슈)
-    // → 표시 가능한 localUri(file://)로 변환. iCloud 오프로드(localUri 없음)는 원본 유지.
-    return Promise.all(
-      page.assets.map(async (a) => {
-        let uri = a.uri;
-        if (Platform.OS === 'ios' && uri.startsWith('ph://')) {
-          try {
-            const info = await MediaLibrary.getAssetInfoAsync(a, { shouldDownloadFromNetwork: false });
-            if (info.localUri) uri = info.localUri;
-          } catch {}
-        }
-        return { id: a.id, uri, creationTime: a.creationTime || undefined };
-      })
-    );
-  };
-
+  // ── 갤러리에서 기간 내 사진 전부를 한 번에 ──
+  // 예전엔 200장씩 페이지로 읽으며 iOS에서 장마다 getAssetInfoAsync(ph:// → file://)를 끝내야 격자가 떴다
+  // (장당 15ms+ → 200장 3초+, 스크롤 끝마다 반복, 날짜 칩도 하나씩 늘어남 — 2026-11-05 실기기 지연).
+  // 기간 사진 격자(DateRangePhotoSheet)와 같은 유틸로 기간 전체를 메타만 읽고, 변환은 확정 시 선택분만 한다.
+  // 기간 경계는 dayRangeMs(시작일 00:00 ~ 종료일 23:59:59.999, 역순이면 바로잡음) — 예전 setHours 계산과 같다.
   const startLoad = async () => {
     if (!selectedCountry) {
       Alert.alert(t('album.countrySelectTitle'), t('album.selectCountryMsg'));
@@ -296,10 +285,12 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         return;
       }
       setIsLimited((status as string) === 'limited');
-      const first = await fetchPage(undefined);
-      setPhotos(first);
+      const range = dayRangeMs(startDate, endDate);
+      const all = range ? await fetchPhotosInRange(range) : [];
+      setPhotos(all);
       setSelected([]);
       setDayFilter(null);
+      setPreviewVisible(false); // 이전 단계에서 남은 미리보기 열림 상태가 새 목록 위로 뜨지 않게
       setPhase('select');
     } catch {
       Alert.alert(t('album.noticeTitle'), t('album.loadPhotoProblem'));
@@ -308,17 +299,63 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     }
   };
 
-  const loadMore = async () => {
-    if (!hasNextRef.current || loadingMore) return;
-    setLoadingMore(true);
+  // ── ph:// → file:// 변환(iOS, 선택분만) ──
+  // 미리보기 시트의 썸네일·커버·위치 조정(RN Image)은 ph://를 못 그린다(크게 보기 PhotoViewerModal은 expo-image라 그대로 된다).
+  // 저장 복사(copyTripOriginals)는 PhotoRef.localUri가 있으면 재조회 없이 바로 쓴다.
+  // 안드로이드는 목록 uri가 이미 파일 경로라 변환하지 않는다(DateRangePhotoSheet confirm과 같은 분기).
+  const needsLocal = (uri: string) => Platform.OS === 'ios' && uri.startsWith('ph://') && !localByUri[uri];
+  const idByUri = (uri: string) => photos.find((p) => p.uri === uri)?.id;
+  const ICLOUD_DL_TIMEOUT_MS = 15000; // NewRecordScreen downloadCloudAssets와 같은 장당 타임아웃
+  const [preparing, setPreparing] = useState<{ done: number; total: number } | null>(null);
+  const preparingRef = useRef(false); // 연타 방지 — state는 다음 렌더까지 반영이 늦다
+  // 변환 취소 토큰 — 변환 도중 화면을 떠나거나(안드로이드 뒤로·iOS 스와이프 → 언마운트) 기간 설정 단계로 돌아가면
+  // 올린다. goPreview는 끝났을 때 토큰이 그대로일 때만 미리보기를 연다 — 안 그러면 setup 단계에서 previewVisible이
+  // 켜진 채 남아, 다시 '불러오기'를 누르면 빈 선택으로 미리보기 시트가 바로 뜬다(6라운드 QA F2).
+  const prepTokenRef = useRef(0);
+  useEffect(() => () => { prepTokenRef.current++; }, []);
+  useEffect(() => { if (phase !== 'select') prepTokenRef.current++; }, [phase]);
+  // '다음' — 선택분을 파일 경로로 바꾼 뒤 미리보기 시트를 연다.
+  // 1차: 기기에 있는 사진은 다운로드 없이(장당 15ms 남짓) 동시 8장. 2차: iCloud 오프로드만 순차 다운로드 + 장당 타임아웃
+  // (동시 다운로드는 실패·메모리 급증 — NewRecordScreen과 같은 이유). 못 받은 사진은 선택에 남겨 둔다 —
+  // 저장 복사가 한 번 더 받아 보고, 끝내 실패하면 기존처럼 'iCloud 사진 n장 제외' 안내가 뜬다.
+  const goPreview = async () => {
+    if (preparingRef.current || selected.length === 0) return;
+    const need = selected.filter(needsLocal);
+    if (need.length === 0) { setPreviewVisible(true); return; }
+    preparingRef.current = true;
+    const token = prepTokenRef.current;
+    setPreparing({ done: 0, total: need.length });
+    const found: Record<string, string> = {};
+    let done = 0;
+    const tick = () => { done++; setPreparing({ done, total: need.length }); };
     try {
-      const next = await fetchPage(cursorRef.current);
-      setPhotos((prev) => [...prev, ...next]);
-    } catch {
-      // 추가 페이지 실패는 조용히 무시 (이미 불러온 사진으로 진행 가능)
+      const cloud: string[] = [];
+      await runWithConcurrency(need.length, 8, async (k) => {
+        const uri = need[k];
+        const id = idByUri(uri);
+        try {
+          const info = id ? await MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: false }) : null;
+          if (info?.localUri) { found[uri] = info.localUri; tick(); } else cloud.push(uri);
+        } catch {
+          cloud.push(uri);
+        }
+      });
+      for (const uri of cloud) {
+        const id = idByUri(uri);
+        try {
+          const info = id
+            ? await withTimeout(MediaLibrary.getAssetInfoAsync(id, { shouldDownloadFromNetwork: true }), ICLOUD_DL_TIMEOUT_MS)
+            : null;
+          if (info?.localUri) found[uri] = info.localUri;
+        } catch { /* 실패·타임아웃 — 저장 복사가 다시 시도한다 */ }
+        tick();
+      }
     } finally {
-      setLoadingMore(false);
+      preparingRef.current = false;
+      setLocalByUri((prev) => ({ ...prev, ...found }));
+      setPreparing(null);
     }
+    if (prepTokenRef.current === token) setPreviewVisible(true);
   };
 
   const toggle = (uri: string) => {
@@ -420,7 +457,10 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     setSaving(true);
     try {
       const albumId = `album-${Date.now()}`;
-      const picked = photos.filter((p) => selected.includes(p.uri));
+      // 변환해 둔 파일 경로(localByUri)는 localUri로 넘겨 복사가 자산을 다시 조회하지 않게 한다
+      const picked: AlbumPhoto[] = photos
+        .filter((p) => selected.includes(p.uri))
+        .map((p) => (localByUri[p.uri] ? { ...p, localUri: localByUri[p.uri] } : p));
       // 썸네일(대표 사진)을 맨 앞에 복사 → medias[0]이 여행 기록 카드의 썸네일이 된다
       const items: PhotoRef[] = [
         ...picked.filter((p) => p.uri === cover),
@@ -748,71 +788,87 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   }
 
   // ── 2단계: 사진 선택 ──
+  // 디자인은 기간 사진 격자(components/record/DateRangePhotoSheet, 2026-11-05 통일)와 같은 값:
+  // SettingsHeader + compact 알약 / 사진첩식 정보 줄 / #111116+AutoPillRing 칩 / 여백 0·간격 3 격자 + 사진첩 선택 덮개 / 페이드 + 알약 하단.
+  // ponytail: 격자 셀·칩 스타일이 DateRangePhotoSheet·MediaPickerModal과 세 곳에 복사돼 있다 — 공용 추출 후보.
+  // 하단 아래 여백 — 이 화면의 기존 값 그대로(iOS 40 / 안드로이드는 내비바 인셋 + 16)
+  const bottomPad = Platform.OS === 'ios' ? 40 : insets.bottom + 16;
+  const gridPadBottom = PICK_FADE_H + PICK_BOTTOM_TOP + PICK_PILL_H + bottomPad;
   return (
-    <LinearGradient colors={['#0A0A0F', '#100620']} style={st.container}>
-      <View style={[st.header, { paddingTop: insets.top + 24 }]}>
-        <HeaderGlassButton back style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8} accessibilityLabel={t('friends.back')}>
-          <BackChevronIcon />
-        </HeaderGlassButton>
-        <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
-        <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          {/* 이어 담기면 남은 자리(총량 - 기존 장수)를 분모로 — 상한 판정과 같은 수를 보여준다 */}
-          <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {selectableMax}</Text>
-          {visiblePhotos.length > 0 && (
-            <TouchableOpacity onPress={toggleSelectVisible} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={[st.selectAllTxt, { color: skinAccent.accent }]}>
-                {visibleAllSelected
-                  ? t('album.deselectAll')
-                  : dayFilter ? t('album.selectAllDay') : t('album.selectAll')}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {/* 국가(GPS) 필터 — 여행 전후 일상 사진을 걸러낸다. GPS 없는 사진은 항상 표시 */}
-        {countryFeature && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <TouchableOpacity
-              style={[st.gpsChip, gpsOnly && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.15) }]}
-              onPress={() => setGpsOnly((v) => !v)}
-              activeOpacity={0.75}
-            >
-              <PinIcon size={12} color={gpsOnly ? skinAccent.accent : '#A1A1B0'} />
-              <Text style={[st.gpsChipTxt, gpsOnly && { color: skinAccent.accent }]}>
-                {t('album.gpsOnly', { country: countryLabel(selectedCountry?.name, i18n.language) })}
-              </Text>
-            </TouchableOpacity>
-            {geoProgress && (
-              <Text style={st.gpsProgress}>{t('album.gpsChecking', { done: geoProgress.done, total: geoProgress.total })}</Text>
-            )}
+    // 앱 배경 단색 통일(#0A0A0F) — 1단계·미리보기는 이번 범위 밖이라 그대로
+    <View style={[st.container, st.pickRoot, { paddingTop: insets.top }]}>
+      <SettingsHeader
+        title={t('album.selectPhotos')}
+        // 변환('다음') 중엔 뒤로·전체 선택을 막는다 — 변환 대상은 누른 시점 선택분 스냅샷이라
+        // 그 사이 바뀐 선택은 변환되지 않은 채 미리보기로 간다(6라운드 QA F2)
+        onBack={() => { if (!preparingRef.current) setPhase('setup'); }}
+        backA11yLabel={t('friends.back')}
+        right={visiblePhotos.length > 0 ? (
+          <View pointerEvents={preparing ? 'none' : 'auto'}>
+            <SettingsPillButton
+              compact
+              label={visibleAllSelected ? t('album.deselectAll') : dayFilter ? t('album.selectAllDay') : t('album.selectAll')}
+              onPress={toggleSelectVisible}
+            />
           </View>
-        )}
-        {isLimited && (
-          <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>
-        )}
+        ) : undefined}
+      />
+
+      {/* 기간 + 담은 장수 — 사진첩 화면 정보 줄과 같은 틀. 위 선은 SettingsHeader 아래 선이 맡는다.
+          이어 담기면 남은 자리(총량 - 기존 장수)를 분모로 — 상한 판정과 같은 수를 보여준다 */}
+      <View style={st.pickInfo}>
+        <OutlineCalendarIcon size={12} color="rgba(255,255,255,0.6)" />
+        <Text style={st.pickInfoTxt} numberOfLines={1}>{`${fmtDate(startDate)} ~ ${fmtDate(endDate)}`}</Text>
+        <Text style={[st.pickCount, selected.length > 0 && st.pickCountOn]} numberOfLines={1}>{selected.length}/{selectableMax}</Text>
       </View>
 
-      {/* 일별 보기 필터 */}
+      {/* 칩·격자 — 변환('다음') 중엔 터치를 막는다(헤더 주석과 같은 이유). 흐리게는 하지 않는다 */}
+      <View style={st.pickBody} pointerEvents={preparing ? 'none' : 'auto'}>
+      {/* 국가(GPS) 필터 — 여행 전후 일상 사진을 걸러낸다. GPS 없는 사진은 항상 표시 */}
+      {countryFeature && (
+        <View style={st.pickGpsRow}>
+          <TouchableOpacity
+            style={[st.pickChip, st.pickGpsChip, gpsOnly && { backgroundColor: skinAccent.tint(0.2) }]}
+            onPress={() => setGpsOnly((v) => !v)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityState={{ selected: gpsOnly }}
+          >
+            <AutoPillRing />
+            {/* 핀 Svg가 터치를 삼키지 않게 View(pointerEvents none)로 감싼다(RNSVG 새 아키텍처 함정) */}
+            <View pointerEvents="none">
+              <PinIcon size={12} color={gpsOnly ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
+            </View>
+            <Text style={[st.pickChipTxt, gpsOnly && st.pickChipTxtOn, st.pickShrink]} numberOfLines={1}>
+              {t('album.gpsOnly', { country: countryLabel(selectedCountry?.name, i18n.language) })}
+            </Text>
+          </TouchableOpacity>
+          {geoProgress && (
+            <Text style={[st.pickHint, st.pickShrink]} numberOfLines={1}>{t('album.gpsChecking', { done: geoProgress.done, total: geoProgress.total })}</Text>
+          )}
+        </View>
+      )}
+      {isLimited && (
+        <Text style={[st.pickHint, st.pickLimited]}>{t('album.limitedTxt')}</Text>
+      )}
+
+      {/* 일별 보기 필터 — 알약 재질. 선택 = 흰 굵은 글자 + 스킨 틴트 채움 */}
       {days.length > 0 && (
         <View style={st.dayBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.dayRow}>
-            <TouchableOpacity
-              style={[st.dayChip, dayFilter === null && [st.dayChipOn, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]]}
-              onPress={() => setDayFilter(null)}
-              activeOpacity={0.8}
-            >
-              <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>{t('album.all')}</Text>
-            </TouchableOpacity>
-            {days.map((d) => {
+            {[null, ...days].map((d) => {
               const on = dayFilter === d;
               return (
                 <TouchableOpacity
-                  key={d}
-                  style={[st.dayChip, on && [st.dayChipOn, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]]}
+                  key={d ?? 'all'}
+                  style={[st.pickChip, on && { backgroundColor: skinAccent.tint(0.2) }]}
                   onPress={() => setDayFilter(d)}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
                 >
-                  <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayLabel(d, t)}</Text>
+                  <AutoPillRing />
+                  <Text style={[st.pickChipTxt, on && st.pickChipTxtOn]} numberOfLines={1}>{d ? dayLabel(d, t) : t('album.all')}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -821,60 +877,72 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       )}
 
       {photos.length === 0 ? (
-        <View style={st.emptyWrap}>
-          <View style={st.emptyIcon}><GalleryIcon size={40} color="#4A4A59" /></View>
-          <Text style={st.emptyTitle}>{t('album.emptyTitle')}</Text>
-          <Text style={st.emptySub}>{t('album.emptySub')}</Text>
+        <View style={[st.emptyWrap, { paddingBottom: gridPadBottom }]}>
+          <SettingsEmptyState
+            icon={<GalleryIcon size={40} color="rgba(255,255,255,0.3)" />}
+            title={t('album.emptyTitle')}
+            desc={t('album.emptySub')}
+          />
         </View>
       ) : (
         <FlatList
           data={visiblePhotos}
           keyExtractor={(p, i) => p.uri + i}
           numColumns={COL}
-          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
-          columnWrapperStyle={{ gap: 8 }}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.6}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 16 }} /> : null}
+          contentContainerStyle={[st.pickGrid, { paddingBottom: gridPadBottom }]}
+          columnWrapperStyle={{ gap: PICK_GAP }}
+          ItemSeparatorComponent={() => <View style={{ height: PICK_GAP }} />}
+          // 기간 전체를 한 번에 받아 두므로 페이지 추가 로드(onEndReached)는 없다 — 가상화로 보이는 칸만 그린다
+          initialNumToRender={15}
+          maxToRenderPerBatch={15}
+          windowSize={5}
+          removeClippedSubviews
           renderItem={({ item, index }) => {
             const on = selected.includes(item.uri);
             return (
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => toggle(item.uri)}
-                onLongPress={() => setPreviewIdx(index)} // 꾹 눌러 크게 미리보기
+                onLongPress={() => setPreviewIdx(index)} // 꾹 눌러 크게 미리보기 — 뷰어(expo-image)가 ph://를 바로 그린다
                 delayLongPress={300}
                 style={{ width: CELL, height: CELL }}
+                accessibilityState={{ selected: on }}
               >
-                <Image source={{ uri: item.uri }} style={st.cell} />
-                <View style={[st.check, on && [st.checkOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>{on && <CheckMark size={12} />}</View>
+                {/* expo-image가 ph://를 셀 크기로 바로 그린다(원본 디코드·경로 변환 없음) — DateRangePhotoSheet와 같다 */}
+                <AssetImage uri={item.uri} assetId={item.id} style={st.cell} />
+                {/* 선택 표시 — 사진첩 선택 모드(AlbumTimeline selOverlay·selCheck)와 같은 모양. 안 고른 칸은 덮개 없이 빈 원만 */}
+                <View pointerEvents="none" style={[st.selOverlay, on && st.selOverlayOn]}>
+                  <View style={[st.selCheck, on && st.selCheckOn]}>
+                    {on && <Text style={st.selCheckTxt}>✓</Text>}
+                  </View>
+                </View>
               </TouchableOpacity>
             );
           }}
         />
       )}
+      </View>
 
-      {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-      <View style={[st.bottom, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
-        <TouchableOpacity
-          style={[st.nextBtn, selected.length === 0 && st.nextBtnDisabled]}
-          onPress={() => setPreviewVisible(true)}
-          disabled={selected.length === 0}
-          activeOpacity={0.85}
-        >
-          <LinearGradient colors={skinAccent.btnGradient} style={st.nextGrad}>
-            <Text style={st.nextTxt}>
-              {selected.length === 0 ? t('album.selectAtLeastOne') : t('album.createWithN', { count: selected.length })}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+      {/* 하단: 다음 알약. 구분선 대신 위쪽 페이드로 격자와 나눈다 — 페이드는 하단 영역 안의 맨 위 칸
+          (부모 밖 음수 top은 안드로이드에서 잘릴 수 있다). 페이드 칸 터치는 아래 격자로 통과(box-none + none) */}
+      <View style={st.bottom} pointerEvents="box-none">
+        <LinearGradient pointerEvents="none" colors={['rgba(10,10,15,0)', '#0A0A0F']} style={st.bottomFade} />
+        <View style={[st.bottomBody, { paddingBottom: bottomPad }]}>
+          {/* 변환 중엔 진행 수를 라벨로 — 새 오버레이(RN Modal)는 띄우지 않는다(eorth-ios-modal-picker-touch-freeze) */}
+          <SettingsPillButton
+            label={preparing
+              ? `${t('common.loading')} ${preparing.done}/${preparing.total}`
+              : selected.length === 0 ? t('album.selectAtLeastOne') : t('album.createWithN', { count: selected.length })}
+            onPress={() => { void goPreview(); }}
+            disabled={selected.length === 0 || !!preparing}
+          />
+        </View>
       </View>
 
       {/* 꾹 눌러 크게 미리보기 — 표시 중인 사진들을 스와이프로 넘겨볼 수 있다 */}
       <PhotoViewerModal
         visible={previewIdx !== null}
-        uris={visiblePhotos.map((p) => p.uri)}
+        uris={visiblePhotos.map((p) => disp(p.uri))}
         initialIndex={previewIdx ?? 0}
         onClose={() => setPreviewIdx(null)}
       />
@@ -911,7 +979,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             {/* 카드 예시 — 탭하면 노출 영역 조정 */}
             <TouchableOpacity style={st.pvCard} activeOpacity={0.9} onPress={() => cover && setAdjustVisible(true)}>
               {cover && (
-                <AdjustedCoverImage uri={cover} transform={activeAdjust} frameW={CARD_W} frameH={CARD_H} />
+                <AdjustedCoverImage uri={disp(cover)} transform={activeAdjust} frameW={CARD_W} frameH={CARD_H} />
               )}
               <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']} style={st.pvCardShade} />
               <View style={st.pvCardInfo}>
@@ -947,7 +1015,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                     }}
                     activeOpacity={0.85}
                   >
-                    <Image source={{ uri }} style={[st.pvThumb, on && [st.pvThumbOn, { borderColor: skinAccent.accent }]]} />
+                    <Image source={{ uri: disp(uri) }} style={[st.pvThumb, on && [st.pvThumbOn, { borderColor: skinAccent.accent }]]} />
                     {on && (
                       <View style={st.pvThumbAdjustBadge}>
                         <Text style={st.pvThumbAdjustTxt}>{t('album.adjust')}</Text>
@@ -975,7 +1043,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           {/* 썸네일 노출 영역 조정 (드래그/핀치) */}
           <CutPhotoAdjustModal
             visible={adjustVisible}
-            uri={cover ?? null}
+            uri={cover ? disp(cover) : null}
             aspect={CARD_ASPECT}
             initial={activeAdjust}
             onConfirm={(t) => {
@@ -986,7 +1054,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           />
         </KeyboardAvoidingView>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -997,19 +1065,11 @@ const st = StyleSheet.create({
 
   header: { paddingHorizontal: 16, paddingBottom: 8 },
   closeBtn: { position: 'absolute', right: 16, padding: 8, zIndex: 2 },
-  backBtn: { position: 'absolute', left: 16, width: 38, height: 38, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   closeTxt: { color: '#A1A1B0', fontSize: 20, fontWeight: '600' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
-  titleIndented: { marginLeft: 36 }, // 왼쪽 ← 버튼과 겹치지 않게 제목만 들여쓰기
 
   sub: { color: '#A1A1B0', fontSize: 13, lineHeight: 19 },
-  counter: { color: '#BF85FC', fontSize: 13, fontWeight: '700', marginTop: 6 },
-  selectAllTxt: { fontSize: 13, fontWeight: '700', marginTop: 6, textDecorationLine: 'underline' },
-  gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
-  gpsChipTxt: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
-  gpsProgress: { fontSize: 11, color: '#5A5A6E' },
-  limitedTxt: { color: '#BF85FC', fontSize: 12, marginTop: 6 },
 
   /* 1단계: 기간 설정 */
   setupBody: { paddingHorizontal: 16, marginTop: 28 },
@@ -1092,29 +1152,58 @@ const st = StyleSheet.create({
   },
   noteTxt: { color: '#BF85FC', fontSize: 12, lineHeight: 18, textAlign: 'center' },
 
-  /* 2단계: 사진 선택 */
-  dayBar: { marginTop: 10 },
-  dayRow: { paddingHorizontal: 16, gap: 8 },
-  dayChip: {
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)',
+  /* 2단계: 사진 선택 — 기간 사진 격자(DateRangePhotoSheet)와 같은 값 */
+  pickRoot: { backgroundColor: '#0A0A0F' },
+  pickBody: { flex: 1 }, // 칩·격자 묶음 — 변환 중 터치 차단용 래퍼(격자가 남은 높이를 그대로 채우게 flex 1)
+  // 사진첩 화면 albumInfo와 같은 값 — 위 선은 SettingsHeader 아래 선이 맡는다
+  pickInfo: {
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.8,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  dayChipOn: { borderColor: '#7B61FF', backgroundColor: 'rgba(123, 97, 255, 0.18)' },
-  dayTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '500' },
-  dayTxtOn: { color: '#FFFFFF', fontWeight: '700' },
-  cell: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: '#2A2735' },
-  check: { position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
-  checkOn: { backgroundColor: '#7B61FF', borderColor: '#7B61FF' },
-  checkTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 120 },
-  emptyIcon: { marginBottom: 12 },
-  emptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 4 },
-  emptySub: { color: '#A1A1B0', fontSize: 13 },
-  bottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 40, backgroundColor: 'rgba(10,1,24,0.95)' },
-  nextBtn: { borderRadius: 999, overflow: 'hidden' },
-  nextBtnDisabled: { opacity: 0.5 },
-  nextGrad: { paddingVertical: 18, alignItems: 'center' },
-  nextTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  pickInfoTxt: { flex: 1, fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  pickCount: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  pickCountOn: { color: '#FFFFFF', fontWeight: '600' },
+  pickGpsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  // 알약 칩 — AutoPillRing이 부모 실측에 기대므로 borderWidth·overflow hidden을 주지 않는다(링이 밀리거나 잘림)
+  pickChip: {
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: PICK_CHIP_FILL,
+  },
+  pickGpsChip: { flexShrink: 1 },
+  pickChipTxt: { fontSize: 13, color: 'rgba(255,255,255,0.5)' },
+  pickChipTxtOn: { color: '#FFFFFF', fontWeight: '700' },
+  pickShrink: { flexShrink: 1 },
+  pickHint: { fontSize: 12, color: 'rgba(255,255,255,0.5)' },
+  pickLimited: { paddingHorizontal: 16, paddingTop: 10 },
+  dayBar: { paddingTop: 12, paddingBottom: 12 },
+  dayRow: { paddingHorizontal: 16, gap: 8 },
+  pickGrid: { width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
+  // 로딩 칸 색 — 검은 화면에서 밝은 자리표시는 번쩍여 과하다. 구분선 토큰으로 어둡게
+  cell: { width: '100%', height: '100%', backgroundColor: '#1A1A26' },
+  // AlbumTimeline 선택 모드 값 복사(selOverlay·selCheck) — 안 고른 칸은 덮개 없음
+  selOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'flex-end' },
+  selOverlayOn: { backgroundColor: 'rgba(107,33,168,0.35)' },
+  selCheck: {
+    width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.85)',
+    margin: 6, alignItems: 'center', justifyContent: 'center',
+  },
+  selCheckOn: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
+  selCheckTxt: { fontSize: 13, fontWeight: '800', color: '#FFFFFF', lineHeight: 15 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  bottom: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+  bottomFade: { height: PICK_FADE_H },
+  bottomBody: { paddingHorizontal: 16, paddingTop: PICK_BOTTOM_TOP, backgroundColor: '#0A0A0F' },
 
   /* 미리보기 모달 */
   pvOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

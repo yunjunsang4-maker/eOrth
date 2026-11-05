@@ -30,8 +30,9 @@ import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
-import { andFitText } from '../../utils/fitText';
-import { GalleryIcon, PinIcon } from '../icons';
+import { GalleryIcon, PinIcon, OutlineCalendarIcon } from '../icons';
+import { SettingsHeader, SettingsPillButton, SettingsEmptyState } from '../settings/SettingsUI';
+import { AutoPillRing } from './CalendarBottomSheet';
 import PhotoViewerModal from '../PhotoViewerModal';
 import AssetImage from '../AssetImage';
 import { showPermissionDeniedAlert } from '../../utils/permissionAlert';
@@ -47,29 +48,22 @@ import {
   deselectAllWithin,
   pickablePhotos,
 } from '../../utils/dateRangePhotoPick';
+import { fetchPhotosInRange, type RangePhoto } from '../../utils/rangePhotoFetch';
 
+// 재질·색은 최신 화면(사진첩 2026-11-03 시안·설정 계열 SettingsUI)과 같은 값 — 흰/흰50% 위주, 보라는 선택 표시에만
 const COLORS = {
   bg: '#0A0A0F',
-  card: '#2E2E3B',
   divider: '#1A1A26',
-  textDim: '#A1A1B0',
   white: '#FFFFFF',
-  purpleNeon: '#BF85FC',
+  text50: 'rgba(255,255,255,0.5)',
 };
+// 칩 채움 — SettingsUI CARD_FILL(#0A0A0F + 흰 3%를 미리 합성한 불투명색)과 같은 값. 그쪽은 export가 아니라 값만 맞춘다
+const CARD_FILL = '#111116';
 
-// 기간 전체를 한 번에 읽는다 — 페이지를 스크롤에 맞춰 늘리면 날짜 칩도 따라 늘어나 "칩이 하나씩 뜬다"로 보였다.
-// getAssetsAsync는 메타만 돌려주므로 1,000장 단위로 몇 번 돌아도 1초 안쪽. 상한은 폭주 방어(한 달 여행 5천 장 여유).
-const PAGE_SIZE = 1000;
-const MAX_PHOTOS = 8000;
+// 기간 전체를 한 번에 읽는 로직(1,000장 단위·상한 8,000·촬영시각 오름차순·목록 단계 변환 없음)은
+// utils/rangePhotoFetch로 옮겼다 — 사진첩 만들기(AlbumCreateScreen)와 같이 쓴다.
 const COL = 3;
-
-type RangePhoto = {
-  id: string;
-  /** 갤러리가 준 uri 그대로(iOS는 ph://). 격자는 AssetImage(expo-image)가 ph://를 셀 크기로 바로 그리므로
-   *  목록 단계에서 경로를 변환하지 않는다 — 변환(getAssetInfoAsync, 장당 15ms+)은 확정 시 선택분만. */
-  uri: string;
-  creationTime?: number;
-};
+const GRID_GAP = 3; // 사진첩 가로 줄(AlbumTimeline ROW_GAP)과 같은 간격
 
 export interface DateRangePhotoSheetProps {
   visible: boolean;
@@ -88,8 +82,11 @@ export interface DateRangePhotoSheetProps {
    * 호출부가 downloadCloudAssets로 받아 같은 importOriginals 한 경로로 흘린다.
    */
   /** uris: 기기에 있는 원본 경로 / cloudAssetIds: iCloud 오프로드(호출부가 다운로드) /
-   *  assetIds: [uris 순서대로의 id..., cloudAssetIds...] — 재열기 시 '담김' 제외와 삭제 시 해제에 쓴다 */
-  onConfirm: (uris: string[], cloudAssetIds: string[], assetIds: string[]) => void;
+   *  assetIds: [uris 순서대로의 id..., cloudAssetIds...] — 재열기 시 '담김' 제외와 삭제 시 해제에 쓴다
+   *  creationTimes: assetIds와 같은 순서의 촬영시각(목록 단계 creationTime, 없으면 undefined) — 선택적.
+   *    사진첩(TripRecordScreen)이 getAssetInfoAsync 실패 시 폴백으로 쓴다(안드로이드는 ACCESS_MEDIA_LOCATION이
+   *    없으면 getAssetInfo가 예외를 던진다). 기록 작성(NewRecordScreen)은 무시한다. */
+  onConfirm: (uris: string[], cloudAssetIds: string[], assetIds: string[], creationTimes?: (number | undefined)[]) => void;
   /** "전체 사진첩에서 고르기" — 호출부가 시트를 닫은 뒤 시스템 선택기를 띄운다 */
   onOpenSystemPicker: () => void;
   onClose: () => void;
@@ -116,7 +113,8 @@ export default function DateRangePhotoSheet({
 
   // 셀 폭은 Stage 폭에서 파생한다 — 박제하면 폴드 펼침에서 격자가 어긋난다(MediaPickerModal과 동일)
   const stageW = useStageWidth();
-  const CELL = Math.floor((stageW - 32 - (COL - 1) * 8) / COL);
+  // 사진첩처럼 좌우 여백 없이 3등분(floor — 3칸+간격이 폭을 넘어 줄바꿈되지 않게)
+  const CELL = Math.floor((stageW - (COL - 1) * GRID_GAP) / COL);
 
   const [photos, setPhotos] = useState<RangePhoto[]>([]);
   const [loading, setLoading] = useState(false);
@@ -149,26 +147,8 @@ export default function DateRangePhotoSheet({
   useEffect(() => { locCacheRef.current.clear(); }, [countryToken]);
 
   // ── 기간 내 사진 페이지 로드 ──
-  const fetchAll = useCallback(async (): Promise<RangePhoto[]> => {
-    if (!range) return [];
-    const out: RangePhoto[] = [];
-    let after: string | undefined;
-    do {
-    const page = await MediaLibrary.getAssetsAsync({
-      first: PAGE_SIZE,
-      after,
-      mediaType: 'photo',
-      // [key, ascending] — 문자열만 넘기면 내림차순(최신 먼저)이라 여행 시작일부터 보이게 오름차순을 명시
-      sortBy: [['creationTime', true]],
-      createdAfter: range.startMs,
-      createdBefore: range.endMs,
-    });
-    // 목록 단계는 변환 없음 — 장당 getAssetInfoAsync(15ms+, 오프로드면 더)는 확정 시 선택분만 돈다.
-    for (const a of page.assets) out.push({ id: a.id, uri: a.uri, creationTime: a.creationTime || undefined });
-    after = page.hasNextPage ? page.endCursor : undefined;
-    } while (after && out.length < MAX_PHOTOS);
-    return out;
-  }, [range]);
+  // 목록 단계는 변환 없음 — 장당 getAssetInfoAsync(15ms+, 오프로드면 더)는 확정 시 선택분만 돈다(utils/rangePhotoFetch).
+  const fetchAll = useCallback(async (): Promise<RangePhoto[]> => (range ? fetchPhotosInRange(range) : []), [range]);
 
   // 시트가 열리거나 기간이 바뀌면 첫 페이지부터 다시
   useEffect(() => {
@@ -302,24 +282,28 @@ export default function DateRangePhotoSheet({
       const chosen = selected.map((u) => photos.find((p) => p.uri === u)).filter((p): p is RangePhoto => !!p);
       const usable: string[] = [];
       const usableIds: string[] = [];
+      const usableTimes: (number | undefined)[] = [];
       const cloudAssetIds: string[] = [];
+      const cloudTimes: (number | undefined)[] = [];
       for (const p of chosen) {
         if (Platform.OS === 'ios' && p.uri.startsWith('ph://')) {
           try {
             const info = await MediaLibrary.getAssetInfoAsync(p.id, { shouldDownloadFromNetwork: false });
-            if (info.localUri) { usable.push(info.localUri); usableIds.push(p.id); }
-            else cloudAssetIds.push(p.id);
+            if (info.localUri) { usable.push(info.localUri); usableIds.push(p.id); usableTimes.push(p.creationTime); }
+            else { cloudAssetIds.push(p.id); cloudTimes.push(p.creationTime); }
           } catch {
             cloudAssetIds.push(p.id);
+            cloudTimes.push(p.creationTime);
           }
         } else {
           usable.push(p.uri);
           usableIds.push(p.id);
+          usableTimes.push(p.creationTime);
         }
       }
       // 담기는 순서는 '기기에 있는 것 먼저, 받아 온 것 나중'이 된다(다운로드가 비동기라 순서 보장 불가).
-      // assetIds는 [usable 순서대로의 id..., cloud id...] — 호출부가 uri↔id를 짝짓는 데 쓴다
-      onConfirm(usable, cloudAssetIds, [...usableIds, ...cloudAssetIds]);
+      // assetIds는 [usable 순서대로의 id..., cloud id...] — 호출부가 uri↔id를 짝짓는 데 쓴다. 시각도 같은 순서
+      onConfirm(usable, cloudAssetIds, [...usableIds, ...cloudAssetIds], [...usableTimes, ...cloudTimes]);
     } finally {
       setConfirming(false);
     }
@@ -339,6 +323,11 @@ export default function DateRangePhotoSheet({
     return t('time.monthDay', { m: Number(m), d: Number(d) });
   };
 
+  // 하단 영역 아래 여백 — 안드로이드는 모달이 내비바 아래까지 확장돼 인셋을 직접 더한다
+  const bottomPad = Platform.OS === 'ios' ? 24 : insets.bottom + 16;
+  // 선택 알약·'전체 사진첩' 줄은 고정 높이 — 격자 마지막 줄이 하단 영역·페이드에 가리지 않게 그만큼 띄운다
+  const gridPadBottom = FADE_H + BOTTOM_TOP + PILL_H + LINK_H + bottomPad;
+
   return (
     <Modal
       visible={visible}
@@ -351,74 +340,76 @@ export default function DateRangePhotoSheet({
     >
       {/* pageSheet는 안드로이드에서 무시돼 전체화면이 되므로 상단 인셋을 직접 보정 */}
       <View style={[st.root, Platform.OS === 'android' && { paddingTop: insets.top }]} accessibilityViewIsModal>
-        {/* 헤더 */}
-        <View style={st.header}>
-          <TouchableOpacity onPress={onClose} style={{ padding: 4 }} accessibilityRole="button" accessibilityLabel={t('album.closeA11y')}>
-            <Text style={st.cancelTxt}>{t('common.cancel')}</Text>
-          </TouchableOpacity>
-          {/* 제목은 좌우 버튼 폭에 밀리지 않게 절대 배치로 화면 가운데 고정 */}
-          <View style={st.titleWrap} pointerEvents="none">
-            <Text style={st.title}>{t('album.selectPhotos')}</Text>
-          </View>
-          {visiblePhotos.length > 0 ? (
-            <TouchableOpacity onPress={toggleSelectVisible} style={{ padding: 4 }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={[st.selectAllTxt, { color: skinAccent.accent }]} {...andFitText}>
-                {visibleAllSelected ? t('album.deselectAll') : dayFilter ? t('album.selectAllDay') : t('album.selectAll')}
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 44 }} />
-          )}
+        {/* 헤더 — 설정 계열 공용(SettingsHeader: 유리 뒤로 chevron · 가운데 제목 · 오른쪽 슬롯, 아래 0.8 흰15% 선).
+            오른쪽은 보이는 사진이 있을 때만 작은 알약으로 전체 선택/해제 */}
+        <View style={st.headerWrap}>
+          <SettingsHeader
+            title={t('album.selectPhotos')}
+            onBack={onClose}
+            backA11yLabel={t('album.closeA11y')}
+            right={visiblePhotos.length > 0 ? (
+              <SettingsPillButton
+                compact
+                label={visibleAllSelected ? t('album.deselectAll') : dayFilter ? t('album.selectAllDay') : t('album.selectAll')}
+                onPress={toggleSelectVisible}
+              />
+            ) : undefined}
+          />
         </View>
 
-        {/* 기간 + 담은 장수 */}
-        <View style={[st.infoBar, { backgroundColor: skinAccent.tint(0.12) }]}>
+        {/* 기간 + 담은 장수 — 사진첩 화면 정보 줄(TripRecordScreen albumInfo)과 같은 틀: 높이 52, 달력 + 기간, 오른쪽 장수.
+            위 선은 SettingsHeader의 아래 선이 맡는다(같은 0.8 흰15% — 둘 다 그리면 겹선) */}
+        <View style={st.info}>
+          <OutlineCalendarIcon size={12} color="rgba(255,255,255,0.6)" />
           <Text style={st.infoTxt} numberOfLines={1}>{t('newRecord.rangePickerSub', { range: rangeLabel })}</Text>
-          <Text style={[st.countTxt, { color: skinAccent.accent }]}>{selected.length}/{max}</Text>
+          {/* 담은 게 있으면 숫자만 흰 100%로 — 최신 화면은 흰/흰50% 위주라 보라를 쓰지 않는다 */}
+          <Text style={[st.countTxt, selected.length > 0 && st.countTxtOn]} numberOfLines={1}>{selected.length}/{max}</Text>
         </View>
 
         {/* 국가(GPS) 필터 — 여행 전후 일상 사진을 걸러낸다. GPS 없는 사진은 항상 표시 */}
         {countryToken && (
           <View style={st.gpsRow}>
             <TouchableOpacity
-              style={[st.gpsChip, gpsOnly && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.15) }]}
+              style={[st.chip, st.gpsChip, gpsOnly && { backgroundColor: skinAccent.tint(0.2) }]}
               onPress={() => setGpsOnly((v) => !v)}
               activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityState={{ selected: gpsOnly }}
             >
-              <PinIcon size={12} color={gpsOnly ? skinAccent.accent : COLORS.textDim} />
-              <Text style={[st.gpsChipTxt, gpsOnly && { color: skinAccent.accent }]}>
+              <AutoPillRing />
+              {/* 핀 Svg가 터치를 삼키지 않게 View(pointerEvents none)로 감싼다(RNSVG 새 아키텍처 함정) */}
+              <View pointerEvents="none">
+                <PinIcon size={12} color={gpsOnly ? '#FFFFFF' : 'rgba(255,255,255,0.5)'} />
+              </View>
+              <Text style={[st.chipTxt, gpsOnly && st.chipTxtOn, st.gpsChipTxt]} numberOfLines={1}>
                 {t('album.gpsOnly', { country: countryName })}
               </Text>
             </TouchableOpacity>
             {geoProgress && (
-              <Text style={st.gpsProgress}>{t('album.gpsChecking', { done: geoProgress.done, total: geoProgress.total })}</Text>
+              <Text style={st.hintTxt} numberOfLines={1}>{t('album.gpsChecking', { done: geoProgress.done, total: geoProgress.total })}</Text>
             )}
           </View>
         )}
 
-        {isLimited && <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>}
+        {isLimited && <Text style={[st.hintTxt, st.limitedTxt]}>{t('album.limitedTxt')}</Text>}
 
-        {/* 일별 보기 필터 */}
+        {/* 일별 보기 필터 — 알약 재질(설정 카드와 같은 #111116 채움 + 공용 유리 링). 선택 = 흰 굵은 글자 + 스킨 틴트 채움 */}
         {days.length > 0 && (
           <View style={st.dayBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.dayRow}>
-              <TouchableOpacity
-                style={[st.dayChip, dayFilter === null && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]}
-                onPress={() => setDayFilter(null)}
-                activeOpacity={0.8}
-              >
-                <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>{t('album.all')}</Text>
-              </TouchableOpacity>
-              {days.map((d) => {
+              {[null, ...days].map((d) => {
                 const on = dayFilter === d;
                 return (
                   <TouchableOpacity
-                    key={d}
-                    style={[st.dayChip, on && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]}
+                    key={d ?? 'all'}
+                    style={[st.chip, on && { backgroundColor: skinAccent.tint(0.2) }]}
                     onPress={() => setDayFilter(d)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
                   >
-                    <Text style={[st.dayTxt, on && st.dayTxtOn]}>{dayChipLabel(d)}</Text>
+                    <AutoPillRing />
+                    <Text style={[st.chipTxt, on && st.chipTxtOn]} numberOfLines={1}>{d ? dayChipLabel(d) : t('album.all')}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -426,23 +417,25 @@ export default function DateRangePhotoSheet({
           </View>
         )}
 
-        {/* 격자 */}
+        {/* 격자 — 사진첩 화면처럼 좌우 여백 없이 3등분, 간격 3·모서리 0 */}
         {loading ? (
           <View style={st.emptyWrap}><ActivityIndicator color={skinAccent.accent} size="large" /></View>
         ) : photos.length === 0 ? (
           <View style={st.emptyWrap}>
-            <GalleryIcon size={40} color="#4A4A59" />
-            <Text style={st.emptyTitle}>{t('album.emptyTitle')}</Text>
-            <Text style={st.emptySub}>{t('album.emptySub')}</Text>
+            <SettingsEmptyState
+              icon={<GalleryIcon size={40} color="rgba(255,255,255,0.3)" />}
+              title={t('album.emptyTitle')}
+              desc={t('album.emptySub')}
+            />
           </View>
         ) : (
           <FlatList
             data={visiblePhotos}
             keyExtractor={(p, i) => p.uri + i}
             numColumns={COL}
-            contentContainerStyle={[st.gridContent, Platform.OS === 'android' && { paddingBottom: 140 + insets.bottom }]}
-            columnWrapperStyle={{ gap: 8 }}
-            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            contentContainerStyle={[st.gridContent, { paddingBottom: gridPadBottom }]}
+            columnWrapperStyle={{ gap: GRID_GAP }}
+            ItemSeparatorComponent={() => <View style={{ height: GRID_GAP }} />}
             initialNumToRender={15}
             maxToRenderPerBatch={15}
             windowSize={5}
@@ -456,12 +449,16 @@ export default function DateRangePhotoSheet({
                   onLongPress={() => setPreviewIdx(index)} // 꾹 눌러 크게 보기 — 셀이 작아 비슷한 사진 구분이 어렵다
                   delayLongPress={300}
                   style={{ width: CELL, height: CELL }}
+                  accessibilityState={{ selected: on }}
                 >
                   {/* AssetImage(expo-image)는 ph://를 PHImageManager에 셀 크기로 요청해 바로 그린다.
                       iCloud 오프로드 여부는 목록에서 알 수 없고(알려면 장당 파일 조회) 확정 시 판별한다. */}
                   <AssetImage uri={item.uri} assetId={item.id} style={st.cell} />
-                  <View style={[st.check, on && { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]}>
-                    {on && <Text style={st.checkTxt}>✓</Text>}
+                  {/* 선택 표시 — 사진첩 선택 모드(AlbumTimeline selOverlay·selCheck)와 같은 모양. 안 고른 칸은 덮개 없이 빈 원만 */}
+                  <View pointerEvents="none" style={[st.selOverlay, on && st.selOverlayOn]}>
+                    <View style={[st.selCheck, on && st.selCheckOn]}>
+                      {on && <Text style={st.selCheckTxt}>✓</Text>}
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -469,26 +466,33 @@ export default function DateRangePhotoSheet({
           />
         )}
 
-        {/* 하단: 담기 + 전체 사진첩으로 가는 보조 링크 */}
-        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-        <View style={[st.bottom, { paddingBottom: Platform.OS === 'ios' ? 24 : insets.bottom + 16 }]}>
-          <TouchableOpacity
-            style={[st.confirmBtn, selected.length === 0 && st.confirmBtnDisabled]}
-            onPress={() => { void confirm(); }}
-            disabled={selected.length === 0 || confirming}
-            activeOpacity={0.85}
-          >
-            <LinearGradient colors={skinAccent.btnGradient} style={st.confirmGrad}>
-              <Text style={st.confirmTxt} {...andFitText}>
-                {selected.length === 0
-                  ? t('album.selectAtLeastOne')
-                  : t('newRecord.rangePickerConfirm', { count: selected.length })}
-              </Text>
-            </LinearGradient>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onOpenSystemPicker} style={st.linkBtn} activeOpacity={0.7} accessibilityRole="button">
-            <Text style={st.linkTxt}>{t('newRecord.rangePickerSystem')}</Text>
-          </TouchableOpacity>
+        {/* 하단: 담기 알약 + 전체 사진첩으로 가는 보조 글자 버튼. 구분선 대신 위쪽 페이드로 격자와 나눈다 */}
+        {/* 페이드는 하단 영역 안의 맨 위 칸으로 둔다 — 부모 밖(top 음수)에 그리면 안드로이드에서 잘릴 수 있다.
+            페이드 칸은 터치를 아래 격자로 넘긴다(box-none + 그라데이션 pointerEvents none) */}
+        <View style={st.bottom} pointerEvents="box-none">
+          <LinearGradient
+            pointerEvents="none"
+            colors={['rgba(10,10,15,0)', COLORS.bg]}
+            style={st.bottomFade}
+          />
+          <View style={[st.bottomBody, { paddingBottom: bottomPad }]}>
+            <SettingsPillButton
+              label={selected.length === 0
+                ? t('album.selectAtLeastOne')
+                : t('newRecord.rangePickerConfirm', { count: selected.length })}
+              onPress={() => { void confirm(); }}
+              disabled={selected.length === 0 || confirming}
+            />
+            <TouchableOpacity
+              onPress={onOpenSystemPicker}
+              style={st.linkBtn}
+              hitSlop={{ top: 4, bottom: 8, left: 16, right: 16 }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+            >
+              <Text style={st.linkTxt} numberOfLines={1}>{t('newRecord.rangePickerSystem')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* 꾹 눌러 크게 보기 */}
@@ -503,105 +507,80 @@ export default function DateRangePhotoSheet({
   );
 }
 
+// 하단 영역 고정 치수 — 격자 paddingBottom(gridPadBottom) 계산에 같이 쓴다
+const FADE_H = 24;     // 하단 영역 위 페이드
+const BOTTOM_TOP = 8;  // 하단 영역 위 여백(페이드 아래)
+const PILL_H = 60;     // SettingsPillButton 기본 높이
+const LINK_H = 44;     // '전체 사진첩에서 고르기' 줄(13 글자 + 위아래 여백, 터치 44)
+
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.bg },
-  header: {
+  // pageSheet 위 손잡이 자리와 붙지 않게 살짝 띄운다(예전 헤더 paddingTop 16과 비슷한 높이)
+  headerWrap: { paddingTop: 12 },
+  // 사진첩 화면 albumInfo와 같은 값 — 위 선은 헤더 선이 맡는다
+  info: {
+    height: 52,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
+    borderBottomWidth: 0.8,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
-  cancelTxt: { fontSize: 15, color: COLORS.textDim },
-  // header의 paddingTop/Bottom(16/12)과 같은 값으로 채워 좌우 버튼과 세로 중심이 일치한다
-  titleWrap: { position: 'absolute', left: 0, right: 0, top: 16, bottom: 12, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 16, fontWeight: '700', color: COLORS.white },
-  selectAllTxt: { fontSize: 13, fontWeight: '700', color: COLORS.purpleNeon },
-  infoBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(107,33,168,0.15)',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  infoTxt: { flex: 1, fontSize: 13, color: COLORS.textDim },
-  countTxt: { fontSize: 13, fontWeight: '700', color: COLORS.purpleNeon },
-  gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 10 },
-  gpsChip: {
+  infoTxt: { flex: 1, fontSize: 13, color: COLORS.text50 },
+  countTxt: { fontSize: 13, color: COLORS.text50 },
+  countTxtOn: { color: COLORS.white, fontWeight: '600' },
+  gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  // 알약 칩 — 채움 #111116(설정 카드 CARD_FILL) + AutoPillRing(실측 숫자 크기 — 안드로이드 RNSVG % 크기 갱신 함정).
+  // AutoPillRing이 부모 실측에 기대므로 칩에 borderWidth·overflow hidden을 주지 않는다(링이 1px 밀리거나 잘림)
+  chip: {
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    backgroundColor: COLORS.card,
+    backgroundColor: CARD_FILL,
   },
-  gpsChipTxt: { fontSize: 12, color: COLORS.textDim },
-  gpsProgress: { fontSize: 11, color: COLORS.textDim },
-  limitedTxt: { fontSize: 12, paddingHorizontal: 16, paddingTop: 8, color: COLORS.purpleNeon },
+  gpsChip: { flexShrink: 1 },
+  chipTxt: { fontSize: 13, color: COLORS.text50 },
+  chipTxtOn: { color: COLORS.white, fontWeight: '700' },
+  gpsChipTxt: { flexShrink: 1 },
+  // 진행·제한 안내 — 보조 글자는 12 흰50%
+  hintTxt: { flexShrink: 1, fontSize: 12, color: COLORS.text50 },
+  limitedTxt: { paddingHorizontal: 16, paddingTop: 10 },
   // 아래 여백: 격자가 스크롤돼 칩 바로 밑에 사진이 붙는 것을 막는다
-  dayBar: { paddingTop: 10, paddingBottom: 12 },
+  dayBar: { paddingTop: 12, paddingBottom: 12 },
   dayRow: { paddingHorizontal: 16, gap: 8 },
-  dayChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    backgroundColor: COLORS.card,
-  },
-  dayTxt: { fontSize: 12, color: COLORS.textDim },
-  dayTxtOn: { color: COLORS.white, fontWeight: '700' },
   // 셀 폭이 Stage 폭(≤480)에서 나오므로 격자도 같은 폭으로 가둬야 넓은 화면에서 왼쪽으로 쏠리지 않는다
   gridContent: {
-    padding: 16,
-    paddingBottom: 140,
     width: '100%',
     maxWidth: STAGE_MAX_W,
     alignSelf: 'center',
   },
-  cell: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: COLORS.card },
-  check: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
+  // 로딩 칸 색 — 사진첩 격자의 #D9D9D9는 검은 피커에서 번쩍여 과하다. 구분선 토큰으로 어둡게
+  cell: { width: '100%', height: '100%', backgroundColor: COLORS.divider },
+  // AlbumTimeline 선택 모드 값 복사(selOverlay·selCheck) — 안 고른 칸은 덮개 없음
+  selOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'flex-end' },
+  selOverlayOn: { backgroundColor: 'rgba(107,33,168,0.35)' },
+  selCheck: {
     width: 22,
     height: 22,
     borderRadius: 11,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.85)',
+    margin: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkTxt: { fontSize: 12, color: COLORS.white, fontWeight: 'bold' },
-  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  emptySub: { fontSize: 13, color: COLORS.textDim, textAlign: 'center' },
-  bottom: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
-    backgroundColor: COLORS.bg,
-  },
-  confirmBtn: { borderRadius: 14, overflow: 'hidden' },
-  confirmBtnDisabled: { opacity: 0.4 },
-  confirmGrad: { paddingVertical: 15, alignItems: 'center' },
-  confirmTxt: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  linkBtn: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 12 },
-  linkTxt: { fontSize: 13, color: COLORS.textDim, textDecorationLine: 'underline' },
+  selCheckOn: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
+  selCheckTxt: { fontSize: 13, fontWeight: '800', color: COLORS.white, lineHeight: 15 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  bottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  // 투명 → 배경 페이드 — 구분선 대신 격자가 자연스럽게 사라지게
+  bottomFade: { height: FADE_H },
+  bottomBody: { paddingHorizontal: 16, paddingTop: BOTTOM_TOP, backgroundColor: COLORS.bg },
+  linkBtn: { height: LINK_H, alignSelf: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  linkTxt: { fontSize: 13, color: COLORS.text50 },
 });

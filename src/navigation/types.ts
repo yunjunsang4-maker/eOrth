@@ -176,7 +176,7 @@ export type RootStackParamList = {
     notifTimestamp?: number;
     selectedCountry?: SelectedCountryParam;
   } | undefined;
-  AlbumCreate: { selectedCountry?: SelectedCountryParam; tripGroupId?: string } | undefined; // tripGroupId: 여행 상세에서 진입 시 그 카드에 연결(카드당 앨범 1개)
+  AlbumCreate: { selectedCountry?: SelectedCountryParam; tripGroupId?: string; tripPrefill?: TripPrefillParam } | undefined; // tripGroupId: 여행 상세에서 진입 시 그 카드에 연결(카드당 앨범 1개)
   MomentCapture: undefined;
   // from: 'onboarding' = 온보딩 출신 표시. mode(문항 세트)와 독립적으로 넘긴다 — 결과 화면에서
   // '설문 이어하기'로 mode:'full'을 골라도(전체 문항으로 전환) 온보딩 출신 정보는 유지돼야

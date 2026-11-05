@@ -11,7 +11,6 @@ import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
-import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../ui/Text';
 import HeaderGlassButton from '../components/HeaderGlassButton';
@@ -21,8 +20,8 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import MenuSheet, { MenuSheetItem, MenuSheetDivider } from '../components/MenuSheet';
 import { useRecordData } from '../store/recordStore';
 import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
-import { localAssetIdOf, formatPlace, formatClock, pickAssetByTime, TIME_TOL_MS } from '../utils/photoPlace';
-import { isUsableLatLon } from '../utils/photoLocationBatch';
+import { localAssetIdOf, formatClock } from '../utils/photoPlace';
+import { placeOfAsset, assetIdAtTime, type AssetPlace } from '../utils/albumPlaceLookup';
 import { andFitText } from '../utils/fitText';
 import { useStageWidth } from '../utils/stage';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -32,49 +31,8 @@ const ROW_GAP = 3;  // AlbumTimeline 가로 줄과 같은 값
 const FADE_W = 70;
 const PLACE_TRIES = 3; // 순간마다 좌표를 찾아볼 사진 수 상한 — 역지오코딩 호출 수를 묶는다
 const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
-// 장소 이름 + 그곳 시간대(iOS만, 순간 시각을 현지 시간으로 — formatClock). 둘 다 없으면 null.
-// lat/lon은 장소 줄 → 지도 시트용. 메모리(placeCache·state)에만 — 기록·스토어·서버에 쓰지 않는다(파일 상단 주석).
-type AssetPlace = { name: string | null; tz: string | null; lat: number; lon: number };
+// 장소 조회(placeOfAsset·assetIdAtTime)와 그 캐시는 utils/albumPlaceLookup — 사진첩 화면 날짜 줄 장소와 같이 쓴다.
 type MapAt = { name: string; lat: number; lon: number };
-
-// assetId → 장소(없으면 null). 같은 사진을 다시 열 때 역지오코딩을 또 부르지 않게 앱 실행 동안만 기억한다.
-// ponytail: 메모리 캐시만 — 앱을 다시 켜면 다시 찾는다. 느리다는 말이 나오면 AsyncStorage로.
-const placeCache = new Map<string, Promise<AssetPlace | null>>();
-function placeOfAsset(assetId: string): Promise<AssetPlace | null> {
-  let p = placeCache.get(assetId);
-  if (!p) {
-    p = (async () => {
-      // 네트워크 다운로드 없이 — 좌표는 사진첩 DB 값이라 iCloud 원본을 받으러 갈 필요가 없다
-      const info = await MediaLibrary.getAssetInfoAsync(assetId, { shouldDownloadFromNetwork: false });
-      // iOS는 좌표를 문자열로 줄 때가 있다 — 숫자로 바꿔야 isUsableLatLon(typeof number)을 통과한다(TravelImportScreen과 같은 처리)
-      const lat = Number(info?.location?.latitude), lon = Number(info?.location?.longitude);
-      if (!info?.location || !isUsableLatLon(lat, lon)) return null;
-      const [geo] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
-      const fp = formatPlace(geo);
-      const tz = geo?.timezone ?? null; // 이름이 없어도 시간대는 살린다
-      return fp || tz ? { name: fp, tz, lat, lon } : null;
-    })().catch(() => null);
-    placeCache.set(assetId, p);
-  }
-  return p;
-}
-
-// 촬영시각 → 기기 사진첩 assetId(없으면 null). placeCache와 같은 메모리 캐시 — 찾은 id는 기록에 쓰지 않는다.
-// iOS 술어는 creationDate > / <(배타)라 경계는 빠지지만 허용오차 안쪽이라 상관없다.
-const timeAssetCache = new Map<number, Promise<string | null>>();
-function assetIdAtTime(ts: number): Promise<string | null> {
-  let p = timeAssetCache.get(ts);
-  if (!p) {
-    p = MediaLibrary.getAssetsAsync({
-      mediaType: 'photo',
-      createdAfter: ts - TIME_TOL_MS,
-      createdBefore: ts + TIME_TOL_MS,
-      first: 10,
-    }).then((page) => pickAssetByTime(page.assets, ts, TIME_TOL_MS) ?? null).catch(() => null);
-    timeAssetCache.set(ts, p);
-  }
-  return p;
-}
 
 type PlaceTry = { assetId: string } | { ts: number };
 

@@ -15,12 +15,19 @@ export default function MenuSheet({
   onClose,
   title,
   children,
+  onDismissed,
 }: {
   visible: boolean;
   onClose: () => void;
   /** 시트 맨 위 흐린 한 줄(예: 대상 @아이디). 없으면 생략 */
   title?: string;
   children: React.ReactNode;
+  /**
+   * 시트가 화면에서 완전히 내려간 뒤 — 항목이 네이티브 화면(사진 선택기 등)을 띄울 때 기다리는 신호.
+   * iOS Modal 시트만 준다(RN Modal onDismiss = 네이티브 dismiss 완료). 안드로이드(RN이 onDismiss를 안 부름)와
+   * iOS 시스템 시트(SystemSheet가 닫힘 완료를 밖으로 내보내지 않음)는 부르지 않으므로 호출부가 타이머 폴백을 둔다.
+   */
+  onDismissed?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   // Modal 시트 애니메이션 — 딤은 제자리 페이드, 시트만 아래에서 슬라이드.
@@ -54,7 +61,7 @@ export default function MenuSheet({
     );
   }
   return (
-    <Modal visible={mounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+    <Modal visible={mounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose} onDismiss={onDismissed}>
       <View style={s.overlay} accessibilityViewIsModal>
         <Animated.View
           pointerEvents="none"

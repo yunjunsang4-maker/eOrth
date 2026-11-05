@@ -1,6 +1,8 @@
 import { Image } from 'react-native';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { markMetadataStripped, type StripFormat } from './mediaUploadPlan';
+// importPhotoStore의 최상위 import는 순수 모듈(mediaUploadPlan)뿐이고 imageCompress는 함수 안에서 지연 require한다 — 순환 없음
+import { runWithConcurrency } from './importPhotoStore';
 
 /**
  * 기록 사진 압축 유틸 (피드/블로그/스트립 공용).
@@ -105,16 +107,18 @@ export async function compressImages(
   const total = uris.length;
   let done = 0;
   onProgress?.(0, total);
-  return Promise.all(
-    uris.map((u) =>
-      compressImage(u, maxEdge, quality).then((r) => {
-        done += 1;
-        onProgress?.(done, total);
-        return r;
-      }),
-    ),
-  );
+  // 동시 2장 — 장마다 원본을 통째로 디코드(24MP ≈ 100MB, 48MP ≈ 190MB 비트맵)해 동시 수가 곧 메모리 피크다.
+  // 예전엔 전부 동시(Promise.all)라 기간 사진 격자로 수십 장을 담으면 수 GB 피크·버벅임이 났다.
+  // TripRecordScreen 사진 추가·Blog 여러 장·copyTripOriginals 압축과 같은 값. 결과는 입력 순서 그대로(인덱스 대입).
+  const out = [...uris];
+  await runWithConcurrency(total, COMPRESS_CONCURRENCY, async (k) => {
+    out[k] = await compressImage(uris[k], maxEdge, quality); // 실패 시 원본 uri 그대로(throw 없음)
+    done += 1;
+    onProgress?.(done, total);
+  });
+  return out;
 }
+const COMPRESS_CONCURRENCY = 2;
 
 /**
  * 지구본(WebView)용: 로컬 file:// 사진을 작은 base64 data URI 로 변환.

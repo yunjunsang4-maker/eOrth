@@ -709,14 +709,18 @@ export default function TripDetailScreen() {
   //    블로그·스트립은 날짜를 반드시 고르게 해, 카드 기간(±7일) 안 날짜면 날짜 규칙으로 대개 이 카드에 붙고
   //    (기간 밖 날짜를 고르면 다른 카드로 간다 — 사용자 의도로 보고 그대로 둔다),
   //    스냅은 '지금' 촬영이라 진행 중 여행(세션)으로 가는 게 맞아 tripGroupId를 넘기지 않는다.
-  // 미리 채우기(tripPrefill)는 보내지 않는다 — 탭 바 FAB 진입 화면과 똑같이 보이도록 통일.
+  // 미리 채우기(tripPrefill)는 **날짜만** 보낸다(2026-11-05 사용자 요청: 카드 일정으로 날짜 자동 연결) —
+  // 상단에 보이는 카드 기간(computeTripPeriod)과 같은 값. 별점·동행자·경비 등은 여전히 보내지 않는다
+  // (507c335: FAB 진입 화면과 똑같이 보이도록 통일한 결정 유지). 날짜 있는 기록이 없는 카드면 보내지 않아 기본(오늘)으로.
   const handleAddRecord = (type: string) => {
     setFormatPickerVisible(false);
     const selectedCountry = { name: trip.country || '', flag: trip.countryFlag };
+    const period = computeTripPeriod(matchedRecords);
+    const tripPrefill = period.startDate ? { startDate: period.startDate, endDate: period.endDate ?? period.startDate } : undefined;
     const nav = navigation as any;
     switch (type) {
-      case 'blog':  nav.navigate('BlogRecord', { selectedCountry }); break;
-      case 'cut':   nav.navigate('CutRecord', { selectedCountry }); break;
+      case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPrefill }); break;
+      case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPrefill }); break;
       case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
       case 'album': {
         // 여행 카드당 사진첩 1개 — 이미 있으면 생성 대신 안내 (기존 사진첩에서 추가·정리)
@@ -724,10 +728,10 @@ export default function TripDetailScreen() {
           Alert.alert(t('trip.albumOnlyOneTitle'), t('trip.albumOnlyOneMsg'));
           break;
         }
-        nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id });
+        nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id, tripPrefill });
         break;
       }
-      default:      nav.navigate('NewRecord', { selectedCountry, tripGroupId: trip.id });
+      default:      nav.navigate('NewRecord', { selectedCountry, tripGroupId: trip.id, tripPrefill });
     }
   };
 
@@ -862,7 +866,7 @@ export default function TripDetailScreen() {
             <Text style={s.fmSub}>
               {trip.country ? t('trip.recordFormatPromptCountry', { country: countryTagLabel(trip.country, i18n.language) }) : t('trip.recordFormatPrompt')}
             </Text>
-            {/* "여행 날짜 자동 적용" 안내는 뺐다 — 507c335에서 tripPrefill 전달을 없애 더는 자동 적용되지 않는다(없는 기능 약속 금지) */}
+            {/* "여행 날짜 자동 적용" 안내 문구는 없다 — 2026-11-05부터 tripPrefill로 날짜만 다시 자동 적용된다(handleAddRecord). 안내를 되살리려면 날짜만이라는 범위에 맞게 쓸 것 */}
             <View style={s.fmGrid}>
               {ADD_FORMATS.map((f) => (
                 <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={t('trip.addFormatA11y', { format: viewTypeName(f.type, t) })}>
