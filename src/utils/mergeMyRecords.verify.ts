@@ -628,5 +628,35 @@ eq(
   '서버본에 serverUpdatedAt이 없으면 로컬 기준선을 유지한다'
 );
 
+// 36) 블로그 '메모 (비공개)'는 서버에 올리지 않는다(posts.ts stripPrivateMemo, 보안 감사 2026-11-07).
+//     그래서 다른 기기에서 고친 서버본엔 memo가 없다 — 그대로 덮으면 **작성 기기의 메모가 사라진다.**
+type MemoRec = FullRec & { viewType?: string; memo?: string };
+eq(
+  mergeServerUpdate(
+    { id: 'l', remoteId: 'r1', viewType: 'blog', memo: '나만 볼 메모', content: '옛 본문' } as MemoRec,
+    { id: 'r1', remoteId: 'r1', viewType: 'blog', content: '고친 본문' } as MemoRec
+  ).memo,
+  '나만 볼 메모',
+  '블로그: 서버본에 없는 비공개 memo를 작성 기기 로컬 값으로 지킨다'
+);
+// 36-b) 피드의 memo는 공개 본문(캡션) — 다른 기기의 수정이 전파돼야 한다(로컬 고수 금지)
+eq(
+  mergeServerUpdate(
+    { id: 'l', remoteId: 'r1', viewType: 'feed', memo: '옛 캡션' } as MemoRec,
+    { id: 'r1', remoteId: 'r1', viewType: 'feed', memo: '고친 캡션' } as MemoRec
+  ).memo,
+  '고친 캡션',
+  '피드: memo(공개 캡션)는 서버본을 채택한다'
+);
+// 36-c) 블로그인데 로컬에도 메모가 없으면 없는 그대로(키를 만들지 않는다)
+eq(
+  'memo' in mergeServerUpdate(
+    { id: 'l', remoteId: 'r1', viewType: 'blog' } as MemoRec,
+    { id: 'r1', remoteId: 'r1', viewType: 'blog' } as MemoRec
+  ),
+  false,
+  '블로그: 양쪽 다 memo가 없으면 키도 없다'
+);
+
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

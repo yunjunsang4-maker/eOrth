@@ -15,6 +15,8 @@
  *    `mergeServerUpdate`(수정된 서버본을 미디어 보존하며 덮기)가 담당한다.
  */
 
+import { isPrivateMemoRecord } from './privateMemo';
+
 /**
  * 병합에 필요한 최소 shape. `TravelRecord`를 직접 받지 않고 제네릭으로 두는 이유는
  * ① 검증 파일(*.verify.ts)이 React 스토어를 끌어오지 않고 가벼운 픽스처로 돌 수 있고
@@ -339,6 +341,11 @@ export function mergeServerUpdate<T extends MergeableRecord>(local: T, server: T
     'isMyPost', 'liked', 'uploadedMediaUrls', 'albumUploadQuality',
     'mediaAssetIds', 'tripGroupId', 'tripGroupOrder', 'snapViewed',
   ]) keepLocal(k);
+  // memo(블로그만) — '메모 (비공개)'는 서버에 올리지 않는다(stripPrivateMemo, 보안 감사 2026-11-07).
+  //              서버본엔 없으므로 그대로 덮으면 작성 기기의 메모가 사라진다. 피드·네컷의 memo는
+  //              공개 본문이라 서버본(다른 기기의 수정)을 채택해야 하므로 여기에 넣지 않는다.
+  // ⚠️ 한계: 메모는 이제 작성 기기에만 있다 — 다른 기기에서 처음 받는 글(로컬에 없음)에는 메모가 없다.
+  if (isPrivateMemoRecord(out)) keepLocal('memo');
   // mediaTimes — 합집합(같은 키는 로컬 우선). 서버 사본은 원격 URL 키(posts.ts remapUriKeys, 5bdeeef~)라
   //   로컬 file:// 키와 겹치지 않는다. 로컬 값만 지키면 아래 pickUriList가 medias를 서버 URL로 통째 바꿀 때
   //   (장수 불일치) 키가 하나도 안 맞아 작성 기기에서도 타임라인이 전부 '날짜 미상'이 됐다.

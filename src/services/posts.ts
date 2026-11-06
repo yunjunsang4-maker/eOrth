@@ -16,6 +16,7 @@ import type { TravelRecord } from '../store/recordStore';
 import type { ServerPostCounts } from '../utils/postCountSync';
 import type { ServerPostRef } from '../utils/mergeMyRecords';
 import { mergeAuthorDisplay, type AuthorProfileRow } from '../utils/authorDisplay';
+import { stripPrivateMemo } from '../utils/privateMemo';
 
 // 사진첩 서버본 압축 규격(ALBUM_EDGE·ALBUM_QUALITY)은 utils/imageCompress에 있다 — 기기 저장본과 같은 값.
 
@@ -44,7 +45,10 @@ const ups = async (arr: string[]): Promise<string[]> => (await uploadImages(arr)
 // 레코드 안의 모든 로컬 이미지 URI를 업로드해 공개 URL로 치환한 사본 반환.
 // 한 장이라도 업로드 실패하면 throw (부분 성공 상태로 발행하지 않음).
 async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions): Promise<TravelRecord> {
-  const copy: TravelRecord = { ...rec };
+  // 블로그 '메모 (비공개)'는 서버에 싣지 않는다 — posts_select가 이웃에게 data 전체를 주므로
+  // 올리는 순간 '나만 볼 수 있는 메모'가 이웃에게 보인다(보안 감사 2026-11-07). 사진첩 조기 반환
+  // 경로까지 모두 이 사본에서 출발하므로 여기 한 곳에서 뺀다. 로컬 기록(rec)은 변형하지 않는다.
+  const copy: TravelRecord = stripPrivateMemo({ ...rec });
   const isAlbum = rec.viewType === 'album';
 
   // ─── 목록용 축소본(썸네일) ───
@@ -315,7 +319,11 @@ export async function deletePost(remoteId: string): Promise<boolean> {
 
 // posts 행 → TravelRecord 변환 (피드/프로필 공통)
 function mapRowToRecord(row: any): TravelRecord {
-  const rec = (row.data ?? {}) as TravelRecord;
+  // 블로그 '메모 (비공개)'는 받은 쪽에서도 지운다 — 발행 차단(withUploadedMedia) 이전에 올라간 옛 행과,
+  // 업데이트 안 한 작성자 앱이 계속 올리는 값이 타인 화면(PostDetail 블로그 메모 칸)에 뜨지 않게.
+  // ⚠️ 내 글 복원(fetchMyPosts)도 이 경로라 옛 행의 내 메모도 여기서 버려진다 — 작성 기기의 로컬
+  //    메모는 mergeServerUpdate의 keepLocal이 지킨다(utils/privateMemo 참조).
+  const rec = stripPrivateMemo((row.data ?? {}) as TravelRecord);
   // ⚠️ `?? {}`로 뭉개지 않는다 — "임베드가 없다(차단·탈퇴)"와 "임베드는 있는데 값이 null이다
   //    (사진 삭제·프리미엄 해지)"를 구분해야 삭제가 전파된다. 판정 규칙은 mergeAuthorDisplay.
   const prof = (row.profiles ?? null) as AuthorProfileRow | null;

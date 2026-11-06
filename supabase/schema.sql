@@ -748,10 +748,19 @@ drop policy if exists "neighbors_select_own" on public.neighbors;
 create policy "neighbors_select_own" on public.neighbors
   for select to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
 
+-- ⚠️ 수락 없는 관계 위조 방어 (보안 감사 2026-11-07, migration-2026-11-07-security-neighbors-memo.sql)
+-- 예전 with check는 requester_id·차단만 봐서, PostgREST로 {requester_id: 나, addressee_id: 상대,
+-- status: 'accepted'}를 바로 insert하면 상대의 수락 없이 are_neighbors가 true가 됐다(상대에겐
+-- 알림도 없음 — notify_on_neighbor_request는 pending일 때만 알린다). 서로이웃은 비공개 기록
+-- 열람 권한이다. 신청은 항상 pending으로만 들어오고(src/services/social.ts requestNeighbor),
+-- accepted 전환은 accept_neighbor RPC(security definer)만 한다. 자기 자신과의 관계도 막는다.
 drop policy if exists "neighbors_insert_own" on public.neighbors;
 create policy "neighbors_insert_own" on public.neighbors
   for insert to authenticated with check (
-    requester_id = auth.uid() and not public.is_blocked_between(auth.uid(), addressee_id)
+    requester_id = auth.uid()
+    and requester_id <> addressee_id
+    and status = 'pending'
+    and not public.is_blocked_between(auth.uid(), addressee_id)
   );
 
 drop policy if exists "neighbors_update_addressee" on public.neighbors;
