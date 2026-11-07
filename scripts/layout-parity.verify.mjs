@@ -211,6 +211,10 @@ const ALLOW_MODAL_STAGE = new Set([
   // TravelImportScreen.tsx: SCREEN_W/ORB_W/ORB_H/ORB_PT는 화면 본문 오브 비주얼에만
   // 쓰이고 <Modal>(1188행) 안에는 참조가 전혀 없다.
   'src/screens/TravelImportScreen.tsx',
+  // TripDetailScreen.tsx: 썸네일 변경 시트가 공용 MenuSheet로 바뀌면서(2026-11-07) 시트 폭 클램프는
+  // MenuSheet.tsx가 한다. 남은 <Modal> 3곳 중 ⋯·정렬 드롭다운은 useStageGutter()를 버튼 위치 맞춤에만
+  // 쓰고(SocialScreen과 같은 의도된 사용), 형식 선택 카드는 maxWidth 360 고정이라 Stage 폭이 새지 않는다.
+  'src/screens/TripDetailScreen.tsx',
 ]);
 for (const f of collect('src', '.tsx')) {
   const p = rel(f);
