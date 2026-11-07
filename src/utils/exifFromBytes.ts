@@ -12,6 +12,7 @@
  * HEIC는 Exif 항목이 파일 뒤쪽에 있을 수 있어 findHeifExifRange(meta/iinf/iloc)로 위치를 먼저 구한다.
  * base64ToBytes는 readAsStringAsync(base64) 결과를 atob 없이 디코드한다.
  * 문자열 → ms 변환은 albumSections.exifTakenAt을 그대로 쓴다(picker exif와 같은 규칙·같은 오프셋 처리).
+ * tz(앨범 나라 시간대, utils/albumTimeZone)를 넘기면 오프셋 태그 없는 날짜를 그 시간대 벽시계로 읽는다 — 없으면 기기 로컬(예전 그대로).
  *
  * ⚠️ RN·Expo import 금지 — verify가 tsx로 돌린다.
  * 잘린 바이트·엉뚱한 오프셋은 throw 없이 undefined.
@@ -20,20 +21,20 @@ import { exifTakenAt } from './albumSections';
 
 const MARKER = [0x45, 0x78, 0x69, 0x66, 0x00, 0x00]; // 'Exif\0\0'
 
-export function exifTakenAtFromBytes(bytes: Uint8Array): number | undefined {
+export function exifTakenAtFromBytes(bytes: Uint8Array, tz?: string | null): number | undefined {
   // 마커가 우연히 여러 번 나올 수 있어(썸네일·메이커노트) TIFF 헤더가 맞는 첫 후보를 쓴다
   // 첫 바이트('E')는 네이티브 indexOf로 건너뛴다 — EXIF 없는 사진은 버퍼 전체를 훑으므로,
   // Hermes(무JIT)에서 바이트마다 JS 비교를 도는 것보다 훨씬 싸다
   for (let i = bytes.indexOf(MARKER[0]); i >= 0 && i + MARKER.length + 8 <= bytes.length; i = bytes.indexOf(MARKER[0], i + 1)) {
     if (!MARKER.every((b, k) => bytes[i + k] === b)) continue;
-    const ts = readTiff(bytes, i + MARKER.length);
+    const ts = readTiff(bytes, i + MARKER.length, tz);
     if (ts !== null) return ts;
   }
   return undefined;
 }
 
 /** TIFF 헤더가 아니면 null(다음 마커 후보로), 헤더는 맞지만 날짜를 못 찾으면 undefined */
-function readTiff(b: Uint8Array, base: number): number | undefined | null {
+function readTiff(b: Uint8Array, base: number, tz?: string | null): number | undefined | null {
   const le = b[base] === 0x49 && b[base + 1] === 0x49 && b[base + 2] === 0x2a && b[base + 3] === 0x00;
   const be = b[base] === 0x4d && b[base + 1] === 0x4d && b[base + 2] === 0x00 && b[base + 3] === 0x2a;
   if (!le && !be) return null;
@@ -79,7 +80,7 @@ function readTiff(b: Uint8Array, base: number): number | undefined | null {
     DateTime: ascii(ifd0.get(0x0132)),
     OffsetTimeOriginal: ascii(exifIfd.get(0x9011)),
     OffsetTime: ascii(exifIfd.get(0x9010)),
-  });
+  }, tz);
 }
 
 // ─────────────────────────────────────────────
@@ -229,13 +230,13 @@ export function findHeifExifRange(b: Uint8Array): { offset: number; length: numb
  * HEIF Exif 항목 페이로드 → 촬영시각. 페이로드 앞 4바이트(빅엔디언)는 TIFF 헤더까지의 오프셋이다
  * (보통 6 = 'Exif\0\0' 다음). 그 값이 이상하면 마커 스캔으로 폴백한다.
  */
-export function exifTakenAtFromHeifExif(p: Uint8Array): number | undefined {
+export function exifTakenAtFromHeifExif(p: Uint8Array, tz?: string | null): number | undefined {
   const off = be32(p, 0);
   if (off >= 0) {
-    const ts = readTiff(p, 4 + off);
+    const ts = readTiff(p, 4 + off, tz);
     if (ts !== null) return ts;
   }
-  return exifTakenAtFromBytes(p);
+  return exifTakenAtFromBytes(p, tz);
 }
 
 // ─────────────────────────────────────────────

@@ -49,5 +49,16 @@ eq(summarizeAddedDays([undefined, null, 0, NaN, at(2026, 3, 2)]), { days: ['2026
 // 0장
 eq(summarizeAddedDays([]), { days: [], dated: 0, undated: 0 }, '빈 배열 → 모두 0');
 
+// ── 앨범 시간대(tz) — 안내 날짜가 날짜 줄(buildAlbumTimeline tz)과 같은 날을 가리켜야 한다 ──
+// 마드리드 11/06 22:00(21:00Z)·11/07 07:00(06:00Z) — 입력이 절대시각이라 실행 기기 시간대와 무관
+const ES = [Date.UTC(2026, 10, 6, 21), Date.UTC(2026, 10, 7, 6)];
+eq(summarizeAddedDays(ES, 'Europe/Madrid'), { days: ['2026.11.06', '2026.11.07'], dated: 2, undated: 0 }, 'tz: 마드리드 기준 22:00·다음날 07:00 → 이틀');
+eq(summarizeAddedDays(ES, 'Asia/Seoul').days, ['2026.11.07'], 'tz 증상 재현: 서울 기준이면 하루로 합쳐진다(이전 동작)');
+eq(summarizeAddedDays([undefined, 0, ES[0]], 'Europe/Madrid'), { days: ['2026.11.06'], dated: 1, undated: 2 }, 'tz: 시각 없는 사진은 tz와 무관하게 날짜 미상');
+// tz 없음·잘못된 id → 기기 로컬(예전 그대로)
+eq(summarizeAddedDays([at(2026, 3, 2), at(2026, 3, 3)], 'Not/AZone'), summarizeAddedDays([at(2026, 3, 2), at(2026, 3, 3)]), 'tz 잘못된 id → tz 없음과 같다');
+// 안내 라벨: 키 → dayKeyToDate의 로컬 연·월·일·요일 = 그 달력 날짜(시간대 무관). 2026-11-06은 금요일(5)
+eq(((d) => d && [d.getMonth() + 1, d.getDate(), d.getDay()])(dayKeyToDate('2026.11.06')), [11, 6, 5], '라벨: 2026.11.06 → 11월 6일 금요일');
+
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');

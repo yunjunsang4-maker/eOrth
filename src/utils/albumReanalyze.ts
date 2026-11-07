@@ -34,12 +34,15 @@
  *      서버 사본 mediaTimes(원격 키 그대로 — posts.ts remapUriKeys)에 실어 다른 기기 타임라인에도 반영된다.
  *      **날짜(DateTimeOriginal 계열)만 읽는다** — GPS 등 다른 태그는 파싱·저장하지 않는다(exifFromBytes가 날짜만 꺼낸다).
  * 대상 선정은 effectiveMediaTimes 기준 — 화면의 '날짜 미상'·버튼 노출(TripRecordRenderer)과 같은 함수다.
+ * EXIF 단계(2·3)는 오프셋 태그 없는 날짜를 앨범 나라 시간대(albumTimeZoneOf(record) — 날짜 줄·사진 추가와 같은 계산) 벽시계로 읽는다.
+ * 국기를 못 풀면 기기 로컬(예전 그대로). 1·1.5단계 creationTime은 절대시각이라 시간대와 무관하다.
  * 결과는 찾은 시각(찾은 것만)·사진첩 매칭으로 새로 안 assetId·못 찾은 이유별 장수. 병합·저장은 호출부(TripRecordScreen) 몫이다.
  */
 import { Image, Platform } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { readAsStringAsync, getInfoAsync } from 'expo-file-system/legacy';
 import { effectiveMediaTimes } from './albumSections';
+import { albumTimeZoneOf } from './albumTimeZone';
 import { albumDateWindow, orderCandidates, createSizeMatcher, type AlbumPhotoSig, type GalleryCandidate } from './albumGalleryMatch';
 import { exifTakenAtFromBytes, exifTakenAtFromHeifExif, findHeifExifRange, heifMetaEnd, isHeif, ftypBrand, base64ToBytes } from './exifFromBytes';
 
@@ -113,6 +116,10 @@ const loadNextAsset = (): NextAssetCtor | null => {
 let nextUriWorked = false;
 
 interface ReanalyzeRecord {
+  // 앨범 시간대(albumTimeZoneOf) 원천 — 사진첩은 국기만 저장한다
+  countryFlag?: string | null;
+  countryName?: string | null;
+  countries?: { flag?: string | null; name?: string | null }[] | null;
   startDate?: string;
   endDate?: string;
   medias?: string[];
@@ -177,6 +184,7 @@ export async function findMissingPhotoTimes(
   record: ReanalyzeRecord,
 ): Promise<{ times: Record<string, number>; assetIds: Record<string, string>; tried: number; found: number; reasons: ReanalyzeReasons }> {
   const known = effectiveMediaTimes(record);
+  const tz = albumTimeZoneOf(record); // EXIF(오프셋 없음) 해석용 — 화면 날짜 줄과 같은 시간대
   const targets = [...new Set((record.medias ?? []).filter((u) => !hasTime(known?.[u])))];
   const times: Record<string, number> = {};
   // 사진첩 매칭으로 새로 안 assetId — 키는 앨범 사진의 로컬 경로(mediaAssetIds 키 체계). 이미 있는 키는 넣지 않는다
@@ -245,24 +253,24 @@ export async function findMissingPhotoTimes(
       if (range) {
         try {
           const p = await read(range.offset, Math.min(range.length || HEIF_EXIF_MAX, HEIF_EXIF_MAX));
-          const ts = p && exifTakenAtFromHeifExif(p);
+          const ts = p && exifTakenAtFromHeifExif(p, tz);
           if (ts) return { ts, stage: 'heif-iloc' };
         } catch { /* 범위 읽기 실패 — 아래 폴백 */ }
       }
     } else {
-      const ts = exifTakenAtFromBytes(head);
+      const ts = exifTakenAtFromBytes(head, tz);
       if (ts) return { ts, stage: 'head-scan' };
       headScanned = true;
     }
     // 폴백(형식 무관): 파일이 앞부분보다 길면 앞 256KB 마커 스캔, 아니면 이미 읽은 파일 전체를 스캔
     if (!headScanned && head.length < HEAD_BYTES) {
-      const ts = exifTakenAtFromBytes(head);
+      const ts = exifTakenAtFromBytes(head, tz);
       if (ts) return { ts, stage: 'head-scan' };
     }
     if (head.length >= HEAD_BYTES) {
       try {
         const big = await read(0, SCAN_BYTES);
-        const ts = big && exifTakenAtFromBytes(big);
+        const ts = big && exifTakenAtFromBytes(big, tz);
         if (ts) return { ts, stage: 'scan-256k' };
       } catch { /* 앞부분은 읽혔으니 날짜 없음으로 센다 */ }
     }

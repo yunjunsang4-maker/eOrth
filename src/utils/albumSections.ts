@@ -6,6 +6,7 @@
  * 남아 있을 수 있는 albumSections(수동 섹션, 폐지) 필드도 건드리지 않고 무시한다.
  * 파일 이름은 import 경로 호환 때문에 그대로 둔다.
  */
+import { zonedDayKey, zonedWallClockToMs } from './albumTimeZone';
 
 export interface AlbumMoment {
   startMs: number;   // 이 순간 첫 사진의 촬영시각
@@ -13,7 +14,7 @@ export interface AlbumMoment {
 }
 
 export interface AlbumDay {
-  key: string;       // 기기 로컬 날짜 'YYYY.MM.DD'
+  key: string;       // 앨범 시간대(없으면 기기 로컬) 날짜 'YYYY.MM.DD' — utils/albumTimeZone
   startMs: number;   // 그날 첫 사진의 촬영시각
   dayN: number;      // 앨범 첫 날로부터 달력 일수 차 + 1 (사진 없는 날은 번호가 건너뛴다)
   moments: AlbumMoment[];
@@ -29,9 +30,12 @@ export interface AlbumTimeline {
 // 장소 이동(GPS)이나 사진 밀도를 보지 않는다 — 부정확하다는 피드백이 오면 그때 군집화로 바꾼다.
 export const MOMENT_GAP_MS = 2 * 60 * 60 * 1000;
 
-const pad2 = (n: number) => String(n).padStart(2, '0');
-
-export function buildAlbumTimeline(medias: string[], mediaTimes?: Record<string, number>): AlbumTimeline {
+/**
+ * medias + mediaTimes → 날짜·순간 타임라인. tz(IANA, utils/albumTimeZone albumTimeZoneOf)가 있으면 날짜 키·dayN을
+ * 그 시간대 날짜로 나눈다(여행지 22:00과 다음날 07:00이 기기 시간대로 같은 날에 묶이던 문제). 없으면 기기 로컬 — 예전 그대로.
+ * 이 tz는 날짜 줄(AlbumTimeline)·하루 보기(AlbumDayScreen)·날짜별 사진 추가·추가 안내가 모두 같은 값을 써야 키가 맞는다.
+ */
+export function buildAlbumTimeline(medias: string[], mediaTimes?: Record<string, number>, tz?: string | null): AlbumTimeline {
   const timeOf = (i: number) => {
     const ts = mediaTimes?.[medias[i]];
     return typeof ts === 'number' && ts > 0 ? ts : 0;
@@ -42,17 +46,18 @@ export function buildAlbumTimeline(medias: string[], mediaTimes?: Record<string,
   const undated = all.filter((i) => timeOf(i) === 0);
 
   const days: AlbumDay[] = [];
-  let firstMidnight = 0;
+  let firstDay = 0;
   for (const i of dated) {
     const ts = timeOf(i);
-    const d = new Date(ts);
-    const key = `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())}`;
+    // 키는 zonedDayKey 한 곳에서 — 기간 격자·추가 안내(dateRangePhotoPick dayKey)와 같은 함수라 같은 날을 가리킨다
+    const key = zonedDayKey(ts, tz);
     let day = days[days.length - 1];
     if (!day || day.key !== key) {
-      const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      if (days.length === 0) firstMidnight = midnight;
-      // round: 서머타임 전환일은 하루가 23·25시간이라 나눗셈이 정수로 안 떨어진다
-      day = { key, startMs: ts, dayN: Math.round((midnight - firstMidnight) / 86400000) + 1, moments: [] };
+      // 달력 일수 차는 키의 연·월·일을 UTC 자정끼리 — 서머타임(23·25시간 하루)에도 정확히 정수다
+      const [y, m, d] = key.split('.').map(Number);
+      const dayUtc = Date.UTC(y, m - 1, d);
+      if (days.length === 0) firstDay = dayUtc;
+      day = { key, startMs: ts, dayN: (dayUtc - firstDay) / 86400000 + 1, moments: [] };
       days.push(day);
     }
     const moment = day.moments[day.moments.length - 1];
@@ -133,11 +138,13 @@ export function effectiveMediaTimes(rec: {
  * - OffsetTimeOriginal(없으면 OffsetTime) '+09:00'이 있으면 그 오프셋으로 절대시각을 낸다 —
  *   사진첩 생성 때 담는 MediaLibrary creationTime(절대시각)과 기준을 맞추기 위해서다.
  *   iOS는 이 태그가 있으면 함께 온다. Android picker는 OFFSET 태그를 주지 않는다.
- * - 오프셋이 없으면 기기 로컬 시각으로 조립한다(new Date(문자열)은 UTC·엔진별 해석이라 쓰지 않는다).
- *   ponytail: 시차 있는 여행지 사진을 오프셋 없이 읽으면 시차만큼 어긋난다 — Android에서 고치려면
- *   MediaLibrary assetId로 creationTime을 다시 조회해야 한다.
+ * - 오프셋이 없으면 tz(앨범 나라 시간대, utils/albumTimeZone)가 있으면 그 시간대 벽시계로, 없으면 기기 로컬 시각으로
+ *   조립한다(new Date(문자열)은 UTC·엔진별 해석이라 쓰지 않는다). tz는 사진첩 경로만 넘긴다 — 사진 추가 시스템 선택기
+ *   (TripRecordScreen)와 '날짜 다시 찾기'(albumReanalyze → exifFromBytes). 여행지에서 찍은 사진이라는 가정이 앨범에서만 성립한다.
+ *   ponytail: tz 없이 오프셋 없는 여행지 사진을 읽으면 시차만큼 어긋난다(이미 저장된 값은 못 고친다) —
+ *   정확히 하려면 MediaLibrary assetId로 creationTime을 다시 조회해야 한다.
  */
-export function exifTakenAt(exif: Record<string, any> | null | undefined): number | undefined {
+export function exifTakenAt(exif: Record<string, any> | null | undefined, tz?: string | null): number | undefined {
   if (!exif) return undefined;
   // 빈·공백 문자열은 없는 값 — 일부 카메라·편집기가 DateTimeOriginal을 공백으로 채워, ??만으로는 DateTime 폴백이 막힌다
   const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined);
@@ -148,7 +155,7 @@ export function exifTakenAt(exif: Record<string, any> | null | undefined): numbe
   const off = String(str(exif.OffsetTimeOriginal) ?? str(exif.OffsetTime) ?? '').match(/^([+-])(\d{2}):(\d{2})$/);
   const ts = off
     ? Date.UTC(y, mo - 1, d, h, mi, sec) - (off[1] === '-' ? -1 : 1) * (+off[2] * 60 + +off[3]) * 60000
-    : new Date(y, mo - 1, d, h, mi, sec).getTime();
+    : zonedWallClockToMs(y, mo, d, h, mi, sec, tz);
   // '0000:00:00 00:00:00' 같은 빈 값은 1899년대 음수 시각이 된다 — 무효로 본다
   return ts > 0 ? ts : undefined;
 }

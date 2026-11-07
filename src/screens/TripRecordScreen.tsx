@@ -23,6 +23,7 @@ import { useProfileSettings } from '../store/settingsStore';
 import { exifTakenAt, buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
 import { useAlbumPhotoActions } from '../hooks/useAlbumPhotoActions';
 import { dayKeyToDate, summarizeAddedDays } from '../utils/albumAddSummary';
+import { albumTimeZoneOf } from '../utils/albumTimeZone';
 import { lookupDayPlaces } from '../utils/albumPlaceLookup';
 import { localAssetIdOf } from '../utils/photoPlace';
 import { parseDotDate } from '../utils/momentMatch';
@@ -98,6 +99,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // 화면은 촬영시각 타임라인(AlbumTimeline)이라 저장 순서는 의미가 없다 — 새 사진은 끝에 붙인다.
   // 옛 기록의 albumSections(수동 섹션, 폐지)는 읽지도 쓰지도 않는다.
   const medias = record.medias ?? [];
+  // 앨범 나라(국기) 시간대 — 날짜 줄(TripRecordRenderer → AlbumTimeline)·하루 보기(AlbumDayScreen)와 같은 계산(utils/albumTimeZone).
+  // 아래 날짜 장소(albumDays)·추가 안내(summarizeAddedDays)·날짜/기간 사진 격자(DateRangePhotoSheet timeZone)·
+  // 시스템 선택기 촬영시각(exifTakenAt)이 모두 이 값을 써야 서로 같은 날을 가리킨다. 없으면 전부 기기 시간대(예전 그대로).
+  const albumTz = albumTimeZoneOf(record);
   // 사진첩 사진 상한 — 모두 100장 (constants/limits.ts getMaxAlbumPhotos, 프리미엄 상향은 제거됨)
   const { isPremium } = useProfileSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
@@ -149,7 +154,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     }
     if (!mountedRef.current) return; // 떠났으면 저장만 하고 안내는 생략(다른 화면 위에 Alert가 뜨지 않게)
     // 안내는 한 번에 — 날짜 배치·날짜 미상·중복 제외·iCloud 실패를 줄로 모아 Alert가 연달아 뜨지 않게 한다
-    const sum = summarizeAddedDays(picked.slice(0, n).map((p) => p.ts));
+    const sum = summarizeAddedDays(picked.slice(0, n).map((p) => p.ts), albumTz);
     const first = dayKeyToDate(sum.days[0]);
     const firstLabel = first ? t('time.monthDay', { m: first.getMonth() + 1, d: first.getDate() }) : '';
     const lines = [
@@ -193,7 +198,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       setBusy(true);
       try {
         await addPickedPhotos(
-          fresh.map((a) => ({ uri: a.uri, assetId: a.assetId ?? undefined, ts: exifTakenAt(a.exif) })),
+          // 오프셋 태그 없는 EXIF(안드로이드 picker)는 앨범 시간대 벽시계로 읽는다 — 기기(한국) 시각으로 읽으면 시차만큼 어긋나 저장된다
+          fresh.map((a) => ({ uri: a.uri, assetId: a.assetId ?? undefined, ts: exifTakenAt(a.exif, albumTz) })),
           { dup: dupCount },
         );
       } finally {
@@ -253,6 +259,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     if (s == null || e == null) { void handleAlbumAddPhotos(); return; }
     openRangeSheet(new Date(s), new Date(e));
   };
+  // key는 앨범 시간대 날짜. dayKeyToDate는 그 달력 날짜의 로컬 자정 Date라, 시트가 그 날짜를 timeZone의 하루로 다시 읽는다(dayRangeMs tz)
   const handleAlbumAddPhotosForDay = (key: string) => {
     const d = dayKeyToDate(key);
     if (!d) { openAlbumAddPhotos(); return; } // 'undated' 등 — 렌더러가 이미 걸러 주지만 방어
@@ -314,8 +321,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const albumDays = useMemo(() => {
     if (!isAlbum) return [];
     const list = record.medias ?? [];
-    return buildAlbumTimeline(list, albumTimes).days.map((d) => ({ key: d.key, uris: d.moments.flatMap((m) => m.indexes).map((i) => list[i]) }));
-  }, [isAlbum, record.medias, albumTimes]);
+    return buildAlbumTimeline(list, albumTimes, albumTz).days.map((d) => ({ key: d.key, uris: d.moments.flatMap((m) => m.indexes).map((i) => list[i]) }));
+  }, [isAlbum, record.medias, albumTimes, albumTz]);
   const { mediaAssetIds, uploadedMediaUrls } = record;
   useEffect(() => {
     if (albumDays.length === 0) return;
@@ -649,7 +656,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         />
       </SettingsModal>
 
-      {/* 기간 사진 격자 한 벌 — 일반 '사진 추가'는 기록 기간, 날짜 줄 ⋯는 그날(로컬 00:00~23:59:59.999). 이미 담긴 사진은 assetId로 '담김' 처리 */}
+      {/* 기간 사진 격자 한 벌 — 일반 '사진 추가'는 기록 기간, 날짜 줄 ⋯는 그날(앨범 시간대 00:00~23:59:59.999, 없으면 기기 로컬). 이미 담긴 사진은 assetId로 '담김' 처리 */}
       {isAlbum && daySheetRange && (
         <DateRangePhotoSheet
           visible={daySheetOpen}
@@ -657,6 +664,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           endDate={daySheetRange.end}
           max={Math.max(1, albumMax - medias.length)}
           excludeAssetIds={excludeAssetIds}
+          timeZone={albumTz}
           onConfirm={confirmDaySheet}
           onOpenSystemPicker={() => { void openPickerFromDaySheet(); }}
           onClose={() => setDaySheetOpen(false)}

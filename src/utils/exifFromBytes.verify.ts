@@ -93,6 +93,10 @@ const t = tiff(true, [DT0], [DTO]);
 const ptrEntry = 8 + 2 + 12; // IFD0 두 번째 항목 = 0x8769
 t.splice(ptrEntry + 8, 4, 0xf0, 0xff, 0xff, 0x7f);
 eq(exifTakenAtFromBytes(jpeg(t)), new Date(2023, 0, 1, 8, 0, 0).getTime(), 'ExifIFD 포인터 범위 밖 → IFD0 DateTime 폴백');
+// 앨범 시간대(tz) — '날짜 다시 찾기'가 오프셋 없는 EXIF를 앨범 나라 벽시계로 읽는다(마드리드 3월 = UTC+1, 기기 시간대 무관)
+eq(exifTakenAtFromBytes(jpeg(tiff(true, [], [DTO])), 'Europe/Madrid'), Date.UTC(2024, 2, 2, 13, 20, 5), 'tz: 오프셋 없음 + 마드리드 14:20:05 = 13:20:05Z');
+// 오프셋 태그가 있으면 tz보다 우선
+eq(exifTakenAtFromBytes(jpeg(tiff(true, [], [DTO, { tag: 0x9011, str: '+09:00' }])), 'Europe/Madrid'), Date.UTC(2024, 2, 2, 5, 20, 5), 'tz: OffsetTimeOriginal이 tz보다 우선');
 
 // ─────────────────────────────────────────────
 // HEIF: ftyp + meta(hdlr, iinf/infe, iloc) + mdat 를 손으로 조립해 Exif 항목 위치 찾기를 검증
@@ -161,6 +165,10 @@ for (const [ilocV, infeV] of [[0, 2], [1, 2], [2, 3]]) {
 }
 // 페이로드 앞 4바이트가 엉터리면 마커 스캔으로 폴백
 eq(exifTakenAtFromHeifExif(Uint8Array.from([0xff, 0xff, 0xff, 0xf0, ...PAYLOAD.slice(4)])), WANT, 'HEIF 페이로드 오프셋 엉터리 → 마커 스캔 폴백');
+// HEIF 경로도 tz를 끝까지 넘긴다(오프셋 경로·마커 스캔 폴백 둘 다)
+eq(exifTakenAtFromHeifExif(Uint8Array.from(PAYLOAD), 'Europe/Madrid'), Date.UTC(2024, 2, 2, 13, 20, 5), 'tz: HEIF 페이로드 + 마드리드 = 13:20:05Z');
+eq(exifTakenAtFromHeifExif(Uint8Array.from([0xff, 0xff, 0xff, 0xf0, ...PAYLOAD.slice(4)]), 'Europe/Madrid'), Date.UTC(2024, 2, 2, 13, 20, 5), 'tz: HEIF 마커 스캔 폴백도 tz 반영');
+eq(exifTakenAtFromHeifExif(Uint8Array.from(PAYLOAD), 'Not/AZone'), WANT, 'tz: 잘못된 id → 기기 로컬(예전 그대로)');
 // 지원하지 않는 것 → undefined
 eq(findHeifExifRange(heif({ ilocV: 1, infeV: 2, method: 1 }).bytes), undefined, 'construction_method 1(idat) → 미지원 undefined');
 eq(findHeifExifRange(heif({ ilocV: 0, infeV: 2, brand: 'isom' }).bytes.map((x, i) => (i >= 16 && i < 20 ? 0x78 : x))), undefined, 'ftyp가 HEIF 계열이 아님(isom) → undefined');

@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Text } from '../ui/Text';
 import { buildAlbumTimeline } from '../utils/albumSections';
+import { dayKeyToDate } from '../utils/albumAddSummary';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
 import FeedPhoto from './FeedPhoto';
@@ -33,6 +34,9 @@ const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calend
 interface Props {
   medias: string[];
   mediaTimes?: Record<string, number>;
+  // 앨범 나라 시간대(utils/albumTimeZone albumTimeZoneOf) — 날짜 줄을 여행지 날짜로 나눈다. 없으면 기기 시간대.
+  // 하루 보기(AlbumDayScreen)·날짜별 사진 추가(TripRecordScreen)도 같은 값을 써야 날짜 키가 맞는다
+  timeZone?: string;
   // 기록의 원본 URL → 640px 축소본 맵(TravelRecord.thumbs) — 격자 칸에만 쓴다. 로컬 file://는 매칭되지 않아 그대로
   thumbs?: Record<string, string>;
   width: number; // 가용 폭
@@ -56,10 +60,10 @@ interface Props {
   reanalyzing?: boolean;
 }
 
-export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onDayMenu, dayPlaces, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
+export default function AlbumTimeline({ medias, mediaTimes, timeZone, thumbs, width, inset = 0, onPressPhoto, selecting, selected, onToggleSelect, onDayMenu, dayPlaces, onOpenDay, cellRadius = 0, onReanalyze, reanalyzing }: Props) {
   const { t } = useTranslation();
   const a = useSkinAccent();
-  const tl = useMemo(() => buildAlbumTimeline(medias, mediaTimes), [medias, mediaTimes]);
+  const tl = useMemo(() => buildAlbumTimeline(medias, mediaTimes, timeZone), [medias, mediaTimes, timeZone]);
   const flat = tl.days.length === 0;
   // 평면 격자는 3등분(floor — 3칸+간격이 폭을 넘어 줄바꿈되지 않게). 가로 줄은 폭의 1/3(402 → 134)이라
   // 셋째 칸이 살짝 잘려 옆으로 넘길 수 있다는 게 보인다(시안)
@@ -127,7 +131,8 @@ export default function AlbumTimeline({ medias, mediaTimes, thumbs, width, inset
   // 그룹 = 날짜 하루 또는 맨 끝 '날짜 미상'.
   const groups = [
     ...tl.days.map((d) => {
-      const dt = new Date(d.startMs);
+      // 라벨은 날짜 키(앨범 시간대 날짜)에서 — 기기 시간대 new Date(startMs)로 만들면 키와 다른 날·요일이 찍힌다
+      const dt = dayKeyToDate(d.key) ?? new Date(d.startMs);
       return {
         key: d.key,
         label: `${t('time.monthDay', { m: dt.getMonth() + 1, d: dt.getDate() })} (${t(WEEK_KEYS[dt.getDay()])})`,

@@ -48,6 +48,7 @@ import {
   deselectAllWithin,
   pickablePhotos,
 } from '../../utils/dateRangePhotoPick';
+import { zonedDayKey } from '../../utils/albumTimeZone';
 import { fetchPhotosInRange, type RangePhoto } from '../../utils/rangePhotoFetch';
 
 // 재질·색은 최신 화면(사진첩 2026-11-03 시안·설정 계열 SettingsUI)과 같은 값 — 흰/흰50% 위주, 보라는 선택 표시에만
@@ -78,6 +79,12 @@ export interface DateRangePhotoSheetProps {
   /** 이미 기록에 담긴 사진의 assetId — 수정 모드는 저장본 경로라 uri가 안 겹친다(그쪽 유일한 단서) */
   excludeAssetIds?: string[];
   /**
+   * IANA 시간대 — 사진첩(TripRecordScreen)만 앨범 나라 시간대를 넘긴다(utils/albumTimeZone). 있으면 startDate·endDate의
+   * 로컬 달력 날짜를 그 시간대의 하루로 읽어 기기 사진첩을 그 절대 범위로 조회하고, 날짜 칩·필터·기간 라벨도 그 시간대 날짜로.
+   * 사진첩 날짜 줄과 같은 날을 가리키기 위해서다. 없으면(기록 작성 NewRecordScreen) 기기 로컬 — 예전 그대로.
+   */
+  timeZone?: string;
+  /**
    * 담기. iCloud 오프로드 사진은 localUri가 없어 uri를 못 주므로 assetId로 따로 넘긴다 —
    * 호출부가 downloadCloudAssets로 받아 같은 importOriginals 한 경로로 흘린다.
    */
@@ -102,6 +109,7 @@ export default function DateRangePhotoSheet({
   max,
   excludeUris,
   excludeAssetIds,
+  timeZone,
   onConfirm,
   onOpenSystemPicker,
   onClose,
@@ -123,7 +131,7 @@ export default function DateRangePhotoSheet({
   const [dayFilter, setDayFilter] = useState<string | null>(null);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
-  const range = useMemo(() => dayRangeMs(startDate, endDate), [startDate, endDate]);
+  const range = useMemo(() => dayRangeMs(startDate, endDate, timeZone), [startDate, endDate, timeZone]);
   // 기간이 바뀌면 목록을 새로 불러오고 선택을 비운다 — 경계 ms를 키로 써서
   // 같은 날을 가리키는 다른 Date 객체로 재로드가 도는 것을 막는다.
   const rangeKey = range ? `${range.startMs}-${range.endMs}` : '';
@@ -189,11 +197,14 @@ export default function DateRangePhotoSheet({
     () => pickablePhotos(photos, excludeUris ?? [], excludeAssetIds ?? []),
     [photos, excludeUris, excludeAssetIds],
   );
+  // 사진별 날짜 키는 목록이 바뀔 때 한 번만 — timeZone이 있으면 장마다 Intl formatToParts(안드로이드는 JNI)라,
+  // 최대 8,000장을 칩·필터가 렌더(선택 탭)마다 다시 계산하지 않게 한다
+  const dayOf = useMemo(() => new Map(photos.map((p) => [p.uri, dayKey(p.creationTime, timeZone)])), [photos, timeZone]);
   const days = useMemo(
-    () => Array.from(new Set(pickable.map((p) => dayKey(p.creationTime)).filter((k): k is string => k !== null))).sort(),
-    [pickable]
+    () => Array.from(new Set(pickable.map((p) => dayOf.get(p.uri)).filter((k): k is string => !!k))).sort(),
+    [pickable, dayOf]
   );
-  const byDay = dayFilter ? pickable.filter((p) => dayKey(p.creationTime) === dayFilter) : pickable;
+  const byDay = dayFilter ? pickable.filter((p) => dayOf.get(p.uri) === dayFilter) : pickable;
   // GPS 필터 — '국가 밖으로 판정된' 사진만 제외한다(미판정·GPS 없음은 표시)
   const visiblePhotos = useMemo(
     () => (gpsOnly && countryToken ? byDay.filter((p) => locCacheRef.current.get(p.id) !== false) : byDay),
@@ -311,12 +322,12 @@ export default function DateRangePhotoSheet({
 
   // 포맷이 dayKey와 같아 보여도 dayKey를 쓰면 안 된다 — dayKey는 '촬영시각' 가드(ts<=0이면
   // 시각 없음으로 보고 null)를 달고 있고, 기간 경계는 로컬 자정이라 UTC+9에서 1970-01-01조차
-  // 음수 ms다(-32400000). 그대로 넘기면 라벨이 'null ~ …'이 된다.
-  const rangeLabel = useMemo(() => {
-    const f = (d: Date) =>
-      `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-    return range ? `${f(new Date(range.startMs))} ~ ${f(new Date(range.endMs))}` : '';
-  }, [range]);
+  // 음수 ms다(-32400000). 그대로 넘기면 라벨이 'null ~ …'이 된다. → 가드 없는 zonedDayKey.
+  // 경계가 timeZone 기준 절대시각이면 라벨도 같은 시간대로 읽어야 기기 날짜로 하루 밀려 보이지 않는다(없으면 기기 로컬).
+  const rangeLabel = useMemo(
+    () => (range ? `${zonedDayKey(range.startMs, timeZone)} ~ ${zonedDayKey(range.endMs, timeZone)}` : ''),
+    [range, timeZone],
+  );
 
   const dayChipLabel = (key: string) => {
     const [, m, d] = key.split('.');

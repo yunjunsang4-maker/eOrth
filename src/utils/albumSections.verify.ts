@@ -71,6 +71,63 @@ eq('tie keeps medias order', buildAlbumTimeline(['a', 'b', 'c'], { c: at(4, 8), 
 // 빈 사진첩
 eq('empty medias', buildAlbumTimeline([], {}), { days: [], undated: [], order: [] });
 
+// ── 앨범 시간대(tz) — 날짜를 여행지 기준으로(2026-11-07 "22시랑 07시가 같은 날로 되고 있어") ──
+// 입력은 Date.UTC 절대시각, 기대값은 그 시간대 날짜 — 실행 기기 시간대와 무관하다.
+{
+  // 마드리드 11월(UTC+1): 11/06 22:00 = 21:00Z, 11/07 07:00 = 06:00Z. 한국 시간으로는 둘 다 11/07
+  const T = { a: Date.UTC(2026, 10, 6, 21, 0), b: Date.UTC(2026, 10, 7, 6, 0) };
+  eq('tz 증상: 마드리드 기준 22:00과 다음날 07:00은 Day 1·Day 2', shape(buildAlbumTimeline(['a', 'b'], T, 'Europe/Madrid')), [
+    ['2026.11.06', 1, [[0]]],
+    ['2026.11.07', 2, [[1]]],
+  ]);
+  // 이전 동작(한국 기기 시간대로 나눔)을 시간대를 못 박아 재현 — 같은 날에 9시간 간격 두 순간으로 묶였다
+  eq('tz 증상 재현: 서울 기준이면 같은 날 두 순간', shape(buildAlbumTimeline(['a', 'b'], T, 'Asia/Seoul')), [['2026.11.07', 1, [[0], [1]]]]);
+  // 날짜만 tz를 따르고 startMs·순서는 절대시각 그대로
+  const tl = buildAlbumTimeline(['a', 'b'], T, 'Europe/Madrid');
+  eq('tz: startMs는 절대시각 그대로', tl.days.map((d) => d.startMs), [T.a, T.b]);
+  eq('tz: order 그대로', tl.order, [0, 1]);
+}
+// 서머타임 전환일(마드리드 3/29 23시간·10/25 25시간)에도 dayN은 달력 일수 차
+eq('tz dayN: 서머타임 시작 주변 3/28·3/29·3/30 → 1·2·3',
+  buildAlbumTimeline(['a', 'b', 'c'], { a: Date.UTC(2026, 2, 28, 11), b: Date.UTC(2026, 2, 29, 10), c: Date.UTC(2026, 2, 30, 10) }, 'Europe/Madrid')
+    .days.map((d) => [d.key, d.dayN]),
+  [['2026.03.28', 1], ['2026.03.29', 2], ['2026.03.30', 3]]);
+eq('tz dayN: 서머타임 종료일을 지나 3/1 → 10/26은 Day 240',
+  buildAlbumTimeline(['a', 'b'], { a: Date.UTC(2026, 2, 1, 11), b: Date.UTC(2026, 9, 26, 11) }, 'Europe/Madrid').days.map((d) => d.dayN),
+  [1, 240]);
+// 서머타임 전환 시각 바로 앞뒤(마드리드 10/25 01:00Z 전후 = 현지 02:59 CEST·02:00 CET)는 같은 날
+eq('tz: 서머타임 종료 순간 앞뒤는 같은 날',
+  buildAlbumTimeline(['a', 'b'], { a: Date.UTC(2026, 9, 25, 0, 59), b: Date.UTC(2026, 9, 25, 1, 0) }, 'Europe/Madrid').days.map((d) => d.key),
+  ['2026.10.25']);
+// 잘못된 tz는 예외 없이 기기 시간대 — tz 없음과 같은 결과
+{
+  const M = ['p0', 'p1', 'p2'];
+  const T = { p0: at(3, 9), p1: at(2, 23, 50), p2: at(3, 0, 10) };
+  eq('tz 잘못된 id → tz 없음과 같은 결과', buildAlbumTimeline(M, T, 'Not/AZone'), buildAlbumTimeline(M, T));
+  eq('tz null·빈 문자열 → tz 없음과 같은 결과', [buildAlbumTimeline(M, T, null), buildAlbumTimeline(M, T, '')], [buildAlbumTimeline(M, T), buildAlbumTimeline(M, T)]);
+}
+// tz 없음 = 예전 알고리즘(기기 로컬 Date 필드·로컬 자정 반올림)과 완전히 같은 결과 — 1년치 시각을 촘촘히 비교.
+// 서머타임 있는 시간대(TZ=America/Los_Angeles)에서 돌려도 같아야 한다.
+{
+  const oldDays = (ts: number[]) => {
+    let first = 0;
+    const out: [string, number][] = [];
+    for (const t of ts) {
+      const d = new Date(t);
+      const key = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+      if (out.length && out[out.length - 1][0] === key) continue;
+      const midnight = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+      if (!out.length) first = midnight;
+      out.push([key, Math.round((midnight - first) / 86400000) + 1]);
+    }
+    return out;
+  };
+  const ts = Array.from({ length: 900 }, (_, k) => Date.UTC(2026, 0, 1) + k * 9.7 * 3600000); // 약 1년, 9.7시간 간격
+  const medias = ts.map((_, k) => `m${k}`);
+  const times = Object.fromEntries(medias.map((m, k) => [m, ts[k]]));
+  eq('tz 없음 = 예전 알고리즘(1년치 900장)', buildAlbumTimeline(medias, times).days.map((d) => [d.key, d.dayN]), oldDays(ts));
+}
+
 // ── 다중 제거 ──
 eq('remove multi', removePhotosAt(['a', 'b', 'c', 'd', 'e'], [1, 4]), ['a', 'c', 'd']);
 // 범위 밖·음수 인덱스는 무시
@@ -118,6 +175,16 @@ eq('exif blank OTO → OffsetTime', exifTakenAt({ DateTimeOriginal: '2026:05:06 
 eq('exif undefined', exifTakenAt(undefined), undefined);
 eq('exif null', exifTakenAt(null), undefined);
 eq('exif empty', exifTakenAt({}), undefined);
+// 오프셋 없는 EXIF + 앨범 시간대 — 안드로이드 picker는 OFFSET 태그를 안 줘서, 예전엔 여행지 벽시계를 기기(한국) 시각으로 읽었다
+eq('exif tz: 오프셋 없음 + 마드리드 → 현지 22:00 = 21:00Z', exifTakenAt({ DateTimeOriginal: '2026:11:06 22:00:00' }, 'Europe/Madrid'), Date.UTC(2026, 10, 6, 21, 0, 0));
+eq('exif tz: 마드리드 여름(서머타임) 12:00 = 10:00Z', exifTakenAt({ DateTimeOriginal: '2026:07:01 12:00:00' }, 'Europe/Madrid'), Date.UTC(2026, 6, 1, 10, 0, 0));
+// 오프셋 태그가 있으면 tz보다 우선(사진 자체가 아는 오프셋이 더 정확하다)
+eq('exif tz: 오프셋 태그가 tz보다 우선', exifTakenAt({ DateTimeOriginal: '2026:05:06 20:00:00', OffsetTimeOriginal: '+09:00' }, 'Europe/Madrid'), Date.UTC(2026, 4, 6, 11, 0, 0));
+// tz 없음·null·잘못된 id는 기기 로컬(예전 그대로)
+eq('exif tz: undefined → 기기 로컬', exifTakenAt({ DateTimeOriginal: '2026:05:06 14:30:05' }, undefined), T0);
+eq('exif tz: null → 기기 로컬', exifTakenAt({ DateTimeOriginal: '2026:05:06 14:30:05' }, null), T0);
+eq('exif tz: 잘못된 id → 기기 로컬', exifTakenAt({ DateTimeOriginal: '2026:05:06 14:30:05' }, 'Not/AZone'), T0);
+eq('exif tz: 빈 날짜(0000:00:00)는 tz가 있어도 무효', exifTakenAt({ DateTimeOriginal: '0000:00:00 00:00:00' }, 'Europe/Madrid'), undefined);
 
 // ── effectiveMediaTimes — medias가 서버 URL로 바뀌고 mediaTimes는 로컬 키로 남은 기록 복구 ──
 {

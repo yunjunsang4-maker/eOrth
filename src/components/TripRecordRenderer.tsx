@@ -11,6 +11,7 @@ import { countryLabel } from '../utils/countryLabel';
 import PhotoViewerModal from './PhotoViewerModal';
 import AlbumTimeline from './AlbumTimeline';
 import { effectiveMediaTimes } from '../utils/albumSections';
+import { albumTimeZoneOf } from '../utils/albumTimeZone';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -204,6 +205,8 @@ function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover,
           <AlbumTimeline
             medias={medias}
             mediaTimes={mediaTimes}
+            // 날짜 줄을 앨범 나라(국기) 시간대 날짜로 — TripRecordScreen(날짜별 사진 추가·장소)·AlbumDayScreen과 같은 계산
+            timeZone={albumTimeZoneOf(record)}
             thumbs={record.thumbs}
             width={SCREEN_W}
             inset={16}

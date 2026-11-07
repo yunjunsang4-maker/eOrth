@@ -54,6 +54,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 // RatingStars는 2026-09-20 시안 적용으로 이 화면에서 링 배지(RatingRingBadge)로 대체되어 제거.
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import AlbumTimeline from '../components/AlbumTimeline';
+import { albumTimeZoneOf } from '../utils/albumTimeZone';
 import AuthorAvatar from '../components/AuthorAvatar';
 import MentionText from '../components/MentionText';
 import MentionSuggestBar, { type MentionCandidate } from '../components/MentionSuggestBar';
@@ -2610,6 +2611,8 @@ export default function PostDetailScreen() {
                         <AlbumTimeline
                           medias={record.medias}
                           mediaTimes={record.mediaTimes}
+                          // 남의 사진첩도 앨범 나라(국기) 시간대 날짜로 — 주인이 보는 날짜 줄(TripRecordRenderer)과 같은 계산(utils/albumTimeZone)
+                          timeZone={albumTimeZoneOf(record)}
                           thumbs={record.thumbs}
                           width={SCREEN_W - 32}
                           cellRadius={4}

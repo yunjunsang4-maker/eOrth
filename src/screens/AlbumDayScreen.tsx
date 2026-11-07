@@ -21,6 +21,8 @@ import MenuSheet, { MenuSheetItem, MenuSheetDivider } from '../components/MenuSh
 import { useRecordData } from '../store/recordStore';
 import { useAlbumPhotoActions } from '../hooks/useAlbumPhotoActions';
 import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
+import { albumTimeZoneOf } from '../utils/albumTimeZone';
+import { dayKeyToDate } from '../utils/albumAddSummary';
 import { localAssetIdOf, formatClock } from '../utils/photoPlace';
 import { placeOfAsset, assetIdAtTime, type AssetPlace } from '../utils/albumPlaceLookup';
 import { andFitText } from '../utils/fitText';
@@ -53,9 +55,11 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
     () => effectiveMediaTimes({ mediaTimes: record.mediaTimes, uploadedMediaUrls: record.uploadedMediaUrls }),
     [record.mediaTimes, record.uploadedMediaUrls],
   );
+  // dayKey는 사진첩 날짜 줄(AlbumTimeline)이 앨범 나라 시간대로 만든 키 — 같은 tz로 나눠야 그날을 찾는다(utils/albumTimeZone)
+  const albumTz = albumTimeZoneOf(record);
   const day = useMemo(
-    () => buildAlbumTimeline(medias, mediaTimes).days.find((d) => d.key === dayKey),
-    [medias, mediaTimes, dayKey],
+    () => buildAlbumTimeline(medias, mediaTimes, albumTz).days.find((d) => d.key === dayKey),
+    [medias, mediaTimes, albumTz, dayKey],
   );
   const order = useMemo(() => day?.moments.flatMap((m) => m.indexes) ?? [], [day]);
   // 뷰어 액션 바(지구본 사진·저장·커버·삭제)는 사진첩 화면 뷰어와 같은 공용 훅 — 하루 보기는 내 사진첩(TripRecordScreen isAlbum)에서만 들어온다.
@@ -119,7 +123,8 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
     return () => { alive = false; };
   }, [day, medias, mediaTimes, mediaAssetIds, uploadedMediaUrls]);
 
-  const dt = day ? new Date(day.startMs) : null;
+  // 제목(월일·요일)은 날짜 키에서 — 기기 시간대 new Date(startMs)면 여행지 날짜와 하루 어긋날 수 있다
+  const dt = day ? dayKeyToDate(day.key) ?? new Date(day.startMs) : null;
   const title = dt ? `${t('time.monthDay', { m: dt.getMonth() + 1, d: dt.getDate() })} (${t(WEEK_KEYS[dt.getDay()])})` : '';
   const cell = Math.round(width / 3); // 사진첩 화면과 같은 폭의 1/3
 
@@ -145,8 +150,8 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
       <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
         {day?.moments.map((m, mi) => {
           const lastTs = mediaTimes?.[medias[m.indexes[m.indexes.length - 1]]] ?? m.startMs;
-          // 시각은 사진 찍은 곳의 현지 시간(iOS 역지오코딩 시간대) — 없으면 기기 시간대
-          const tz = places[m.startMs]?.tz;
+          // 시각은 사진 찍은 곳의 현지 시간(iOS 역지오코딩 시간대) — 없으면(안드로이드·장소 못 찾음) 앨범 나라 시간대, 그것도 없으면 기기 시간대
+          const tz = places[m.startMs]?.tz ?? albumTz;
           const start = formatClock(m.startMs, tz), end = formatClock(lastTs, tz);
           const overflows = m.indexes.length * cell + (m.indexes.length - 1) * ROW_GAP > width;
           return (
