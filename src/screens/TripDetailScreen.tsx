@@ -25,16 +25,19 @@ import { BlurView } from 'expo-blur';
 import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon, BackChevronIcon, OutlineCalendarIcon, ChevronIcon, HeartIcon, CameraIcon, SparkleIcon } from '../components/icons';
 import { useRecordData, useComments, useRecordActions, TravelRecord } from '../store/recordStore';
 import { PillRing } from '../components/record/CalendarBottomSheet';
-import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
+import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
+import { useSkinAccent } from '../constants/skinTheme';
 import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
 import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
-import { andFitText } from '../utils/fitText';
+import { andFitText, andNoFontScale } from '../utils/fitText';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
-import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { useStageWidth, useStageGutter } from '../utils/stage';
+import MenuSheet from '../components/MenuSheet';
+import { settingsText } from '../components/settings/SettingsUI';
 import { sortFormatModules, type SortOrder } from './tripDetailSort';
 import { classifyRowPhoto, pickRowPhoto, type RowPhotoCategory } from './tripDetailRowPhoto';
 import { analyzePhotos, isPhotoVisionAvailable } from '../../modules/photo-vision';
@@ -58,8 +61,8 @@ const viewTypeName = (type: string, tr: TFunction): string => {
   }
 };
 
-// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율.
-// 폭(=Stage 폭 - 40)은 컴포넌트 본문에서 실시간으로 받으므로 여기엔 높이만 둔다.
+// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩 AlbumCreate·과거여행 ImportPhotoSelect)와 동일 비율.
+// 폭(=Stage 폭 - 32, MenuSheet 좌우 패딩 20을 thumbBody가 4씩 넓혀 16×2)은 컴포넌트 본문에서 실시간으로 받으므로 여기엔 높이만 둔다.
 const CARD_H = 180;
 
 // 형식 펼침 시 나오는 기록 타일 — 형식과 무관하게 한 종류다(시안). 폭은 고정이라 상수로 둔다.
@@ -358,10 +361,13 @@ type RouteParams = {
 
 export default function TripDetailScreen() {
   const { t, i18n } = useTranslation();
-  // 썸네일 조정 프레임 비율·썸네일 격자 칸은 Stage 폭에서 파생한다 — 박제하면 폴드에서 어긋난다.
+  // 썸네일 미리보기 카드·조정 프레임 비율은 Stage 폭에서 파생한다 — 박제하면 폴드에서 어긋난다.
+  // AlbumCreate·ImportPhotoSelect 미리보기 시트와 같은 계산(예전 -40은 시트 카드 폭과 8dp 어긋났다).
+  // 미리보기(AdjustedCoverImage frameW)·위치 조정·실제 크롭(bakeCoverCrop)이 같은 비율을 써야 보이는 대로 구워진다.
   const SCREEN_WIDTH = useStageWidth();
-  const CARD_ASPECT = (SCREEN_WIDTH - 40) / CARD_H;
-  const thumbCellSize = (SCREEN_WIDTH - 32 - 16) / 3; // 시트 좌우 16×2 + gap 8×2
+  const CARD_W = SCREEN_WIDTH - 32; // 시트 안쪽 좌우 16×2(MenuSheet 패딩 20 + thumbBody marginHorizontal -4)
+  const CARD_ASPECT = CARD_W / CARD_H;
+  const skinAccent = useSkinAccent(); // 라벨·선택 테두리·적용 버튼을 스킨색으로(AlbumCreate 미리보기 시트와 같다)
   // 히어로는 화면 높이의 37%(시안 874 중 ~320). 작은 기기에서 납작해지지 않게 260이 바닥.
   // Stage 폭과 달리 높이는 클램프 대상이 아니라 창 높이를 그대로 쓴다.
   const HERO_H = Math.max(260, Math.round(useWindowDimensions().height * 0.37));
@@ -398,8 +404,9 @@ export default function TripDetailScreen() {
   const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트
   const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
-  const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
-  const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
+  // 시트에서 고른 사진 + 조정값. null = 열 때 그대로(지금 카드 썸네일) — 아래 thumbUnchanged 참고
+  const [thumbSel, setThumbSel] = useState<{ uri: string; t: CutTransform | null } | null>(null);
+  const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달(시트 MenuSheet 안에 중첩)
   const [formatPickerVisible, setFormatPickerVisible] = useState(false); // 기록 추가 — 형식 선택
   // 형식 행 정렬. 규칙 자체는 순수 함수 sortFormatModules(tripDetailSort.ts)에 있다.
   const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
@@ -428,13 +435,57 @@ export default function TripDetailScreen() {
     : [];
   const thumbCandidates = groupRecordObjs.flatMap((r) => r.medias ?? []);
 
+  // ── 썸네일 변경 시트의 카드 미리보기 — 프로필 여행 카드(ProfileScreen mappedThumbnails)와 같은 규칙 ──
+  // 대표 기록: coverRecordId → 없으면 첫 기록(보관 제외 목록 기준, 프로필과 같다)
+  const thumbCoverRec = groupRecordObjs.find((r) => r.id === currentGroup?.coverRecordId) ?? groupRecordObjs[0];
+  // 지금 카드에 실제로 보이는 사진(오버라이드 → 크롭본 → 첫 사진) — 프로필 카드 coverUri와 같은 순서
+  const currentCardUri = currentGroup?.coverUri ?? thumbCoverRec?.representativePhoto ?? thumbCoverRec?.medias?.[0];
+  // 그 사진의 '원본'(가로 줄에서 선택 표시할 것). representativePhoto는 크롭본일 수 있어 줄에 없으므로
+  // 원본(representativePhotoSource)을 먼저 본다. 줄에 있는 값만 인정하고, 없으면 첫 장.
+  const currentThumbSrc =
+    [currentGroup?.coverUri, thumbCoverRec?.representativePhotoSource, thumbCoverRec?.representativePhoto, thumbCoverRec?.medias?.[0]]
+      .find((u): u is string => !!u && thumbCandidates.includes(u)) ?? thumbCandidates[0];
+  const selThumbUri = thumbSel?.uri ?? currentThumbSrc;
+  const selThumbT = thumbSel?.t ?? null;
+  // 열 때 그대로(같은 원본 + 조정 없음)면 '확인'은 아무것도 바꾸지 않는다 — 지금 카드가 크롭본일 수 있는데
+  // 원본을 identity로 다시 적용하면 applyThumb가 representativePhoto를 원본으로 덮어 크롭이 사라진다.
+  // 이 상태의 미리보기도 원본이 아니라 지금 카드 사진(크롭본)을 보여 줘야 보이는 대로 동작한다.
+  const thumbUnchanged = selThumbUri === currentThumbSrc && !selThumbT;
+  const pvUri = thumbUnchanged ? currentCardUri ?? selThumbUri : selThumbUri;
+  // 카드 정보 — 프로필 카드가 `${countryFlag} ${title}` / `stayPeriod ?? date(YYYY.MM)`로 그리는 것과 같게
+  const pvFlag = currentGroup?.countryFlag || groupRecordObjs[0]?.countryFlag || '';
+  const pvTitle = pvFlag && titleToDisplay.startsWith(pvFlag) ? titleToDisplay.slice(pvFlag.length).trim() : titleToDisplay;
+  const pvStay = currentGroup?.stay;
+  const pvDate = pvStay
+    ? `${pvStay.startedAt.slice(0, 7)} ~ ${pvStay.endedAt ? pvStay.endedAt.slice(0, 7) : t('stay.ongoing')}`
+    : (currentGroup?.date ?? groupRecordObjs[0]?.date ?? '').slice(0, 7);
+
   const handleChangeThumb = () => {
+    const fromDropdown = menuVisible; // 앱 ⋯ 드롭다운(RN fade Modal)에서 왔나 — iOS 시스템 메뉴(UIMenu)는 menuVisible을 켜지 않는다
     setMenuVisible(false);
     if (!currentGroup || thumbCandidates.length === 0) {
       Alert.alert(t('trip.noticeTitle'), t('trip.noPhotoToChange'));
       return;
     }
-    setThumbPickerVisible(true);
+    setThumbSel(null); // 열 때마다 지금 썸네일부터
+    // iOS: 드롭다운 Modal이 페이드로 닫히는 중에 시트를 present하면 UIKit이 조용히 거부한다(MainScreen 226e3a5와 같은 함정).
+    // MenuSheet는 iOS 새 빌드에서 시스템 시트라, 거부되면 visible=true로 굳어 다시 눌러도 안 열린다 — 닫힘 뒤에 연다
+    // (400 = PostDetail handleShareExternal과 같은 값). 안드로이드는 Dialog라 바로 연다.
+    if (fromDropdown && Platform.OS === 'ios') setTimeout(() => setThumbPickerVisible(true), 400);
+    else setThumbPickerVisible(true);
+  };
+
+  // 닫기(배경 탭·내려 닫기·안드로이드 뒤로 = MenuSheet onClose) — 아무것도 바꾸지 않고 닫는다.
+  // 조정 모달도 같이 내린다 — 옛 빌드 MenuSheet는 visible=false 뒤 170ms 애니메이션 동안 children을 그대로 그린다.
+  const closeThumbPicker = () => {
+    setAdjustVisible(false);
+    setThumbPickerVisible(false);
+  };
+
+  // '확인' — 열 때 그대로면 그냥 닫고(위 thumbUnchanged), 바뀌었으면 고른 사진 + 조정값으로 적용
+  const confirmThumbPicker = () => {
+    closeThumbPicker();
+    if (!thumbUnchanged && selThumbUri) applyThumb(selThumbUri, selThumbT);
   };
 
   // ── 썸네일 다시 뽑기 (과거 여행 불러오기로 만든 카드 전용) ──
@@ -483,15 +534,7 @@ export default function TripDetailScreen() {
     success();
   };
 
-  // 사진을 고르면 바로 적용하지 않고 노출 영역 조정 단계를 거친다
-  const handlePickThumb = (uri: string) => {
-    if (!currentGroup) return;
-    setThumbPickerVisible(false);
-    setPendingThumb(uri);
-    setAdjustVisible(true);
-  };
-
-  // 조정 확정 → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
+  // 시트 '확인' → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
   //
   // ⚠️ medias는 재정렬하지 않는다. 여행 카드 썸네일은 ProfileScreen이
   //    `group.coverUri ?? coverRec.representativePhoto ?? coverRec.medias[0]` 순으로 고르므로,
@@ -502,11 +545,12 @@ export default function TripDetailScreen() {
   //        (현재 앱은 촬영시각 타임라인이라 순서 영향 없음)
   //      · 이미 발행된 게시물의 사진 순서까지 바뀐다.
   //    (사진첩 화면 TripRecordScreen의 '커버로 지정'과 동일한 방식)
-  const applyThumb = async (uri: string, t: CutTransform) => {
+  const applyThumb = async (uri: string, t: CutTransform | null) => {
     if (!currentGroup) return;
     const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
     if (!owner) return;
-    const isIdentity = t.scale === 1 && t.tx === 0 && t.ty === 0;
+    // t null = 시트에서 사진만 바꾸고 위치 조정은 안 함
+    const isIdentity = !t || (t.scale === 1 && t.tx === 0 && t.ty === 0);
     // 조정 없이 확정하면 원본을, 이동/확대했으면 보이는 영역만 구운 크롭본을 대표로 쓴다
     // (크롭 실패 시에도 원본으로 폴백 — 대표를 비우면 이전 썸네일이 그대로 남는다)
     const rep = isIdentity ? uri : ((await bakeCoverCrop(uri, t, CARD_ASPECT, owner.id)) ?? uri);
@@ -881,51 +925,84 @@ export default function TripDetailScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* 썸네일 사진 선택 시트 */}
-      <Modal visible={thumbPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
-        <View style={s.thumbOverlay}>
-          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[s.thumbSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
-            <Text style={s.thumbTitle}>{t('trip.changeThumbTitle')}</Text>
-            <Text style={s.thumbSub}>{t('trip.changeThumbSub')}</Text>
-            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-              <View style={s.thumbGrid}>
-                {thumbCandidates.map((uri, i) => (
-                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={t('trip.pickThumbA11y')}>
-                    <Image source={{ uri }} style={[s.thumbCell, { width: thumbCellSize, height: thumbCellSize }]} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-            <TouchableOpacity style={s.thumbCancel} onPress={() => setThumbPickerVisible(false)} activeOpacity={0.85}>
-              <Text style={s.thumbCancelTxt}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* 썸네일 사진 변경 시트 — 겉은 공용 MenuSheet(2026-11-04: iOS 새 빌드 시스템 시트, 옛 빌드·안드로이드 Modal 시트,
+          손잡이·딤·하단 인셋·Stage 폭 클램프는 MenuSheet가 한다), 머리글은 설정 팝업·시트 타이포(settingsText).
+          내용은 사진첩 만들기 '여행기록카드 미리보기' 시트(AlbumCreateScreen pv*)와 같은 구성·치수:
+          카드 미리보기 → 보라 라벨 → 가로 썸네일 줄 → 확인 알약. 사진을 눌러도 바로 적용하지 않고 미리보기에만 반영.
+          취소 버튼은 두지 않는다(MenuSheet 원칙) — 배경 탭·내려 닫기·안드로이드 뒤로가기가 closeThumbPicker */}
+      <MenuSheet visible={thumbPickerVisible} onClose={closeThumbPicker}>
+        <View style={s.thumbBody}>
+          <Text style={settingsText.sheetTitle}>{t('trip.changeThumbTitle')}</Text>
+          <Text style={[settingsText.sheetDesc, s.thumbHeadGap]}>{t('trip.changeThumbSub')}</Text>
 
-      {/* 새 썸네일 노출 영역 조정 (드래그/핀치) — 확인 시 적용, 사진 변경 시 선택 시트로 복귀 */}
-      <CutPhotoAdjustModal
-        visible={adjustVisible}
-        uri={pendingThumb}
-        aspect={CARD_ASPECT}
-        initial={null}
-        onConfirm={(t) => {
-          setAdjustVisible(false);
-          const uri = pendingThumb;
-          setPendingThumb(null);
-          if (uri) applyThumb(uri, t);
-        }}
-        onCancel={() => {
-          setAdjustVisible(false);
-          setPendingThumb(null);
-        }}
-        onChangePhoto={() => {
-          setAdjustVisible(false);
-          setPendingThumb(null);
-          setThumbPickerVisible(true);
-        }}
-      />
+          {/* 카드 미리보기 — 탭하면 노출 영역 조정 */}
+          <TouchableOpacity style={s.pvCard} activeOpacity={0.9} onPress={() => selThumbUri && setAdjustVisible(true)}>
+            {pvUri && (
+              <AdjustedCoverImage uri={pvUri} transform={thumbUnchanged ? null : selThumbT} frameW={CARD_W} frameH={CARD_H} />
+            )}
+            <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']} style={s.pvCardShade} />
+            <View style={s.pvCardInfo}>
+              <Text style={s.pvCardTitle}>{pvFlag ? `${pvFlag} ` : ''}{pvTitle}</Text>
+              <Text style={s.pvCardDate}>{pvDate}</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 썸네일 선택 — 선택된 썸네일을 한 번 더 누르면 노출 영역 조정 */}
+          <Text style={[s.pvPickLabel, { color: skinAccent.accent }]}>{t('album.pickThumb')}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pvStrip}>
+            {thumbCandidates.map((uri, i) => {
+              const on = uri === selThumbUri;
+              return (
+                <TouchableOpacity
+                  key={uri + i}
+                  onPress={() => {
+                    if (on) setAdjustVisible(true);
+                    else setThumbSel({ uri, t: null });
+                  }}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('trip.pickThumbA11y')}
+                  accessibilityState={{ selected: on }}
+                >
+                  <Image source={{ uri }} style={[s.pvThumb, on && [s.pvThumbOn, { borderColor: skinAccent.accent }]]} />
+                  {on && (
+                    <View style={s.pvThumbAdjustBadge}>
+                      {/* 64×64 고정 썸네일 안의 배지 — 안드로이드 시스템 글꼴 배율로 커지지 않게(fitText andNoFontScale) */}
+                      <Text style={s.pvThumbAdjustTxt} {...andNoFontScale}>{t('album.adjust')}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <TouchableOpacity style={s.pvOkBtn} onPress={confirmThumbPicker} activeOpacity={0.85}>
+            <LinearGradient colors={skinAccent.btnGradient} style={s.pvOkGrad}>
+              <Text style={s.pvOkTxt}>{t('common.confirm')}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* 썸네일 노출 영역 조정 (드래그/핀치) — 시트(MenuSheet children) 안에 중첩한다. 밖(형제)에 두지 않는 이유:
+            · 옛 빌드·안드로이드: MenuSheet가 RN Modal이라 '모달 안 모달'(AlbumCreate와 같다). iOS는 Modal 두 개를 형제로
+              겹쳐 띄우면 뒤엣것이 안 뜬다.
+            · iOS 시스템 시트: RN Modal은 응답자 체인상 가장 가까운 VC([self reactViewController])에서 present한다
+              (RCTModalHostViewComponentView.mm presentViewController). 시트 내용은 TrueSheetViewController.view 아래에
+              붙으므로(TrueSheetView.mm mountChildComponentView) 그 VC가 시트 위로 띄운다. 밖(화면 쪽)에 두면 이미 시트를
+              present 중인 아래 VC에서 띄우게 돼 안 뜰 수 있다(UIKit은 present 중인 VC에서 또 present하지 않는다).
+            확인은 미리보기에만 반영하고 실제 적용은 시트 '확인'에서. '사진 변경'(onChangePhoto)은 이 시트 자체가 그 역할이라 넘기지 않는다. */}
+        <CutPhotoAdjustModal
+          visible={adjustVisible}
+          uri={selThumbUri ?? null}
+          aspect={CARD_ASPECT}
+          initial={selThumbT}
+          onConfirm={(tr) => {
+            if (selThumbUri) setThumbSel({ uri: selThumbUri, t: tr });
+            setAdjustVisible(false);
+          }}
+          onCancel={() => setAdjustVisible(false)}
+        />
+      </MenuSheet>
 
       {/* 히어로 — 전체 폭 커버 사진, ScrollView 밖이라 스크롤해도 상단에 고정(사용자 지정). 헤더가 이 위에 겹친다. */}
       <Animated.View style={[s.hero, {
@@ -1418,29 +1495,36 @@ const s = StyleSheet.create({
   },
   fmName: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
 
-  /* ── 썸네일 사진 선택 시트 ── */
-  // thumbOverlay는 딤 배경(flex:1 + rgba) — 좁히면 폴드에서 양옆이 안 어두워지므로 전면 유지한다.
-  thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  // thumbSheet는 콘텐츠 래퍼. RN Modal이라 루트 클램프 밖이고 thumbCellSize가 Stage 폭(≤480)
-  // 기준이라, 시트를 같은 폭으로 가두고 중앙에 둬야 썸네일 3열이 시트 폭과 맞는다.
-  // (padding 16*2 + gap 8*2 = 32+16이 thumbCellSize 계산의 전제다)
-  thumbSheet: {
-    backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingVertical: 20, paddingHorizontal: 16, paddingBottom: 40, // 좌우는 화면 gutter 16
-    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
+  /* ── 썸네일 사진 변경 시트 — 겉(딤·손잡이·배경·하단 인셋·Stage 폭 클램프)은 MenuSheet가 그린다.
+        pv* 값은 AlbumCreateScreen 미리보기 시트(pv*)와 같다(버튼 줄만 예외 — 아래 pvOkBtn). 한쪽만 바꾸지 말 것 ── */
+  // MenuSheet 안쪽 좌우 패딩은 20 — -4로 넓혀 내용 폭을 Stage 폭 − 32로 맞춘다(CARD_W = AdjustedCoverImage frameW와 짝).
+  // 안 맞추면 미리보기 카드 실폭과 frameW가 8dp 어긋나 조정한 위치가 미리보기에서 밀려 보인다.
+  thumbBody: { marginHorizontal: -4 },
+  // 머리글(설정 팝업·시트 타이포)과 카드 사이 — 라벨↔줄(pvPickLabel marginTop 16)과 같은 간격으로 묶음을 나눈다
+  thumbHeadGap: { marginBottom: 16 },
+  pvCard: {
+    width: '100%', height: CARD_H, borderRadius: 20, overflow: 'hidden',
+    backgroundColor: '#2A2735', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
   },
-  thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },
-  thumbSub: { color: COLORS.textDim, fontSize: 13, marginBottom: 16 },
-  thumbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  // width·height는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
-  thumbCell: {
-    borderRadius: 10, backgroundColor: '#1A0A2E',
+  pvCardShade: { ...StyleSheet.absoluteFillObject },
+  pvCardInfo: { position: 'absolute', left: 14, right: 14, bottom: 12 },
+  pvCardTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', marginBottom: 2 },
+  pvCardDate: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '500' },
+  // color는 호출부에서 스킨 accent로 덮는다(기본값은 aurora 보라)
+  pvPickLabel: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '700', marginTop: 16, marginBottom: 8 },
+  pvStrip: { gap: 8 },
+  pvThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: '#2A2735' },
+  pvThumbOn: { borderWidth: 2.5, borderColor: '#7B61FF' }, // borderColor는 호출부에서 스킨 accent로 덮는다
+  pvThumbAdjustBadge: {
+    position: 'absolute', bottom: 4, alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
   },
-  thumbCancel: {
-    marginTop: 16, paddingVertical: 14, borderRadius: 999, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
-  },
-  thumbCancelTxt: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+  pvThumbAdjustTxt: { color: COLORS.white, fontSize: 10, fontWeight: '700' },
+  // 취소가 없어(MenuSheet 원칙) 버튼 줄 없이 전폭 알약 하나 — AlbumCreate는 줄(pvBtnRow marginTop 20) 안의 flex:1.
+  // 세로 부모에서 flex:1을 주면 높이 축으로 늘어나므로 빼고, 줄이 갖던 위 여백 20을 여기로 옮겼다.
+  pvOkBtn: { marginTop: 20, borderRadius: 999, overflow: 'hidden' },
+  pvOkGrad: { paddingVertical: 16, alignItems: 'center' },
+  pvOkTxt: { color: COLORS.white, fontSize: 16, fontWeight: '700' },
 
   /* ── 형식 행 (시안: 사진 배경 + 왼쪽 스크림) ── */
   rows: { paddingHorizontal: 16 },
