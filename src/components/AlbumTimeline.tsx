@@ -189,8 +189,9 @@ export default function AlbumTimeline({ medias, mediaTimes, timeZone, thumbs, wi
                   accessibilityLabel={`${g.label} ⋯`}
                   activeOpacity={0.7}
                 >
-                  {/* 앱 공용 유리 테두리(대각 그라데이션) — 게시물·프로필 ⋯ 버튼과 같은 링 */}
-                  <PillRing width={23} height={23} radius={11.5} />
+                  {/* 앱 공용 유리 테두리(대각 그라데이션) — 게시물·프로필 ⋯ 버튼과 같은 링.
+                      날짜마다 반복돼 기본 세기는 강하다는 지적(2026-11-07)으로 이 버튼만 0.6 */}
+                  <PillRing width={23} height={23} radius={11.5} opacity={0.6} />
                   <View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} /><View style={styles.dayMenuDot} />
                 </TouchableOpacity>
               )}
