@@ -2106,6 +2106,7 @@ const es: WithPlurals<typeof ko> = {
     albumOnlyOneTitle: 'Un álbum por viaje',
     albumOnlyOneMsg: 'Este viaje ya tiene un álbum. Agrega las fotos a ese álbum.',
     albumDayPlaceMapA11y: 'Ver {{place}} en el mapa',
+    albumDayOpenNaverMaps: 'Abrir en NAVER Maps', // 스페인 App Store 앱 이름 그대로
     albumDayOpenGoogleMaps: 'Abrir en Google Maps',
     albumDayOpenAppleMaps: 'Abrir en Mapas de Apple',
     recordDeleteMsg: '¿Eliminar este registro?',

@@ -2051,6 +2051,7 @@ const ko = {
     albumOnlyOneMsg: '이 여행에는 이미 앨범이 있어요. 앨범에서 사진을 추가해 보세요.',
     // 사진첩 하루 보기(AlbumDayScreen) 장소 줄 → 지도 미리보기 시트
     albumDayPlaceMapA11y: '{{place}} 지도 보기',
+    albumDayOpenNaverMaps: '네이버 지도에서 열기', // 한국 장소에서만 보인다
     albumDayOpenGoogleMaps: 'Google 지도에서 열기',
     albumDayOpenAppleMaps: 'Apple 지도에서 열기',
     recordDeleteMsg: '이 기록을 삭제할까요?',

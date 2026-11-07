@@ -2019,6 +2019,7 @@ const zhHant: DeepPartial<typeof ko> = {
     albumOnlyOneTitle: '每趟旅行只有一本相簿',
     albumOnlyOneMsg: '這趟旅行已經有相簿了。請在相簿中新增照片。',
     albumDayPlaceMapA11y: '在地圖上查看{{place}}',
+    albumDayOpenNaverMaps: '在 NAVER Maps 開啟', // 대만·홍콩 App Store 앱 이름 그대로(중문 공식명 없음)
     albumDayOpenGoogleMaps: '在 Google 地圖開啟',
     albumDayOpenAppleMaps: '在 Apple 地圖開啟',
     recordDeleteMsg: '要刪除這則紀錄嗎？',

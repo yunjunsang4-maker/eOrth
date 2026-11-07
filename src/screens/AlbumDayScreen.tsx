@@ -19,6 +19,7 @@ import FeedPhoto from '../components/FeedPhoto';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import MenuSheet, { MenuSheetItem, MenuSheetDivider } from '../components/MenuSheet';
 import { useRecordData } from '../store/recordStore';
+import { useAlbumPhotoActions } from '../hooks/useAlbumPhotoActions';
 import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
 import { localAssetIdOf, formatClock } from '../utils/photoPlace';
 import { placeOfAsset, assetIdAtTime, type AssetPlace } from '../utils/albumPlaceLookup';
@@ -32,7 +33,10 @@ const FADE_W = 70;
 const PLACE_TRIES = 3; // 순간마다 좌표를 찾아볼 사진 수 상한 — 역지오코딩 호출 수를 묶는다
 const WEEK_KEYS = ['calendar.week0', 'calendar.week1', 'calendar.week2', 'calendar.week3', 'calendar.week4', 'calendar.week5', 'calendar.week6'] as const;
 // 장소 조회(placeOfAsset·assetIdAtTime)와 그 캐시는 utils/albumPlaceLookup — 사진첩 화면 날짜 줄 장소와 같이 쓴다.
-type MapAt = { name: string; lat: number; lon: number };
+type MapAt = { name: string; lat: number; lon: number; country: string | null };
+// 네이버 지도 URL Scheme의 appname(필수, 호출한 앱 식별자 — iOS 번들 ID·안드로이드 applicationId).
+// 정보성 값이라 정식 번들 ID 상수로 둔다 — 베타·dev(.beta·.dev 접미사, app.config.js)도 같은 값으로 나가지만 여는 동작엔 영향 없다.
+const NAVER_APPNAME = 'com.yunjunsang.eorth';
 
 type PlaceTry = { assetId: string } | { ts: number };
 
@@ -54,15 +58,26 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
     [medias, mediaTimes, dayKey],
   );
   const order = useMemo(() => day?.moments.flatMap((m) => m.indexes) ?? [], [day]);
-  const [viewerAt, setViewerAt] = useState<number | null>(null);
+  // 뷰어 액션 바(지구본 사진·저장·커버·삭제)는 사진첩 화면 뷰어와 같은 공용 훅 — 하루 보기는 내 사진첩(TripRecordScreen isAlbum)에서만 들어온다.
+  // 뷰어는 그날 표시 순서(order)로 넘긴다 — 뷰어 위치 at은 order 기준이라 콜백엔 order[at]으로 medias 전역 인덱스로 되돌린다.
+  // order는 연 시점 스냅샷(TripRecordRenderer AlbumView와 같은 방식): 뷰어가 떠 있는 동안 medias가 바뀌는 건 삭제뿐이고, 삭제는 뷰어를 닫는다.
+  const { setCover, setGlobeCover, confirmDeletePhoto } = useAlbumPhotoActions(record);
+  const [viewer, setViewer] = useState<{ order: number[]; at: number } | null>(null);
+  const toGlobal = (fn: (index: number) => void) => (i: number) => { const g = viewer?.order[i]; if (g != null) fn(g); };
   // 장소 줄 → 지도 시트. 열림 여부를 따로 둔다 — 닫을 때 mapAt까지 비우면 닫히는 애니메이션 동안
   // 시트 내용(제목·지도)이 먼저 사라져 빈 시트가 쪼그라드는 게 보인다.
   const [mapAt, setMapAt] = useState<MapAt | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
-  const openMapUrl = (url: string) => { setMapOpen(false); Linking.openURL(url).catch(() => {}); };
+  // fallback: url을 못 열면(앱 미설치 — iOS는 completionHandler NO, 안드로이드는 ActivityNotFoundException으로 reject) 대신 연다.
+  // canOpenURL은 쓰지 않는다 — iOS LSApplicationQueriesSchemes·안드로이드 <queries>가 있어야 해서 네이티브 빌드가 필요하다(OTA로 못 나감).
+  const openMapUrl = (url: string, fallback?: string) => {
+    setMapOpen(false);
+    Linking.openURL(url).catch(() => (fallback ? Linking.openURL(fallback) : undefined)).catch(() => {});
+  };
 
   // 순간별 장소 — 순간의 앞쪽 사진부터 최대 PLACE_TRIES장 시도. 사진마다 이 기기 assetId가 있으면 그것,
   // 없고 촬영시각이 있으면 시각으로 기기 사진첩 자산을 찾는다(iOS 원격 URL 사진).
+  // 키는 순간 시작 시각(m.startMs) — 순번(mi)이면 뷰어에서 사진을 지워 순간이 빠지거나 당겨질 때 남은 순간에 다른 순간의 장소·시간대가 붙는다.
   const [places, setPlaces] = useState<Record<number, AssetPlace>>({});
   const { mediaAssetIds, uploadedMediaUrls } = record;
   useEffect(() => {
@@ -96,7 +111,7 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
           if (!alive) return;
           const place = id ? await placeOfAsset(id) : null;
           if (!alive) return;
-          if (place) setPlaces((p) => ({ ...p, [mi]: place }));
+          if (place) setPlaces((p) => ({ ...p, [day.moments[mi].startMs]: place }));
           if (place?.name) break; // 시간대만 찾았으면 저장하고 다음 후보로 이름을 더 찾는다
         }
       }
@@ -131,7 +146,7 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
         {day?.moments.map((m, mi) => {
           const lastTs = mediaTimes?.[medias[m.indexes[m.indexes.length - 1]]] ?? m.startMs;
           // 시각은 사진 찍은 곳의 현지 시간(iOS 역지오코딩 시간대) — 없으면 기기 시간대
-          const tz = places[mi]?.tz;
+          const tz = places[m.startMs]?.tz;
           const start = formatClock(m.startMs, tz), end = formatClock(lastTs, tz);
           const overflows = m.indexes.length * cell + (m.indexes.length - 1) * ROW_GAP > width;
           return (
@@ -141,28 +156,28 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
                 <Text style={styles.time} numberOfLines={1}>{start === end ? start : `${start} – ${end}`}</Text>
                 <Text style={styles.count} numberOfLines={1}>{m.indexes.length}</Text>
               </View>
-              {places[mi]?.name ? (
+              {places[m.startMs]?.name ? (
                 <TouchableOpacity
                   style={styles.placeRow}
                   activeOpacity={0.6}
                   hitSlop={{ top: 6, bottom: 6 }}
                   accessibilityRole="button"
-                  accessibilityLabel={t('trip.albumDayPlaceMapA11y', { place: places[mi].name })}
+                  accessibilityLabel={t('trip.albumDayPlaceMapA11y', { place: places[m.startMs].name })}
                   onPress={() => {
-                    const p = places[mi];
+                    const p = places[m.startMs];
                     if (!p.name) return;
-                    setMapAt({ name: p.name, lat: p.lat, lon: p.lon });
+                    setMapAt({ name: p.name, lat: p.lat, lon: p.lon, country: p.country });
                     setMapOpen(true);
                   }}
                 >
                   <PinIcon size={12} color="rgba(255,255,255,0.6)" />
-                  <Text style={styles.place} numberOfLines={1} {...andFitText}>{places[mi].name}</Text>
+                  <Text style={styles.place} numberOfLines={1} {...andFitText}>{places[m.startMs].name}</Text>
                 </TouchableOpacity>
               ) : null}
               <View style={styles.rowWrap}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
                   {m.indexes.map((i) => (
-                    <TouchableOpacity key={`${medias[i]}-${i}`} activeOpacity={0.85} onPress={() => setViewerAt(order.indexOf(i))}>
+                    <TouchableOpacity key={`${medias[i]}-${i}`} activeOpacity={0.85} onPress={() => setViewer({ order, at: Math.max(0, order.indexOf(i)) })}>
                       <FeedPhoto uri={medias[i]} thumbs={record.thumbs} style={[styles.img, { width: cell, height: cell }]} />
                     </TouchableOpacity>
                   ))}
@@ -184,10 +199,14 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
       </ScrollView>
 
       <PhotoViewerModal
-        visible={viewerAt !== null}
-        uris={order.map((i) => medias[i])}
-        initialIndex={Math.max(0, viewerAt ?? 0)}
-        onClose={() => setViewerAt(null)}
+        visible={viewer !== null}
+        uris={viewer ? viewer.order.map((i) => medias[i]) : []}
+        initialIndex={viewer?.at ?? 0}
+        onClose={() => setViewer(null)}
+        showActions
+        onSetGlobeCover={toGlobal(setGlobeCover)}
+        onSetCover={toGlobal(setCover)}
+        onDelete={toGlobal(confirmDeletePhoto)}
       />
 
       {/* 장소 지도 시트 — 공용 MenuSheet(iOS 시스템 시트 / 안드로이드 Modal 시트) */}
@@ -211,6 +230,20 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
                   req.isTopFrame === false || /output=embed|\/maps\/embed|^about:|^data:|\/\/consent\.google\./.test(req.url)}
               />
             </View>
+            {/* 한국 장소만 네이버 지도 — 한국에선 가장 쓸모 있어 맨 위. 앱(nmap://place, 공식 URL Scheme)을 먼저 열고,
+                미설치면 모바일 웹 지도(m.map.naver.com/map — lat·lng·dlevel·title로 그 좌표에 핀, dlevel 11 = 위 미리보기 z15)로. */}
+            {mapAt.country === 'KR' && (
+              <>
+                <MenuSheetItem
+                  label={t('trip.albumDayOpenNaverMaps')}
+                  onPress={() => openMapUrl(
+                    `nmap://place?lat=${mapAt.lat}&lng=${mapAt.lon}&name=${encodeURIComponent(mapAt.name)}&appname=${NAVER_APPNAME}`,
+                    `https://m.map.naver.com/map?lat=${mapAt.lat}&lng=${mapAt.lon}&dlevel=11&title=${encodeURIComponent(mapAt.name)}`,
+                  )}
+                />
+                <MenuSheetDivider />
+              </>
+            )}
             <MenuSheetItem
               label={t('trip.albumDayOpenGoogleMaps')}
               onPress={() => openMapUrl(`https://www.google.com/maps/search/?api=1&query=${mapAt.lat},${mapAt.lon}`)}

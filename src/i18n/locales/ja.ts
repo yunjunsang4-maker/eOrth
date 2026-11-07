@@ -2018,6 +2018,7 @@ const ja: DeepPartial<typeof ko> = {
     albumOnlyOneTitle: 'アルバムは旅ごとに1つ',
     albumOnlyOneMsg: 'この旅にはすでにアルバムがあります。アルバムに写真を追加してみてください。',
     albumDayPlaceMapA11y: '{{place}}を地図で見る',
+    albumDayOpenNaverMaps: 'NAVERマップで開く', // NCloud 일본어 문서 표기(ja.STYLE.md 'NAVERブログ'와 같은 결)
     albumDayOpenGoogleMaps: 'Googleマップで開く',
     albumDayOpenAppleMaps: 'Appleマップで開く',
     recordDeleteMsg: 'この記録を削除しますか？',

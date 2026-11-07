@@ -20,7 +20,8 @@ import { SettingsModal, SettingsField, SettingsPillButton, settingsText, SETTING
 import * as ImagePicker from 'expo-image-picker';
 import { getMaxAlbumPhotos } from '../constants/limits';
 import { useProfileSettings } from '../store/settingsStore';
-import { removePhotosAt, exifTakenAt, buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
+import { exifTakenAt, buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
+import { useAlbumPhotoActions } from '../hooks/useAlbumPhotoActions';
 import { dayKeyToDate, summarizeAddedDays } from '../utils/albumAddSummary';
 import { lookupDayPlaces } from '../utils/albumPlaceLookup';
 import { localAssetIdOf } from '../utils/photoPlace';
@@ -44,7 +45,7 @@ import HeaderGlassButton from '../components/HeaderGlassButton';
 import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
 
 // 지금 앨범에 살아 있는 사진의 이 기기 원본 assetId — 사진 추가의 중복 제외(선택기 dup·날짜 격자 '담김') 공용.
-// mediaAssetIds 전체를 쓰면 안 된다: 사진을 지워도(doDeletePhotos) 그 항목은 남아, 지운 사진을 다시 담을 수 없게 된다.
+// mediaAssetIds 전체를 쓰면 안 된다: 사진을 지워도(hooks/useAlbumPhotoActions deletePhotos) 그 항목은 남아, 지운 사진을 다시 담을 수 없게 된다.
 // mediaAssetIds를 삭제 때 같이 정리하지 않는 건 동기화 경로(서버 병합)에 영향을 주지 않기 위해서다.
 // 원격 URL 사진은 업로드 캐시를 거꾸로 따라 로컬 키의 id를 찾는다(localAssetIdOf).
 function liveAssetIds(rec: { medias?: string[]; mediaAssetIds?: Record<string, string>; uploadedMediaUrls?: Record<string, string> }): string[] {
@@ -61,7 +62,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const { record: paramRecord, viewType: initialViewType } = route.params;
   const { records, tripGroups } = useRecordData();
   const { commentsByPost } = useComments();
-  const { deleteRecord, updateRecord, toggleLike, addComment, updateTripGroup, setCountryCover } = useRecordActions();
+  const { deleteRecord, updateRecord, toggleLike, addComment, updateTripGroup } = useRecordActions();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
@@ -390,21 +391,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     }
   };
 
-  // 사진 제거 공용(단일/다중) — 대표 사진 승계 + 여행카드 커버 동기화
-  const doDeletePhotos = (indexes: number[]) => {
-    const nextMedias = removePhotosAt(medias, indexes);
-    const rm = new Set(indexes);
-    const coverDeleted = !!record.representativePhoto && medias.some((u, i) => rm.has(i) && u === record.representativePhoto);
-    const nextRep = coverDeleted ? nextMedias[0] : record.representativePhoto;
-    updateRecord(record.id, { medias: nextMedias, representativePhoto: nextRep });
-    // 여행카드 썸네일은 group.coverUri(크롭본 등 오버라이드)를 최우선으로 쓰므로,
-    // 대표 사진이 바뀌면 이 기록을 커버로 쓰는 카드의 coverUri도 새 대표로 동기화(스테일 방지)
-    if (coverDeleted) {
-      tripGroups
-        .filter((g) => g.coverRecordId === record.id && g.coverUri)
-        .forEach((g) => updateTripGroup(g.id, { coverUri: nextRep }));
-    }
-  };
+  // 사진 삭제(단일/다중)·커버 지정·지구본 사진 지정 — 하루 보기(AlbumDayScreen) 뷰어와 같은 동작이라 공용 훅(hooks/useAlbumPhotoActions)
+  const { deletePhotos, setCover, setGlobeCover, confirmDeletePhoto } = useAlbumPhotoActions(record);
 
   // ── 다중 선택 모드 ──
   const [selecting, setSelecting] = useState(false);
@@ -416,54 +404,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // 다중 선택 모드 진입(⋯ 메뉴 '선택') — 삭제는 아래 선택 액션 바에서
   const startSelecting = () => { setSelecting(true); setSelected([]); };
 
-  // 뷰어에서 커버(대표 사진) 지정 — 이 앨범을 커버로 쓰는 여행카드 썸네일(크롭 오버라이드 포함)도 동기화
-  const handleSetCover = (index: number) => {
-    const uri = medias[index];
-    if (!uri) return;
-    updateRecord(record.id, { representativePhoto: uri, representativePhotoSource: uri });
-    tripGroups
-      .filter((g) => g.coverRecordId === record.id && g.coverUri)
-      .forEach((g) => updateTripGroup(g.id, { coverUri: uri }));
-    Alert.alert(t('trip.albumCoverSet'));
-  };
-
-  // 뷰어에서 유리 지구본 활성화 사진 지정 — 그 나라 대표사진 핀(countryCovers)을 이 사진으로 고정한다.
-  // 핀은 getCountryPhoto에서 최신순 폴백보다 우선하므로, 이후 새 기록이 생겨도 이 사진이 유지된다.
-  const handleSetGlobeCover = (index: number) => {
-    const uri = medias[index];
-    if (!uri) return;
-    // 다국가 기록이면 어느 나라의 지구본 사진으로 쓸지 고른다(핀은 나라 단위라 한 번에 하나).
-    const names = (record.countries?.length ? record.countries.map((c) => c.name) : [record.countryName]).filter(Boolean);
-    const apply = (name: string) => {
-      setCountryCover(name, record.id, uri);
-      Alert.alert(t('trip.globeCoverSet', { country: countryLabel(name, i18n.language) }));
-    };
-    if (names.length <= 1) {
-      if (names[0]) apply(names[0]);
-      return;
-    }
-    Alert.alert(t('trip.globeCoverPickTitle'), t('trip.globeCoverPickBody'), [
-      ...names.map((n) => ({ text: countryLabel(n, i18n.language), onPress: () => apply(n) })),
-      { text: t('common.cancel'), style: 'cancel' as const },
-    ]);
-  };
-
   // 다중 삭제 확인
   const handleDeleteSelected = () => {
     if (selected.length === 0) return;
     warn(); // 되돌릴 수 없는 동작을 묻는 중
     Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotosMsg', { count: selected.length }), [
       { text: t('common.cancel'), style: 'cancel' },
-      { text: t('trip.delete'), style: 'destructive', onPress: () => { doDeletePhotos(selected); exitSelecting(); } },
-    ]);
-  };
-
-  // 뷰어 액션 바 '삭제' — 단일 사진(index는 medias 전역 인덱스, 렌더러가 뷰어 순서에서 되돌려 준다)
-  const handleViewerDelete = (globalIndex: number) => {
-    warn(); // 되돌릴 수 없는 동작을 묻는 중
-    Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('trip.delete'), style: 'destructive', onPress: () => doDeletePhotos([globalIndex]) },
+      { text: t('trip.delete'), style: 'destructive', onPress: () => { deletePhotos(selected); exitSelecting(); } },
     ]);
   };
 
@@ -569,12 +516,12 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             viewType={viewType}
             albumEditable={isAlbum}
             onAlbumAddPhotos={openAlbumAddPhotos}
-            onAlbumSetCover={handleSetCover}
-            onAlbumSetGlobeCover={handleSetGlobeCover}
+            onAlbumSetCover={setCover}
+            onAlbumSetGlobeCover={setGlobeCover}
             albumSelecting={selecting}
             albumSelected={selected}
             onAlbumToggleSelect={toggleSelect}
-            onAlbumRemoveAt={handleViewerDelete}
+            onAlbumRemoveAt={confirmDeletePhoto}
             onAlbumReanalyze={isAlbum ? handleReanalyze : undefined}
             onAlbumSelectIndexes={(idx) => { setSelecting(true); setSelected(idx); }}
             onAlbumOpenDay={isAlbum ? (dayKey) => navigation.navigate('AlbumDay', { record, dayKey }) : undefined}

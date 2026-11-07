@@ -12,8 +12,9 @@ import { localAssetIdOf, formatPlace, pickAssetByTime, TIME_TOL_MS } from './pho
 import { isUsableLatLon } from './photoLocationBatch';
 
 // 장소 이름 + 그곳 시간대(iOS만, 순간 시각을 현지 시간으로 — formatClock). 둘 다 없으면 null.
-// lat/lon은 하루 보기 장소 줄 → 지도 시트용.
-export type AssetPlace = { name: string | null; tz: string | null; lat: number; lon: number };
+// lat/lon은 하루 보기 장소 줄 → 지도 시트용. country는 역지오코딩 ISO 국가 코드('KR' 등) — 지도 시트가
+// 한국일 때만 네이버 지도 행을 띄운다. 좌표와 같은 규칙(메모리만, 저장 금지).
+export type AssetPlace = { name: string | null; tz: string | null; lat: number; lon: number; country: string | null };
 
 // assetId → 장소(없으면 null). 같은 사진을 다시 열 때 역지오코딩을 또 부르지 않게 앱 실행 동안만 기억한다.
 // ponytail: 메모리 캐시만 — 앱을 다시 켜면 다시 찾는다. 느리다는 말이 나오면 AsyncStorage로.
@@ -30,7 +31,8 @@ export function placeOfAsset(assetId: string): Promise<AssetPlace | null> {
       const [geo] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
       const fp = formatPlace(geo);
       const tz = geo?.timezone ?? null; // 이름이 없어도 시간대는 살린다
-      return fp || tz ? { name: fp, tz, lat, lon } : null;
+      // 국가 코드는 대문자로 — 소문자로 주는 기기가 있다(ArrivalNotifier와 같은 처리)
+      return fp || tz ? { name: fp, tz, lat, lon, country: geo?.isoCountryCode?.toUpperCase() ?? null } : null;
     })().catch(() => null);
     placeCache.set(assetId, p);
   }

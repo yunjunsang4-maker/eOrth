@@ -2032,6 +2032,7 @@ const en = {
     albumOnlyOneMsg: 'This trip already has an album. Add photos to it instead.',
     // Album day view (AlbumDayScreen) place row → map preview sheet
     albumDayPlaceMapA11y: 'View {{place}} on map',
+    albumDayOpenNaverMaps: 'Open in NAVER Maps', // 앱 공식 영문명(App Store·NCloud 영문 문서)
     albumDayOpenGoogleMaps: 'Open in Google Maps',
     albumDayOpenAppleMaps: 'Open in Apple Maps',
     recordDeleteMsg: 'Delete this record?',
