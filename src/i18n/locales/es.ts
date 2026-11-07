@@ -2183,6 +2183,7 @@ const es: WithPlurals<typeof ko> = {
     viewerSave: 'Guardar',
     viewerSetCover: 'Portada',
     viewerDelete: 'Eliminar',
+    viewerCountOf: '{{n}}/{{total}} fotos', // 명사는 분모(total)에 맞춰 늘 복수 — {{count}}가 아니라 복수형 두 벌 불필요
     viewerSaved: 'Se guardó en tu dispositivo',
     viewerSaveFail: 'No se pudo guardar la foto',
     sectionDayN: 'Día {{n}}',

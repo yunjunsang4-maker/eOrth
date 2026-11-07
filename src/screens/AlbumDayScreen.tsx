@@ -127,6 +127,9 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
   const dt = day ? dayKeyToDate(day.key) ?? new Date(day.startMs) : null;
   const title = dt ? `${t('time.monthDay', { m: dt.getMonth() + 1, d: dt.getDate() })} (${t(WEEK_KEYS[dt.getDay()])})` : '';
   const cell = Math.round(width / 3); // 사진첩 화면과 같은 폭의 1/3
+  // 뷰어 제목(내 앨범 크롬) — 국기 + 그날 N일차. 하루 보기 사진은 전부 그날이라 고정(사진첩 화면 뷰어와 같은 문구)
+  const dayLabel = day ? t('comp.sectionDayN', { n: day.dayN }) : '';
+  const viewerTitle = record.countryFlag ? `${record.countryFlag} ${dayLabel}` : dayLabel;
 
   return (
     <View style={styles.container}>
@@ -212,6 +215,7 @@ export default function AlbumDayScreen({ navigation, route }: RootStackScreenPro
         onSetGlobeCover={toGlobal(setGlobeCover)}
         onSetCover={toGlobal(setCover)}
         onDelete={toGlobal(confirmDeletePhoto)}
+        albumTitleAt={() => viewerTitle}
       />
 
       {/* 장소 지도 시트 — 공용 MenuSheet(iOS 시스템 시트 / 안드로이드 Modal 시트) */}

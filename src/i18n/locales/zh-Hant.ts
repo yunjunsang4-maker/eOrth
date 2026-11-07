@@ -2096,6 +2096,7 @@ const zhHant: DeepPartial<typeof ko> = {
     viewerSave: '儲存',
     viewerSetCover: '封面',
     viewerDelete: '刪除',
+    viewerCountOf: '{{n}}/{{total}} 張',
     viewerSaved: '已儲存到裝置',
     viewerSaveFail: '無法儲存照片',
     sectionDayN: '第 {{n}} 天',

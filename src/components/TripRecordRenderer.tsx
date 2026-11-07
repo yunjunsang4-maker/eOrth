@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import PhotoViewerModal from './PhotoViewerModal';
 import AlbumTimeline from './AlbumTimeline';
-import { effectiveMediaTimes } from '../utils/albumSections';
+import { buildAlbumTimeline, effectiveMediaTimes } from '../utils/albumSections';
 import { albumTimeZoneOf } from '../utils/albumTimeZone';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
@@ -190,6 +190,16 @@ function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover,
   );
   const toGlobal = (fn?: (index: number) => void) =>
     fn && viewer ? (i: number) => { const g = viewer.order[i]; if (g != null) fn(g); } : undefined;
+  // 날짜 줄을 앨범 나라(국기) 시간대 날짜로 — TripRecordScreen(날짜별 사진 추가·장소)·AlbumDayScreen과 같은 계산
+  const tz = albumTimeZoneOf(record);
+  // 내 사진첩 뷰어 제목(국기 + N일차) — AlbumTimeline 날짜 줄과 같은 입력(medias·mediaTimes·tz)이라 같은 dayN이 나온다
+  const timeline = useMemo(() => buildAlbumTimeline(record.medias ?? [], mediaTimes, tz), [record.medias, mediaTimes, tz]);
+  const viewerTitleAt = (i: number) => {
+    const g = viewer?.order[i];
+    const n = g == null ? undefined : timeline.days.find((d) => d.moments.some((m) => m.indexes.includes(g)))?.dayN;
+    const label = n ? t('comp.sectionDayN', { n }) : t('comp.albumUndated'); // 촬영시각 없는 사진은 날짜 줄과 같은 '날짜 미상'
+    return record.countryFlag ? `${record.countryFlag} ${label}` : label;
+  };
 
   return (
     <View style={styles.albumWrap}>
@@ -205,8 +215,7 @@ function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover,
           <AlbumTimeline
             medias={medias}
             mediaTimes={mediaTimes}
-            // 날짜 줄을 앨범 나라(국기) 시간대 날짜로 — TripRecordScreen(날짜별 사진 추가·장소)·AlbumDayScreen과 같은 계산
-            timeZone={albumTimeZoneOf(record)}
+            timeZone={tz}
             thumbs={record.thumbs}
             width={SCREEN_W}
             inset={16}
@@ -233,7 +242,7 @@ function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover,
         </View>
       )}
 
-      {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m. 내 사진첩이면 공유/저장/커버/삭제 액션 바 */}
+      {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m. 내 사진첩이면 내 앨범 크롬(헤더 제목·유리 알약 바) + 지구본/저장/커버/삭제 */}
       <PhotoViewerModal
         visible={viewer !== null}
         uris={viewer ? viewer.order.map((i) => medias[i]) : medias}
@@ -243,6 +252,7 @@ function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover,
         onSetGlobeCover={editable ? toGlobal(onSetGlobeCover) : undefined}
         onSetCover={editable ? toGlobal(onSetCover) : undefined}
         onDelete={editable ? toGlobal(onRemoveAt) : undefined}
+        albumTitleAt={editable ? viewerTitleAt : undefined}
       />
     </View>
   );

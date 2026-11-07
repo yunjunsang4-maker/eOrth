@@ -2110,6 +2110,7 @@ const en = {
     viewerSave: 'Save',
     viewerSetCover: 'Cover',
     viewerDelete: 'Delete',
+    viewerCountOf: '{{n}}/{{total}} photos',
     viewerSaved: 'Saved to your device',
     viewerSaveFail: 'Could not save the photo',
     sectionDayN: 'Day {{n}}',

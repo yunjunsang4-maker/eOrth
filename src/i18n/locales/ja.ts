@@ -2095,6 +2095,7 @@ const ja: DeepPartial<typeof ko> = {
     viewerSave: '保存',
     viewerSetCover: 'カバー',
     viewerDelete: '削除',
+    viewerCountOf: '{{n}}/{{total}}枚',
     viewerSaved: '端末に保存しました',
     viewerSaveFail: '写真を保存できませんでした',
     sectionDayN: '{{n}}日目',

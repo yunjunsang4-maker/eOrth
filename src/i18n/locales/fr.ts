@@ -2188,6 +2188,7 @@ const fr: WithPlurals<typeof ko> = {
     viewerSave: 'Enregistrer',
     viewerSetCover: 'Couverture',
     viewerDelete: 'Supprimer',
+    viewerCountOf: '{{n}}/{{total}} photos', // 분모(total)가 복수라 늘 photos
     viewerSaved: 'Enregistrée sur l’appareil', // 주어는 photo(여성)
     viewerSaveFail: 'Impossible d’enregistrer la photo',
     sectionDayN: 'Jour {{n}}',

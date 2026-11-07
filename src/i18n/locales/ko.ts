@@ -2129,6 +2129,7 @@ const ko = {
     viewerSave: '저장',
     viewerSetCover: '커버',
     viewerDelete: '삭제',
+    viewerCountOf: '{{n}}/{{total}}장', // 내 앨범 뷰어 카운터 알약
     viewerSaved: '기기에 저장했어요',
     viewerSaveFail: '사진을 저장하지 못했어요',
     sectionDayN: '{{n}}일차',
