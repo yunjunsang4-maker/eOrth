@@ -457,8 +457,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       {/* 상단 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           {/* 사진 선택 모드에선 뒤로·⋯를 숨긴다(빠져나가기는 아래 선택 바 '완료') — 같은 크기 빈 칸으로 제목 가운데 유지 */}
+          {/* 사진첩만 iOS 리퀴드 글래스 없이(뒤로·⋯ 둘 다, 2026-11-07 사용자 요청) — ⋯의 iOS 시스템 메뉴는 그대로 */}
           {selecting ? <View style={styles.headerSlot} /> : (
-          <HeaderGlassButton back onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityLabel={t('trip.back')}>
+          <HeaderGlassButton back glass={!isAlbum} onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityLabel={t('trip.back')}>
             <BackChevronIcon />
           </HeaderGlassButton>
           )}
@@ -475,7 +476,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           {selecting ? <View style={styles.headerSlot} /> : (
           <HeaderGlassButton
             onPress={() => setMenuVisible(true)}
-            style={styles.menuBtn}
+            glass={!isAlbum} // 사진첩만 글래스 없음(2026-11-07 사용자 요청) — 위 뒤로가기와 짝
+            // 사진첩은 ⋯도 원(배경·테두리) 없이 뒤로가기와 같은 무테 36×36(2026-11-07 사용자 요청 "점3개에 원이 있는데 이것도 빼줘")
+            style={isAlbum ? styles.backBtn : styles.menuBtn}
             accessibilityLabel={t('postDetail.menuA11y')}
             // iOS 시스템 메뉴(새 빌드) — 없으면 위 onPress로 아래 기존 메뉴. 항목 조건은 기존 메뉴와 같다
             // '사진 추가'는 시스템 메뉴(UIMenu)에선 바로 선택기 — UIMenu는 RN Modal이 아니라 닫힘을 기다릴 껍데기가 없다

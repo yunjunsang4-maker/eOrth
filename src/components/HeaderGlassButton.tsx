@@ -10,6 +10,7 @@ import { MenuView, type MenuAction } from '@react-native-menu/menu';
  *    투명도 줄이기·새 테두리 모양을 시스템이 그대로 적용한다(직접 그린 글래스는 못 따라간다).
  *    눌림 피드백은 isInteractive의 시스템 반응만 쓴다 — 부모 opacity가 1 미만이면 유리가 안 보인다(GlassSurface 주석).
  *  · 안드로이드·구형 iOS : 호출처가 넘긴 style 그대로의 TouchableOpacity — 화면 모양이 이전과 같다.
+ *  · glass={false} : iOS 26+에서도 글래스 원 없이 위 비글래스 모양 — ⋯의 iOS 시스템 메뉴는 그대로(사진첩 헤더, 2026-11-07).
  */
 /** iOS 시스템 글래스 버튼을 쓰는가 — 호출처가 비글래스 쪽에 자기 고유 버튼(LiquidPressable 등)을 유지할 때 분기용 */
 export const IOS_GLASS = Platform.OS === 'ios' && isGlassEffectAPIAvailable();
@@ -41,7 +42,7 @@ const GLASS_FILL: ViewStyle = { width: SIZE, height: SIZE, borderRadius: SIZE / 
 // 뒤로가기 꺾쇠 광학 보정(pt) — 9pt 폭 꺾쇠 기준. 실기기에서 보고 조절하는 손잡이
 const BACK_OPTICAL_SHIFT = 1.5;
 
-export default function HeaderGlassButton({ onPress, style, hitSlop, activeOpacity, accessibilityLabel, back, menu, children }: {
+export default function HeaderGlassButton({ onPress, style, hitSlop, activeOpacity, accessibilityLabel, back, menu, glass = true, children }: {
   onPress: () => void;
   /** 기존 버튼 스타일. 안드로이드·구형 iOS는 그대로, iOS 글래스는 위치·여백(absolute·top·left·zIndex·margin)만 살리고
    *  크기·정렬·배경·테두리는 44pt 원으로 덮어쓴다 — 화면마다 버튼을 헤더에 absolute로 박아 둔 곳이 있다 */
@@ -55,9 +56,18 @@ export default function HeaderGlassButton({ onPress, style, hitSlop, activeOpaci
   back?: boolean;
   /** ⋯ 메뉴 항목(묶음 배열) — NATIVE_MENU면 누를 때 onPress 대신 iOS 시스템 메뉴가 뜬다. 묶음 사이는 시스템 구분선 */
   menu?: HeaderMenuSection[];
+  /** false면 iOS 26+에서도 시스템 글래스 원을 빼고 안드로이드·구형 iOS와 같은 비글래스 모양(호출처 style 그대로)으로 그린다.
+   *  화면 단위로 글래스만 뺄 때 — 예: 사진첩(TripRecord album) 헤더 뒤로·⋯(2026-11-07 사용자 요청 "여기만 빼달래").
+   *  menu가 있으면 iOS 시스템 메뉴(NATIVE_MENU)는 그대로 쓴다 — 빼는 건 유리 모양뿐. 기본 true(지금까지와 같음) */
+  glass?: boolean;
   children: React.ReactNode;
 }) {
-  if (!IOS_GLASS) {
+  if (!IOS_GLASS || !glass) {
+    // glass=false인 iOS 새 빌드: 모양은 호출처 style, 탭은 MenuView가 받아 시스템 메뉴를 연다(children은 모양만 — Pressable 금지).
+    // 광학 보정(back)·hitSlop은 없다 — 지금 비글래스 쪽과 같다. 안드로이드·구형 iOS는 NATIVE_MENU가 false라 아래 기존 경로 그대로
+    if (menu && NATIVE_MENU) {
+      return <SystemMenu menu={menu} style={style} accessibilityLabel={accessibilityLabel}>{children}</SystemMenu>;
+    }
     return (
       <TouchableOpacity onPress={onPress} style={style} hitSlop={hitSlop} activeOpacity={activeOpacity}
         accessibilityRole="button" accessibilityLabel={accessibilityLabel}>
@@ -65,20 +75,20 @@ export default function HeaderGlassButton({ onPress, style, hitSlop, activeOpaci
       </TouchableOpacity>
     );
   }
-  const glass = (
+  const glassBody = (
     <GlassView glassEffectStyle="regular" isInteractive colorScheme="dark" style={GLASS_FILL}>
       {back ? <View style={{ marginLeft: -BACK_OPTICAL_SHIFT }}>{children}</View> : children}
     </GlassView>
   );
   if (menu && NATIVE_MENU) {
     return (
-      <SystemMenu menu={menu} style={[style, GLASS_BOX]} accessibilityLabel={accessibilityLabel}>{glass}</SystemMenu>
+      <SystemMenu menu={menu} style={[style, GLASS_BOX]} accessibilityLabel={accessibilityLabel}>{glassBody}</SystemMenu>
     );
   }
   return (
     <Pressable onPress={onPress} hitSlop={hitSlop} accessibilityRole="button" accessibilityLabel={accessibilityLabel}
       style={[style, GLASS_BOX]}>
-      {glass}
+      {glassBody}
     </Pressable>
   );
 }
