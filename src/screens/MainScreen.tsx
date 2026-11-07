@@ -24,6 +24,7 @@ import { andFitText } from '../utils/fitText';
 import { isKoreanLang } from '../utils/langKind';
 import { localCountryName } from '../utils/countryLocalName';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
+import { tripCoverUri } from '../utils/tripCover';
 import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 // iOS 전용 — 네이티브 탭 바에는 CustomTabBar 오버레이가 없어 이 화면이 직접 FAB를 그린다.
@@ -1485,11 +1486,13 @@ export default function MainScreen({ navigation, route }: Props) {
       return {
         data: {
           id: g.id,
-          emoji: first?.user.emoji || '🗼',
+          // 사진 없는 카드는 나라와 상관없는 🗼 대신 국기 — FriendProfile 카드(emoji = countryFlag)와 같다.
+          // 프로필 카드의 단색 배경 국기 커버는 공용 TripCard(ProfileVisuals) 렌더라 여기서 바꾸지 않는다.
+          emoji: flag || first?.user.emoji || '🗼',
           title: flag && g.title.startsWith(flag) ? g.title.slice(flag.length).trim() : g.title,
           countryFlag: flag,
           date: date ? date.slice(0, 7) : '',
-          coverUri: g.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0],
+          coverUri: tripCoverUri(g.coverUri, coverRec, members), // 프로필 카드와 같은 규칙(utils/tripCover)
           records: badgeRecords(members),
         },
         tagged: g.visitedRegions?.filter(v => v.iso3 === regionCountry).length ?? 0,
@@ -1506,7 +1509,7 @@ export default function MainScreen({ navigation, route }: Props) {
           title: t('main.regionTagLooseTitle'),
           countryFlag: flagRec?.countryFlag || '',
           date: '',
-          coverUri: loose[0] ? (loose[0].representativePhoto ?? loose[0].medias?.[0]) : undefined,
+          coverUri: tripCoverUri(undefined, loose[0], loose),
           records: badgeRecords(loose),
         },
         tagged: legacyCount,

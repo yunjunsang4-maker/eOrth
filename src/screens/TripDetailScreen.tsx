@@ -29,6 +29,7 @@ import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../c
 import { useSkinAccent } from '../constants/skinTheme';
 import { bakeCoverCrop, copyTripCover } from '../utils/importPhotoStore';
 import { getTripPool, pickCoverCandidates } from '../utils/tripPhotoPool';
+import { recordCoverUri, thumbSheetPick } from '../utils/tripCover';
 import { andFitText, andNoFontScale } from '../utils/fitText';
 import { TRAVEL_MOMENTS_ENABLED } from '../constants/featureFlags';
 import { countryTagLabel } from '../utils/countryLabel';
@@ -438,20 +439,13 @@ export default function TripDetailScreen() {
   // ── 썸네일 변경 시트의 카드 미리보기 — 프로필 여행 카드(ProfileScreen mappedThumbnails)와 같은 규칙 ──
   // 대표 기록: coverRecordId → 없으면 첫 기록(보관 제외 목록 기준, 프로필과 같다)
   const thumbCoverRec = groupRecordObjs.find((r) => r.id === currentGroup?.coverRecordId) ?? groupRecordObjs[0];
-  // 지금 카드에 실제로 보이는 사진(오버라이드 → 크롭본 → 첫 사진) — 프로필 카드 coverUri와 같은 순서
-  const currentCardUri = currentGroup?.coverUri ?? thumbCoverRec?.representativePhoto ?? thumbCoverRec?.medias?.[0];
-  // 그 사진의 '원본'(가로 줄에서 선택 표시할 것). representativePhoto는 크롭본일 수 있어 줄에 없으므로
-  // 원본(representativePhotoSource)을 먼저 본다. 줄에 있는 값만 인정하고, 없으면 첫 장.
-  const currentThumbSrc =
-    [currentGroup?.coverUri, thumbCoverRec?.representativePhotoSource, thumbCoverRec?.representativePhoto, thumbCoverRec?.medias?.[0]]
-      .find((u): u is string => !!u && thumbCandidates.includes(u)) ?? thumbCandidates[0];
-  const selThumbUri = thumbSel?.uri ?? currentThumbSrc;
+  // 미리보기(카드와 같은 사진)·가로 줄 선택 표시·'확인' 적용 여부 판정은 순수 함수 thumbSheetPick(utils/tripCover, 검증 있음).
+  // 지금 카드 사진의 원본이 줄에 없으면(스냅·네컷 대표 등) 선택 표시를 두지 않는다 — 폴백 첫 장을 '현재'로 치면
+  // 그 사진을 눌러도 '그대로'로 판정돼 고를 수 없었다. 열 때 그대로(같은 원본 + 조정 없음)면 '확인'은 아무것도
+  // 바꾸지 않는다 — 크롭본 카드에 원본을 identity로 다시 적용하면 applyThumb가 크롭을 원본으로 덮는다.
+  const { highlight: selThumbUri, unchanged: thumbUnchanged, preview: pvUri } =
+    thumbSheetPick(currentGroup?.coverUri, thumbCoverRec, groupRecordObjs, thumbSel);
   const selThumbT = thumbSel?.t ?? null;
-  // 열 때 그대로(같은 원본 + 조정 없음)면 '확인'은 아무것도 바꾸지 않는다 — 지금 카드가 크롭본일 수 있는데
-  // 원본을 identity로 다시 적용하면 applyThumb가 representativePhoto를 원본으로 덮어 크롭이 사라진다.
-  // 이 상태의 미리보기도 원본이 아니라 지금 카드 사진(크롭본)을 보여 줘야 보이는 대로 동작한다.
-  const thumbUnchanged = selThumbUri === currentThumbSrc && !selThumbT;
-  const pvUri = thumbUnchanged ? currentCardUri ?? selThumbUri : selThumbUri;
   // 카드 정보 — 프로필 카드가 `${countryFlag} ${title}` / `stayPeriod ?? date(YYYY.MM)`로 그리는 것과 같게
   const pvFlag = currentGroup?.countryFlag || groupRecordObjs[0]?.countryFlag || '';
   const pvTitle = pvFlag && titleToDisplay.startsWith(pvFlag) ? titleToDisplay.slice(pvFlag.length).trim() : titleToDisplay;
@@ -536,9 +530,9 @@ export default function TripDetailScreen() {
 
   // 시트 '확인' → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
   //
-  // ⚠️ medias는 재정렬하지 않는다. 여행 카드 썸네일은 ProfileScreen이
-  //    `group.coverUri ?? coverRec.representativePhoto ?? coverRec.medias[0]` 순으로 고르므로,
-  //    representativePhoto만 지정하면 medias 순서를 건드리지 않고도 원하는 사진이 썸네일이 된다.
+  // ⚠️ medias는 재정렬하지 않는다. 여행 카드 썸네일은 utils/tripCover(tripCoverUri)가
+  //    오버라이드(group.coverUri) → 대표 기록의 representativePhoto → medias 첫 값 … 순으로 고르므로,
+  //    coverRecordId + representativePhoto만 지정하면 medias 순서를 건드리지 않고도 원하는 사진이 썸네일이 된다.
   //    예전처럼 선택 사진을 medias 맨 앞으로 옮기면
   //      · 사진별 글(photoTexts)·비공개 대상(mediaPrivacy)이 인덱스 기준이라 전부 한 칸씩 밀리고
   //      · 옛 앱 버전은 사진첩을 albumSections(medias 구간 분할)로 그려 섹션 경계가 밀리며
@@ -615,13 +609,13 @@ export default function TripDetailScreen() {
   // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
   const tripDateRange = computeTripDateRange(matchedRecords) ?? trip.date;
 
-  // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 그룹 커버 우선, 없으면 기록의 첫 사진
-  const pickPhoto = (r?: TravelRecord): string | undefined =>
-    r?.representativePhoto || r?.medias?.[0] || r?.snapBackUri || r?.snapFrontUri || r?.cutPhoto?.previewUri;
+  // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 카드 오버라이드(group.coverUri) → 대표 기록 → 기록 순서대로 첫 사진.
+  // 기록 하나의 사진 고르기는 프로필 카드와 같은 recordCoverUri(utils/tripCover). group.coverUri는 예전엔 안 봐서
+  // 오버라이드가 있는 카드(다른 기기에서 지정·옛 크롭 오버라이드)는 카드와 히어로 사진이 달랐다 — 2026-11-07 맞춤.
   const coverPhoto: string | undefined =
-    (currentGroup?.coverRecordId
-      ? pickPhoto(records.find((r) => r.id === currentGroup.coverRecordId))
-      : undefined) ?? matchedRecords.map(pickPhoto).find(Boolean);
+    currentGroup?.coverUri ||
+    recordCoverUri(currentGroup?.coverRecordId ? records.find((r) => r.id === currentGroup.coverRecordId) : undefined) ||
+    matchedRecords.map(recordCoverUri).find(Boolean);
 
   // viewType별 그룹
   //

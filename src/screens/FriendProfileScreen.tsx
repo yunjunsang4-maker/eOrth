@@ -42,6 +42,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
 import { useLateFontsLoaded } from '../constants/lateFonts';
 import { countryInfoFromCode } from '../utils/pastTripScan';
+import { recordCoverUri } from '../utils/tripCover';
 import { COUNTRIES } from '../constants/countries';
 import { profileLink } from '../utils/appLinks';
 import type { TravelRecord } from '../store/recordStore';
@@ -206,7 +207,8 @@ export default function FriendProfileScreen({
             countryFlag: c.flag || '',
             title: c.name,
             date: d?.startDate || p.date || '',
-            coverUri: d?.representativePhoto || d?.medias?.[0] || p.representativePhoto,
+            // 국가별 사진 → 기록 공통 사진(스냅·네컷 포함) 순 — 규칙은 utils/tripCover(내 프로필 카드와 같다)
+            coverUri: recordCoverUri(d) ?? recordCoverUri(p),
             records: [{ id: p.id, viewType: p.viewType || 'feed' }],
           };
         });
@@ -217,7 +219,7 @@ export default function FriendProfileScreen({
         countryFlag: p.countryFlag || '',
         title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
         date: p.date || '',
-        coverUri: p.representativePhoto || p.medias?.[0],
+        coverUri: recordCoverUri(p),
         records: [{ id: p.id, viewType: p.viewType || 'feed' }],
       }];
     }),

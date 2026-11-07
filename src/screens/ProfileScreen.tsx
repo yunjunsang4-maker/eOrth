@@ -60,6 +60,7 @@ import { useLateFontsLoaded } from '../constants/lateFonts';
 import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { andFitText } from '../utils/fitText';
+import { tripCoverUri } from '../utils/tripCover';
 import { getMyUserId } from '../services/profile';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
@@ -248,9 +249,10 @@ interface TripThumbnail {
   // 체류 카드 표시용 (stay 메타가 있는 TripGroup에서 파생)
   stayLabel?: string;   // 예: "체류 · 교환학생"
   stayPeriod?: string;  // 예: "2026.03 ~ 진행 중" / "2026.03 ~ 2026.08"
-  // 사진 없는 체류 카드 — 🗼 대체 이모지 대신 체류국 국기를 크게(2026-10-27). 체류 시작 직후엔 기록이 0개라
-  // 커버가 없어서 나라와 상관없는 🗼가 떠 목업처럼 보였다
-  stayFlagCover?: boolean;
+  // 사진 없는 카드 — 🗼 대체 이모지·글로우 대신 단색 배경 + 나라 국기를 크게. 체류 카드에서 먼저 도입했고
+  // (2026-10-27, 체류 시작 직후 기록 0개라 나라와 상관없는 🗼가 떠 목업처럼 보였다) 2026-11-07부터 일반 여행
+  // 카드에도 같은 규칙(사진 없는 기록만 묶인 카드도 똑같이 목업처럼 보였다). 국기도 없으면 이모지 폴백 그대로.
+  flagCover?: boolean;
   stayEmpty?: boolean;  // 기록 0개 — '첫 기록을 남기면 사진이 채워져요' 안내까지
 }
 
@@ -1273,8 +1275,8 @@ const MainTripCardBody = React.memo(function MainTripCardBody({ trip, mergeOrder
   return (
     <>
       {/* 출렁이는 글로우 배경 — 안드로이드는 사진 카드에서 생략(사진이 덮어 안 보이는데 무한 루프가 매 프레임 화면만 무효화) */}
-      {/* 사진 없는 체류 카드는 단색 배경(기본 글로우·그라데이션이 목업처럼 보였다 — 2026-10-27) */}
-      {trip.stayFlagCover ? (
+      {/* 사진 없는 카드는 단색 배경(기본 글로우·그라데이션이 목업처럼 보였다 — 체류 2026-10-27, 일반 카드 2026-11-07) */}
+      {trip.flagCover ? (
         <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
       ) : (
         <>
@@ -1307,7 +1309,7 @@ const MainTripCardBody = React.memo(function MainTripCardBody({ trip, mergeOrder
         </>
       ) : (
         <View style={thumbSt.mainEmojiWrap}>
-          {trip.stayFlagCover ? (
+          {trip.flagCover ? (
             <>
               <Text style={thumbSt.mainFlag}>{trip.countryFlag}</Text>
               {trip.stayEmpty ? <Text style={thumbSt.mainEmptyHint}>{t('stay.emptyCardHint')}</Text> : null}
@@ -1351,8 +1353,8 @@ const GridTripCardBody = React.memo(function GridTripCardBody({ trip, mergeOrder
   const { t } = useTranslation();
   return (
     <>
-      {/* 사진 없는 체류 카드는 단색 배경(대표 카드와 같은 이유) */}
-      {trip.stayFlagCover ? (
+      {/* 사진 없는 카드는 단색 배경(대표 카드와 같은 이유) */}
+      {trip.flagCover ? (
         <View style={[StyleSheet.absoluteFill, thumbSt.stayEmptyBg]} />
       ) : (
         <>
@@ -1386,7 +1388,7 @@ const GridTripCardBody = React.memo(function GridTripCardBody({ trip, mergeOrder
         </>
       ) : (
         <View style={thumbSt.gridEmojiWrap}>
-          {trip.stayFlagCover ? (
+          {trip.flagCover ? (
             <>
               <Text style={thumbSt.gridFlag}>{trip.countryFlag}</Text>
               {trip.stayEmpty ? <Text style={thumbSt.gridEmptyHint} numberOfLines={2}>{t('stay.emptyCardHint')}</Text> : null}
@@ -2206,7 +2208,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         workingHoliday: 'WorkingHoliday',
         other: 'Other',
       };
-      const coverUri = group.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0]; // 오버라이드 → 크롭본 → 썸네일 순
+      // 오버라이드 → 대표 기록(크롭본·첫 사진·스냅·네컷) → 사진 있는 첫 멤버 — 규칙은 utils/tripCover
+      const coverUri = tripCoverUri(group.coverUri, coverRec, groupRecords);
       const stayLabel = group.stay
         ? t('stay.cardBadge', { type: t(`stay.type${stayTypeKeyMap[group.stay.type]}`) })
         : undefined;
@@ -2227,7 +2230,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         coverUri,
         stayLabel,
         stayPeriod,
-        stayFlagCover: !!group.stay && !coverUri && !!flag,
+        flagCover: !coverUri && !!flag,
         stayEmpty: !!group.stay && groupRecords.length === 0,
       };
     }).filter(t2 => t2.records.length > 0 || !!t2.stayLabel); // 체류 카드는 기록 0개(갓 시작)여도 노출
