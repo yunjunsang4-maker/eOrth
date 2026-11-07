@@ -3,7 +3,6 @@ import {
   View,
   Image,
   StyleSheet,
-  TouchableOpacity,
   Alert,
 } from 'react-native';
 import { Text } from '../ui/Text';
@@ -26,7 +25,7 @@ interface Props {
   // 사진첩(앨범) 편집 — 내 기록 화면(TripRecordScreen)에서만 전달
   albumEditable?: boolean;
   onAlbumAddPhotos?: () => void;
-  onAlbumStartSelect?: () => void; // 다중 선택 모드 진입 (삭제는 선택 액션 바에서)
+  // 다중 선택 모드 진입은 상단 ⋯ 메뉴 '선택'(TripRecordScreen) — 본문 아래 '✓ 선택' 막대는 2026-11-07 제거
   onAlbumSetCover?: (index: number) => void; // 뷰어에서 커버(여행카드 썸네일)로 지정 — medias 전역 인덱스
   onAlbumSetGlobeCover?: (index: number) => void; // 뷰어에서 유리 지구본 활성화 사진(국가 대표사진)으로 지정
   // 다중 선택 모드 — 탭이 선택 토글로 바뀌고 체크 오버레이 표시
@@ -159,11 +158,10 @@ function BlogView({ record }: { record: TravelRecord }) {
 // 3. Album — 촬영시각 세로 타임라인 (AlbumTimeline)
 // 수동 섹션·꾹 눌러 끌기 재정렬은 2026-11 타임라인으로 대체돼 제거됐다.
 // ─────────────────────────────────────────────
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing, onSelectIndexes, onOpenDay, onAddPhotosForDay, dayPlaces }: {
+function AlbumView({ record, editable, onAddPhotos, onSetCover, onSetGlobeCover, selecting, selected, onToggleSelect, onRemoveAt, onReanalyze, reanalyzing, onSelectIndexes, onOpenDay, onAddPhotosForDay, dayPlaces }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: () => void;
-  onStartSelect?: () => void;
   onSetCover?: (index: number) => void;
   onSetGlobeCover?: (index: number) => void;
   selecting?: boolean;
@@ -213,13 +211,13 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
             selecting={selecting}
             selected={selected}
             onToggleSelect={onToggleSelect}
-            // 날짜 줄 ⋯ — 그날 사진 선택 / 이 날 찍은 사진 추가. 작은 선택지 둘이라 시스템 Alert로 띄운다(iOS·안드로이드 공통).
+            // 날짜 줄 ⋯ — 그날 사진 선택 / 사진 추가(그 날짜로 넣음). 작은 선택지 둘이라 시스템 Alert로 띄운다(iOS·안드로이드 공통).
             // '날짜 미상' 줄은 고를 날짜가 없어 일반 '사진 추가'(onAddPhotos — 내 사진첩은 기록 기간 격자, 기간 없으면 시스템 선택기)
             onDayMenu={editable && (onSelectIndexes || onAddPhotos || onAddPhotosForDay) ? (indexes, label, dayKey) => {
               const forDay = dayKey !== 'undated' && onAddPhotosForDay;
               Alert.alert(label, undefined, [
                 ...(onSelectIndexes ? [{ text: t('trip.albumSelect'), onPress: () => onSelectIndexes(indexes) }] : []),
-                ...(forDay ? [{ text: t('trip.albumAddDayPhotos'), onPress: () => forDay(dayKey) }]
+                ...(forDay ? [{ text: t('comp.albumAddPhotos'), onPress: () => forDay(dayKey) }]
                   : onAddPhotos ? [{ text: t('comp.albumAddPhotos'), onPress: onAddPhotos }] : []),
                 { text: t('common.cancel'), style: 'cancel' as const },
               ]);
@@ -230,11 +228,6 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
             reanalyzing={reanalyzing}
           />
         </View>
-      )}
-      {editable && medias.length > 0 && !selecting && onStartSelect && (
-        <TouchableOpacity style={styles.albumSelectBtn} onPress={onStartSelect} activeOpacity={0.8}>
-          <Text style={styles.albumSelectBtnTxt}>✓ {t('trip.albumSelect')}</Text>
-        </TouchableOpacity>
       )}
 
       {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m. 내 사진첩이면 공유/저장/커버/삭제 액션 바 */}
@@ -375,7 +368,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing, onAlbumSelectIndexes, onAlbumOpenDay, onAlbumAddPhotosForDay, albumDayPlaces }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumSetCover, onAlbumSetGlobeCover, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumRemoveAt, onAlbumReanalyze, albumReanalyzing, onAlbumSelectIndexes, onAlbumOpenDay, onAlbumAddPhotosForDay, albumDayPlaces }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -385,7 +378,6 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           record={record}
           editable={albumEditable}
           onAddPhotos={onAlbumAddPhotos}
-          onStartSelect={onAlbumStartSelect}
           onSetCover={onAlbumSetCover}
           onSetGlobeCover={onAlbumSetGlobeCover}
           selecting={albumSelecting}
@@ -550,20 +542,6 @@ const styles = StyleSheet.create({
   // 시안: 상단 정보 줄 아래 30 → 첫 날짜 줄
   albumTimelineWrap: {
     paddingTop: 30,
-  },
-  albumSelectBtn: {
-    marginHorizontal: 16,
-    marginTop: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  albumSelectBtnTxt: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#A1A1B0',
   },
   albumEmpty: {
     width: '100%',

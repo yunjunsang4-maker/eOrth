@@ -39,7 +39,7 @@ import { TrashIcon, CommentIcon, BackChevronIcon, OutlineCalendarIcon, PencilIco
 import TimeAgoText from '../components/TimeAgoText';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
-import { andFitText } from '../utils/fitText';
+import { andFitText, andNoFontScale } from '../utils/fitText';
 import HeaderGlassButton from '../components/HeaderGlassButton';
 import MenuSheet, { MenuSheetItem, MenuSheetDivider, MENU_DANGER } from '../components/MenuSheet';
 
@@ -413,7 +413,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const toggleSelect = (idx: number) =>
     setSelected((prev) => (prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]));
 
-  // 다중 선택 모드 진입 — 선택 바에서 삭제
+  // 다중 선택 모드 진입(⋯ 메뉴 '선택') — 삭제는 아래 선택 액션 바에서
   const startSelecting = () => { setSelecting(true); setSelected([]); };
 
   // 뷰어에서 커버(대표 사진) 지정 — 이 앨범을 커버로 쓰는 여행카드 썸네일(크롭 오버라이드 포함)도 동기화
@@ -529,6 +529,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               [
                 ...(isAlbum ? [
                   { id: 'add', title: t('comp.albumAddPhotos'), icon: 'photo.badge.plus', onPress: openAlbumAddPhotos },
+                  // '선택'은 고를 사진이 있을 때만(옛 본문 '✓ 선택' 막대의 medias.length > 0 조건 그대로)
+                  ...(medias.length > 0 ? [{ id: 'select', title: t('trip.albumSelect'), icon: 'checkmark.circle', onPress: startSelecting }] : []),
                   { id: 'rename', title: t('trip.albumRenameAlbum'), icon: 'character.cursor.ibeam', onPress: openTitleModal },
                 ] : []),
               ],
@@ -567,7 +569,6 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             viewType={viewType}
             albumEditable={isAlbum}
             onAlbumAddPhotos={openAlbumAddPhotos}
-            onAlbumStartSelect={startSelecting}
             onAlbumSetCover={handleSetCover}
             onAlbumSetGlobeCover={handleSetGlobeCover}
             albumSelecting={selecting}
@@ -728,6 +729,18 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               onPress={async () => { setMenuVisible(false); await waitSheetClosed(); openAlbumAddPhotos(); }}
             />
             <MenuSheetDivider />
+            {/* 선택 — 상태만 바꾸고 다른 Modal을 띄우지 않아 닫힘 대기가 필요 없다(이름 변경과 같은 패턴).
+                공용 아이콘에 체크가 없어, 옛 '✓ 선택' 막대와 같은 ✓ 글자를 다른 행 아이콘 칸(18)에 맞춰 둔다 */}
+            {medias.length > 0 && (
+              <>
+                <MenuSheetItem
+                  icon={<Text style={styles.menuCheck} {...andNoFontScale}>✓</Text>}
+                  label={t('trip.albumSelect')}
+                  onPress={() => { setMenuVisible(false); startSelecting(); }}
+                />
+                <MenuSheetDivider />
+              </>
+            )}
             <MenuSheetItem
               icon={<PencilIcon size={18} color="#FFFFFF" />}
               label={t('trip.albumRenameAlbum')}
@@ -943,6 +956,14 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     fontSize: 18,
     color: '#FFFFFF',
     letterSpacing: 2,
+  },
+  // ⋯ 시트 '선택' 행의 ✓ — MenuSheetItem 아이콘 칸(18)과 같은 폭이라 글자 시작이 다른 행과 맞는다
+  menuCheck: {
+    width: 18,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
 
 });
